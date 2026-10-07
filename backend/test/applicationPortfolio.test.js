@@ -56,7 +56,7 @@ test('application summary counts one company per user across applicant categorie
   assert.equal(sonal.companyRecords[0].bucket, 'applied');
   assert.equal(sonal.companyRecords[0].services.length, 2);
   assert.equal(groups.find(group => group.id === 'krishna').companyRecords[0].bucket, 'approved');
-  assert.deepEqual(STATUS_COLUMNS.slice(2).map(column => column[1]), ['Approved', 'Applied', 'Under Review', 'Not Started', 'Rejected']);
+  assert.deepEqual(STATUS_COLUMNS.slice(3).map(column => column[1]), ['Approved', 'Applied', 'Under Review', 'Not Started', 'Rejected']);
 });
 
 test('company approval requires all assigned service statuses approved; missing status remains visible in details', async () => {
@@ -151,4 +151,23 @@ test('legacy closed-by records qualify as closed without fabricating a close tim
   const row = client('a', 'sonal', 'Producer'); row.assignedServiceId = 'a';
   row.selectedLead.assignments = [{ assignedServiceId: 'a', closedByText: 'Sonal' }];
   assert.equal(applicationRecord(row).closed, true);
+});
+
+
+test('application summaries use category totals and split every application into exactly one status', async () => {
+  const { buildApplicationPortfolio, applicationSummaryRecords, matchesApplicationService } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const a = client('a', 'sonal', 'Importer', 'Approved');
+  const b = client('b', 'sonal', 'Importer', 'Applied');
+  const c = client('c', 'sonal', 'Producer', 'Approved');
+  const d = client('d', 'sonal', 'Brand Owner', '');
+  for (const row of [a, b, c]) { row.selectedLead.status = 'Closed'; row.data.basic.servicesOffered = 'Annual Filling'; }
+  const [group] = buildApplicationPortfolio([a,b,c,d], users);
+  const records = applicationSummaryRecords(group);
+  assert.equal(records.length, group.records.length);
+  assert.equal(records.length, 3);
+  assert.deepEqual(records.map(row => row.bucket), ['applied', 'approved', 'notStarted']);
+  assert.equal(records.filter(row => matchesApplicationService(row, 'Annual Return Filling')).length, 2);
+  assert.equal(records.filter(row => matchesApplicationService(row, 'unclassified')).length, 1);
+  assert.equal(records.filter(row => matchesApplicationService(row, 'total')).length, 3);
+  assert.equal(records[0].services.length, 2);
 });

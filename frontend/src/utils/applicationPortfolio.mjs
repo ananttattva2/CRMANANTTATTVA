@@ -2,10 +2,25 @@ import { buildOperationsProgressGroups, assignedCompanyKey } from './operationsU
 
 export const PIBO_CATEGORIES = ['Producer', 'Brand Owner', 'PWP', 'Importer', 'Producer (Small & Micro)', 'Importer of Raw Material', 'Recycler']
 export const STATUS_COLUMNS = [
+  ['total', 'Total'],
   ['live', 'Live Clients'], ['annual', 'Annual Return Applicable'],
   ['approved', 'Approved'], ['applied', 'Applied'], ['underReview', 'Under Review'],
   ['notStarted', 'Not Started'], ['rejected', 'Rejected']
 ]
+export function applicationSummaryRecords(group) {
+  return group.records.map(record => {
+    const priority = ['rejected', 'underReview', 'applied', 'notStarted', 'approved']
+    const bucket = priority.find(status => record.services.some(service => service.bucket === status))
+    const labels = { rejected: 'Rejected', underReview: 'Under Review', applied: 'Applied', notStarted: 'Not Started', approved: 'Approved' }
+    return { ...record, bucket, cpcb: labels[bucket] }
+  })
+}
+export function matchesApplicationService(record, key) {
+  if (key === 'total') return true
+  const closed = record.services.filter(service => service.closed)
+  if (key === 'unclassified') return !closed.some(service => service.offeredServices.length)
+  return closed.some(service => service.offeredServices.includes(key))
+}
 export function cpcbStatusBucket(value) {
   const status = String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
   if (status.includes('reject')) return 'rejected'
