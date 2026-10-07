@@ -9,3 +9,5 @@
 @keyframes portfolio-enter{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
 @media(max-width:640px){.application-portfolio>header,.portfolio-dialog>header{padding:20px}.portfolio-heading h2{font-size:18px}.portfolio-metrics{padding:0 20px 20px;gap:8px}.portfolio-metrics>div{min-width:0;flex:1;padding:12px}.portfolio-toolbar{padding:14px 20px;flex-wrap:wrap}.portfolio-search{min-width:0;width:100%}.portfolio-dialog{width:96vw}.portfolio-dialog-table{max-height:calc(90vh - 280px)}}
 @media(prefers-reduced-motion:reduce){.portfolio-dialog{animation:none}.application-portfolio button{transition:none}.portfolio-count:hover,.portfolio-icon-button:hover{transform:none}.portfolio-dialog::backdrop{backdrop-filter:none}}
+
+.portfolio-status-approved{background:#eaf9f1;color:#21805e;border-color:#ceecdc}.portfolio-status-applied,.portfolio-status-underReview{background:#fff7e6;color:#aa781b;border-color:#f6e7c4}
