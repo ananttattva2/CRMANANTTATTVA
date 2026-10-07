@@ -53,8 +53,8 @@ export default function ApplicationPortfolio({ mode }) {
   const allRecords = shown.flatMap(group => group.records)
   const categories = PIBO_CATEGORIES
   const serviceColumns = useMemo(() => offeredServiceColumns(groups), [groups])
-  const columns = distribution ? [['total', 'Total'], ...categories.map(category => [category, category])] : serviceSummary ? serviceColumns.map(service => [service, service]) : STATUS_COLUMNS
-  const matches = (row, key) => distribution ? key === 'total' || row.category === key : serviceSummary ? row.services.some(service => service.offeredServices.includes(key)) : key === 'live' ? row.live : key === 'annual' ? row.annual : row.bucket === key
+  const columns = distribution ? [['total', 'Total'], ...categories.map(category => [category, category])] : serviceSummary ? [['total', 'Total'], ...serviceColumns.map(service => [service, service])] : STATUS_COLUMNS
+  const matches = (row, key) => distribution ? key === 'total' || row.category === key : serviceSummary ? key === 'total' || row.services.some(service => service.offeredServices.includes(key)) : key === 'live' ? row.live : key === 'annual' ? row.annual : row.bucket === key
   const open = (name, records, label = 'All categories') => setSelection({ name, records, label })
   const title = distribution ? 'Application Distribution by SPOC & PIBo' : serviceSummary ? 'Application servise Summary' : 'Application Status Summary'
   return <motion.section role="tabpanel" id={`portfolio-${mode}`} aria-labelledby={`dashboard-tab-${mode}`} initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .2 }} className="application-portfolio">
