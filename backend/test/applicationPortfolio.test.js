@@ -91,3 +91,22 @@ test('annual applicability excludes registration despite a saved annual year and
   row.selectedLead.serviceSelections = [{ assignedServiceId: 'annual', servicesOffered: 'Annual Return Filling' }, { assignedServiceId: 'registration', servicesOffered: 'New Registration' }];
   assert.equal(applicationRecord(row).annual, false);
 });
+
+
+test('same-company lead IDs and identical-category service records survive popup grouping and lead-ID search', async () => {
+  const { buildApplicationPortfolio, matchesPortfolioSearch } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const a = client('a', 'sonal', 'Recycler', 'Approved');
+  const b = client('b', 'sonal', 'Recycler', 'Approved');
+  a.selectedLead.company = 'RG INDUSTRIAL CORPORATION'; a.selectedLead.leadCode = 'ATPL-LEAD-0013';
+  b.selectedLead.company = 'R.G. INDUSTRIAL CORPORATION'; b.selectedLead.leadCode = 'ATPL-LEAD-0412';
+  const [group] = buildApplicationPortfolio([a, b], users);
+  assert.equal(group.companyRecords.length, 1);
+  assert.equal(group.companyRecords[0].services.length, 2);
+  assert.equal(group.records[0].services.length, 2);
+  assert.match(group.companyRecords[0].code, /0013/);
+  assert.match(group.companyRecords[0].code, /0412/);
+  assert.equal(matchesPortfolioSearch(group.companyRecords[0], 'ATPL-LEAD-0013'), true);
+  assert.equal(matchesPortfolioSearch(group.records[0], 'ATPL-LEAD-0412'), true);
+  const typo = { name: 'RG INDUSTRIAL CORPRATION' };
+  assert.equal(matchesPortfolioSearch(typo, 'R.G. INDUSTRIAL CORPORATION'), true);
+});

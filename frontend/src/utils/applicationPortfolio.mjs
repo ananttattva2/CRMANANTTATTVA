@@ -22,6 +22,7 @@ export function companyStatusRecord(rows) {
   const labels = { notStarted: 'Not Started', applied: 'Applied', underReview: 'Under Review', approved: 'Approved', rejected: 'Rejected' }
   return { ...first, category: [...new Set(services.map(row => row.category))].join(' / '), bucket, cpcb: labels[bucket],
     live: services.some(row => row.live), annual: services.some(row => row.annual), services,
+    code: [...new Set(services.map(row => row.code))].join(' / '), leadCode: [...new Set(services.map(row => row.leadCode).filter(Boolean))].join(' / '),
     sourceIds: services.map(row => row.id) }
 }
 const text = (...values) => values.find(value => typeof value === 'string' && value.trim())?.trim() || ''
@@ -52,7 +53,7 @@ export function applicationRecord(client) {
   const status = normalize(cpcb)
   const inactive = /suspend|discontinu|inactive/.test(normalize(`${clientStatus} ${visibility} ${cpcb}`))
   const bucket = cpcbStatusBucket(cpcb)
-  return { id: String(client._id), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', bucket, live: !inactive, annual, sourceIds: [String(client._id)] }
+  return { id: String(client._id), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), bucket, live: !inactive, annual, sourceIds: [String(client._id)] }
 }
 export function buildApplicationPortfolio(assignments, users) {
   const groups = buildOperationsProgressGroups(assignments.map(client => ({ id: String(client._id), client, companyName: applicationRecord(client).name })), users)
@@ -62,14 +63,24 @@ export function buildApplicationPortfolio(assignments, users) {
       const record = applicationRecord(row.client)
       const identity = `${record.companyKey}:${normalize(record.category)}`
       const existing = records.get(identity)
-      if (!existing) records.set(identity, record)
+      if (!existing) records.set(identity, { ...record, services: [record] })
       else {
         existing.sourceIds.push(record.id)
         existing.live ||= record.live
         existing.annual ||= record.annual
-        if (existing.bucket !== record.bucket) { existing.bucket = 'mixed'; existing.cpcb = 'Mixed status — view individual services'; existing.services = existing.services || [{ ...existing, services: undefined }]; existing.services.push(record) }
+        existing.services.push(record)
+        existing.code = [...new Set(existing.services.map(service => service.code))].join(' / ')
+        existing.leadCode = [...new Set(existing.services.map(service => service.leadCode).filter(Boolean))].join(' / ')
+        if (existing.bucket !== record.bucket) { existing.bucket = 'mixed'; existing.cpcb = 'Mixed status — view individual services' }
       }
     }
     return { ...group, records: [...records.values()], companyRecords: group.rows.map(company => companyStatusRecord(company.serviceRows || [company])) }
   }).filter(group => group.records.length)
+}
+
+
+export function matchesPortfolioSearch(row, query) {
+  const normalizeSearch = value => String(value || '').toLowerCase().normalize('NFKC').replace(/corpration/g, 'corporation').replace(/[^a-z0-9]/g, '')
+  const needle = normalizeSearch(query)
+  return !needle || [row, ...(row.services || [])].some(service => [service.name, service.code, service.leadCode, service.category, service.cpcb, service.state, service.industry, service.eprCategory, service.offered].some(value => normalizeSearch(value).includes(needle)))
 }

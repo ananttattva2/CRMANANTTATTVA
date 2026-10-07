@@ -11,3 +11,8 @@
 @media(prefers-reduced-motion:reduce){.portfolio-dialog{animation:none}.application-portfolio button{transition:none}.portfolio-count:hover,.portfolio-icon-button:hover{transform:none}.portfolio-dialog::backdrop{backdrop-filter:none}}
 
 .portfolio-status-approved{background:#eaf9f1;color:#21805e;border-color:#ceecdc}.portfolio-status-applied,.portfolio-status-underReview{background:#fff7e6;color:#aa781b;border-color:#f6e7c4}
+
+.portfolio-dialog .portfolio-service-details { min-width:240px; }
+.portfolio-service-table { max-width:620px; overflow:auto; margin-top:12px; border:1px solid #deebef; border-radius:12px; }
+.portfolio-dialog .portfolio-service-table th { position:static; padding:10px; font-size:10px; }
+.portfolio-dialog .portfolio-service-table td { padding:10px; min-width:120px; font-size:11px; }
