@@ -14,7 +14,7 @@ test('export summary and detail columns include separate reviews, all user-compa
   assert.equal(data.summary.length, 3);
   assert.equal(data.clients.length, 3);
   assert.deepEqual(data.summary.at(-1).slice(0, 4), ['Grand Total', 3, 1, 2]);
-  assert.equal(data.summary[0][10], '1 / 2\n1 pending');
+  assert.equal(data.summary[0][10], '1\n1 pending');
   assert.equal(data.clients[0][1], "'=Company");
   assert.equal(data.clients[0][9], 'Approved');
   assert.equal(data.clients[0][17], 'Pending');

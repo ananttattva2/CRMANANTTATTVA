@@ -3,6 +3,17 @@ const { allocatedOwnerKeyGroups } = require('./overallDashboardUsers');
 const { assignedCompanyKey } = require('./assignedCompanyIdentity');
 const STAGES = ['Data Explained', 'Data Format Sent', 'Received from client', 'Ready to upload', 'Client Approval on data', 'Upload Complete', 'Manager Review', 'Compliance Review'];
 const id = value => String(value?._id || value || '');
+function matchesTrackedService(client, type) {
+  const data = client.data || {}, lead = client.selectedLead || {};
+  const selected = String(client.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId || '');
+  const selections = lead.serviceSelections || [];
+  const service = selections.find(item => String(item.assignedServiceId || item.serviceAssignmentId || '') === selected) || (selections.length === 1 ? selections[0] : {});
+  const offered = service.servicesOffered ?? data.basic?.servicesOffered ?? data.selectedLeadSnapshot?.servicesOffered ?? [];
+  return (Array.isArray(offered) ? offered : [offered]).some(value => {
+    const normalized = String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    return type === 'annual' ? /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalized) : type === 'registration' ? ['registration', 'newregistration'].includes(normalized) : true;
+  });
+}
 function stageState(record, stage) {
   if (stage === 'Manager Review' || stage === 'Compliance Review') {
     const status = stage === 'Manager Review' ? record?.managerVerificationStatus : record?.complianceVerificationStatus;
@@ -49,4 +60,4 @@ function buildUploadTracker(clients, users, purchases, sales) {
   }
   return [...groups.values()].sort((a, b) => a.userName.localeCompare(b.userName));
 }
-module.exports = { STAGES, stageState, buildUploadTracker };
+module.exports = { STAGES, stageState, buildUploadTracker, matchesTrackedService };

@@ -35,3 +35,7 @@
 @media(max-width:1000px){.tracker-heading{align-items:flex-start;flex-direction:column;gap:16px}.tracker-tools{width:100%;align-items:flex-start}.tracker-tools-top{position:absolute;right:22px;top:22px}.upload-tracker-card{position:relative}.tracker-heading-copy{padding-right:150px}.tracker-tools-bottom{flex-wrap:wrap;width:100%}.tracker-search{flex:1;max-width:300px;min-width:170px}.tracker-legend{gap:10px}}
 @media(max-width:560px){.tracker-heading{padding:18px 14px}.tracker-heading-copy{padding-right:0}.tracker-heading-copy>h2{font-size:21px}.tracker-heading-copy>span{font-size:12px}.tracker-tools-top{position:static}.tracker-tools{gap:10px}.tracker-tools-bottom{gap:12px}.tracker-table-scroll{margin:0 6px}.tracker-footer{padding:10px 12px}}
 @media(max-width:1000px){.tracker-tools-top{position:static;flex-wrap:wrap}.tracker-heading-copy{padding-right:0}}
+
+.tracker-service-tabs { display:flex; gap:6px; margin:0 22px 18px; padding:5px; width:fit-content; border:1px solid #dfe9ef; border-radius:13px; background:#f7fafc; }
+.tracker-service-tabs button { padding:10px 20px; border-radius:9px; font-size:12px; font-weight:700; color:#627d90; transition:background .18s; }
+.tracker-service-tabs button[aria-selected="true"] { background:#24777c; color:white; box-shadow:0 2px 6px #1c526020; }

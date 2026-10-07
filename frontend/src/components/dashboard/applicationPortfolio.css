@@ -16,3 +16,7 @@
 .portfolio-service-table { max-width:620px; overflow:auto; margin-top:12px; border:1px solid #deebef; border-radius:12px; }
 .portfolio-dialog .portfolio-service-table th { position:static; padding:10px; font-size:10px; }
 .portfolio-dialog .portfolio-service-table td { padding:10px; min-width:120px; font-size:11px; }
+
+.portfolio-matrix .portfolio-live-column { background:#ddf5ed; color:#116957; font-weight:800; border-left:1px solid #bde7db; border-right:1px solid #bde7db; }
+.portfolio-matrix tr:hover .portfolio-live-column { background:#ccefe3; }
+.portfolio-matrix .portfolio-live-column button { background:transparent; color:#116957; font-weight:800; }

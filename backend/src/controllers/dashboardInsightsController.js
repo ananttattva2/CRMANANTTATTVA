@@ -198,6 +198,8 @@ exports.overall = async (req, res) => {
 
 exports.uploadTracker = async (req, res) => {
   try {
+    const serviceType = String(req.query.serviceType || '').trim();
+    if (serviceType && !['annual', 'registration'].includes(serviceType)) return res.status(400).json({ error: 'Invalid serviceType' });
     const financialYear = String(req.query.financialYear || '').trim();
     if (req.query.assignmentsOnly !== 'true' && !/^20\d{2}-\d{2}$/.test(financialYear)) return res.status(400).json({ error: 'Valid financialYear (YYYY-YY) is required.' });
     const scope = await getVisibleUserScope(req.user);
@@ -223,11 +225,12 @@ exports.uploadTracker = async (req, res) => {
       res.set('Cache-Control', 'private, no-store');
       return res.json({ ok: true, users, assignments: visibleClients.map(client => ({ ...client, complianceReview: reviewByClient.get(String(client._id)) || null, operationsSla: approvalByClient.get(String(client._id)) || null })) });
     }
-    const filter = { clientId: { $in: visibleClients.filter(client => !client.assignmentOnly).map(client => client._id) }, financialYear };
+    const trackerClients = serviceType ? visibleClients.filter(client => require('../services/clientUploadTracker').matchesTrackedService(client, serviceType)) : visibleClients;
+    const filter = { clientId: { $in: trackerClients.filter(client => !client.assignmentOnly).map(client => client._id) }, financialYear };
     const projection = 'clientId checklist baseUpload.importStatus portalUpload.importStatus managerVerificationStatus complianceVerificationStatus';
     const [purchases, sales] = await Promise.all([PurchaseData.find(filter).select(projection).maxTimeMS(15000).lean(), SalesData.find(filter).select(projection).maxTimeMS(15000).lean()]);
     res.set('Cache-Control', 'private, no-store');
-    res.json({ ok: true, financialYear, scope: scope === null ? 'all' : 'role-scoped', stages: STAGES, users: buildUploadTracker(visibleClients, users, purchases, sales) });
+    res.json({ ok: true, financialYear, serviceType, scope: scope === null ? 'all' : 'role-scoped', stages: STAGES, users: buildUploadTracker(trackerClients, users, purchases, sales) });
   } catch (error) {
     console.error('Upload tracker failed', { message: error.message });
     res.status(500).json({ error: 'Unable to load client upload tracker.' });

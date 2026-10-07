@@ -5,7 +5,7 @@ const safe = value => /^[=+@-]/.test(String(value || '')) ? `'${value}` : String
 const ratio = (clients, module, index) => {
   const completed = clients.filter(client => client[module]?.[index] === 'complete').length
   const progress = clients.filter(client => client[module]?.[index] === 'progress').length
-  return `${completed} / ${clients.length}${index >= 6 ? completed === clients.length && clients.length ? '\nApproved' : `\n${clients.length - completed} pending` : progress ? `\n${progress} in progress` : ''}`
+  return `${completed}${index >= 6 ? completed === clients.length && clients.length ? '\nApproved' : `\n${clients.length - completed} pending` : progress ? `\n${progress} in progress` : ''}`
 }
 export function buildUploadTrackerExport(users) {
   const clients = users.flatMap(user => user.clients.map(client => ({ ...client, userName: user.userName })))
