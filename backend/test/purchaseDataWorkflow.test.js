@@ -22,10 +22,10 @@ const portalRow = (overrides = {}) => ({
 });
 const parsed = (rows, source) => normalizePurchaseRows(rows, source, FY);
 
-test('tracker contains the nine required rows in order', () => assert.deepEqual(defaultChecklist().map((row) => row.particular), PURCHASE_CHECKLIST_PARTICULARS));
+test('tracker contains the required rows in order', () => assert.deepEqual(defaultChecklist().map((row) => row.particular), PURCHASE_CHECKLIST_PARTICULARS));
 test('default tracker rows start empty and preserve saved evidence', () => {
   const rows = defaultChecklist([{ particular: 'Received from client', yesNo: 'Yes', date: '2025-04-01', files: [{ url: 'https://x.test/a.pdf' }], remarks: 'done' }]);
-  assert.equal(rows[0].yesNo, 'Yes'); assert.equal(rows[0].files.length, 1); assert.equal(rows[1].yesNo, '');
+  assert.equal(rows.find(row => row.particular === 'Received from client').yesNo, 'Yes'); assert.equal(rows.find(row => row.particular === 'Received from client').files.length, 1); assert.equal(rows.find(row => row.particular === 'Data Explained').yesNo, '');
 });
 test('comma formatted quantities parse as numbers', () => assert.equal(parseNumber('1,234.500'), 1234.5));
 test('Excel serial dates are normalized', () => assert.match(parseDate(45748), /^2025-0[34]-\d{2}$/));
@@ -211,8 +211,8 @@ test('Outlook MSG proof opens a safe decoded mail viewer with attachments', () =
 
  test('checkbox values survive normalization and are cleared when a stage is No', () => {
    const rows = defaultChecklist([{ particular: 'Received from client', yesNo: 'Yes', partialDataReceived: true, completeDataReceived: true }, { particular: 'Ready to upload', yesNo: 'No', partialDataReceived: true }]);
-   assert.equal(rows[0].partialDataReceived, true);
-   assert.equal(rows[0].completeDataReceived, true);
+   assert.equal(rows.find(row => row.particular === 'Received from client').partialDataReceived, true);
+   assert.equal(rows.find(row => row.particular === 'Received from client').completeDataReceived, true);
    assert.equal(rows.find(row => row.particular === 'Ready to upload').partialDataReceived, false);
  });
  test('Nil Upload approval only needs Yes without date or proof', () => {
