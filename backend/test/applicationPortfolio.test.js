@@ -110,3 +110,15 @@ test('same-company lead IDs and identical-category service records survive popup
   const typo = { name: 'RG INDUSTRIAL CORPRATION' };
   assert.equal(matchesPortfolioSearch(typo, 'R.G. INDUSTRIAL CORPORATION'), true);
 });
+
+
+test('Annual Return and Annual Filing/Filling aliases appear in the same applicability popup', async () => {
+  const { isAnnualReturnService, buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  for (const label of ['Annual Return', 'Annual Return Filing', 'Annual Return Filling', 'Annual Filing', 'Annual Filling', 'ANNUAL-FILLING']) assert.equal(isAnnualReturnService(label), true, label);
+  assert.equal(isAnnualReturnService('New Registration'), false);
+  assert.equal(isAnnualReturnService(['Consulting', 'Annual Filling']), true);
+  const a = client('a', 'sonal', 'Recycler'); a.selectedLead.company = 'RG INDUSTRIAL CORPRATION'; a.selectedLead.leadCode = 'ATPL-LEAD-0013'; a.data.basic.servicesOffered = 'Annual Filling';
+  const b = client('b', 'sonal', 'Producer'); b.selectedLead.company = 'R.G. INDUSTRIAL CORPORATION'; b.selectedLead.leadCode = 'ATPL-LEAD-0412'; b.data.basic.servicesOffered = 'Annual Filing';
+  const [group] = buildApplicationPortfolio([a, b], users);
+  assert.deepEqual(group.companyRecords.filter(row => row.annual).map(row => row.leadCode), ['ATPL-LEAD-0013', 'ATPL-LEAD-0412']);
+});

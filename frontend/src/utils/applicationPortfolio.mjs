@@ -44,7 +44,7 @@ export function applicationRecord(client) {
   const services = lead.serviceSelections || []
   const service = services.find(item => String(item.assignedServiceId || item.serviceAssignmentId || '') === String(client.assignedServiceId || '')) || (services.length === 1 ? services[0] : {})
   const offered = service.servicesOffered ?? basic.servicesOffered ?? data.selectedLeadSnapshot?.servicesOffered ?? []
-  const annual = (Array.isArray(offered) ? offered : [offered]).some(value => /annual\s*return\s*fill?ing/i.test(String(value)))
+  const annual = isAnnualReturnService(offered)
   const category = applicantCategory(text(basic.piboCategory, basic.subApplicantType, service.subApplicantType, service.piboCategory, basic.applicantType, service.applicantType))
   const cpcb = text(data.cpcb?.status, data.cpcb?.approvalStatus, data.cpcb?.applicationStatus, basic.cpcbStatus, meta.cpcbStatus)
   const state = text(data.registeredAddress?.state, data.address?.state, data.addresses?.state, basic.state, meta.state)
@@ -83,4 +83,12 @@ export function matchesPortfolioSearch(row, query) {
   const normalizeSearch = value => String(value || '').toLowerCase().normalize('NFKC').replace(/corpration/g, 'corporation').replace(/[^a-z0-9]/g, '')
   const needle = normalizeSearch(query)
   return !needle || [row, ...(row.services || [])].some(service => [service.name, service.code, service.leadCode, service.category, service.cpcb, service.state, service.industry, service.eprCategory, service.offered].some(value => normalizeSearch(value).includes(needle)))
+}
+
+
+export function isAnnualReturnService(value) {
+  return (Array.isArray(value) ? value : [value]).some(service => {
+    const normalized = String(service || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+    return /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalized)
+  })
 }
