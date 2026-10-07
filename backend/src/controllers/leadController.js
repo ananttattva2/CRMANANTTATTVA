@@ -631,6 +631,7 @@ function normalizedPoClosureRows(assignment = {}) {
     poDate: String(po?.poDate || '').trim(),
     poEndDate: String(po?.poEndDate || '').trim(),
     poFinancialYear: String(po?.poFinancialYear || '').trim(),
+    annualReturnYear: String(po?.annualReturnYear || '').trim(),
     paymentTerm: String(po?.paymentTerm || '').trim(),
     poAmount: Math.max(0, Number(po?.poAmount) || 0),
     poFileUrl: resolvePoProof(po).url,
