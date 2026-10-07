@@ -3,7 +3,7 @@ const Client = require('../models/Client');
 const PurchaseData = require('../models/PurchaseData');
 const PurchaseImportRow = require('../models/PurchaseImportRow');
 const {
-  PURCHASE_CHECKLIST_PARTICULARS, excelUploadComplete, defaultChecklist, normalizePurchaseRows, describePurchaseFinancialYearMismatch, reconcilePurchaseRows,
+  PURCHASE_CHECKLIST_PARTICULARS, defaultChecklist, normalizePurchaseRows, describePurchaseFinancialYearMismatch, reconcilePurchaseRows,
   purchaseReadiness, calculatePurchaseStatus, checksum
 } = require('../services/purchaseDataService');
 const { notifyPurchaseWorkflow } = require('../services/purchaseDataNotifications');
@@ -80,9 +80,11 @@ async function submitForManagerApproval({ purchase, client, user, message }) {
     purchase.lastSubmissionVersion = purchase.dataVersion;
     purchase.reviewHistory.push(historyItem('User', wasSubmitted ? 'Revised' : 'Submitted', user, message));
     purchase.markModified('reviewHistory');
+    purchase.calculatedStatus = calculatePurchaseStatus(purchase);
     await purchase.save();
   }
-  const notification = await notifyPurchaseWorkflow({ stage: 'manager_pending', client, purchase, actor: user, message, preventDuplicate: duplicate });
+  if (purchase.baseUpload && purchase.portalUpload) message += ` Uploaded by ${user.name || user.email || 'CRM User'}: Purchase Base Data (${purchase.baseUpload.name}) and Purchase Portal Upload (${purchase.portalUpload.name}).`;
+  const notification = await notifyPurchaseWorkflow({ stage: 'manager_pending', client, purchase, actor: user, message, preventDuplicate: true });
   return { duplicate, notification };
 }
 
@@ -109,19 +111,6 @@ function payload(purchase, user) {
       canEdit: canEdit(user), canManagerReview: isAdmin(user) || isManager(user), canComplianceReview: isAdmin(user) || isCompliance(user), canAdminOverride: isAdmin(user)
     }
   };
-}
-
-async function notifyCompletedExcelUpload({ purchase, client, user }) {
-  if (!excelUploadComplete(purchase)) return null;
-  try {
-    return await notifyPurchaseWorkflow({
-      stage: 'excel_uploaded', client, purchase, actor: user, preventDuplicate: true,
-      message: `${user.name || user.email || 'CRM User'} has uploaded both Excel files: Purchase Base Data (${purchase.baseUpload.name}) and Purchase Portal Upload (${purchase.portalUpload.name}). Upload Complete is Yes`
-    });
-  } catch (error) {
-    console.error('Purchase Excel upload notification failed', { clientId: String(client._id), financialYear: purchase.financialYear, error: error.message });
-    return null;
-  }
 }
 
 exports.getPurchaseData = async (req, res) => {
@@ -156,12 +145,14 @@ exports.updateChecklist = async (req, res) => {
     });
     if (req.body.userRemarks !== undefined) purchase.userRemarks = String(req.body.userRemarks || '').trim().slice(0, 3000);
     purchase.updatedBy = req.user._id;
-    resetApprovals(purchase);
     purchase.calculatedStatus = calculatePurchaseStatus(purchase);
     purchase.markModified('checklist');
     await purchase.save();
-    const uploadNotification = await notifyCompletedExcelUpload({ purchase, client, user: req.user });
-    res.json({ ok: true, purchaseData: payload(purchase, req.user), managerUploadEmailSent: Number(uploadNotification?.emailSent || 0) > 0 });
+    const nilReadiness = purchaseReadiness(purchase);
+    if (nilReadiness.nilUpload && nilReadiness.ready && purchase.managerVerificationStatus === 'Not Submitted') {
+      await submitForManagerApproval({ purchase, client, user: req.user, message: 'Nil Upload automatically submitted after client approval.' });
+    }
+    res.json({ ok: true, purchaseData: payload(purchase, req.user), });
   } catch (error) { console.error('Purchase checklist update failed', error); res.status(500).json({ error: 'Unable to save Purchase Data checklist.' }); }
 };
 
@@ -232,10 +223,9 @@ exports.importPurchaseRows = async (req, res) => {
     await purchase.save();
     importCommitted = true;
     if (previous?.uploadId) await PurchaseImportRow.deleteMany({ uploadId: previous.uploadId });
-    const uploadNotification = await notifyCompletedExcelUpload({ purchase, client, user: req.user });
     let automaticSubmission = null;
     const readiness = purchaseReadiness(purchase);
-    if (hasBothExcelImports(purchase) && readiness.ready) {
+    if (hasBothExcelImports(purchase)) {
       const warningNote = readiness.warningIssueCount ? ` Reconciliation includes ${readiness.warningIssueCount} warning(s) for Manager review.` : '';
       try {
         automaticSubmission = await submitForManagerApproval({ purchase, client, user: req.user, message: `Automatically submitted after both Purchase Excel files were imported.${warningNote}` });
@@ -252,7 +242,7 @@ exports.importPurchaseRows = async (req, res) => {
       validationErrors: parsed.validationErrors,
       summary: purchase.reconciliation,
       purchaseData: payload(purchase, req.user),
-      managerUploadEmailSent: Number(uploadNotification?.emailSent || 0) > 0, autoSubmitted: Boolean(automaticSubmission && !automaticSubmission.duplicate),
+      autoSubmitted: Boolean(automaticSubmission && !automaticSubmission.duplicate) || (purchase.managerVerificationStatus === 'Pending' && purchase.lastSubmissionVersion === purchase.dataVersion),
       managerNotificationCreated: Boolean(automaticSubmission?.notification?.ok),
       managerEmailSent: Number(automaticSubmission?.notification?.emailSent || 0) > 0,
       partialImport: parsed.invalidRowCount > 0 || parsed.duplicateRowCount > 0,

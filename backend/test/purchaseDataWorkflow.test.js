@@ -173,9 +173,9 @@ test('the second valid Excel import automatically submits once and emails the as
   const notifications = fs.readFileSync(path.resolve(__dirname, '../src/services/purchaseDataNotifications.js'), 'utf8');
   const workspace = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/PurchaseDataWorkspace.jsx'), 'utf8');
   assert.match(controller, /function hasBothExcelImports\(purchase\)/);
-  assert.match(controller, /hasBothExcelImports\(purchase\) && readiness\.ready/);
+  assert.match(controller, /if \(hasBothExcelImports\(purchase\)\)/);
   assert.match(controller, /submitForManagerApproval\(\{ purchase, client, user: req\.user/);
-  assert.match(controller, /preventDuplicate: duplicate/);
+  assert.match(controller, /preventDuplicate: true/);
   assert.match(controller, /managerEmailSent/);
   assert.match(notifications, /Promise\.allSettled\(emailRecipients/);
   assert.match(workspace, /Sent to Manager for approval and email notification delivered/);

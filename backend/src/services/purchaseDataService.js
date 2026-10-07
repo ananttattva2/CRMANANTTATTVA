@@ -301,6 +301,7 @@ function purchaseReadiness(purchase = {}) {
 function calculatePurchaseStatus(purchase = {}) {
   if (purchase.complianceVerificationStatus === 'Approved') return 'Fully Approved';
   if (purchase.complianceVerificationStatus === 'Rejected') return 'Compliance Rework Required';
+  if (purchase.managerVerificationStatus === 'Pending') return 'Manager Review Pending';
   if (purchase.managerVerificationStatus === 'Approved') return 'Manager Approved';
   if (purchase.managerVerificationStatus === 'Rejected') return 'Rework Required';
   const readiness = purchaseReadiness(purchase);

@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const Client = require('../models/Client');
 const SalesData = require('../models/SalesData');
 const SalesImportRow = require('../models/SalesImportRow');
-const { PURCHASE_CHECKLIST_PARTICULARS, excelUploadComplete, defaultChecklist, normalizePurchaseRows, reconcilePurchaseRows, purchaseReadiness, calculatePurchaseStatus, checksum } = require('../services/purchaseDataService');
+const { PURCHASE_CHECKLIST_PARTICULARS, defaultChecklist, normalizePurchaseRows, reconcilePurchaseRows, purchaseReadiness, calculatePurchaseStatus, checksum } = require('../services/purchaseDataService');
 const { notifySalesWorkflow } = require('../services/salesDataNotifications');
 const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
 
@@ -86,21 +86,9 @@ async function submitForManager({ sales, client, user, message }) {
     sales.reviewHistory.push(historyItem('User', wasSubmitted ? 'Revised' : 'Submitted', user, message)); sales.markModified('reviewHistory'); sales.calculatedStatus = calculatedStatus(sales);
     await sales.save();
   }
-  const notification = await notifySalesWorkflow({ stage: 'manager_pending', client, sales, actor: user, message, preventDuplicate: duplicate });
+  if (sales.baseUpload && sales.portalUpload) message += ` Uploaded by ${user.name || user.email || 'CRM User'}: Sales Base Data (${sales.baseUpload.name}) and Sales Portal Upload (${sales.portalUpload.name}).`;
+  const notification = await notifySalesWorkflow({ stage: 'manager_pending', client, sales, actor: user, message, preventDuplicate: true });
   return { duplicate, notification };
-}
-
-async function notifyCompletedExcelUpload({ sales, client, user }) {
-  if (!excelUploadComplete(sales)) return null;
-  try {
-    return await notifySalesWorkflow({
-      stage: 'excel_uploaded', client, sales, actor: user, preventDuplicate: true,
-      message: `${user.name || user.email || 'CRM User'} has uploaded both Excel files: Sales Base Data (${sales.baseUpload.name}) and Sales Portal Upload (${sales.portalUpload.name}). Upload Complete is Yes`
-    });
-  } catch (error) {
-    console.error('Sales Excel upload notification failed', { clientId: String(client._id), financialYear: sales.financialYear, error: error.message });
-    return null;
-  }
 }
 
 exports.getSalesData = async (req, res) => {
@@ -130,11 +118,12 @@ exports.updateChecklist = async (req, res) => {
       return { particular, partialDataReceived: row.yesNo === 'Yes' && row.partialDataReceived === true, completeDataReceived: row.yesNo === 'Yes' && row.completeDataReceived === true, yesNo: ['Yes', 'No'].includes(row.yesNo) ? row.yesNo : '', date: /^\d{4}-\d{2}-\d{2}$/.test(row.date || '') ? row.date : '', files: [...requestedProofs, ...ordinaryFiles].slice(0, 20), remarks: String(row.remarks || '').trim().slice(0, 2000) };
     });
     if (req.body.userRemarks !== undefined) sales.userRemarks = String(req.body.userRemarks || '').trim().slice(0, 3000);
-    sales.updatedBy = req.user._id; resetApprovals(sales); sales.calculatedStatus = calculatedStatus(sales); sales.markModified('checklist'); await sales.save();
-    let automaticSubmission = null;
-    if (sales.baseUpload?.importStatus === 'Imported' && sales.portalUpload?.importStatus === 'Imported' && readiness(sales).ready) automaticSubmission = await submitForManager({ sales, client, user: req.user, message: 'Automatically submitted after the Sales checklist and both Excel files were completed.' });
-    const uploadNotification = await notifyCompletedExcelUpload({ sales, client, user: req.user });
-    res.json({ ok: true, salesData: payload(sales, req.user), managerUploadEmailSent: Number(uploadNotification?.emailSent || 0) > 0, autoSubmitted: Boolean(automaticSubmission && !automaticSubmission.duplicate), managerNotificationCreated: Boolean(automaticSubmission?.notification?.ok), managerEmailSent: Number(automaticSubmission?.notification?.emailSent || 0) > 0 });
+    sales.updatedBy = req.user._id; sales.calculatedStatus = calculatedStatus(sales); sales.markModified('checklist'); await sales.save();
+    const nilReadiness = readiness(sales);
+    if (nilReadiness.nilUpload && nilReadiness.ready && sales.managerVerificationStatus === 'Not Submitted') {
+      await submitForManager({ sales, client, user: req.user, message: 'Nil Upload automatically submitted after client approval.' });
+    }
+    res.json({ ok: true, salesData: payload(sales, req.user) });
   } catch (error) { console.error('Sales checklist update failed', error); res.status(500).json({ error: 'Unable to save Sales Data checklist.' }); }
 };
 
@@ -175,9 +164,8 @@ exports.importSalesRows = async (req, res) => {
     sales.reviewHistory.push(historyItem('User', previous ? 'Revised' : 'Uploaded', req.user, `${source === 'base' ? 'Sales Base Data' : 'Sales Portal Data'} ${previous ? 'replaced' : 'uploaded'}.`));
     await refreshReconciliation(sales); sales.markModified(field); sales.markModified('reviewHistory'); await sales.save(); importCommitted = true;
     if (previous?.uploadId) await SalesImportRow.deleteMany({ uploadId: previous.uploadId });
-    const uploadNotification = await notifyCompletedExcelUpload({ sales, client, user: req.user });
     let automaticSubmission = null;
-    if (readiness(sales).ready) {
+    if (sales.baseUpload?.importStatus === 'Imported' && sales.portalUpload?.importStatus === 'Imported') {
       try {
         automaticSubmission = await submitForManager({ sales, client, user: req.user, message: 'Automatically submitted after both Sales Excel files were imported. Reconciliation differences are included for Manager review.' });
       } catch (notificationError) {
@@ -186,7 +174,7 @@ exports.importSalesRows = async (req, res) => {
         });
       }
     }
-    res.json({ ok: true, upload: sales[field], previewRows: parsed.acceptedRows.slice(0, 100), validationErrors: parsed.validationErrors, summary: sales.reconciliation, salesData: payload(sales, req.user), managerUploadEmailSent: Number(uploadNotification?.emailSent || 0) > 0, autoSubmitted: Boolean(automaticSubmission && !automaticSubmission.duplicate), managerNotificationCreated: Boolean(automaticSubmission?.notification?.ok), managerEmailSent: Number(automaticSubmission?.notification?.emailSent || 0) > 0, partialImport: parsed.invalidRowCount > 0 || parsed.duplicateRowCount > 0, importedRowCount: docs.length, skippedRowCount: parsed.invalidRowCount + parsed.duplicateRowCount });
+    res.json({ ok: true, upload: sales[field], previewRows: parsed.acceptedRows.slice(0, 100), validationErrors: parsed.validationErrors, summary: sales.reconciliation, salesData: payload(sales, req.user), autoSubmitted: Boolean(automaticSubmission && !automaticSubmission.duplicate) || (sales.managerVerificationStatus === 'Pending' && sales.lastSubmissionVersion === sales.dataVersion), managerNotificationCreated: Boolean(automaticSubmission?.notification?.ok), managerEmailSent: Number(automaticSubmission?.notification?.emailSent || 0) > 0, partialImport: parsed.invalidRowCount > 0 || parsed.duplicateRowCount > 0, importedRowCount: docs.length, skippedRowCount: parsed.invalidRowCount + parsed.duplicateRowCount });
   } catch (error) {
     if (insertedUploadId && !importCommitted) await SalesImportRow.deleteMany({ uploadId: insertedUploadId }).catch(() => {});
     console.error('Sales import failed', { clientId: req.params.id, source: req.params.source, financialYear: req.body?.financialYear, userId: String(req.user?._id || ''), code: error.code, message: error.message, stack: error.stack });

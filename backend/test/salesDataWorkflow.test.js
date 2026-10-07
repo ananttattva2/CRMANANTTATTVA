@@ -30,7 +30,7 @@ test('Sales routes expose imports, rows, reconciliation and two-level approvals'
 test('second Sales Excel import automatically creates Manager review and notification', () => {
   const controller = read('../src/controllers/salesDataController.js');
   const notifications = read('../src/services/salesDataNotifications.js');
-  assert.match(controller, /if \(readiness\(sales\)\.ready\) \{[\s\S]*?automaticSubmission = await submitForManager/);
+  assert.match(controller, /if \(sales\.baseUpload\?\.importStatus === 'Imported' && sales\.portalUpload\?\.importStatus === 'Imported'\) \{[\s\S]*?automaticSubmission = await submitForManager/);
   assert.match(controller, /purchaseReadiness\(sales\)/);
   assert.match(controller, /Automatically submitted after both Sales Excel files were imported/);
   assert.match(controller, /managerVerificationStatus = 'Pending'/);
