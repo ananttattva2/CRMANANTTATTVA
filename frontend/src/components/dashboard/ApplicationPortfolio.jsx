@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
-import { ArrowUpRight, Building2, CheckCircle2, Layers3, Loader2, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react'
+import { ArrowUpRight, Building2, CheckCircle2, FileSpreadsheet, Layers3, Loader2, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react'
 import api from '../../services/api'
 import { formatDisplayDate } from '../../utils/dateFormat'
 import { buildApplicationPortfolio, PIBO_CATEGORIES, STATUS_COLUMNS } from '../../utils/applicationPortfolio.mjs'
@@ -9,11 +9,22 @@ import './applicationPortfolio.css'
 function ClientRecordsPopup({ selection, onClose }) {
   const dialog = useRef(null)
   const [query, setQuery] = useState('')
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
+  async function exportExcel() {
+    if (exporting || !records.length) return
+    setExporting(true); setExportError('')
+    try {
+      const { downloadApplicationPortfolioExcel } = await import('../../utils/applicationPortfolioExport.mjs')
+      await downloadApplicationPortfolioExcel(records, selection.name, selection.label)
+    } catch { setExportError('Excel download failed. Please retry.') } finally { setExporting(false) }
+  }
   useEffect(() => { dialog.current?.showModal() }, [])
   const records = selection.records.filter(row => `${row.name} ${row.code} ${row.category} ${row.cpcb} ${row.state}`.toLowerCase().includes(query.toLowerCase()))
   return <dialog ref={dialog} className="portfolio-dialog" onCancel={onClose} onClick={event => { if (event.target === event.currentTarget) onClose() }} aria-labelledby="portfolio-dialog-title">
     <header><div className="portfolio-heading"><span className="portfolio-icon"><Users size={23} /></span><div><small>ASSIGNED APPLICATIONS</small><h2 id="portfolio-dialog-title">{selection.name}</h2><p>{selection.label} · {selection.records.length} applications</p></div></div><button type="button" className="portfolio-icon-button" onClick={onClose} aria-label="Close client details"><X size={20} /></button></header>
-    <div className="portfolio-toolbar"><label className="portfolio-search"><Search size={17} /><input aria-label="Search client details" placeholder="Search client, category or CPCB status" value={query} onChange={event => setQuery(event.target.value)} /></label><span>{records.length} records shown</span></div>
+    <div className="portfolio-toolbar"><label className="portfolio-search"><Search size={17} /><input aria-label="Search client details" placeholder="Search client, category or CPCB status" value={query} onChange={event => setQuery(event.target.value)} /></label><span>{records.length} records shown<button type="button" className="portfolio-icon-button" aria-label="Download Excel" title="Download Excel" disabled={exporting || !records.length} onClick={exportExcel}>{exporting ? <Loader2 size={18} className="animate-spin" /> : <FileSpreadsheet size={18} />}</button></span></div>
+    {exportError && <p role="alert" className="portfolio-error">{exportError}</p>}
     <div className="portfolio-dialog-table"><table><thead><tr>{['Unique ID', 'Legal Name', 'Client Status', 'Visibility', 'CPCB Status', 'PIBo Category', 'State', 'Created'].map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{records.map(row => <tr key={row.id}><td>{row.code}</td><td><strong>{row.name}</strong>{row.services && <details><summary>View service statuses</summary>{row.services.map((service, index) => <p key={`${service.id}-${index}`}>{service.category}: {service.cpcb}</p>)}</details>}</td><td>{row.clientStatus}</td><td>{row.visibility}</td><td><span className={`portfolio-status portfolio-status-${row.bucket}`}>{row.cpcb}</span></td><td>{row.category}</td><td>{row.state}</td><td>{row.created ? formatDisplayDate(row.created) : 'Not recorded'}</td></tr>)}</tbody></table>{!records.length && <p className="portfolio-empty">No matching applications.</p>}</div>
     <footer><ShieldCheck size={16} />Saved client and CPCB statuses · Only accessible assigned records are shown</footer>
   </dialog>
