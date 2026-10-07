@@ -41,12 +41,19 @@ export function permanentStaffOwnerKeys(client = {}) {
     ? client.selectedLead
     : (data.selectedLeadSnapshot && typeof data.selectedLeadSnapshot === 'object' ? data.selectedLeadSnapshot : {})
   const serviceId = String(client.assignedServiceId || data.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId || '')
-  const assignments = (Array.isArray(lead.assignments) ? lead.assignments : [])
-    .filter((assignment) => !serviceId || String(assignment?.assignedServiceId || assignment?.serviceAssignmentId || '') === serviceId)
+  const allAssignments = Array.isArray(lead.assignments) ? lead.assignments : []
+  let assignments = allAssignments.filter(assignment => !serviceId || String(assignment?.assignedServiceId || assignment?.serviceAssignmentId || '') === serviceId)
+  if (serviceId && !assignments.length) {
+    const serviceIndex = (lead.serviceSelections || []).findIndex(service => String(service?.assignedServiceId || service?.serviceAssignmentId || '') === serviceId)
+    const legacy = allAssignments.filter(assignment => !assignment.assignedServiceId && !assignment.serviceAssignmentId)
+    const owners = new Set(legacy.map(assignment => key(assignment.assignedStaff || assignment.assignedStaffText)).filter(Boolean))
+    if (serviceIndex >= 0 && allAssignments[serviceIndex] && !allAssignments[serviceIndex].assignedServiceId && !allAssignments[serviceIndex].serviceAssignmentId) assignments = [allAssignments[serviceIndex]]
+    else if (owners.size === 1) assignments = legacy
+  }
   return [...new Set([
-    lead.assignedStaff, lead.assignedStaffText, lead.assignedStaffEmail,
+    ...assignments.flatMap((assignment) => [assignment?.assignedStaff, assignment?.assignedStaffText, assignment?.assignedStaffEmail]),
     client.assignedStaff, client.assignedStaffText, client.assignedStaffEmail,
-    ...assignments.flatMap((assignment) => [assignment?.assignedStaff, assignment?.assignedStaffText, assignment?.assignedStaffEmail])
+    lead.assignedStaff, lead.assignedStaffText, lead.assignedStaffEmail
   ].flatMap(identity))]
 }
 
@@ -97,14 +104,9 @@ export function buildOperationsProgressGroups(rows, users, getLegacyKeys, now = 
     return null
   }
   rows.forEach((row) => {
-    const allocationKeys = allocationOwnerKeys(row.client)
     const permanentStaffKeys = permanentStaffOwnerKeys(row.client)
-    // A client belongs to exactly one primary/original owner in this report.
-    // Prefer the owner already resolved from client-level assignment data;
-    // service allocations are used only when no primary owner can be resolved.
-    const resolvedOwnerKeys = [...identity(row.user), key(row.user?.crmUserId)].filter(Boolean)
-    const legacyKeys = getLegacyKeys(row.client || {})
-    const owner = findOwner(permanentStaffKeys) || findOwner(resolvedOwnerKeys) || findOwner(legacyKeys) || findOwner(allocationKeys)
+    // Assigned counts follow Manager Assigned to Staff, never temporary or importer ownership.
+    const owner = findOwner(permanentStaffKeys)
     if (!owner) return
     const group = groups.get(key(owner._id || owner.id || owner.userId || owner.email))
     if (group && !group.rows.some((item) => String(item.id) === String(row.id))) {

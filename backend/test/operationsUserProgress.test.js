@@ -9,7 +9,7 @@ test('operations PDF keeps the aggregate table and excludes client detail rows',
   const pdf = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/operationsReportPdf.mjs'), 'utf8');
   assert.match(page, /const open = !pdfMode && expandedUser === group\.id/);
   assert.match(page, /aggregate user metrics only; client names are excluded/);
-  assert.match(page, /<OperationsTabRemarks rows=\{group.rows\} aggregate=\{pdfMode\}/);
+  assert.doesNotMatch(page, /<OperationsTabRemarks/);
   assert.match(pdf, /\.operations-client-details,\.operations-user-detail-row/);
   assert.match(pdf, /\.operations-user-status-table/);
 });
@@ -61,7 +61,7 @@ test('operations report includes active managers and excludes inactive operation
     { _id: 'inactive-manager', name: 'Inactive manager', role: 'manager', isActive: 'inactive' },
     { _id: 'inactive-zero', name: 'Inactive zero', role: 'operation', isActive: 0 }
   ];
-  const groups = buildOperationsProgressGroups([{ id: 'client', client: { serviceAllocations: { service: { userId: 'manager' } } } }], users, () => []);
+  const groups = buildOperationsProgressGroups([{ id: 'client', client: { selectedLead: { assignedStaff: 'manager' }, serviceAllocations: { service: { userId: 'manager' } } } }], users, () => []);
   assert.deepEqual(groups.map((group) => group.id).sort(), ['manager', 'operator', 'secondary-manager']);
   assert.equal(groups.find((group) => group.id === 'manager').total, 1);
 });
@@ -99,7 +99,7 @@ const users = [{ _id: 'sonal', name: 'SONAL MORE', role: 'operation' },
 
 test('Operations client counts use service allocations and exclude admin/sales/creator', async () => {
   const { buildOperationsProgressGroups } = await helpers;
-  const rows = [{ id: 'client1', hasPo: true, client: { serviceAllocations: {
+  const rows = [{ id: 'client1', hasPo: true, client: { selectedLead: { assignedStaff: 'sonal' }, serviceAllocations: {
     registration: { userId: 'sonal' }, annual: { userId: 'sonal' }
   }, adminControls: { assignedTo: 'admin', approvalStatus: 'PENDING' } } }];
   const groups = buildOperationsProgressGroups(rows, users, () => ['admin']);
@@ -111,7 +111,7 @@ test('Operations client counts use service allocations and exclude admin/sales/c
 
 test('a client with multiple service allocations is counted once under its primary owner', async () => {
   const { buildOperationsProgressGroups } = await helpers;
-  const row = { id: 'shared', user: users[0], client: { serviceAllocations: { a: 'sonal', b: { assignedUserId: 'other' } } } };
+  const row = { id: 'shared', user: users[0], client: { selectedLead: { assignedStaff: 'sonal' }, serviceAllocations: { a: 'sonal', b: { assignedUserId: 'other' } } } };
   const groups = buildOperationsProgressGroups([row, row], users, () => []);
   assert.equal(groups.find((group) => group.id === 'sonal').total, 1);
   assert.equal(groups.find((group) => group.id === 'other').total, 0);
@@ -122,7 +122,7 @@ test('original Sonal assignment overrides a historical Tushar service allocation
   const { buildOperationsProgressGroups } = await helpers;
   const localUsers = [{ _id: 'sonal', name: 'Sonal More', role: 'operation' }, { _id: 'tushar', name: 'Tushar Gawas', role: 'operation' }];
   const row = { id: '20-microns', user: localUsers[0], companyName: '20 MICRONS NANO MINERALS LIMITED',
-    client: { serviceAllocations: { old_service: { userId: 'tushar' }, current_service: { userId: 'sonal' } } } };
+    client: { selectedLead: { assignedStaff: 'sonal' }, serviceAllocations: { old_service: { userId: 'tushar' }, current_service: { userId: 'sonal' } } } };
   const groups = buildOperationsProgressGroups([row], localUsers, () => ['tushar', 'sonal']);
   assert.equal(groups.find((group) => group.id === 'sonal').total, 1);
   assert.equal(groups.find((group) => group.id === 'tushar').total, 0);
@@ -173,7 +173,7 @@ test('lead directory Assigned To uses permanent staff and Assigned By resolves t
 test('legacy assignment names work when no service allocations exist', async () => {
   const { buildOperationsProgressGroups } = await helpers;
   const groups = buildOperationsProgressGroups([{ id: 'legacy', client: {} }], users, () => ['sonal more']);
-  assert.equal(groups.find((group) => group.id === 'sonal').total, 1);
+  assert.equal(groups.find((group) => group.id === 'sonal').total, 0);
 });
 
 test('48/72/96 count actual overdue deadlines cumulatively at their boundaries', async () => {

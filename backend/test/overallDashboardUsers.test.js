@@ -79,7 +79,7 @@ test('user matrix exposes total allocated clients using permanent service owners
   const clients = [
     { _id: 'one', assignedServiceId: 'service-a', selectedLead: { serviceSelections: [{ assignedServiceId: 'service-a', firstAnnualReturnYearApplicable: '2026-27' }], assignments: [{ assignedServiceId: 'service-a', assignedStaff: 'saurabh', poYearRows: [{ poNumber: 'PO-1', poFinancialYear: '2026-27' }, { poNumber: 'PO-2', poFinancialYear: '2026-27' }] }, { assignedServiceId: 'service-b', assignedStaff: 'tushar' }] } },
     { _id: 'two', selectedLead: { assignedStaffText: 'Saurabh Bhat', serviceSelections: [{ firstAnnualReturnYearApplicable: '2025-26' }], assignments: [{}] } },
-    { _id: 'three', adminControls: { assignedTo: 'tushar' }, data: { basic: { firstAnnualReturnYear: '2026-27' } } }
+    { _id: 'three', selectedLead: { assignedStaff: 'tushar' }, adminControls: { assignedTo: 'tushar' }, data: { basic: { firstAnnualReturnYear: '2026-27' } } }
   ];
   assert.deepEqual(buildAllocatedClientCounts(clients, users), { saurabh: 2, tushar: 1 });
   assert.deepEqual(buildAllocatedClientStats(clients, users), {

@@ -48,9 +48,9 @@ function allocatedOwnerKeyGroups(client = {}) {
       entry.assignedUserId, entry._id, entry.id, entry.value, entry.userName, entry.email].flatMap(identity);
   });
   const permanent = [...new Set([
-    lead.assignedStaff, lead.assignedStaffText, lead.assignedStaffEmail,
+    ...assignments.flatMap((assignment) => [assignment?.assignedStaff, assignment?.assignedStaffText, assignment?.assignedStaffEmail]),
     client.assignedStaff, client.assignedStaffText, client.assignedStaffEmail,
-    ...assignments.flatMap((assignment) => [assignment?.assignedStaff, assignment?.assignedStaffText, assignment?.assignedStaffEmail])
+    lead.assignedStaff, lead.assignedStaffText, lead.assignedStaffEmail
   ].flatMap(identity))];
   const fallback = [...new Set([
     admin.assignedTo, admin.assignedUser, admin.user, admin.userId, admin.managerId,
@@ -131,9 +131,8 @@ function buildAllocatedClientStats(clients = [], users = [], teams = []) {
     const clientKey = String(client?._id || client?.id || `row-${index}`);
     if (seen.has(clientKey)) return;
     seen.add(clientKey);
-    const owner = allocatedOwnerKeyGroups(client)
-      .map((ownerKeys) => userKeys.find((user) => ownerKeys.some((key) => user.keys.has(key))))
-      .find(Boolean);
+    const ownerKeys = allocatedOwnerKeyGroups(client)[0];
+    const owner = ownerKeys.map(key => userKeys.find(user => user.keys.has(key))).find(Boolean);
     if (!owner) return;
     stats[owner.id].total += 1;
     const financialYears = allocatedFinancialYears(client);
@@ -165,12 +164,11 @@ function buildUserSections(records, deactivations, users, teams = [], allocatedC
     const owned = records.filter((record) => (record.owners || []).some((owner) => matches({}, {
       createdBy: owner.id, createdByCrmUserId: owner.crmId, createdByName: owner.name, createdByEmail: owner.email
     }, {})));
-    const ownedClientCount = new Set(owned.map((record) => String(record.companyIdentity || record.clientName || record.leadId || '').trim().toLowerCase()).filter(Boolean)).size;
     return {
       userId: id,
       userName: user.name || user.email || 'Unnamed user',
       role: user.role,
-      allocatedClients: Math.max(allocatedStats[id]?.total || 0, ownedClientCount),
+      allocatedClients: allocatedStats[id]?.total || 0,
       allocatedClientsByYear: allocatedStats[id]?.byYear || {},
       poReceivedClients: allocatedStats[id]?.poReceived || 0,
       poPendingClients: allocatedStats[id]?.poPending || 0,

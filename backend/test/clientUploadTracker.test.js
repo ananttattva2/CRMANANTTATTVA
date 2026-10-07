@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { buildUploadTracker, stageState } = require('../src/services/clientUploadTracker');
 const { buildDataWorkflowEmail } = require('../src/services/dataWorkflowEmail');
 test('tracker counts allocated clients once and separates Purchase and Sales stages', () => {
-  const clients = [{ _id:'c1', createdBy:'admin', adminControls:{assignedTo:'u1'}, sla:{status:'Yes'}, data:{basic:{clientLegalName:'Alpha'}} },{ _id:'c2', createdBy:'u2', data:{importMeta:{assignedTo:'First User'}} }];
+  const clients = [{ _id:'c1', selectedLead:{assignedStaff:'u1'}, createdBy:'admin', adminControls:{assignedTo:'u1'}, sla:{status:'Yes'}, data:{basic:{clientLegalName:'Alpha'}} },{ _id:'c2', selectedLead:{assignedStaffText:'First User'}, createdBy:'u2', data:{importMeta:{assignedTo:'First User'}} }];
   const users = [{_id:'u1',name:'First User',role:'operations'}, {_id:'u2',name:'Second User',role:'operations'}];
   const purchases = [{clientId:'c1',checklist:[{particular:'Data Explained',yesNo:'Yes'}],baseUpload:{importStatus:'Imported'},portalUpload:{importStatus:'Imported'}}];
   const result = buildUploadTracker(clients,users,purchases,[]);
@@ -36,11 +36,11 @@ test('CCL permanent Operations owner wins over Tushar admin metadata', () => {
   assert.equal(result[1].clients[0].clientId,'own'); assert.equal(result[1].purchase[5].complete,0);
   assert.equal(buildUploadTracker([ccl],[users[1]],[],[])[0].clients.length,0);
 });
-test('service allocation overrides importer/creator and snapshot assignments are respected', () => {
+test('service allocation metadata alone is excluded and permanent snapshot assignments are respected', () => {
   const users = [{_id:'s',name:'Shubham',roles:['Operations']}, {_id:'t',name:'Tushar',role:'operation'}];
   const clients = [{_id:'a',adminControls:{assignedTo:'t'},serviceAllocations:{annual:{userId:'s'}}}, {_id:'b',data:{selectedLeadSnapshot:{assignedStaffText:'Shubham'}}}];
   const result = buildUploadTracker(clients,users,[],[]);
-  assert.equal(result.length,1); assert.equal(result[0].userId,'s'); assert.equal(result[0].clients.length,2);
+  assert.equal(result.length,1); assert.equal(result[0].userId,'s'); assert.equal(result[0].clients.length,1);
 });
 
 test('legacy lead assignments without service IDs resolve the consistent permanent owner', () => {

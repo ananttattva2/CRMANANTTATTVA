@@ -1,3 +1,4 @@
+const { mergeManagerStaffAllocations } = require('../services/managerStaffAllocations');
 const Client = require('../models/Client');
 const Lead = require('../models/Lead');
 const PurchaseData = require('../models/PurchaseData');
@@ -155,7 +156,7 @@ exports.overall = async (req, res) => {
     );
     const canViewUsers = userHasAnyRole(req.user, ['admin', 'superadmin', 'manager']);
     const allocatedClientFilter = canViewUsers ? await require('./clientController').clientAccessFilter(req.user) : {};
-    const [records, requests, users, teams, allocatedClients] = await Promise.all([
+    const [records, requests, users, teams, allocatedClients, staffLeads] = await Promise.all([
       cachedOverallRecords(JSON.stringify({ filter, scope }), () => loadOverallRecords(Lead, filter, scope)),
       require('../models/ClientDeactivation').find({ status: 'INACTIVE' }).select('companyKey status').maxTimeMS(10000).lean(),
       canViewUsers ? visibleUsers(scope, req.user) : [],
@@ -181,12 +182,13 @@ exports.overall = async (req, res) => {
           'assignments.originalPoDetails.poDate', 'assignments.originalPoDetails.poReceivedDate',
           'assignments.originalPoDetails.poFileName'
         ].join(' '))
-        .maxTimeMS(12000).lean() : []
+        .maxTimeMS(12000).lean() : [],
+      canViewUsers ? Lead.find(dashboardLeadExclusionFilter(testLeadReferences)).select('_id company companyName leadCode sourceLeadId assignments serviceSelections firstAnnualReturnYearApplicable').maxTimeMS(12000).lean() : []
     ]);
     res.set('Cache-Control', 'private, no-store');
     res.set('Server-Timing', `overall;dur=${Date.now() - startedAt}`);
     const visibility = scope === null ? 'all' : userHasAnyRole(req.user, ['manager']) ? 'team' : 'self';
-    return res.json({ ...require('../services/overallDashboard').buildOverall(records, requests, req.query.financialYear), userSections: canViewUsers ? require('../services/overallDashboardUsers').buildUserSections(records, requests, users, teams, allocatedClients) : [], canViewUsers, visibility });
+    return res.json({ ...require('../services/overallDashboard').buildOverall(records, requests, req.query.financialYear), userSections: canViewUsers ? require('../services/overallDashboardUsers').buildUserSections(records, requests, users, teams, mergeManagerStaffAllocations(allocatedClients, staffLeads)) : [], canViewUsers, visibility });
   } catch (error) {
     console.error('[overall-dashboard] load failed', { durationMs: Date.now() - startedAt, name: error.name, code: error.code });
     return res.status(error.code === 50 ? 503 : 500).json({ error: 'Unable to load Overall Dashboard. Please refresh and retry.' });
@@ -199,15 +201,28 @@ exports.uploadTracker = async (req, res) => {
     if (!/^20\d{2}-\d{2}$/.test(financialYear)) return res.status(400).json({ error: 'Valid financialYear (YYYY-YY) is required.' });
     const scope = await getVisibleUserScope(req.user);
     const excluded = await getAdminCreatedLeadReferences();
-    const [clients, users] = await Promise.all([
-      Client.find(dashboardClientExclusionFilter(excluded)).select('_id createdBy assignedServiceId adminControls serviceAllocations data.basic data.importMeta data.selectedLeadSnapshot data.serviceAllocations sla.status selectedLead').populate('selectedLead', 'assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail assignments serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId').maxTimeMS(15000).lean(),
-      visibleUsers(scope, req.user)
+    const [clients, users, staffLeads] = await Promise.all([
+      Client.find(dashboardClientExclusionFilter(excluded)).select('_id createdBy assignedServiceId adminControls serviceAllocations data.basic data.importMeta data.selectedLeadSnapshot data.serviceAllocations data.financials data.otp data.authorised data.coordinating createdAt submittedAt sla.status selectedLead').populate('selectedLead', 'assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail assignments serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId').maxTimeMS(15000).lean(),
+      visibleUsers(scope, req.user),
+      Lead.find(dashboardLeadExclusionFilter(excluded)).select('_id company companyName leadCode sourceLeadId assignments serviceSelections firstAnnualReturnYearApplicable').maxTimeMS(15000).lean()
     ]);
     const { STAGES, buildUploadTracker } = require('../services/clientUploadTracker');
-    const allocated = buildUploadTracker(clients, users, [], []);
+    const assignedClients = mergeManagerStaffAllocations(clients, staffLeads);
+    const allocated = buildUploadTracker(assignedClients, users, [], []);
     const visibleIds = new Set(allocated.flatMap(user => user.clients.map(client => client.clientId)));
-    const visibleClients = clients.filter(client => visibleIds.has(String(client._id)));
-    const filter = { clientId: { $in: visibleClients.map(client => client._id) }, financialYear };
+    const visibleClients = assignedClients.filter(client => visibleIds.has(String(client._id)));
+    if (req.query.assignmentsOnly === 'true') {
+      const realIds = visibleClients.filter(client => !client.assignmentOnly).map(client => client._id);
+      const [reviews, approvals] = await Promise.all([
+        require('../models/ClientComplianceReview').find({ client: { $in: realIds } }).select('client status sections finalRemarks updatedAt').populate('sections.reviewedBy', 'name email').maxTimeMS(15000).lean(),
+        require('../models/PendingApproval').find({ type: 'client', source: 'crm', sourceClientId: { $in: realIds.map(String) } }).select('sourceClientId approvalStatus actionAt createdAt reminderFlag redFlagAt greenFlagDeadline correctionStatus correctionStartedAt correctionDueAt correctionBreachedAt correctionDeadlinePolicy').maxTimeMS(15000).lean()
+      ]);
+      const reviewByClient = new Map(reviews.map(review => [String(review.client), review]));
+      const approvalByClient = new Map(approvals.map(approval => [String(approval.sourceClientId), approval]));
+      res.set('Cache-Control', 'private, no-store');
+      return res.json({ ok: true, assignments: visibleClients.map(client => ({ ...client, complianceReview: reviewByClient.get(String(client._id)) || null, operationsSla: approvalByClient.get(String(client._id)) || null })) });
+    }
+    const filter = { clientId: { $in: visibleClients.filter(client => !client.assignmentOnly).map(client => client._id) }, financialYear };
     const projection = 'clientId checklist baseUpload.importStatus portalUpload.importStatus';
     const [purchases, sales] = await Promise.all([PurchaseData.find(filter).select(projection).maxTimeMS(15000).lean(), SalesData.find(filter).select(projection).maxTimeMS(15000).lean()]);
     res.set('Cache-Control', 'private, no-store');

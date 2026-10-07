@@ -21,12 +21,8 @@ function buildUploadTracker(clients, users, purchases, sales) {
     const clientId = id(client._id);
     if (!clientId || seen.has(clientId)) continue;
     seen.add(clientId);
-    const [permanent, fallback] = allocatedOwnerKeyGroups(client);
-    const allocations = Object.values(client.serviceAllocations || client.data?.serviceAllocations || {}).flatMap(entry => typeof entry === 'object' && entry ? [entry.userId, entry.userIdString, entry.user, entry.assignedTo, entry.assigneeId, entry.assignedUserId, entry.userName, entry.email] : [entry]).filter(Boolean).map(value => id(value).trim().toLowerCase());
-    // A permanent Operations assignment takes precedence over the sales/creator metadata.
-    // Never attribute it to someone else when that owner is outside the requester's scope.
-    const ownerKeys = permanent.length ? permanent : allocations.length ? allocations : fallback;
-    const user = ownerKeys.map(key => identities.get(key)).find(Boolean);
+    const [permanent] = allocatedOwnerKeyGroups(client);
+    const user = permanent.map(key => identities.get(key)).find(Boolean);
     if (!user) continue;
     const ownerId = id(user._id);
     if (!groups.has(ownerId)) groups.set(ownerId, emptyGroup(user));
