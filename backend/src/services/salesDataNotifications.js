@@ -1,3 +1,4 @@
+const { buildDataWorkflowEmail } = require('./dataWorkflowEmail');
 const User = require('../models/User');
 const Team = require('../models/Team');
 const Notification = require('../models/Notification');
@@ -43,7 +44,7 @@ async function notifySalesWorkflow({ stage, client, sales, actor, message = '', 
   const description = `${clientName} (${sales.financialYear}): ${message || title}.`;
   const notification = await Notification.create({ title, description, tag: 'Sales Data', kind, createdBy: actor?._id, createdByName: label(actor), audience: recipients.map((user) => user._id), visibleToRoles: ['admin', 'superadmin'], metadata });
   const emailRecipients = recipients.filter((user) => user.email);
-  const emailResults = await Promise.allSettled(emailRecipients.map((recipient) => sendMail(recipient.email, `${title} - ${clientName}`, `<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(description)}</p><p>Updated by ${escapeHtml(label(actor))}. Please open CRM to review the Sales Data workspace.</p></div>`)));
+  const emailResults = await Promise.allSettled(emailRecipients.map((recipient) => sendMail(recipient.email, `${title} - ${clientName}`, buildDataWorkflowEmail({ title, moduleName: 'Sales', clientName, financialYear: sales.financialYear, actorName: label(actor), recipientName: recipient.name, record: sales, stage, message }), { branded: false })));
   return { ok: true, notification, recipientCount: recipients.length, emailSent: emailResults.filter((result) => result.status === 'fulfilled').length, emailFailed: emailResults.filter((result) => result.status === 'rejected').length };
 }
 

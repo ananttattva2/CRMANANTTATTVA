@@ -192,3 +192,26 @@ exports.overall = async (req, res) => {
     return res.status(error.code === 50 ? 503 : 500).json({ error: 'Unable to load Overall Dashboard. Please refresh and retry.' });
   }
 };
+
+exports.uploadTracker = async (req, res) => {
+  try {
+    const financialYear = String(req.query.financialYear || '').trim();
+    if (!/^20\d{2}-\d{2}$/.test(financialYear)) return res.status(400).json({ error: 'Valid financialYear (YYYY-YY) is required.' });
+    const scope = await getVisibleUserScope(req.user);
+    const accessFilter = ownerFilter(scope, 'createdBy', 'adminControls.assignedTo', ['data.importMeta.assignedTo', 'data.importMeta.user', 'data.importMeta.userName', 'data.importMeta.createdBy', 'data.importMeta.createdByEmail']);
+    const excluded = await getAdminCreatedLeadReferences();
+    const [clients, users] = await Promise.all([
+      Client.find(combineFilters(accessFilter, dashboardClientExclusionFilter(excluded))).select('_id createdBy adminControls.assignedTo data.basic.clientLegalName data.basic.tradeName data.importMeta sla.status').maxTimeMS(15000).lean(),
+      visibleUsers(scope, req.user)
+    ]);
+    const filter = { clientId: { $in: clients.map(client => client._id) }, financialYear };
+    const projection = 'clientId checklist baseUpload.importStatus portalUpload.importStatus';
+    const [purchases, sales] = await Promise.all([PurchaseData.find(filter).select(projection).maxTimeMS(15000).lean(), SalesData.find(filter).select(projection).maxTimeMS(15000).lean()]);
+    const { STAGES, buildUploadTracker } = require('../services/clientUploadTracker');
+    res.set('Cache-Control', 'private, no-store');
+    res.json({ ok: true, financialYear, scope: scope === null ? 'all' : 'role-scoped', stages: STAGES, users: buildUploadTracker(clients, users, purchases, sales) });
+  } catch (error) {
+    console.error('Upload tracker failed', { message: error.message });
+    res.status(500).json({ error: 'Unable to load client upload tracker.' });
+  }
+};

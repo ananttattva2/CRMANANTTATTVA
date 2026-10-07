@@ -1,3 +1,4 @@
+const { buildDataWorkflowEmail } = require('./dataWorkflowEmail');
 const User = require('../models/User');
 const Team = require('../models/Team');
 const Notification = require('../models/Notification');
@@ -57,7 +58,7 @@ async function notifyPurchaseWorkflow({ stage, client, purchase, actor, message 
   const emailResults = await Promise.allSettled(emailRecipients.map((recipient) => sendMail(
     recipient.email,
     `${title} - ${clientName}`,
-    `<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(description)}</p><p>Updated by ${escapeHtml(label(actor))}. Please open CRM to review the Purchase Data workspace.</p></div>`
+    buildDataWorkflowEmail({ title, moduleName: 'Purchase', clientName, financialYear: purchase.financialYear, actorName: label(actor), recipientName: recipient.name, record: purchase, stage, message }), { branded: false }
   )));
   emailResults.forEach((result, index) => {
     if (result.status === 'rejected') console.error('Purchase Data email failed', { email: emailRecipients[index]?.email, error: result.reason?.message || 'Email delivery failed' });
