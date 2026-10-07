@@ -7,7 +7,7 @@ export function operationsClientWindow(count, scrollTop = 0) {
 export function assignedCompanyKey(client = {}, fallbackName = '') {
   const data = client.data || {}
   const lead = client.selectedLead || data.selectedLeadSnapshot || {}
-  const name = data.basic?.clientLegalName || data.importMeta?.companyName || lead.company || lead.companyName || data.basic?.tradeName || fallbackName
+  const name = lead.company || lead.companyName || data.basic?.clientLegalName || data.importMeta?.companyName || data.basic?.tradeName || fallbackName
   const normalized = String(name || '').normalize('NFKC').toLowerCase().replace(/&/g, ' and ').replace(/[^\p{L}\p{N}]/gu, '')
   return normalized && !['untitledclient', 'unnamedclient'].includes(normalized) ? `company:${normalized}` : `client:${String(client._id || client.id || '')}`
 }

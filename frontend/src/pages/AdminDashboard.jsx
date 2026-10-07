@@ -4016,13 +4016,13 @@ const OperationsUserProgressTable = React.memo(function OperationsUserProgressTa
     const existing = new Map(rows.map(row => [String(row.client?._id || row.id), row]))
     return assignedClients.map(client => {
       const row = existing.get(String(client._id))
-      if (row) return { ...row, client: { ...row.client, ...client } }
+      if (row) return { ...row, companyName: client.selectedLead?.company || client.selectedLead?.companyName || row.companyName, client: { ...row.client, ...client } }
       const assignment = client.selectedLead?.assignments?.find(item => item.assignedServiceId === client.assignedServiceId) || client.selectedLead?.assignments?.[0] || {}
       const poRecords = [...(assignment.poYearRows || []), ...(assignment.originalPoDetails ? [assignment.originalPoDetails] : [])]
       const financials = client.data?.financials || {}
       // Lead assignments contribute to the total; confirmed PO progress comes from Client Master records.
       const hasPo = !client.assignmentOnly && (poRecords.some(po => po.poNumber || po.poNo || po.poDate || po.poReceivedDate || po.poFileName) || Boolean(financials.compliancePoNo || financials.poNo || financials.poNumber || financials.compliancePoDate || financials.poDate || financials.compliancePoFileName || financials.poFileName))
-      return { id: String(client._id), client, companyName: client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || client.data?.importMeta?.companyName || 'Untitled client', atplCode: client.data?.importMeta?.leadNumber || '', hasPo, poDetails: { ...poRecords[0], records: poRecords } }
+      return { id: String(client._id), client, companyName: client.selectedLead?.company || client.selectedLead?.companyName || client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || client.data?.importMeta?.companyName || 'Untitled client', atplCode: client.data?.importMeta?.leadNumber || '', hasPo, poDetails: { ...poRecords[0], records: poRecords } }
     })
   }, [rows, assignedClients, pdfMode])
   const [activeTab, setActiveTab] = useState('ownership')

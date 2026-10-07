@@ -8,6 +8,20 @@ const users = [{ _id: 'sonal', name: 'Sonal', role: 'operation' }, { _id: 'krish
 const client = (id, name, owner, year = '2025-26') => ({ _id: id, data: { basic: { clientLegalName: name } },
   selectedLead: { assignedStaff: owner, assignments: [{ assignedStaff: owner, poYearRows: [{ poNumber: id, poFinancialYear: year }] }] } });
 
+test('assignment counts and client labels prefer the linked lead company over an incorrect Client Master contact name', async () => {
+  const a = client('a', 'Contact person', 'sonal');
+  const b = client('b', 'Contact person', 'sonal');
+  a.selectedLead.company = 'UMIYA PLASTIC';
+  b.selectedLead.company = 'KALYANI SALES CORPORATION';
+  const tracker = buildUploadTracker([a, b], users, [], []);
+  assert.equal(tracker[0].clients.length, 2);
+  assert.deepEqual(new Set(tracker[0].clients.map(row => row.clientName)), new Set(['UMIYA PLASTIC', 'KALYANI SALES CORPORATION']));
+  assert.equal(buildAllocatedClientStats([a, b], users).sonal.total, 2);
+  const { assignedCompanyKey: frontendKey } = await import('../../frontend/src/utils/operationsUserProgress.mjs');
+  assert.equal(frontendKey(a), assignedCompanyKey(a));
+  assert.notEqual(frontendKey(a), frontendKey(b));
+});
+
 test('tracker merges same-user applicant types and retains every source ID for authorization and progress', () => {
   const clients = [client('importer', 'AMINES AND PLASTICIZERS LTD', 'sonal'), client('producer', 'Amines and Plasticizers Ltd.', 'sonal'), client('other', 'AMINES AND PLASTICIZERS LTD', 'krishna')];
   const record = clientId => ({ clientId, checklist: [{ particular: 'Data Explained', yesNo: 'Yes' }] });

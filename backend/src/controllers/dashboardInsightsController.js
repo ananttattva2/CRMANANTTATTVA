@@ -13,6 +13,7 @@ const { overallLeadFilter } = require('../services/overallDashboardVisibility');
 const { userHasAnyRole } = require('../utils/userRoles');
 const {
   getAdminCreatedLeadReferences,
+  getAssignmentDashboardLeadReferences,
   dashboardLeadExclusionFilter,
   dashboardClientExclusionFilter
 } = require('../services/dashboardTestLeadExclusion');
@@ -149,7 +150,7 @@ exports.overall = async (req, res) => {
   const startedAt = Date.now();
   try {
     const scope = await getVisibleUserScope(req.user);
-    const testLeadReferences = await getAdminCreatedLeadReferences();
+    const testLeadReferences = await getAssignmentDashboardLeadReferences();
     const filter = combineFilters(
       overallLeadFilter(scope),
       dashboardLeadExclusionFilter(testLeadReferences)
@@ -200,9 +201,9 @@ exports.uploadTracker = async (req, res) => {
     const financialYear = String(req.query.financialYear || '').trim();
     if (req.query.assignmentsOnly !== 'true' && !/^20\d{2}-\d{2}$/.test(financialYear)) return res.status(400).json({ error: 'Valid financialYear (YYYY-YY) is required.' });
     const scope = await getVisibleUserScope(req.user);
-    const excluded = await getAdminCreatedLeadReferences();
+    const excluded = await getAssignmentDashboardLeadReferences();
     const [clients, users, staffLeads] = await Promise.all([
-      Client.find(dashboardClientExclusionFilter(excluded)).select('_id createdBy assignedServiceId adminControls serviceAllocations data.basic data.importMeta data.selectedLeadSnapshot data.serviceAllocations data.financials data.otp data.authorised data.coordinating createdAt submittedAt sla.status selectedLead').populate('selectedLead', 'assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail assignments serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId').maxTimeMS(15000).lean(),
+      Client.find(dashboardClientExclusionFilter(excluded)).select('_id createdBy assignedServiceId adminControls serviceAllocations data.basic data.importMeta data.selectedLeadSnapshot data.serviceAllocations data.financials data.otp data.authorised data.coordinating createdAt submittedAt sla.status selectedLead').populate('selectedLead', 'company companyName assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail assignments serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId').maxTimeMS(15000).lean(),
       visibleUsers(scope, req.user),
       Lead.find(dashboardLeadExclusionFilter(excluded)).select('_id company companyName leadCode sourceLeadId assignments serviceSelections firstAnnualReturnYearApplicable').maxTimeMS(15000).lean()
     ]);

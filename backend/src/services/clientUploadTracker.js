@@ -28,7 +28,7 @@ function buildUploadTracker(clients, users, purchases, sales) {
     const ownerId = id(user._id);
     if (!groups.has(ownerId)) groups.set(ownerId, emptyGroup(user));
     const group = groups.get(ownerId);
-    const detail = { clientId: id(client._id), clientName: client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || client.data?.importMeta?.companyName || 'Untitled client', slaReceived: client.sla?.status === 'Yes', purchase: STAGES.map(stage => stageState(purchaseIndex.get(id(client._id)), stage)), sales: STAGES.map(stage => stageState(salesIndex.get(id(client._id)), stage)) };
+    const detail = { clientId: id(client._id), clientName: client.selectedLead?.company || client.selectedLead?.companyName || client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || client.data?.importMeta?.companyName || 'Untitled client', slaReceived: client.sla?.status === 'Yes', purchase: STAGES.map(stage => stageState(purchaseIndex.get(id(client._id)), stage)), sales: STAGES.map(stage => stageState(salesIndex.get(id(client._id)), stage)) };
     detail.companyKey = assignedCompanyKey(client);
     detail.clientIds = [clientId];
     const existing = group.clients.find(row => row.companyKey === detail.companyKey);

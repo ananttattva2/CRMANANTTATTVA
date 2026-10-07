@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   loadAdminCreatedLeadReferences,
+  getAssignmentDashboardLeadReferences,
   dashboardLeadExclusionFilter,
   dashboardClientExclusionFilter,
   dashboardQuotationExclusionFilter
@@ -13,6 +14,26 @@ function queryResult(value) {
     async lean() { return value; }
   };
 }
+
+test('assignment dashboards retain Admin-created permanent staff work and exclude unassigned test leads', async () => {
+  const queries = [];
+  const references = await getAssignmentDashboardLeadReferences({
+    UserModel: { find() { return queryResult([{ _id: 'admin' }]); } },
+    LeadModel: { find(filter) {
+      queries.push(filter);
+      return queryResult(queries.length === 1 ? [{ _id: 'assigned', leadCode: 'REAL' }, { _id: 'test', leadCode: 'TEST' }] : [{ _id: 'test', leadCode: 'TEST' }]);
+    } }
+  });
+  assert.equal(queries.length, 2);
+  assert.deepEqual(queries[1]._id.$in, ['assigned', 'test']);
+  const staffCondition = queries[1].$nor.find(clause => clause.assignedStaff).assignedStaff;
+  assert.deepEqual(staffCondition.$nin, [null]);
+  assert.ok(queries[1].$nor.some(clause => clause.assignments?.$elemMatch?.$or.some(owner => owner.assignedStaff)));
+  assert.deepEqual(dashboardLeadExclusionFilter(references), { _id: { $nin: ['test'] } });
+  const excludedIds = dashboardClientExclusionFilter(references).$nor[0].selectedLead.$in;
+  assert.deepEqual(excludedIds, ['test']);
+  assert.deepEqual(references.identityValues, ['test', 'TEST']);
+});
 
 test('dashboard test-lead exclusion selects exact Admin creators but not Super Admin', async () => {
   let userFilter;
