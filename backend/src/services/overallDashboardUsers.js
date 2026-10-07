@@ -1,6 +1,7 @@
 const { buildOverall, normalizeYear } = require('./overallDashboard');
 const { createOverallServiceVisibility } = require('./overallDashboardVisibility');
 const { userHasAnyRole } = require('../utils/userRoles');
+const { assignedCompanyKey } = require('./assignedCompanyIdentity');
 
 function eligibleOperationsUsers(users, teams = []) {
   const eligible = users.filter((user) => !userHasAnyRole(user, ['superadmin', 'sales'])
@@ -127,6 +128,7 @@ function buildAllocatedClientStats(clients = [], users = [], teams = []) {
   }));
   const stats = Object.fromEntries(userKeys.map((user) => [user.id, { total: 0, poReceived: 0, poPending: 0, byYear: {}, poReceivedByYear: {} }]));
   const seen = new Set();
+  const companies = new Map();
   clients.forEach((client, index) => {
     const clientKey = String(client?._id || client?.id || `row-${index}`);
     if (seen.has(clientKey)) return;
@@ -134,16 +136,20 @@ function buildAllocatedClientStats(clients = [], users = [], teams = []) {
     const ownerKeys = allocatedOwnerKeyGroups(client)[0];
     const owner = ownerKeys.map(key => userKeys.find(user => user.keys.has(key))).find(Boolean);
     if (!owner) return;
-    stats[owner.id].total += 1;
-    const financialYears = allocatedFinancialYears(client);
-    financialYears.forEach((year) => {
-      stats[owner.id].byYear[year] = (stats[owner.id].byYear[year] || 0) + 1;
-    });
+    const companyKey = `${owner.id}:${assignedCompanyKey(client)}`;
+    if (!companies.has(companyKey)) companies.set(companyKey, { owner: owner.id, years: new Set(), poYears: new Set(), received: false });
+    const company = companies.get(companyKey);
+    allocatedFinancialYears(client).forEach(year => company.years.add(year));
     const po = allocatedPoStatus(client);
-    if (po.received) stats[owner.id].poReceived += 1;
-    po.years.forEach((year) => {
-      stats[owner.id].poReceivedByYear[year] = (stats[owner.id].poReceivedByYear[year] || 0) + 1;
-    });
+    company.received ||= po.received;
+    po.years.forEach(year => company.poYears.add(year));
+  });
+  companies.forEach(company => {
+    const row = stats[company.owner];
+    row.total++;
+    if (company.received) row.poReceived++;
+    company.years.forEach(year => { row.byYear[year] = (row.byYear[year] || 0) + 1; });
+    company.poYears.forEach(year => { row.poReceivedByYear[year] = (row.poReceivedByYear[year] || 0) + 1; });
   });
   Object.values(stats).forEach((row) => { row.poPending = Math.max(0, row.total - row.poReceived); });
   return stats;
@@ -161,9 +167,9 @@ function buildUserSections(records, deactivations, users, teams = [], allocatedC
     const id = String(user._id);
     const scope = { ids: [id], identities: [id, user.crmUserId, user.name, user.email].filter(Boolean) };
     const matches = createOverallServiceVisibility(scope);
-    const owned = records.filter((record) => (record.owners || []).some((owner) => matches({}, {
+    const owned = records.filter((record) => (record.staffOwners?.length ? record.staffOwners : record.owners || []).some((owner) => matches({}, {
       createdBy: owner.id, createdByCrmUserId: owner.crmId, createdByName: owner.name, createdByEmail: owner.email
-    }, {})));
+    }, {}))).map(record => ({ ...record, companyIdentity: assignedCompanyKey({ data: { basic: { clientLegalName: record.clientName } }, _id: record.leadId }) }));
     return {
       userId: id,
       userName: user.name || user.email || 'Unnamed user',

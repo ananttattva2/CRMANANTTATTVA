@@ -1,5 +1,6 @@
 const { userHasAnyRole } = require('../utils/userRoles');
 const { allocatedOwnerKeyGroups } = require('./overallDashboardUsers');
+const { assignedCompanyKey } = require('./assignedCompanyIdentity');
 const STAGES = ['Data Explained', 'Data Format Sent', 'Received from client', 'Ready to upload', 'Client Approval on data', 'Upload Complete'];
 const id = value => String(value?._id || value || '');
 function stageState(record, stage) {
@@ -28,7 +29,17 @@ function buildUploadTracker(clients, users, purchases, sales) {
     if (!groups.has(ownerId)) groups.set(ownerId, emptyGroup(user));
     const group = groups.get(ownerId);
     const detail = { clientId: id(client._id), clientName: client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || client.data?.importMeta?.companyName || 'Untitled client', slaReceived: client.sla?.status === 'Yes', purchase: STAGES.map(stage => stageState(purchaseIndex.get(id(client._id)), stage)), sales: STAGES.map(stage => stageState(salesIndex.get(id(client._id)), stage)) };
-    group.clients.push(detail); group[detail.slaReceived ? 'slaReceived' : 'slaNotReceived']++;
+    detail.companyKey = assignedCompanyKey(client);
+    detail.clientIds = [clientId];
+    const existing = group.clients.find(row => row.companyKey === detail.companyKey);
+    if (existing) {
+      existing.clientIds.push(clientId);
+      existing.slaReceived = existing.slaReceived && detail.slaReceived;
+      for (const module of ['purchase', 'sales']) existing[module] = existing[module].map((state, position) => state === 'complete' && detail[module][position] === 'complete' ? 'complete' : state === 'pending' && detail[module][position] === 'pending' ? 'pending' : 'progress');
+    } else group.clients.push(detail);
+  }
+  for (const group of groups.values()) for (const detail of group.clients) {
+    group[detail.slaReceived ? 'slaReceived' : 'slaNotReceived']++;
     for (const module of ['purchase', 'sales']) detail[module].forEach((state, position) => group[module][position][state]++);
   }
   return [...groups.values()].sort((a, b) => a.userName.localeCompare(b.userName));

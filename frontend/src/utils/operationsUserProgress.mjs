@@ -4,6 +4,28 @@ export function operationsClientWindow(count, scrollTop = 0) {
   const start = Math.min(Math.max(0, count - 10), Math.max(0, Math.floor(Math.max(0, scrollTop - 100) / rowHeight) - 2))
   return { start, end: Math.min(count, start + 10), rowHeight }
 }
+export function assignedCompanyKey(client = {}, fallbackName = '') {
+  const data = client.data || {}
+  const lead = client.selectedLead || data.selectedLeadSnapshot || {}
+  const name = data.basic?.clientLegalName || data.importMeta?.companyName || lead.company || lead.companyName || data.basic?.tradeName || fallbackName
+  const normalized = String(name || '').normalize('NFKC').toLowerCase().replace(/&/g, ' and ').replace(/[^\p{L}\p{N}]/gu, '')
+  return normalized && !['untitledclient', 'unnamedclient'].includes(normalized) ? `company:${normalized}` : `client:${String(client._id || client.id || '')}`
+}
+
+function mergeCompanyRows(rows) {
+  if (rows.length === 1) return rows[0]
+  const representative = rows.find(row => !row.client?.assignmentOnly) || rows[0]
+  const approved = rows.every(row => key(row.client?.operationsSla?.approvalStatus || row.client?.adminControls?.approvalStatus) === 'approved')
+  const records = rows.filter(row => row.hasPo).flatMap(poRecords)
+  const sla = Object.fromEntries([48, 72, 96].map(hours => {
+    const flags = rows.map(row => row.sla[hours])
+    const dates = flags.map(flag => flag.due).filter(value => value !== null && value !== undefined)
+    return [hours, { breached: flags.some(flag => flag.breached), known: flags.some(flag => flag.known), due: dates.length ? Math.min(...dates) : null }]
+  }))
+  return { ...representative, serviceRows: rows, hasPo: rows.some(row => row.hasPo), sla,
+    client: { ...representative.client, operationsSla: { ...representative.client?.operationsSla, approvalStatus: approved ? 'APPROVED' : 'PENDING' } },
+    poDetails: { ...representative.poDetails, ...records[0], records } }
+}
 const identity = (value) => value && typeof value === 'object'
   ? [value._id, value.id, value.userId, value.email, value.name].map(key).filter(Boolean)
   : [key(value)].filter(Boolean)
@@ -118,6 +140,15 @@ export function buildOperationsProgressGroups(rows, users, getLegacyKeys, now = 
       group.rows.push({ ...row, sla: getOperationsSla(row.client?.operationsSla || row.approval || {}, now) })
     }
   })
+  for (const group of groups.values()) {
+    const companies = new Map()
+    for (const row of group.rows) {
+      const companyKey = assignedCompanyKey({ ...row.client, _id: row.client?._id || row.id }, row.companyName)
+      if (!companies.has(companyKey)) companies.set(companyKey, [])
+      companies.get(companyKey).push(row)
+    }
+    group.rows = [...companies.values()].map(mergeCompanyRows)
+  }
   return [...groups.values()].map((group) => ({ ...group, total: group.rows.length,
     complianceDone: group.rows.filter((row) => key(row.client?.operationsSla?.approvalStatus || row.client?.adminControls?.approvalStatus) === 'approved').length,
     poDone: group.rows.filter((row) => row.hasPo).length,
@@ -156,6 +187,7 @@ function poRecords(row = {}) {
 }
 
 export function getOperationsTabRemarks(row = {}) {
+  if (row.serviceRows) return row.serviceRows.flatMap(getOperationsTabRemarks)
   const review = row.client?.complianceReview || row.complianceReview || {}
   return (Array.isArray(review.sections) ? review.sections : []).map((section) => ({
     key: section.key || section.label,
@@ -225,7 +257,7 @@ export function buildOperationsWorkbookData(groups = [], financialYear = 'all') 
       'PO Number(s)': uniquePoValues(records.map((po) => ({ ...po, poNumber: po.poNo || po.poNumber })), 'poNumber'),
       'PO Date(s)': uniquePoValues(records, 'poDate'),
       'Tab remarks': excelText(getOperationsTabRemarks(row).map(tab => `${tab.label} [${tab.status.replace(/_/g, ' ')}]: ${tab.remarks || 'No remarks added'}`).join('\n'), 'No tab reviews recorded'),
-      'Final Compliance Remarks': excelText(row.client?.complianceReview?.finalRemarks, 'No final remarks added'),
+      'Final Compliance Remarks': excelText((row.serviceRows || [row]).map(service => service.client?.complianceReview?.finalRemarks).filter(Boolean).join('\n'), 'No final remarks added'),
       'Total PO Amount (INR)': amounts.length ? amounts.reduce((sum, amount) => sum + amount, 0) : '',
       'PO Proof Link(s)': uniquePoValues(records.map((po) => ({ ...po, proofLink: po.fileUrl || row.poDetails?.fileUrl })), 'proofLink')
     }

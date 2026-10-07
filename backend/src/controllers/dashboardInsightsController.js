@@ -165,9 +165,9 @@ exports.overall = async (req, res) => {
         { 'data.importMeta.approvalOverride': { $ne: true } },
         allocatedClientFilter,
         dashboardClientExclusionFilter(testLeadReferences)
-      ] }).select('_id selectedLead assignedServiceId assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedUser userName user adminControls.assignedTo adminControls.assignedUser adminControls.user adminControls.userId adminControls.managerId serviceAllocations firstAnnualReturnYear financialYear data.assignedServiceId data.selectedLeadSnapshot data.basic.firstAnnualReturnYear data.basic.servicesForYear data.firstAnnualReturnYearApplicable data.importMeta.assignedTo data.importMeta.user data.importMeta.userName data.serviceAllocations data.financials.compliancePoNo data.financials.poNo data.financials.poNumber data.financials.compliancePoDate data.financials.poDate data.financials.compliancePoFileName data.financials.poFileName data.financials.poFinancialYear data.validation.poNumber data.validation.poNo data.validation.poDate data.validation.poFileName data.validation.poFinancialYear')
+      ] }).select('data.basic.clientLegalName data.basic.tradeName data.importMeta.companyName _id selectedLead assignedServiceId assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedUser userName user adminControls.assignedTo adminControls.assignedUser adminControls.user adminControls.userId adminControls.managerId serviceAllocations firstAnnualReturnYear financialYear data.assignedServiceId data.selectedLeadSnapshot data.basic.firstAnnualReturnYear data.basic.servicesForYear data.firstAnnualReturnYearApplicable data.importMeta.assignedTo data.importMeta.user data.importMeta.userName data.serviceAllocations data.financials.compliancePoNo data.financials.poNo data.financials.poNumber data.financials.compliancePoDate data.financials.poDate data.financials.compliancePoFileName data.financials.poFileName data.financials.poFinancialYear data.validation.poNumber data.validation.poNo data.validation.poDate data.validation.poFileName data.validation.poFinancialYear')
         .populate('selectedLead', [
-          'assignedTo', 'assignedToText', 'assignedToEmail', 'assignedStaff', 'assignedStaffText', 'assignedStaffEmail',
+          'company', 'companyName', 'assignedTo', 'assignedToText', 'assignedToEmail', 'assignedStaff', 'assignedStaffText', 'assignedStaffEmail',
           'firstAnnualReturnYearApplicable',
           'serviceSelections.assignedServiceId', 'serviceSelections.serviceAssignmentId',
           'serviceSelections.firstAnnualReturnYearApplicable', 'serviceSelections.financialYear', 'serviceSelections.servicesForYear',
@@ -209,7 +209,7 @@ exports.uploadTracker = async (req, res) => {
     const { STAGES, buildUploadTracker } = require('../services/clientUploadTracker');
     const assignedClients = mergeManagerStaffAllocations(clients, staffLeads);
     const allocated = buildUploadTracker(assignedClients, users, [], []);
-    const visibleIds = new Set(allocated.flatMap(user => user.clients.map(client => client.clientId)));
+    const visibleIds = new Set(allocated.flatMap(user => user.clients.flatMap(client => client.clientIds || [client.clientId])));
     const visibleClients = assignedClients.filter(client => visibleIds.has(String(client._id)));
     if (req.query.assignmentsOnly === 'true') {
       const realIds = visibleClients.filter(client => !client.assignmentOnly).map(client => client._id);

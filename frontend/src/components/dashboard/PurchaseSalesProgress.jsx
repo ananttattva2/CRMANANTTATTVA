@@ -18,7 +18,10 @@ export default function PurchaseSalesProgress({ groups, financialYear }) {
       .catch(() => { if (!cancelled) setError('Could not load Purchase & Sales status. Please retry.') })
     return () => { cancelled = true }
   }, [selectedYear, refresh])
-  const state = (row, section) => data?.[section]?.[String(row.client?._id || row.id)] || { complete: false, status: 'Pending' }
+  const state = (row, section) => {
+    const statuses = (row.serviceRows || [row]).map(service => data?.[section]?.[String(service.client?._id || service.id)] || { complete: false, status: 'Pending' })
+    return { complete: statuses.every(status => status.complete), status: [...new Set(statuses.map(status => status.status))].join(' · ') }
+  }
   return <div className="operations-client-details">
     <header><strong>Purchase &amp; Sales</strong><label className="flex items-center gap-2">Data Financial Year<select aria-label="Data Financial Year" value={selectedYear} onChange={(event) => setSelectedYear(event.target.value)} className="rounded border px-2 py-1">{[...new Set([selectedYear, ...Array.from({ length: 12 }, (_, index) => { const start = Number(currentYear().slice(0, 4)) + 1 - index; return `${start}-${String(start + 1).slice(-2)}` })])].sort().reverse().map((year) => <option key={year}>{year}</option>)}</select></label><button type="button" className="operations-user-view" aria-label="Refresh Purchase and Sales" onClick={() => setRefresh((value) => value + 1)}><RefreshCw /></button></header>
     <p className="px-4 py-3 text-xs text-slate-500">Fully filled / assigned clients. All mandatory checklist controls, dates, proofs and required uploads must be complete.</p>
