@@ -30,8 +30,15 @@ function allocatedOwnerKeyGroups(client = {}) {
     ? client.selectedLead
     : (data.selectedLeadSnapshot && typeof data.selectedLeadSnapshot === 'object' ? data.selectedLeadSnapshot : {});
   const serviceId = String(client.assignedServiceId || data.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId || '');
-  const assignments = (Array.isArray(lead.assignments) ? lead.assignments : [])
-    .filter((assignment) => !serviceId || String(assignment?.assignedServiceId || assignment?.serviceAssignmentId || '') === serviceId);
+  const allAssignments = Array.isArray(lead.assignments) ? lead.assignments : [];
+  let assignments = allAssignments.filter((assignment) => !serviceId || String(assignment?.assignedServiceId || assignment?.serviceAssignmentId || '') === serviceId);
+  if (serviceId && !assignments.length) {
+    const serviceIndex = (lead.serviceSelections || []).findIndex(service => String(service?.assignedServiceId || service?.serviceAssignmentId || '') === serviceId);
+    const legacy = allAssignments.filter(assignment => !assignment?.assignedServiceId && !assignment?.serviceAssignmentId);
+    const permanentOwners = new Set(legacy.map(assignment => String(assignment.assignedStaff || assignment.assignedStaffText || '').trim().toLowerCase()).filter(Boolean));
+    if (serviceIndex >= 0 && allAssignments[serviceIndex] && !allAssignments[serviceIndex].assignedServiceId && !allAssignments[serviceIndex].serviceAssignmentId) assignments = [allAssignments[serviceIndex]];
+    else if (permanentOwners.size === 1) assignments = legacy;
+  }
   const admin = client.adminControls || data.adminControls || {};
   const importMeta = data.importMeta || {};
   const allocations = client.serviceAllocations || data.serviceAllocations || {};
@@ -172,4 +179,4 @@ function buildUserSections(records, deactivations, users, teams = [], allocatedC
     };
   });
 }
-module.exports = { buildUserSections, eligibleOperationsUsers, buildAllocatedClientCounts, buildAllocatedClientStats };
+module.exports = { allocatedOwnerKeyGroups, buildUserSections, eligibleOperationsUsers, buildAllocatedClientCounts, buildAllocatedClientStats };
