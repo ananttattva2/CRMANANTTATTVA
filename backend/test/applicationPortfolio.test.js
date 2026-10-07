@@ -1,0 +1,46 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const users = [{ _id: 'sonal', name: 'Sonal', role: 'operation' }, { _id: 'krishna', name: 'Krishna', role: 'operation' }];
+const client = (id, owner, category, status = '') => ({ _id: id, selectedLead: { company: '20 MICRONS LIMITED', assignedStaff: owner }, data: { basic: { piboCategory: category }, cpcb: { status }, importMeta: { visibilityStatus: 'LIVE' } } });
+
+test('SPOC distribution deduplicates a company category, retains distinct categories and never merges staff', async () => {
+  const { buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const groups = buildApplicationPortfolio([client('a', 'sonal', 'Importer'), client('b', 'sonal', 'Importer'), client('c', 'sonal', 'Producer'), client('d', 'krishna', 'Importer')], users);
+  assert.equal(groups.find(group => group.id === 'sonal').records.length, 2);
+  assert.equal(groups.find(group => group.id === 'krishna').records.length, 1);
+  assert.deepEqual(groups.find(group => group.id === 'sonal').records[0].sourceIds, ['a', 'b']);
+});
+
+test('saved CPCB statuses distinguish approved, applied, under review, pending, rejected and missing records', async () => {
+  const { applicationRecord } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  for (const [status, bucket] of [['Approved', 'processed'], ['Applied', 'progress'], ['Under Review', 'progress'], ['ATPL-PENDING', 'pending'], ['PORTAL-REJECTED', 'rejected'], ['', 'unknown']]) {
+    const row = applicationRecord(client('a', 'sonal', 'Importer', status));
+    assert.equal(row.bucket, bucket);
+    assert.equal(row.cpcb, status || 'Not recorded');
+    assert.equal(row.annual, false);
+  }
+  const discontinued = client('a', 'sonal', 'Importer', 'Approved');
+  discontinued.data.importMeta.visibilityStatus = 'DISCONTINUED';
+  assert.equal(applicationRecord(discontinued).bucket, 'inactive');
+  assert.equal(applicationRecord(discontinued).live, false);
+});
+
+test('annual eligibility follows saved year and applicant labels resolve the assigned service', async () => {
+  const { applicationRecord, applicantCategory } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const row = client('a', 'sonal', '', 'Approved');
+  row.assignedServiceId = 'importer';
+  row.selectedLead.serviceSelections = [{ assignedServiceId: 'producer', subApplicantType: 'Producer' }, { assignedServiceId: 'importer', subApplicantType: 'Importer', firstAnnualReturnYearApplicable: '2025-26' }];
+  assert.equal(applicationRecord(row).category, 'Importer');
+  assert.equal(applicationRecord(row).annual, true);
+  assert.equal(applicantCategory('Importer of Raw Material'), 'SIMP Importer of Raw Material');
+  assert.equal(applicantCategory('Producer (Small & Micro)'), 'SIMP Producer (Small & Micro)');
+  assert.equal(applicantCategory('Recycler'), 'Recycler');
+});
+
+test('conflicting saved service statuses remain mixed rather than choosing an approval', async () => {
+  const { buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const [group] = buildApplicationPortfolio([client('a', 'sonal', 'Importer', 'Approved'), client('b', 'sonal', 'Importer', 'Applied')], users);
+  assert.equal(group.records.length, 1);
+  assert.equal(group.records[0].bucket, 'mixed');
+  assert.equal(group.records[0].services.length, 2);
+});

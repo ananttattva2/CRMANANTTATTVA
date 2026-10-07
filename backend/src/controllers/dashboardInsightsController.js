@@ -203,7 +203,7 @@ exports.uploadTracker = async (req, res) => {
     const scope = await getVisibleUserScope(req.user);
     const excluded = await getAssignmentDashboardLeadReferences();
     const [clients, users, staffLeads] = await Promise.all([
-      Client.find(dashboardClientExclusionFilter(excluded)).select('_id createdBy assignedServiceId adminControls serviceAllocations data.basic data.importMeta data.selectedLeadSnapshot data.serviceAllocations data.financials data.otp data.authorised data.coordinating createdAt submittedAt sla.status selectedLead').populate('selectedLead', 'company companyName assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail assignments serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId serviceSelections.subApplicantType serviceSelections.piboCategory serviceSelections.applicantType').maxTimeMS(15000).lean(),
+      Client.find(dashboardClientExclusionFilter(excluded)).select('_id createdBy workflowStatus assignedServiceId adminControls serviceAllocations data.basic data.importMeta data.cpcb.status data.cpcb.approvalStatus data.cpcb.applicationStatus data.address.state data.addresses.state data.registeredAddress.state data.selectedLeadSnapshot data.serviceAllocations data.financials data.otp data.authorised data.coordinating createdAt submittedAt sla.status selectedLead').populate('selectedLead', 'company companyName assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail assignments serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId serviceSelections.subApplicantType serviceSelections.piboCategory serviceSelections.applicantType serviceSelections.firstAnnualReturnYearApplicable').maxTimeMS(15000).lean(),
       visibleUsers(scope, req.user),
       Lead.find(dashboardLeadExclusionFilter(excluded)).select('_id company companyName leadCode sourceLeadId assignments serviceSelections firstAnnualReturnYearApplicable').maxTimeMS(15000).lean()
     ]);
@@ -221,7 +221,7 @@ exports.uploadTracker = async (req, res) => {
       const reviewByClient = new Map(reviews.map(review => [String(review.client), review]));
       const approvalByClient = new Map(approvals.map(approval => [String(approval.sourceClientId), approval]));
       res.set('Cache-Control', 'private, no-store');
-      return res.json({ ok: true, assignments: visibleClients.map(client => ({ ...client, complianceReview: reviewByClient.get(String(client._id)) || null, operationsSla: approvalByClient.get(String(client._id)) || null })) });
+      return res.json({ ok: true, users, assignments: visibleClients.map(client => ({ ...client, complianceReview: reviewByClient.get(String(client._id)) || null, operationsSla: approvalByClient.get(String(client._id)) || null })) });
     }
     const filter = { clientId: { $in: visibleClients.filter(client => !client.assignmentOnly).map(client => client._id) }, financialYear };
     const projection = 'clientId checklist baseUpload.importStatus portalUpload.importStatus managerVerificationStatus complianceVerificationStatus';
