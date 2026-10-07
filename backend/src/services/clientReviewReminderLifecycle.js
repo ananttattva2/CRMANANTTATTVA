@@ -1,3 +1,4 @@
+const { clientAssignmentFilter } = require('./onboardingAssignmentIdentity');
 const mongoose = require('mongoose');
 const Client = require('../models/Client');
 const ClientOnboardingReminder = require('../models/ClientOnboardingReminder');
@@ -68,13 +69,8 @@ async function syncClientReviewReminderState({ client, status, now = new Date() 
   if (!identity.clientKey) return { reminders: 0, assignments: 0 };
 
   const reminder = await ClientOnboardingReminder.findOne({ clientKey: identity.clientKey });
-  const assignmentFilter = {
-    ...(identity.leadKey ? { leadKey: identity.leadKey } : {}),
-    ...(identity.ownerId ? { staffId: identity.ownerId } : {})
-  };
-  const assignments = identity.leadKey && identity.ownerId
-    ? await StaffOnboardingAssignment.find(assignmentFilter)
-    : [];
+  const assignmentFilter = await clientAssignmentFilter(client, identity);
+  const assignments = assignmentFilter ? await StaffOnboardingAssignment.find(assignmentFilter) : [];
 
   if (normalized === 'PENDING') {
     await PendingApproval.updateMany(
@@ -93,6 +89,8 @@ async function syncClientReviewReminderState({ client, status, now = new Date() 
     await Promise.all(assignments.map(async (record) => {
       record.status = 'COMPLETED';
       record.completedAt = now;
+      record.redFlaggedAt = undefined;
+      record.emailError = undefined;
       record.pausedAt = undefined;
       record.pausedRemainingMs = undefined;
       record.pausedFromStatus = undefined;
@@ -118,15 +116,15 @@ async function pauseExistingPendingClientApprovalTimers(now = new Date()) {
     { clientKey: { $in: clientIds }, reviewStatus: { $nin: ['PENDING_COMPLIANCE', 'APPROVED'] } },
     { $set: { reviewStatus: 'PENDING_COMPLIANCE', reviewPausedAt: now } }
   );
-  const clients = await Client.find({ _id: { $in: clientIds } }).select('_id selectedLead createdBy submittedBy').lean();
-  const assignmentPairs = clients.map(clientIdentity).filter((entry) => entry.leadKey && entry.ownerId);
-  if (assignmentPairs.length) {
+  const clients = await Client.find({ _id: { $in: clientIds } }).select('_id selectedLead assignedServiceId data.selectedLeadSnapshot.assignedServiceId createdBy submittedBy').lean();
+  const assignmentFilters = (await Promise.all(clients.map(client => clientAssignmentFilter(client, clientIdentity(client))))).filter(Boolean);
+  if (assignmentFilters.length) {
     const assignments = await StaffOnboardingAssignment.find({
-      status: { $in: ['ACTIVE', 'RED_FLAG'] },
-      $or: assignmentPairs.map((entry) => ({ leadKey: entry.leadKey, staffId: entry.ownerId }))
+      status: { $in: ['ACTIVE', 'RED_FLAG'] }, $or: assignmentFilters
     });
     await Promise.all(assignments.map((record) => pauseAssignment(record, now)));
   }
+
   return Number(result.modifiedCount || 0);
 }
 
