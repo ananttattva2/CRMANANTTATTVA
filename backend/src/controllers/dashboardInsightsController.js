@@ -198,7 +198,7 @@ exports.overall = async (req, res) => {
 exports.uploadTracker = async (req, res) => {
   try {
     const financialYear = String(req.query.financialYear || '').trim();
-    if (!/^20\d{2}-\d{2}$/.test(financialYear)) return res.status(400).json({ error: 'Valid financialYear (YYYY-YY) is required.' });
+    if (req.query.assignmentsOnly !== 'true' && !/^20\d{2}-\d{2}$/.test(financialYear)) return res.status(400).json({ error: 'Valid financialYear (YYYY-YY) is required.' });
     const scope = await getVisibleUserScope(req.user);
     const excluded = await getAdminCreatedLeadReferences();
     const [clients, users, staffLeads] = await Promise.all([

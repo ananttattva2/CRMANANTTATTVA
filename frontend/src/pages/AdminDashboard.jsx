@@ -3982,16 +3982,17 @@ function downloadOperationsExcel(groups, financialYear) {
 function OperationsUserProgressTable({ rows = [], users = [], pdfMode = false, reportTime, financialYear = currentFinancialYear() }) {
   const [assignedClients, setAssignedClients] = useState(null)
   const [assignmentError, setAssignmentError] = useState('')
+  const [assignmentRefresh, setAssignmentRefresh] = useState(0)
   useEffect(() => {
     if (pdfMode) return
     const controller = new AbortController()
-    api.get('/dashboard-insights/upload-tracker', { params: { financialYear, assignmentsOnly: 'true' }, signal: controller.signal })
+    api.get('/dashboard-insights/upload-tracker', { params: { assignmentsOnly: 'true' }, signal: controller.signal, timeout: 45000 })
       .then(({ data }) => { setAssignedClients(data.assignments || []); setAssignmentError('') })
       .catch(error => { if (error.code !== 'ERR_CANCELED') setAssignmentError('Could not refresh manager-to-staff assignments. Please retry.') })
     return () => controller.abort()
-  }, [financialYear, pdfMode])
+  }, [pdfMode, assignmentRefresh])
   const reportRows = useMemo(() => {
-    if (!assignedClients) return rows
+    if (!assignedClients) return pdfMode ? rows : []
     const existing = new Map(rows.map(row => [String(row.client?._id || row.id), row]))
     return assignedClients.map(client => {
       const row = existing.get(String(client._id))
@@ -3999,10 +4000,11 @@ function OperationsUserProgressTable({ rows = [], users = [], pdfMode = false, r
       const assignment = client.selectedLead?.assignments?.find(item => item.assignedServiceId === client.assignedServiceId) || client.selectedLead?.assignments?.[0] || {}
       const poRecords = [...(assignment.poYearRows || []), ...(assignment.originalPoDetails ? [assignment.originalPoDetails] : [])]
       const financials = client.data?.financials || {}
-      const hasPo = poRecords.some(po => po.poNumber || po.poNo || po.poDate || po.poReceivedDate || po.poFileName) || Boolean(financials.compliancePoNo || financials.poNo || financials.poNumber || financials.compliancePoDate || financials.poDate || financials.compliancePoFileName || financials.poFileName)
+      // Lead assignments contribute to the total; confirmed PO progress comes from Client Master records.
+      const hasPo = !client.assignmentOnly && (poRecords.some(po => po.poNumber || po.poNo || po.poDate || po.poReceivedDate || po.poFileName) || Boolean(financials.compliancePoNo || financials.poNo || financials.poNumber || financials.compliancePoDate || financials.poDate || financials.compliancePoFileName || financials.poFileName))
       return { id: String(client._id), client, companyName: client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || client.data?.importMeta?.companyName || 'Untitled client', atplCode: client.data?.importMeta?.leadNumber || '', hasPo, poDetails: { ...poRecords[0], records: poRecords } }
     })
-  }, [rows, assignedClients])
+  }, [rows, assignedClients, pdfMode])
   const [activeTab, setActiveTab] = useState('ownership')
   const [expandedUser, setExpandedUser] = useState('')
   const [search, setSearch] = useState('')
@@ -4040,7 +4042,8 @@ function OperationsUserProgressTable({ rows = [], users = [], pdfMode = false, r
       <div className="operations-report-actions">{pdfMode ? <b><Users aria-hidden="true" />{groups.length} Operations users</b> : <div role="tablist" aria-label="Operations reports" className="flex flex-wrap gap-2"><button type="button" role="tab" aria-selected={activeTab === 'ownership'} className="operations-report-download" onClick={() => setActiveTab('ownership')}><Users aria-hidden="true" />{groups.length} Operations users</button><button type="button" role="tab" aria-selected={activeTab === 'data'} className="operations-report-download" onClick={() => setActiveTab('data')}>Purchase &amp; Sales</button></div>}{!pdfMode && activeTab === 'ownership' && <><button type="button" className="operations-report-download" disabled={!groups.length} onClick={() => downloadOperationsExcel(groups, financialYear)}><Download aria-hidden="true" />Export Excel</button><button type="button" className="operations-report-download" disabled={exporting || !groups.length} onClick={() => { setExportError(''); setPdfProgress('Preparing PDF…'); setExporting(true) }}><Download aria-hidden="true" />{exporting ? pdfProgress : 'Download full PDF'}</button></>}</div>
     </header>
     <div className="operations-report-meta"><span><CalendarDays aria-hidden="true" />Updated {formatDisplayDateTime(now)} IST</span><span>{pdfMode ? 'PDF contains aggregate user metrics only; client names are excluded.' : 'PDF includes every Operations user as an aggregate table without client names.'}</span></div>
-    {assignmentError && <p role="alert" className="operations-export-error">{assignmentError}</p>}
+    {assignmentError && <p role="alert" className="operations-export-error">{assignmentError} <button type="button" onClick={() => { setAssignmentError(''); setAssignmentRefresh(value => value + 1) }} className="ml-2 font-bold underline">Retry</button></p>}
+    {!pdfMode && !assignedClients && !assignmentError && <p role="status" className="p-5 text-sm text-slate-500">Loading all manager-to-staff assignments…</p>}
     {exportError && <p className="operations-export-error" role="alert">{exportError}</p>}
     {!pdfMode && <div className="operations-user-toolbar"><label><Search aria-hidden="true" /><input aria-label="Search Operations users or clients" placeholder="Search user, client or ATPL code" value={search} onChange={(event) => setSearch(event.target.value)} /></label><span>{new Set(groups.flatMap((group) => group.rows.map((row) => row.id))).size} assigned clients · {totals[48]} overdue assignments</span></div>}
     {activeTab === 'data' ? <PurchaseSalesProgress groups={visibleGroups} financialYear={financialYear} /> : <>

@@ -2,6 +2,23 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const helpers = import('../../frontend/src/utils/operationsUserProgress.mjs');
 
+test('all 49 permanent assignments remain the denominator for 39 confirmed Client Master POs', async () => {
+  const { mergeManagerStaffAllocations } = require('../src/services/managerStaffAllocations');
+  const { buildOperationsProgressGroups } = await helpers;
+  const leads = Array.from({ length: 49 }, (_, index) => ({ _id: `lead-${index}`,
+    serviceSelections: [{ assignedServiceId: 'service' }],
+    assignments: [{ assignedServiceId: 'service', assignedStaff: 'sonal' }] }));
+  const clients = leads.slice(0, 39).map((lead, index) => ({ _id: `client-${index}`,
+    assignedServiceId: 'service', selectedLead: lead }));
+  const rows = mergeManagerStaffAllocations(clients, leads).map(client => ({
+    id: client._id, client, hasPo: !client.assignmentOnly
+  }));
+  const [group] = buildOperationsProgressGroups(rows, [{ _id: 'sonal', name: 'SONAL MORE', role: 'operation' }], () => []);
+  assert.equal(group.total, 49);
+  assert.equal(group.poDone, 39);
+  assert.equal(group.rows.filter(row => !row.hasPo).length, 10);
+});
+
 test('operations PDF keeps the aggregate table and excludes client detail rows', () => {
   const fs = require('node:fs');
   const path = require('node:path');
