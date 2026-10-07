@@ -26,7 +26,7 @@ test('workflow email escapes user content and shows readable file names', () => 
 });
 
 test('CCL permanent Operations owner wins over Tushar admin metadata', () => {
-  const users = [{_id:'shubham',name:'SHUBHAM DESAI',role:'operation'}, {_id:'tushar',name:'TUSHAR GAWAS',role:'operations'}, {_id:'sales',name:'Sales User',role:'sales'}, {_id:'manager',name:'Manager',role:'manager'}];
+  const users = [{_id:'shubham',name:'SHUBHAM DESAI',role:'operation'}, {_id:'tushar',name:'TUSHAR GAWAS',role:'manager'}, {_id:'sales',name:'Sales User',role:'sales'}];
   const ccl = {_id:'ccl',createdBy:'tushar',adminControls:{assignedTo:'tushar'},selectedLead:{assignedStaff:'shubham'},data:{basic:{clientLegalName:'CCL FOOD AND BEVERAGES PVT LTD'}}};
   const own = {_id:'own',selectedLead:{assignedStaff:'tushar'}};
   const sales = {_id:'salesclient',adminControls:{assignedTo:'sales'}};
@@ -34,7 +34,7 @@ test('CCL permanent Operations owner wins over Tushar admin metadata', () => {
   assert.deepEqual(result.map(row => row.userId),['shubham','tushar']);
   assert.equal(result[0].clients.length,1); assert.equal(result[0].clients[0].clientId,'ccl');
   assert.equal(result[1].clients[0].clientId,'own'); assert.equal(result[1].purchase[5].complete,0);
-  assert.equal(buildUploadTracker([ccl],[users[1]],[],[]).length,0);
+  assert.equal(buildUploadTracker([ccl],[users[1]],[],[])[0].clients.length,0);
 });
 test('service allocation overrides importer/creator and snapshot assignments are respected', () => {
   const users = [{_id:'s',name:'Shubham',roles:['Operations']}, {_id:'t',name:'Tushar',role:'operation'}];
@@ -46,5 +46,15 @@ test('service allocation overrides importer/creator and snapshot assignments are
 test('legacy lead assignments without service IDs resolve the consistent permanent owner', () => {
   const clients = [{_id:'ccl',assignedServiceId:'legacy-service',data:{importMeta:{assignedTo:'Tushar'}},selectedLead:{assignments:[{assignedStaff:'s',assignedStaffText:'Shubham'},{assignedStaff:'s',assignedStaffText:'Shubham'}]}}];
   const result = buildUploadTracker(clients,[{_id:'s',name:'Shubham',role:'operation'},{_id:'t',name:'Tushar',role:'manager'}],[],[]);
-  assert.equal(result.length,1); assert.equal(result[0].userId,'s');
+  assert.equal(result.find(row => row.userId === 's').clients.length,1);
+  assert.equal(result.find(row => row.userId === 't').clients.length,0);
+});
+
+test('managers appear with their own allocations and zero-count managers remain visible', () => {
+  const users = [{_id:'t',name:'TUSHAR GAWAS',role:'manager'}, {_id:'b',name:'SAURABH BHAT',roles:['manager']}, {_id:'s',name:'SHUBHAM DESAI',role:'operation'}];
+  const result = buildUploadTracker([{_id:'t-client',selectedLead:{assignedStaff:'t'}},{_id:'s-client',selectedLead:{assignedStaff:'s'}}],users,[],[]);
+  assert.equal(result.length,3);
+  assert.equal(result.find(row => row.userId === 't').clients[0].clientId,'t-client');
+  assert.equal(result.find(row => row.userId === 'b').clients.length,0);
+  assert.equal(result.find(row => row.userId === 's').clients[0].clientId,'s-client');
 });

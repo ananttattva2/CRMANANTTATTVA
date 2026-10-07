@@ -10,10 +10,12 @@ function stageState(record, stage) {
 }
 function buildUploadTracker(clients, users, purchases, sales) {
   const identities = new Map();
-  users = users.filter(user => user.isActive !== false && userHasAnyRole(user, ['operation', 'operations']) && !userHasAnyRole(user, ['admin', 'superadmin', 'sales', 'manager']));
+  users = users.filter(user => user.isActive !== false && userHasAnyRole(user, ['operation', 'operations', 'manager']) && !userHasAnyRole(user, ['admin', 'superadmin', 'sales']));
   users.forEach(user => [user._id, user.crmUserId, user.name, user.email].filter(Boolean).forEach(value => identities.set(id(value).trim().toLowerCase(), user)));
   const index = records => new Map(records.map(record => [id(record.clientId), record]));
   const purchaseIndex = index(purchases), salesIndex = index(sales), groups = new Map();
+  const emptyGroup = user => ({ userId: id(user._id), userName: user.name || user.email || 'Team member', clients: [], slaReceived: 0, slaNotReceived: 0, purchase: STAGES.map(() => ({ complete: 0, progress: 0, pending: 0 })), sales: STAGES.map(() => ({ complete: 0, progress: 0, pending: 0 })) });
+  users.filter(user => userHasAnyRole(user, ['manager'])).forEach(user => groups.set(id(user._id), emptyGroup(user)));
   const seen = new Set();
   for (const client of clients) {
     const clientId = id(client._id);
@@ -27,7 +29,7 @@ function buildUploadTracker(clients, users, purchases, sales) {
     const user = ownerKeys.map(key => identities.get(key)).find(Boolean);
     if (!user) continue;
     const ownerId = id(user._id);
-    if (!groups.has(ownerId)) groups.set(ownerId, { userId: ownerId, userName: user?.name || user?.email || 'Unassigned', clients: [], slaReceived: 0, slaNotReceived: 0, purchase: STAGES.map(() => ({ complete: 0, progress: 0, pending: 0 })), sales: STAGES.map(() => ({ complete: 0, progress: 0, pending: 0 })) });
+    if (!groups.has(ownerId)) groups.set(ownerId, emptyGroup(user));
     const group = groups.get(ownerId);
     const detail = { clientId: id(client._id), clientName: client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || client.data?.importMeta?.companyName || 'Untitled client', slaReceived: client.sla?.status === 'Yes', purchase: STAGES.map(stage => stageState(purchaseIndex.get(id(client._id)), stage)), sales: STAGES.map(stage => stageState(salesIndex.get(id(client._id)), stage)) };
     group.clients.push(detail); group[detail.slaReceived ? 'slaReceived' : 'slaNotReceived']++;
