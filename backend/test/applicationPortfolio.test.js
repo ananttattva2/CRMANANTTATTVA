@@ -122,3 +122,33 @@ test('Annual Return and Annual Filing/Filling aliases appear in the same applica
   const [group] = buildApplicationPortfolio([a, b], users);
   assert.deepEqual(group.companyRecords.filter(row => row.annual).map(row => row.leadCode), ['ATPL-LEAD-0013', 'ATPL-LEAD-0412']);
 });
+
+
+test('service summary headers come only from closed assigned services and annual aliases merge', async () => {
+  const { buildApplicationPortfolio, offeredServiceColumns } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const a = client('a', 'sonal', 'Producer'); a.assignedServiceId = 'a'; a.selectedLead.assignments = [{ assignedStaff: 'sonal', assignedServiceId: 'a', closedAt: '2026-10-01' }]; a.data.basic.servicesOffered = 'Annual Filling';
+  const b = client('b', 'sonal', 'Importer'); b.assignedServiceId = 'b'; b.selectedLead.assignments = [{ assignedStaff: 'sonal', assignedServiceId: 'b', closedAt: '2026-10-01' }]; b.data.basic.servicesOffered = 'Annual Return Filling';
+  const c = client('c', 'sonal', 'Producer'); c.selectedLead.company = 'Other Ltd'; c.data.basic.servicesOffered = 'Consulting';
+  const d = client('d', 'krishna', 'Importer'); d.assignedServiceId = 'd'; d.selectedLead.assignments = [{ assignedStaff: 'krishna', assignedServiceId: 'd', closedAt: '2026-10-01' }]; d.data.basic.servicesOffered = 'New Registration';
+  const groups = buildApplicationPortfolio([a, b, c, d], users);
+  assert.deepEqual(offeredServiceColumns(groups), ['Annual Return Filling', 'New Registration']);
+  const sonal = groups.find(group => group.id === 'sonal');
+  assert.equal(sonal.closedCompanies.length, 1);
+  assert.equal(sonal.closedCompanies[0].services.length, 2);
+  assert.equal(sonal.closedCompanies[0].services.filter(service => service.offeredServices.includes('Annual Return Filling')).length, 2);
+});
+
+test('service summary ignores an open assigned service even when a sibling service is closed', async () => {
+  const { applicationRecord } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const row = client('a', 'sonal', 'Importer'); row.assignedServiceId = 'open';
+  row.selectedLead.assignments = [{ assignedServiceId: 'closed', closedAt: '2026-10-01' }, { assignedServiceId: 'open', assignedStaff: 'sonal' }];
+  assert.equal(applicationRecord(row).closed, false);
+});
+
+
+test('legacy closed-by records qualify as closed without fabricating a close timestamp', async () => {
+  const { applicationRecord } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const row = client('a', 'sonal', 'Producer'); row.assignedServiceId = 'a';
+  row.selectedLead.assignments = [{ assignedServiceId: 'a', closedByText: 'Sonal' }];
+  assert.equal(applicationRecord(row).closed, true);
+});
