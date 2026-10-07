@@ -12,14 +12,22 @@ export function applicationSummaryRecords(group) {
     const priority = ['rejected', 'underReview', 'applied', 'notStarted', 'approved']
     const bucket = priority.find(status => record.services.some(service => service.bucket === status))
     const labels = { rejected: 'Rejected', underReview: 'Under Review', applied: 'Applied', notStarted: 'Not Started', approved: 'Approved' }
-    return { ...record, bucket, cpcb: labels[bucket] }
+    const summaryService = applicationSummaryService(record)
+    return { ...record, bucket, cpcb: labels[bucket], summaryService,
+      offered: summaryService === 'unclassified' ? 'Not Closed / Service Not Recorded' : summaryService }
   })
 }
 export function matchesApplicationService(record, key) {
   if (key === 'total') return true
+  return applicationSummaryService(record) === key
+}
+export function applicationSummaryService(record) {
   const closed = record.services.filter(service => service.closed)
-  if (key === 'unclassified') return !closed.some(service => service.offeredServices.length)
-  return closed.some(service => service.offeredServices.includes(key))
+  // Keep the representative application used by the Clients export. Retain
+  // sibling assignments in details rather than counting this application twice.
+  const representative = closed.find(service => service.id === record.id && service.offeredServices.length)
+    || closed.find(service => service.offeredServices.length)
+  return representative?.offeredServices[0] || 'unclassified'
 }
 export function cpcbStatusBucket(value) {
   const status = String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
