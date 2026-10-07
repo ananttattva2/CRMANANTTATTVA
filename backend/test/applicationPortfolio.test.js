@@ -32,8 +32,8 @@ test('annual eligibility follows saved year and applicant labels resolve the ass
   row.selectedLead.serviceSelections = [{ assignedServiceId: 'producer', subApplicantType: 'Producer' }, { assignedServiceId: 'importer', subApplicantType: 'Importer', firstAnnualReturnYearApplicable: '2025-26' }];
   assert.equal(applicationRecord(row).category, 'Importer');
   assert.equal(applicationRecord(row).annual, true);
-  assert.equal(applicantCategory('Importer of Raw Material'), 'SIMP Importer of Raw Material');
-  assert.equal(applicantCategory('Producer (Small & Micro)'), 'SIMP Producer (Small & Micro)');
+  assert.equal(applicantCategory('Importer of Raw Material'), 'Importer of Raw Material');
+  assert.equal(applicantCategory('Producer (Small & Micro)'), 'Producer (Small & Micro)');
   assert.equal(applicantCategory('Recycler'), 'Recycler');
 });
 
@@ -65,4 +65,15 @@ test('company approval requires all assigned service statuses approved; missing 
   assert.equal(group.companyRecords[0].bucket, 'notStarted');
   assert.equal(group.companyRecords[0].services[1].cpcb, 'Not recorded');
   assert.equal(group.companyRecords[0].live, true);
+});
+
+
+test('PIBo headers match the seven requested categories and SIMP producer variants merge', async () => {
+  const { PIBO_CATEGORIES, applicantCategory, buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  assert.deepEqual(PIBO_CATEGORIES, ['Producer', 'Brand Owner', 'PWP', 'Importer', 'Producer (Small & Micro)', 'Importer of Raw Material', 'Recycler']);
+  assert.equal(applicantCategory('SIMP Producer Small-Micro'), 'Producer (Small & Micro)');
+  assert.equal(applicantCategory('SIMP Producer (Small & Micro)'), 'Producer (Small & Micro)');
+  assert.equal(applicantCategory('SIMP Importer of Raw Material'), 'Importer of Raw Material');
+  const [group] = buildApplicationPortfolio([client('a', 'sonal', 'SIMP Producer Small-Micro'), client('b', 'sonal', 'Producer (Small & Micro)')], users);
+  assert.equal(group.records.length, 1);
 });

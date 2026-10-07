@@ -39,7 +39,7 @@ export default function ApplicationPortfolio({ mode }) {
   const reportGroups = useMemo(() => distribution ? groups : groups.map(group => ({ ...group, records: group.companyRecords })), [groups, distribution])
   const shown = reportGroups.filter(group => `${group.name} ${group.records.map(row => row.name).join(' ')}`.toLowerCase().includes(query.toLowerCase()))
   const allRecords = shown.flatMap(group => group.records)
-  const categories = useMemo(() => [...PIBO_CATEGORIES, ...new Set(groups.flatMap(group => group.records.map(row => row.category)).filter(category => !PIBO_CATEGORIES.includes(category)))], [groups])
+  const categories = PIBO_CATEGORIES
   const columns = distribution ? categories.map(category => [category, category]) : STATUS_COLUMNS
   const matches = (row, key) => distribution ? row.category === key : key === 'live' ? row.live : key === 'annual' ? row.annual : row.bucket === key
   const open = (name, records, label = 'All categories') => setSelection({ name, records, label })

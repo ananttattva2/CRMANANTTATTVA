@@ -1,6 +1,6 @@
 import { buildOperationsProgressGroups, assignedCompanyKey } from './operationsUserProgress.mjs'
 
-export const PIBO_CATEGORIES = ['Producer', 'Importer', 'Brand Owner', 'SIMP Producer Small-Micro', 'PWP', 'SIMP Producer (Small & Micro)', 'SIMP Importer of Raw Material', 'SIMP Seller']
+export const PIBO_CATEGORIES = ['Producer', 'Brand Owner', 'PWP', 'Importer', 'Producer (Small & Micro)', 'Importer of Raw Material', 'Recycler']
 export const STATUS_COLUMNS = [
   ['live', 'Live Clients'], ['annual', 'Annual Return Applicable'],
   ['notStarted', 'Not Started'], ['applied', 'Applied'], ['underReview', 'Under Review'],
@@ -28,9 +28,10 @@ const text = (...values) => values.find(value => typeof value === 'string' && va
 const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 export function applicantCategory(value) {
   const key = normalize(value)
-  if ((key.includes('simp') || key.includes('rawmaterial')) && key.includes('import')) return PIBO_CATEGORIES[6]
-  if (key.includes('simp') && key.includes('seller')) return PIBO_CATEGORIES[7]
-  if ((key.includes('simp') || key.includes('smallmicro')) && key.includes('produc')) return String(value).includes('(') ? PIBO_CATEGORIES[5] : PIBO_CATEGORIES[3]
+  if (key.includes('rawmaterial') && key.includes('import')) return 'Importer of Raw Material'
+  if (key.includes('simp') && key.includes('import')) return 'Importer of Raw Material'
+  if ((key.includes('simp') || key.includes('smallmicro')) && key.includes('produc')) return 'Producer (Small & Micro)'
+  if (key.includes('recycler')) return 'Recycler'
   if (key.includes('brandowner')) return 'Brand Owner'
   if (key.includes('importer')) return 'Importer'
   if (key.includes('producer')) return 'Producer'
