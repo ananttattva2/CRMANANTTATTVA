@@ -70,7 +70,7 @@ import api, { storeSessionUser } from '../services/api'
 import { API_ENDPOINTS } from '../services/apiEndpoints'
 import { downloadOperationMisPdf } from '../utils/productivityReportExports'
 import { formatDisplayDate, formatDisplayDateTime } from '../utils/dateFormat'
-import { allocationOwnerKeys, buildOperationsProgressGroups, buildOperationsWorkbookData, getOperationsStatusDates, getOperationsFinalFlag, getPoFinancialYear, permanentStaffOwnerKeys, selectRowsForPoFinancialYear, operationsClientWindow } from '../utils/operationsUserProgress.mjs'
+import { allocationOwnerKeys, buildOperationsProgressGroups, buildOperationsWorkbookData, getOperationsStatusDates, getOperationsFinalFlag, getPoFinancialYear, permanentStaffOwnerKeys, selectRowsForPoFinancialYear } from '../utils/operationsUserProgress.mjs'
 import { downloadOperationsReportPdf } from '../utils/operationsReportPdf.mjs'
 
 const CALENDAR_TODO_STORAGE_KEY = 'crm.calendar.todos.v1'
@@ -3980,22 +3980,27 @@ function downloadOperationsExcel(groups, financialYear) {
 }
 
 const OperationsClientDetails = React.memo(function OperationsClientDetails({ group }) {
-  const [scrollTop, setScrollTop] = useState(0)
-  const { start, end, rowHeight } = operationsClientWindow(group.rows.length, scrollTop)
-  return <div className="operations-client-details operations-windowed-clients" onScroll={event => setScrollTop(event.currentTarget.scrollTop)}>
+  const [expandedCompany, setExpandedCompany] = useState(null)
+  return <div className="operations-client-details operations-company-details">
                 <header><strong>{group.name} · Assigned clients</strong><span>{group.total} client records</span></header>
-                {group.rows.length ? <table><thead><tr><th>Client Name</th><th>Compliance Status</th><th>PO Status</th>{OPERATIONS_PROGRESS_MILESTONES.map((hours) => <th key={hours}>{hours}h+ Red Flag</th>)}<th>Final Flag</th></tr></thead>
-                  <tbody>{start > 0 && <tr aria-hidden="true" className="operations-window-spacer"><td colSpan={7} style={{ height: start * rowHeight }} /></tr>}{group.rows.slice(start, end).map((row) => {
+                {group.rows.length ? <div className="operations-company-list">{group.rows.map(company => <section key={company.id}>
+                  <button type="button" className="operations-company-toggle" aria-expanded={expandedCompany === company.id} onClick={() => setExpandedCompany(current => current === company.id ? null : company.id)}><span>{expandedCompany === company.id ? '⌄' : '›'}</span><strong>{company.companyName}</strong></button>
+                  {expandedCompany === company.id && <div className="operations-company-services"><table><thead><tr><th>Client / Applicant</th><th>Compliance Status</th><th>PO Status</th>{OPERATIONS_PROGRESS_MILESTONES.map(hours => <th key={hours}>{hours}h+ Red Flag</th>)}<th>Final Flag</th></tr></thead><tbody>{(company.serviceRows || [company]).map(row => {
+                    const basic = row.client?.data?.basic || {}
+                    const services = row.client?.selectedLead?.serviceSelections || []
+                    const service = services.find(item => String(item.assignedServiceId || item.serviceAssignmentId || '') === String(row.client?.assignedServiceId || '')) || (services.length === 1 ? services[0] : {})
+                    const applicant = basic.piboCategory || basic.subApplicantType || service.subApplicantType || service.piboCategory || basic.applicantType || service.applicantType || 'Applicant not recorded'
                     const approval = row.client?.operationsSla?.approvalStatus || row.client?.adminControls?.approvalStatus || 'PENDING'
                     const statusDates = getOperationsStatusDates(row)
-                    return <tr key={row.id} style={{ height: rowHeight }}><td><div className="operations-client-name"><FileText aria-hidden="true" /><span><strong title={row.companyName}>{row.companyName}</strong><small>{row.atplCode}</small></span></div></td>
+                    return <tr key={row.id} ><td><div className="operations-client-name"><FileText aria-hidden="true" /><span><strong title={row.companyName}>{row.companyName}</strong><small>{applicant} · {row.atplCode}</small></span></div></td>
                       <td><em className={approval === 'APPROVED' ? 'status-applicable' : 'status-partial'}>{String(approval).replace(/_/g, ' ')}</em><small className="operations-status-date"><CalendarDays aria-hidden="true" />{statusDates.compliance.value ? `${statusDates.compliance.label} ${formatDisplayDateTime(statusDates.compliance.value)}` : 'Status date not recorded'}</small></td>
                       <td><em className={row.hasPo ? 'status-received' : 'status-missing'}>{row.hasPo ? 'Received' : 'Pending'}</em><small className="operations-status-date"><CalendarDays aria-hidden="true" />{statusDates.po.value ? `PO date ${formatDisplayDate(statusDates.po.value)}` : row.hasPo ? 'PO date not recorded' : 'Awaiting PO'}</small>{row.poDetails?.poNo && <small className="operations-po-number">PO #{row.poDetails.poNo}</small>}{row.poDetails?.fileUrl && <a className="operations-po-proof-link" href={row.poDetails.fileUrl} target="_blank" rel="noopener noreferrer"><Eye aria-hidden="true" />View PO Proof</a>}</td>
 
                       {OPERATIONS_PROGRESS_MILESTONES.map((hours) => <td key={hours}><em className={row.sla[hours].breached ? 'status-missing' : row.sla[hours].known ? 'status-received' : 'status-neutral'}>{row.sla[hours].breached ? 'Red flag' : row.sla[hours].known ? 'Clear' : 'No correction deadline'}</em>{row.sla[hours].due && <small className="operations-sla-date">Due {formatDisplayDateTime(row.sla[hours].due)}</small>}</td>)}
                       <td><OperationsFinalFlag sla={row.sla} /></td>
                     </tr>
-                  })}{end < group.rows.length && <tr aria-hidden="true" className="operations-window-spacer"><td colSpan={7} style={{ height: (group.rows.length - end) * rowHeight }} /></tr>}</tbody></table> : <p className="operations-client-empty">No clients allocated to this Operations user.</p>}
+                  })}</tbody></table></div>}
+                </section>)}</div> : <p className="operations-client-empty">No clients allocated to this Operations user.</p>}
               </div>
 })
 

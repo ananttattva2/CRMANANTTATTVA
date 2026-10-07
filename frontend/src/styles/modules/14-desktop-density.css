@@ -498,3 +498,23 @@
 .operations-windowed-clients{overscroll-behavior:contain;contain:layout paint;scroll-behavior:auto}
 .operations-windowed-clients>table>tbody>tr:not(.operations-window-spacer){height:128px}
 .operations-windowed-clients .operations-window-spacer>td{padding:0!important;border:0!important;font-size:0!important;line-height:0!important}
+
+.operations-company-list section { border-bottom: 1px solid #e4edf2; }
+.operations-company-toggle { display:flex; align-items:center; gap:14px; width:100%; padding:18px 20px; text-align:left; background:white; border:0; color:#18384d; cursor:pointer; }
+.operations-company-toggle:hover, .operations-company-toggle[aria-expanded="true"] { background:#f0faf7; }
+.operations-company-services { overflow-x:auto; padding:0 12px 12px; }
+.operations-company-details .operations-company-services table { min-width:1200px; }
+.operations-company-details .operations-company-services td { height:120px; }
+.client-applicant-picker { width:min(600px, calc(100vw - 32px)); max-height:85vh; overflow:auto; border:1px solid #dbe7ee; border-radius:22px; padding:28px; color:#18384d; box-shadow:0 24px 80px #122c3940; }
+.client-applicant-picker::backdrop { background:#14273488; }
+.client-applicant-picker header { display:flex; justify-content:space-between; gap:20px; align-items:flex-start; }
+.client-applicant-picker header small { color:#238083; letter-spacing:2px; font-size:10px; }
+.client-applicant-picker h2 { font-size:24px; margin:8px 0; }
+.client-applicant-picker header button { border:1px solid #dbe7ee; background:white; border-radius:10px; padding:8px; }
+.applicant-picker-hint { margin:20px 0; color:#657d90; }
+.applicant-picker-options { display:grid; gap:12px; }
+.applicant-picker-options button { display:flex; gap:16px; align-items:center; text-align:left; border:1px solid #dbe7ee; border-radius:14px; padding:18px; background:white; color:#23797d; cursor:pointer; }
+.applicant-picker-options button:hover { background:#f0faf7; border-color:#23797d; }
+.applicant-picker-options span { flex:1; display:grid; gap:5px; }
+.applicant-picker-options strong { font-size:16px; }
+.applicant-picker-options small { color:#657d90; font-size:12px; }

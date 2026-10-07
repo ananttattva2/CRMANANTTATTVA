@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronLeft, ChevronRigh
 import { useLocation, useNavigate } from 'react-router-dom';
 import { DeactivationApprovals } from '../features/clientMaster/ClientDeactivation';
 import DashboardShell from '../components/dashboard/DashboardShell';
+import ClientApplicantPicker from '../components/ClientApplicantPicker';
 import ProfileModal from '../components/dashboard/ProfileModal';
 import ApprovalTabs from '../components/dashboard/ApprovalTabs';
 import BrandLoader from '../components/BrandLoader';
@@ -651,6 +652,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
     try { return JSON.parse(localStorage.getItem('user') || 'null'); } catch { return null; }
   });
   const [profileOpen, setProfileOpen] = useState(false);
+  const [clientReviewSelection, setClientReviewSelection] = useState(null);
   const cachedApprovalData = useMemo(() => readPendingApprovalCache(currentUser), []);
   const [pendingClients, setPendingClients] = useState(() => cachedApprovalData?.pendingClients || []);
   const [pendingQuotations, setPendingQuotations] = useState(() => cachedApprovalData?.pendingQuotations || []);
@@ -1321,7 +1323,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
 
   function openClientMaster(row) {
     if (!row?.id) return;
-    navigate(`/pending-approval/clients/${row.id}/review`);
+    setClientReviewSelection(row);
   }
 
   async function approveAllPendingQuotations() {
@@ -1865,6 +1867,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
           onUpdatePassword={handleUpdatePassword}
         />
       )}
+      {clientReviewSelection && <ClientApplicantPicker row={clientReviewSelection} onClose={() => setClientReviewSelection(null)} onSelect={service => { setClientReviewSelection(null); navigate(`/pending-approval/clients/${service.clientMasterId}/review`); }} />}
     </ApprovalShell>
   );
 }

@@ -170,7 +170,7 @@ exports.overall = async (req, res) => {
         .populate('selectedLead', [
           'company', 'companyName', 'assignedTo', 'assignedToText', 'assignedToEmail', 'assignedStaff', 'assignedStaffText', 'assignedStaffEmail',
           'firstAnnualReturnYearApplicable',
-          'serviceSelections.assignedServiceId', 'serviceSelections.serviceAssignmentId',
+          'serviceSelections.assignedServiceId', 'serviceSelections.serviceAssignmentId', 'serviceSelections.subApplicantType', 'serviceSelections.piboCategory', 'serviceSelections.applicantType',
           'serviceSelections.firstAnnualReturnYearApplicable', 'serviceSelections.financialYear', 'serviceSelections.servicesForYear',
           'assignments.assignedServiceId', 'assignments.serviceAssignmentId',
           'assignments.assignedTo', 'assignments.assignedToText', 'assignments.assignedToEmail',
@@ -203,7 +203,7 @@ exports.uploadTracker = async (req, res) => {
     const scope = await getVisibleUserScope(req.user);
     const excluded = await getAssignmentDashboardLeadReferences();
     const [clients, users, staffLeads] = await Promise.all([
-      Client.find(dashboardClientExclusionFilter(excluded)).select('_id createdBy assignedServiceId adminControls serviceAllocations data.basic data.importMeta data.selectedLeadSnapshot data.serviceAllocations data.financials data.otp data.authorised data.coordinating createdAt submittedAt sla.status selectedLead').populate('selectedLead', 'company companyName assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail assignments serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId').maxTimeMS(15000).lean(),
+      Client.find(dashboardClientExclusionFilter(excluded)).select('_id createdBy assignedServiceId adminControls serviceAllocations data.basic data.importMeta data.selectedLeadSnapshot data.serviceAllocations data.financials data.otp data.authorised data.coordinating createdAt submittedAt sla.status selectedLead').populate('selectedLead', 'company companyName assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail assignments serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId serviceSelections.subApplicantType serviceSelections.piboCategory serviceSelections.applicantType').maxTimeMS(15000).lean(),
       visibleUsers(scope, req.user),
       Lead.find(dashboardLeadExclusionFilter(excluded)).select('_id company companyName leadCode sourceLeadId assignments serviceSelections firstAnnualReturnYearApplicable').maxTimeMS(15000).lean()
     ]);
