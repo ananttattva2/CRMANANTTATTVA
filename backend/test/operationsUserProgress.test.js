@@ -2,6 +2,20 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const helpers = import('../../frontend/src/utils/operationsUserProgress.mjs');
 
+test('client scroll window renders at most ten rows and reaches every assigned client', async () => {
+  const { operationsClientWindow } = await helpers;
+  const seen = new Set();
+  for (let offset = 0; offset <= 49 * 128; offset += 64) {
+    const { start, end, rowHeight } = operationsClientWindow(49, offset);
+    assert.ok(end - start <= 10);
+    assert.equal(start * rowHeight + (end - start) * rowHeight + (49 - end) * rowHeight, 49 * 128);
+    for (let index = start; index < end; index++) seen.add(index);
+  }
+  assert.equal(seen.size, 49);
+  assert.deepEqual(operationsClientWindow(0), { start: 0, end: 0, rowHeight: 128 });
+  assert.deepEqual(operationsClientWindow(3, 10000), { start: 0, end: 3, rowHeight: 128 });
+});
+
 test('all 49 permanent assignments remain the denominator for 39 confirmed Client Master POs', async () => {
   const { mergeManagerStaffAllocations } = require('../src/services/managerStaffAllocations');
   const { buildOperationsProgressGroups } = await helpers;

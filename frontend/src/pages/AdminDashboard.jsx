@@ -70,7 +70,7 @@ import api, { storeSessionUser } from '../services/api'
 import { API_ENDPOINTS } from '../services/apiEndpoints'
 import { downloadOperationMisPdf } from '../utils/productivityReportExports'
 import { formatDisplayDate, formatDisplayDateTime } from '../utils/dateFormat'
-import { allocationOwnerKeys, buildOperationsProgressGroups, buildOperationsWorkbookData, getOperationsStatusDates, getOperationsFinalFlag, getPoFinancialYear, permanentStaffOwnerKeys, selectRowsForPoFinancialYear } from '../utils/operationsUserProgress.mjs'
+import { allocationOwnerKeys, buildOperationsProgressGroups, buildOperationsWorkbookData, getOperationsStatusDates, getOperationsFinalFlag, getPoFinancialYear, permanentStaffOwnerKeys, selectRowsForPoFinancialYear, operationsClientWindow } from '../utils/operationsUserProgress.mjs'
 import { downloadOperationsReportPdf } from '../utils/operationsReportPdf.mjs'
 
 const CALENDAR_TODO_STORAGE_KEY = 'crm.calendar.todos.v1'
@@ -3979,7 +3979,27 @@ function downloadOperationsExcel(groups, financialYear) {
   XLSX.writeFile(workbook, `Operations-Dashboard-${yearLabel}-${new Date().toISOString().slice(0, 10)}.xlsx`)
 }
 
-function OperationsUserProgressTable({ rows = [], users = [], pdfMode = false, reportTime, financialYear = currentFinancialYear() }) {
+const OperationsClientDetails = React.memo(function OperationsClientDetails({ group }) {
+  const [scrollTop, setScrollTop] = useState(0)
+  const { start, end, rowHeight } = operationsClientWindow(group.rows.length, scrollTop)
+  return <div className="operations-client-details operations-windowed-clients" onScroll={event => setScrollTop(event.currentTarget.scrollTop)}>
+                <header><strong>{group.name} · Assigned clients</strong><span>{group.total} client records</span></header>
+                {group.rows.length ? <table><thead><tr><th>Client Name</th><th>Compliance Status</th><th>PO Status</th>{OPERATIONS_PROGRESS_MILESTONES.map((hours) => <th key={hours}>{hours}h+ Red Flag</th>)}<th>Final Flag</th></tr></thead>
+                  <tbody>{start > 0 && <tr aria-hidden="true" className="operations-window-spacer"><td colSpan={7} style={{ height: start * rowHeight }} /></tr>}{group.rows.slice(start, end).map((row) => {
+                    const approval = row.client?.operationsSla?.approvalStatus || row.client?.adminControls?.approvalStatus || 'PENDING'
+                    const statusDates = getOperationsStatusDates(row)
+                    return <tr key={row.id} style={{ height: rowHeight }}><td><div className="operations-client-name"><FileText aria-hidden="true" /><span><strong title={row.companyName}>{row.companyName}</strong><small>{row.atplCode}</small></span></div></td>
+                      <td><em className={approval === 'APPROVED' ? 'status-applicable' : 'status-partial'}>{String(approval).replace(/_/g, ' ')}</em><small className="operations-status-date"><CalendarDays aria-hidden="true" />{statusDates.compliance.value ? `${statusDates.compliance.label} ${formatDisplayDateTime(statusDates.compliance.value)}` : 'Status date not recorded'}</small></td>
+                      <td><em className={row.hasPo ? 'status-received' : 'status-missing'}>{row.hasPo ? 'Received' : 'Pending'}</em><small className="operations-status-date"><CalendarDays aria-hidden="true" />{statusDates.po.value ? `PO date ${formatDisplayDate(statusDates.po.value)}` : row.hasPo ? 'PO date not recorded' : 'Awaiting PO'}</small>{row.poDetails?.poNo && <small className="operations-po-number">PO #{row.poDetails.poNo}</small>}{row.poDetails?.fileUrl && <a className="operations-po-proof-link" href={row.poDetails.fileUrl} target="_blank" rel="noopener noreferrer"><Eye aria-hidden="true" />View PO Proof</a>}</td>
+
+                      {OPERATIONS_PROGRESS_MILESTONES.map((hours) => <td key={hours}><em className={row.sla[hours].breached ? 'status-missing' : row.sla[hours].known ? 'status-received' : 'status-neutral'}>{row.sla[hours].breached ? 'Red flag' : row.sla[hours].known ? 'Clear' : 'No correction deadline'}</em>{row.sla[hours].due && <small className="operations-sla-date">Due {formatDisplayDateTime(row.sla[hours].due)}</small>}</td>)}
+                      <td><OperationsFinalFlag sla={row.sla} /></td>
+                    </tr>
+                  })}{end < group.rows.length && <tr aria-hidden="true" className="operations-window-spacer"><td colSpan={7} style={{ height: (group.rows.length - end) * rowHeight }} /></tr>}</tbody></table> : <p className="operations-client-empty">No clients allocated to this Operations user.</p>}
+              </div>
+})
+
+const OperationsUserProgressTable = React.memo(function OperationsUserProgressTable({ rows = [], users = [], pdfMode = false, reportTime, financialYear = currentFinancialYear() }) {
   const [assignedClients, setAssignedClients] = useState(null)
   const [assignmentError, setAssignmentError] = useState('')
   const [assignmentRefresh, setAssignmentRefresh] = useState(0)
@@ -4055,7 +4075,7 @@ function OperationsUserProgressTable({ rows = [], users = [], pdfMode = false, r
             const open = !pdfMode && expandedUser === group.id
             const initials = group.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'U'
             return <React.Fragment key={group.id}>
-              <motion.tr className={`operations-user-summary-row ${open ? 'is-open' : ''}`} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: groupIndex * .045 }}>
+              <tr className={`operations-user-summary-row ${open ? 'is-open' : ''}`}>
                 <td><button type="button" className="operations-user-toggle" aria-expanded={open} onClick={() => setExpandedUser(open ? '' : group.id)}><ChevronRight aria-hidden="true" /><i className={`avatar-${tones[groupIndex % tones.length]}`}>{initials}</i><strong>{group.name}</strong></button></td>
                 <td><b>{group.total}</b></td>
                 <td><OperationsProgressValue done={group.complianceDone} total={group.total} tone={group.complianceDone === group.total ? 'green' : 'red'} /></td>
@@ -4063,22 +4083,8 @@ function OperationsUserProgressTable({ rows = [], users = [], pdfMode = false, r
                 {OPERATIONS_PROGRESS_MILESTONES.map((hours) => <td key={hours}><OperationsProgressValue done={group.milestones[hours]} total={group.total} tone={group.milestones[hours] ? 'red' : 'green'} /></td>)}
                 <td><OperationsFinalFlag rows={group.rows} /></td>
                 <td><button type="button" className="operations-user-view" aria-label={`${open ? 'Hide' : 'View'} ${group.name} clients`} onClick={() => setExpandedUser(open ? '' : group.id)}><Eye aria-hidden="true" /></button></td>
-              </motion.tr>
-              {open && <tr className="operations-user-detail-row"><td colSpan={9}><div className="operations-client-details">
-                <header><strong>{group.name} · Assigned clients</strong><span>{group.total} client records</span></header>
-                {group.rows.length ? <table><thead><tr><th>Client Name</th><th>Compliance Status</th><th>PO Status</th>{OPERATIONS_PROGRESS_MILESTONES.map((hours) => <th key={hours}>{hours}h+ Red Flag</th>)}<th>Final Flag</th></tr></thead>
-                  <tbody>{group.rows.map((row) => {
-                    const approval = row.client?.operationsSla?.approvalStatus || row.client?.adminControls?.approvalStatus || 'PENDING'
-                    const statusDates = getOperationsStatusDates(row)
-                    return <tr key={row.id}><td><div className="operations-client-name"><FileText aria-hidden="true" /><span><strong title={row.companyName}>{row.companyName}</strong><small>{row.atplCode}</small></span></div></td>
-                      <td><em className={approval === 'APPROVED' ? 'status-applicable' : 'status-partial'}>{String(approval).replace(/_/g, ' ')}</em><small className="operations-status-date"><CalendarDays aria-hidden="true" />{statusDates.compliance.value ? `${statusDates.compliance.label} ${formatDisplayDateTime(statusDates.compliance.value)}` : 'Status date not recorded'}</small></td>
-                      <td><em className={row.hasPo ? 'status-received' : 'status-missing'}>{row.hasPo ? 'Received' : 'Pending'}</em><small className="operations-status-date"><CalendarDays aria-hidden="true" />{statusDates.po.value ? `PO date ${formatDisplayDate(statusDates.po.value)}` : row.hasPo ? 'PO date not recorded' : 'Awaiting PO'}</small>{row.poDetails?.poNo && <small className="operations-po-number">PO #{row.poDetails.poNo}</small>}{row.poDetails?.fileUrl && <a className="operations-po-proof-link" href={row.poDetails.fileUrl} target="_blank" rel="noopener noreferrer"><Eye aria-hidden="true" />View PO Proof</a>}</td>
-
-                      {OPERATIONS_PROGRESS_MILESTONES.map((hours) => <td key={hours}><em className={row.sla[hours].breached ? 'status-missing' : row.sla[hours].known ? 'status-received' : 'status-neutral'}>{row.sla[hours].breached ? 'Red flag' : row.sla[hours].known ? 'Clear' : 'No correction deadline'}</em>{row.sla[hours].due && <small className="operations-sla-date">Due {formatDisplayDateTime(row.sla[hours].due)}</small>}</td>)}
-                      <td><OperationsFinalFlag sla={row.sla} /></td>
-                    </tr>
-                  })}</tbody></table> : <p className="operations-client-empty">No clients allocated to this Operations user.</p>}
-              </div></td></tr>}
+              </tr>
+              {open && <tr className="operations-user-detail-row"><td colSpan={9}><OperationsClientDetails key={group.id} group={group} /></td></tr>}
             </React.Fragment>
           })}
         </tbody>
@@ -4089,7 +4095,7 @@ function OperationsUserProgressTable({ rows = [], users = [], pdfMode = false, r
     {!groups.length && <div className="operations-user-status-empty"><Users aria-hidden="true" /><strong>No assigned client records found</strong></div>}
     {!pdfMode && exporting && <div ref={pdfRef} className="operations-pdf-source" aria-hidden="true"><OperationsUserProgressTable rows={reportRows} users={users} pdfMode reportTime={now} /></div>}
   </section>
-}
+})
 
 function EprAnalyticsDashboard({ rows = [], complianceRows = [], leads = [], users = [], onRefresh }) {
   const leadPoRows = useMemo(() => buildLeadPoRows(leads, users), [leads, users])

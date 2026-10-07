@@ -493,3 +493,8 @@
 .pending-po-submitted{margin-top:18px;border:1px solid #dbe7e5;border-radius:14px;overflow:hidden;background:#fff}.pending-po-submitted>header{display:flex;justify-content:space-between;gap:12px;padding:14px 16px;background:#ecfdf5;color:#065f46;font-size:13px}.pending-po-submitted>header span{font-size:11px}.pending-po-submitted-scroll{overflow:auto}.pending-po-submitted table{width:100%;min-width:1220px;border-collapse:collapse;text-align:left}.pending-po-submitted th{padding:13px 12px;background:#f1f5f9;color:#475569;font-size:11px;white-space:nowrap}.pending-po-submitted td{padding:16px 12px;border-top:1px solid #e2e8f0;font-size:12px;vertical-align:top;color:#334155;white-space:nowrap}.pending-po-submitted td.pending-po-payment{white-space:pre-wrap;overflow-wrap:anywhere;min-width:160px;max-width:240px}.pending-po-earlier-proof{display:inline-block;margin:12px 16px;font-size:12px;font-weight:800;color:#047857}.pending-po-review-loading{margin-top:18px;padding:18px;background:#f1f5f9;border-radius:12px;color:#64748b}.pending-po-review-error{margin-top:18px;padding:18px;background:#fef2f2;color:#b91c1c;border-radius:12px}.pending-po-review-error button{margin-left:12px;text-decoration:underline;font-weight:800}
 
 .pending-po-review-modal .pending-decision-field textarea{min-height:90px;height:110px}
+
+/* Keep the expanded client list bounded to the visible scroll window. */
+.operations-windowed-clients{overscroll-behavior:contain;contain:layout paint;scroll-behavior:auto}
+.operations-windowed-clients>table>tbody>tr:not(.operations-window-spacer){height:128px}
+.operations-windowed-clients .operations-window-spacer>td{padding:0!important;border:0!important;font-size:0!important;line-height:0!important}

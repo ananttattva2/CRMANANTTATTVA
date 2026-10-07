@@ -1,4 +1,9 @@
 const key = (value) => String(value || '').trim().toLowerCase()
+export function operationsClientWindow(count, scrollTop = 0) {
+  const rowHeight = 128
+  const start = Math.min(Math.max(0, count - 10), Math.max(0, Math.floor(Math.max(0, scrollTop - 100) / rowHeight) - 2))
+  return { start, end: Math.min(count, start + 10), rowHeight }
+}
 const identity = (value) => value && typeof value === 'object'
   ? [value._id, value.id, value.userId, value.email, value.name].map(key).filter(Boolean)
   : [key(value)].filter(Boolean)
