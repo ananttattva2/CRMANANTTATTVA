@@ -1,8 +1,8 @@
 import React from 'react'
 import { PO_FINANCIAL_YEARS, poYearField } from '../utils/poCommercialDetails.mjs'
 
-export default function PoCommercialFields({ po = {}, index, onChange }) {
-  const field = poYearField(po)
+export default function PoCommercialFields({ po = {}, index, onChange, selectedService = {} }) {
+  const field = poYearField(po, selectedService)
   const label = field === 'registrationYear' ? 'Registration Year' : 'Annual Return Year'
   return <>
     <td className="p-3"><input required type="date" aria-label={`PO End Date row ${index + 1}`} min={po.poDate || undefined} className="form-input min-w-40" value={po.poEndDate || ''} onChange={(event) => onChange({ poEndDate: event.target.value })} /></td>

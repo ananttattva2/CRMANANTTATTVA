@@ -9,12 +9,15 @@ export function poCommercialError(row = {}) {
   return ''
 }
 
-export function poYearField(po = {}) {
-  const services = Array.isArray(po.services) ? po.services : [po.services || po.service || '']
-  return services.some(service => /^(?:new)?registration$/.test(String(service).toLowerCase().replace(/[^a-z]/g, ''))) ? 'registrationYear' : 'annualReturnYear'
+export function poYearField(po = {}, selectedService = {}) {
+  const selected = selectedService.servicesOffered || selectedService.applicableService
+  const recorded = Array.isArray(po.services) && po.services.length ? po.services : (typeof po.services === 'string' ? po.services : '') || po.service || po.servicesOffered || po.applicableService || ''
+  const source = selected || recorded
+  const services = (Array.isArray(source) ? source : [source]).flatMap(value => String(value).split(/[,;\n]/))
+  return services.some(service => /^(?:new)?registration$/.test(service.toLowerCase().replace(/[^a-z]/g, ''))) ? 'registrationYear' : 'annualReturnYear'
 }
-export function poYearLabel(rows = []) {
-  const fields = new Set(rows.map(poYearField))
+export function poYearLabel(rows = [], selectedService = {}) {
+  const fields = new Set((rows.length ? rows : [{}]).map(row => poYearField(row, selectedService)))
   return fields.size > 1 ? 'Annual Return / Registration Year' : fields.has('registrationYear') ? 'Registration Year' : 'Annual Return Year'
 }
 export function hasSavedPoDetails(assignment = {}) {

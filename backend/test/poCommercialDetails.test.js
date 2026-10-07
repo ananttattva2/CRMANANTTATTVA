@@ -46,3 +46,14 @@ test('PO modification requires a saved PO and year field follows the selected se
   for(const service of ['Registration', 'New Registration']) assert.equal(poYearField({services:[service]}),'registrationYear');
   assert.equal(poYearLabel([{services:['New Registration']}]), 'Registration Year');
 });
+
+
+test('year heading and saved field follow selected service even with missing or stale PO labels', async () => {
+  const { poYearField, poYearLabel } = await import('../../frontend/src/utils/poCommercialDetails.mjs');
+  assert.equal(poYearField({services:[],service:'New Registration'}),'registrationYear');
+  assert.equal(poYearLabel([{services:[]}],{servicesOffered:'New Registration'}),'Registration Year');
+  assert.equal(poYearLabel([],{servicesOffered:'Registration'}),'Registration Year');
+  assert.equal(poYearField({services:['Annual Return Filling']},{servicesOffered:'New Registration'}),'registrationYear');
+  assert.equal(poYearField({services:['New Registration']},{servicesOffered:'Annual Return'}),'annualReturnYear');
+  assert.equal(poYearLabel([{services:['New Registration']}],{servicesOffered:'Annual Return Filling'}),'Annual Return Year');
+});
