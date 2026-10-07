@@ -1,13 +1,13 @@
 const crypto = require('node:crypto');
 
 const PURCHASE_CHECKLIST_PARTICULARS = [
+  'Data Explained',
+  'Data Format Sent',
   'Received from client',
   'Partially Data received',
   'Complete Data Received',
   'Work In Process',
   'Ready to upload',
-  'Data Explained',
-  'Data Format Sent',
   'Partially Complete',
   'Nil Upload',
   'Client Approval on data',

@@ -2,13 +2,12 @@ const EXPLANATION_STAGES = ['Data Explained', 'Data Format Sent'];
 
 export function withExplanationStages(data) {
   if (!data) return data;
-  const checklist = [...(data.checklist || [])];
-  for (const particular of EXPLANATION_STAGES) {
-    if (checklist.some(row => row.particular === particular)) continue;
-    const completeIndex = checklist.findIndex(row => row.particular === 'Upload Complete');
-    checklist.splice(completeIndex < 0 ? checklist.length : completeIndex, 0, {
+  const saved = data.checklist || [];
+  const explanations = EXPLANATION_STAGES.map(particular =>
+    saved.find(row => row.particular === particular) || {
       particular, yesNo: '', date: '', files: [], remarks: ''
-    });
-  }
+    }
+  );
+  const checklist = [...explanations, ...saved.filter(row => !EXPLANATION_STAGES.includes(row.particular))];
   return { ...data, checklist };
 }
