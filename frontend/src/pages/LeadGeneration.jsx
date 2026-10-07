@@ -1261,7 +1261,8 @@ export default function LeadGeneration() {
       // newer Company/Contact/PIBO creation rules before the PO could be saved.
       const payload = {
         assignments: nextAssignments,
-        workflowStatus: lead.workflowStatus || 'submitted'
+        workflowStatus: lead.workflowStatus || 'submitted',
+        modifyPoDetails: closureDialog.poEditor === true
       };
       console.info('[POProof:closure:submit]', { poDebugId, leadId: editingLeadId, assignmentIndex: closureDialog.index, quotationSent: closureDialog.quotationSent, rows: closureDialog.poYearRows.map((row, rowIndex) => ({ rowIndex, poNumber: row.poNumber, poAmount: row.poAmount, hasPoFileUrl: Boolean(row.poFileUrl), poFileName: row.poFileName || '' })) });
       const response = await api.put(API_ENDPOINTS.leads.detail(editingLeadId), payload, { headers: { 'X-PO-Debug-ID': poDebugId } });
@@ -1284,7 +1285,8 @@ export default function LeadGeneration() {
         setLeads((current) => current.map((item) => String(item._id || item.id) === String(updated._id || updated.id) ? updated : item));
       }
       setClosureDialog(null);
-      showToast(closureDialog.choice === 'no' ? 'Special approval closure saved in the database.' : 'Lead closed and PO details saved in the database after admin approval. Approval is pending.', 'success');
+      const directlyApproved = closureDialog.poEditor && savedLead.assignments?.[closureDialog.index]?.poApprovalStatus === 'APPROVED';
+      showToast(closureDialog.choice === 'no' ? 'Special approval closure saved in the database.' : directlyApproved ? 'PO details updated and approved. No approval request sent.' : 'PO details saved and submitted for Admin approval.', 'success');
     } catch (saveError) {
       console.error('[POProof:closure:error]', {
         poDebugId,

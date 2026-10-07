@@ -504,7 +504,7 @@ function validateSubmittedLead(data) {
 
 function isAssignmentOnlyLeadUpdate(body = {}) {
   if (!Array.isArray(body?.assignments) || !body.assignments.length) return false;
-  const allowedFields = new Set(['assignments', 'workflowStatus']);
+  const allowedFields = new Set(['assignments', 'workflowStatus', 'modifyPoDetails']);
   return Object.keys(body).every((field) => allowedFields.has(field));
 }
 
@@ -754,12 +754,18 @@ function buildPurchaseOrderEmail({ eyebrow, title, message, clientName, leadCode
   </div>`;
 }
 
-async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, submittedAssignments = [], poDebugId = '' }) {
+function canDirectlyApprovePoEdit(actor, modifyPoDetails, before = {}) {
+  return modifyPoDetails === true && userHasAnyRole(actor, ADMIN_ROLES)
+    && before.poStatus === 'received'
+    && (before.poYearRows || []).some(po => String(po.poNumber || '').trim() && po.poDate && Number(po.poAmount) > 0 && resolvePoProof(po).url);
+}
+
+async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, submittedAssignments = [], poDebugId = '', modifyPoDetails = false }) {
   const beforeRows = Array.isArray(beforeLead.assignments) ? beforeLead.assignments : [];
   const rows = Array.isArray(lead.assignments) ? lead.assignments : [];
   await Promise.all(rows.map(async (row, index) => {
     if (row.poStatus !== 'received' || (!row.closedBy && !row.closureRequestedBy)) return;
-    const before = beforeRows[index] || {};
+    const before = findExistingAssignment(beforeRows, row, index) || {};
     const changed = JSON.stringify(before.poYearRows || []) !== JSON.stringify(row.poYearRows || []);
     if (!changed && row.poApprovalStatus) return;
     row.poApprovalStatus = 'PENDING';
@@ -780,6 +786,36 @@ async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, subm
     if (missingProofRows.length) console.error('[purchase-order-approval] validated PO proof missing from snapshot', { leadCode: lead.leadCode, assignmentIndex: index, poNumbers: missingProofRows });
     const poProofManifest = poRowsSnapshot.map((po, rowIndex) => ({ rowIndex, poNumber: String(po.poNumber || '').trim(), poFileUrl: String(po.poFileUrl || '').trim(), poFileName: String(po.poFileName || '').trim(), poFileMimeType: String(po.poFileMimeType || '').trim(), poFileSize: po.poFileSize ?? null }));
     console.info('[POProof:approval:snapshot]', { poDebugId, leadCode: lead.leadCode || '', assignmentIndex: index, sourceClientId, rows: poRowsSnapshot.map((po, rowIndex) => ({ rowIndex, poNumber: po.poNumber || '', poAmount: po.poAmount ?? null, hasPoFileUrl: Boolean(po.poFileUrl), poFileName: po.poFileName || '' })) });
+    if (canDirectlyApprovePoEdit(actor, modifyPoDetails, before)) {
+      row.poApprovalStatus = 'APPROVED';
+      row.poEditedBy = String(actor?._id || actor?.id || '');
+      row.poEditedByText = actor?.name || actor?.email || '';
+      row.poEditedAt = new Date();
+      if (before.closedBy) {
+        row.closedBy = before.closedBy;
+        row.closedByText = before.closedByText || '';
+        row.closedByEmail = before.closedByEmail || '';
+        row.closedAt = before.closedAt;
+      } else if (row.assignedTo && row.closureRequestedBy) {
+        row.closedBy = row.closureRequestedBy;
+        row.closedByText = row.closureRequestedByText || '';
+        row.closedAt = new Date();
+        row.closureFinalizedByManager = true;
+      }
+      // Update an existing review snapshot, without creating another request
+      // or sending approval notifications for an administrator's correction.
+      await PendingApproval.updateOne(
+        { type: 'purchase_order', source: 'crm', sourceClientId },
+        { $set: { approvalStatus: 'APPROVED', actionBy: actor?._id, actionAt: new Date(),
+          remarks: 'PO details updated directly by Admin.',
+          'payload.poYearRows': poRowsSnapshot, 'payload.poProofManifest': poProofManifest,
+          'payload.quotationSent': row.quotationSent || '',
+          'payload.earlierQuotationProofUrl': row.earlierQuotationProofUrl || '',
+          'payload.earlierQuotationProofName': row.earlierQuotationProofName || '',
+          'payload.decidedBy': actor?.name || actor?.email || '' } }
+      );
+      return;
+    }
     const savedApproval = await PendingApproval.findOneAndUpdate(
       { type: 'purchase_order', source: 'crm', sourceClientId },
       { $setOnInsert: { type: 'purchase_order', source: 'crm', sourceClientId }, $set: {
@@ -1649,7 +1685,7 @@ exports.updateLead = async (req, res) => {
     }
     lead.updatedBy = req.user?.name || req.user?.email || String(req.user?._id || '');
     if (data.closedBy && !lead.closedAt) lead.closedAt = new Date();
-    await upsertPurchaseOrderApprovals({ beforeLead, lead, actor: req.user, submittedAssignments: data.assignments, poDebugId });
+    await upsertPurchaseOrderApprovals({ beforeLead, lead, actor: req.user, submittedAssignments: data.assignments, poDebugId, modifyPoDetails: req.body?.modifyPoDetails === true });
     await lead.save();
     if (poDebugId) console.info('[POProof:lead:persisted]', { poDebugId, leadId: String(lead._id), leadCode: lead.leadCode || '', collection: Lead.collection.collectionName, assignments: (lead.assignments || []).map((row, assignmentIndex) => ({ assignmentIndex, proofCount: (row.poYearRows || []).filter((po) => resolvePoProof(po).url).length, rowCount: (row.poYearRows || []).length })) });
     if (Object.prototype.hasOwnProperty.call(data, 'subApplicantType') || Array.isArray(data.serviceSelections)) {
@@ -1698,7 +1734,7 @@ exports.updateLead = async (req, res) => {
       }).catch((error) => console.error('Additional lead service notification failed', error));
     }
     const changedFields = Object.keys(data).filter((key) => key !== 'followUpHistory');
-    await LeadActivity.create({ lead: lead._id, type: 'lead_updated', title: 'Lead updated', description: changedFields.length ? `Updated ${changedFields.join(', ')}` : 'Lead details updated', actor: req.user?._id, metadata: { changedFields } });
+    await LeadActivity.create({ lead: lead._id, type: 'lead_updated', title: 'Lead updated', description: changedFields.length ? `Updated ${changedFields.join(', ')}` : 'Lead details updated', actor: req.user?._id, metadata: { changedFields, modifyPoDetails: req.body?.modifyPoDetails === true } });
     res.json({ ok: true, lead, introductionEmail });
   } catch (err) {
     res.status(err.statusCode || 500).json({ error: err.message || 'Unable to update lead' });
@@ -2481,7 +2517,9 @@ exports._test = {
   canAssignStaffToRow,
   activeUserLookup,
   leadCodeSequence,
-  poClosureSubmissionChanged
+  poClosureSubmissionChanged,
+  canDirectlyApprovePoEdit,
+  upsertPurchaseOrderApprovals
 };
 
 const LeadServiceCatalog = require('../models/LeadServiceCatalog');
