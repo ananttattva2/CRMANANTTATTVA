@@ -56,7 +56,7 @@ test('application summary counts one company per user across applicant categorie
   assert.equal(sonal.companyRecords[0].bucket, 'applied');
   assert.equal(sonal.companyRecords[0].services.length, 2);
   assert.equal(groups.find(group => group.id === 'krishna').companyRecords[0].bucket, 'approved');
-  assert.deepEqual(STATUS_COLUMNS.slice(3).map(column => column[1]), ['Approved', 'Applied', 'Under Review', 'Not Started', 'Rejected']);
+  assert.deepEqual(STATUS_COLUMNS.filter(([key]) => ['approved','applied','underReview','notStarted','rejected'].includes(key)).map(column => column[1]), ['Approved', 'Applied', 'Under Review', 'Not Started', 'Rejected']);
 });
 
 test('company approval requires all assigned service statuses approved; missing status remains visible in details', async () => {
@@ -197,4 +197,19 @@ test('service breakdown counts each application once and agrees with the Clients
   assert.equal(loaded.getWorksheet('Clients').getCell('L5').value, 'Annual Return Filling');
   assert.equal(loaded.getWorksheet('Service Statuses').rowCount, 6);
   assert.equal(rows[0].services.length, 2);
+});
+
+
+test('annual year summary uses only saved PO annual year for the assigned service', async () => {
+  const {buildApplicationPortfolio, applicationSummaryRecords} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const row=client('year','sonal','Producer','Approved'); row.assignedServiceId='annual'; row.data.basic.servicesOffered='Annual Return Filling';
+  row.selectedLead.assignments=[{assignedServiceId:'annual', assignedStaff:'sonal',poYearRows:[{annualReturnYear:'2025-26',poFinancialYear:'2026-27'},{annualReturnYear:'2025-26'}]},{assignedServiceId:'other',poYearRows:[{annualReturnYear:'2027-28'}]}];
+  let [group]=buildApplicationPortfolio([row],users);
+  assert.deepEqual(applicationSummaryRecords(group)[0].annualYears,['2025-26']);
+  row.selectedLead.assignments[0].poYearRows=[{poFinancialYear:'2026-27'}];
+  [group]=buildApplicationPortfolio([row],users);
+  assert.deepEqual(applicationSummaryRecords(group)[0].annualYears,[]);
+  row.data.basic.servicesOffered='New Registration'; row.selectedLead.assignments[0].poYearRows=[{registrationYear:'2026-27'}];
+  [group]=buildApplicationPortfolio([row],users);
+  assert.equal(applicationSummaryRecords(group)[0].annual,false);
 });
