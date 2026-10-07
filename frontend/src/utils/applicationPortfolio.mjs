@@ -3,8 +3,8 @@ import { buildOperationsProgressGroups, assignedCompanyKey } from './operationsU
 export const PIBO_CATEGORIES = ['Producer', 'Brand Owner', 'PWP', 'Importer', 'Producer (Small & Micro)', 'Importer of Raw Material', 'Recycler']
 export const STATUS_COLUMNS = [
   ['live', 'Live Clients'], ['annual', 'Annual Return Applicable'],
-  ['notStarted', 'Not Started'], ['applied', 'Applied'], ['underReview', 'Under Review'],
-  ['approved', 'Approved'], ['rejected', 'Rejected']
+  ['approved', 'Approved'], ['applied', 'Applied'], ['underReview', 'Under Review'],
+  ['notStarted', 'Not Started'], ['rejected', 'Rejected']
 ]
 export function cpcbStatusBucket(value) {
   const status = String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -42,6 +42,8 @@ export function applicationRecord(client) {
   const data = client.data || {}, basic = data.basic || {}, meta = data.importMeta || {}, lead = client.selectedLead || {}
   const services = lead.serviceSelections || []
   const service = services.find(item => String(item.assignedServiceId || item.serviceAssignmentId || '') === String(client.assignedServiceId || '')) || (services.length === 1 ? services[0] : {})
+  const offered = service.servicesOffered ?? basic.servicesOffered ?? data.selectedLeadSnapshot?.servicesOffered ?? []
+  const annual = (Array.isArray(offered) ? offered : [offered]).some(value => /annual\s*return\s*fill?ing/i.test(String(value)))
   const category = applicantCategory(text(basic.piboCategory, basic.subApplicantType, service.subApplicantType, service.piboCategory, basic.applicantType, service.applicantType))
   const cpcb = text(data.cpcb?.status, data.cpcb?.approvalStatus, data.cpcb?.applicationStatus, basic.cpcbStatus, meta.cpcbStatus)
   const state = text(data.registeredAddress?.state, data.address?.state, data.addresses?.state, basic.state, meta.state)
@@ -50,7 +52,7 @@ export function applicationRecord(client) {
   const status = normalize(cpcb)
   const inactive = /suspend|discontinu|inactive/.test(normalize(`${clientStatus} ${visibility} ${cpcb}`))
   const bucket = cpcbStatusBucket(cpcb)
-  return { id: String(client._id), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', bucket, live: !inactive, annual: Boolean(text(basic.firstAnnualReturnYear, basic.firstAnnualReturnYearApplicable, service.firstAnnualReturnYearApplicable).match(/20\d{2}/)) || /annualreturnapplicable/.test(status), sourceIds: [String(client._id)] }
+  return { id: String(client._id), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', bucket, live: !inactive, annual, sourceIds: [String(client._id)] }
 }
 export function buildApplicationPortfolio(assignments, users) {
   const groups = buildOperationsProgressGroups(assignments.map(client => ({ id: String(client._id), client, companyName: applicationRecord(client).name })), users)

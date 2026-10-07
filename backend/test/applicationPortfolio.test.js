@@ -25,11 +25,11 @@ test('saved CPCB statuses distinguish approved, applied, under review, pending, 
   assert.equal(applicationRecord(discontinued).live, false);
 });
 
-test('annual eligibility follows saved year and applicant labels resolve the assigned service', async () => {
+test('annual eligibility follows assigned services offered and applicant labels resolve the assigned service', async () => {
   const { applicationRecord, applicantCategory } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const row = client('a', 'sonal', '', 'Approved');
   row.assignedServiceId = 'importer';
-  row.selectedLead.serviceSelections = [{ assignedServiceId: 'producer', subApplicantType: 'Producer' }, { assignedServiceId: 'importer', subApplicantType: 'Importer', firstAnnualReturnYearApplicable: '2025-26' }];
+  row.selectedLead.serviceSelections = [{ assignedServiceId: 'producer', subApplicantType: 'Producer' }, { assignedServiceId: 'importer', subApplicantType: 'Importer', firstAnnualReturnYearApplicable: '2025-26', servicesOffered: 'Annual Return Filling' }];
   assert.equal(applicationRecord(row).category, 'Importer');
   assert.equal(applicationRecord(row).annual, true);
   assert.equal(applicantCategory('Importer of Raw Material'), 'Importer of Raw Material');
@@ -56,7 +56,7 @@ test('application summary counts one company per user across applicant categorie
   assert.equal(sonal.companyRecords[0].bucket, 'applied');
   assert.equal(sonal.companyRecords[0].services.length, 2);
   assert.equal(groups.find(group => group.id === 'krishna').companyRecords[0].bucket, 'approved');
-  assert.deepEqual(STATUS_COLUMNS.slice(2).map(column => column[1]), ['Not Started', 'Applied', 'Under Review', 'Approved', 'Rejected']);
+  assert.deepEqual(STATUS_COLUMNS.slice(2).map(column => column[1]), ['Approved', 'Applied', 'Under Review', 'Not Started', 'Rejected']);
 });
 
 test('company approval requires all assigned service statuses approved; missing status remains visible in details', async () => {
@@ -76,4 +76,18 @@ test('PIBo headers match the seven requested categories and SIMP producer varian
   assert.equal(applicantCategory('SIMP Importer of Raw Material'), 'Importer of Raw Material');
   const [group] = buildApplicationPortfolio([client('a', 'sonal', 'SIMP Producer Small-Micro'), client('b', 'sonal', 'Producer (Small & Micro)')], users);
   assert.equal(group.records.length, 1);
+});
+
+
+test('annual applicability excludes registration despite a saved annual year and accepts Filing/Filling arrays', async () => {
+  const { applicationRecord } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const row = client('a', 'sonal', 'Producer', 'Approved');
+  row.data.basic.firstAnnualReturnYear = '2025-26';
+  row.data.basic.servicesOffered = 'New Registration';
+  assert.equal(applicationRecord(row).annual, false);
+  row.data.basic.servicesOffered = ['Consulting', 'Annual Return Filing'];
+  assert.equal(applicationRecord(row).annual, true);
+  row.assignedServiceId = 'registration';
+  row.selectedLead.serviceSelections = [{ assignedServiceId: 'annual', servicesOffered: 'Annual Return Filling' }, { assignedServiceId: 'registration', servicesOffered: 'New Registration' }];
+  assert.equal(applicationRecord(row).annual, false);
 });
