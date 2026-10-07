@@ -1,9 +1,13 @@
 const { userHasAnyRole } = require('../utils/userRoles');
 const { allocatedOwnerKeyGroups } = require('./overallDashboardUsers');
 const { assignedCompanyKey } = require('./assignedCompanyIdentity');
-const STAGES = ['Data Explained', 'Data Format Sent', 'Received from client', 'Ready to upload', 'Client Approval on data', 'Upload Complete'];
+const STAGES = ['Data Explained', 'Data Format Sent', 'Received from client', 'Ready to upload', 'Client Approval on data', 'Upload Complete', 'Manager Review', 'Compliance Review'];
 const id = value => String(value?._id || value || '');
 function stageState(record, stage) {
+  if (stage === 'Manager Review' || stage === 'Compliance Review') {
+    const status = stage === 'Manager Review' ? record?.managerVerificationStatus : record?.complianceVerificationStatus;
+    return String(status || '').trim().toLowerCase() === 'approved' ? 'complete' : 'pending';
+  }
   const row = record?.checklist?.find(item => item.particular === stage);
   if (stage === 'Upload Complete') return record?.baseUpload?.importStatus === 'Imported' && record?.portalUpload?.importStatus === 'Imported' ? 'complete' : record?.baseUpload?.importStatus === 'Imported' || record?.portalUpload?.importStatus === 'Imported' || row?.yesNo === 'Yes' ? 'progress' : 'pending';
   if (row?.yesNo === 'Yes') return row.partialDataReceived && !row.completeDataReceived ? 'progress' : 'complete';
@@ -34,8 +38,9 @@ function buildUploadTracker(clients, users, purchases, sales) {
     const existing = group.clients.find(row => row.companyKey === detail.companyKey);
     if (existing) {
       existing.clientIds.push(clientId);
-      existing.slaReceived = existing.slaReceived && detail.slaReceived;
-      for (const module of ['purchase', 'sales']) existing[module] = existing[module].map((state, position) => state === 'complete' && detail[module][position] === 'complete' ? 'complete' : state === 'pending' && detail[module][position] === 'pending' ? 'pending' : 'progress');
+      // SLA is a company-level receipt, even when only one service's Client Master stores it.
+      existing.slaReceived = existing.slaReceived || detail.slaReceived;
+      for (const module of ['purchase', 'sales']) existing[module] = existing[module].map((state, position) => state === 'complete' && detail[module][position] === 'complete' ? 'complete' : position >= 6 || state === 'pending' && detail[module][position] === 'pending' ? 'pending' : 'progress');
     } else group.clients.push(detail);
   }
   for (const group of groups.values()) for (const detail of group.clients) {

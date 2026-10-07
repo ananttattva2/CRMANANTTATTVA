@@ -224,7 +224,7 @@ exports.uploadTracker = async (req, res) => {
       return res.json({ ok: true, assignments: visibleClients.map(client => ({ ...client, complianceReview: reviewByClient.get(String(client._id)) || null, operationsSla: approvalByClient.get(String(client._id)) || null })) });
     }
     const filter = { clientId: { $in: visibleClients.filter(client => !client.assignmentOnly).map(client => client._id) }, financialYear };
-    const projection = 'clientId checklist baseUpload.importStatus portalUpload.importStatus';
+    const projection = 'clientId checklist baseUpload.importStatus portalUpload.importStatus managerVerificationStatus complianceVerificationStatus';
     const [purchases, sales] = await Promise.all([PurchaseData.find(filter).select(projection).maxTimeMS(15000).lean(), SalesData.find(filter).select(projection).maxTimeMS(15000).lean()]);
     res.set('Cache-Control', 'private, no-store');
     res.json({ ok: true, financialYear, scope: scope === null ? 'all' : 'role-scoped', stages: STAGES, users: buildUploadTracker(visibleClients, users, purchases, sales) });

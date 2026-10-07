@@ -1,6 +1,33 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { buildUploadTracker, stageState } = require('../src/services/clientUploadTracker');
+
+test('manager and compliance review stages use independent saved verification statuses', () => {
+  assert.equal(stageState({ managerVerificationStatus: 'Approved', complianceVerificationStatus: 'Pending' }, 'Manager Review'), 'complete');
+  assert.equal(stageState({ managerVerificationStatus: 'Approved', complianceVerificationStatus: 'Pending' }, 'Compliance Review'), 'pending');
+  assert.equal(stageState({ complianceVerificationStatus: 'Approved' }, 'Compliance Review'), 'complete');
+  for (const status of [undefined, 'Not Submitted', 'Not Ready', 'Pending', 'Rejected']) {
+    assert.equal(stageState({ managerVerificationStatus: status }, 'Manager Review'), 'pending');
+    assert.equal(stageState({ complianceVerificationStatus: status }, 'Compliance Review'), 'pending');
+  }
+});
+
+test('CCL SLA receipt survives blank sibling services and review counts stay unique per company', () => {
+  const users = [{ _id: 'shubham', name: 'SHUBHAM DESAI', role: 'operation' }];
+  const clients = ['producer', 'importer'].map(_id => ({ _id, selectedLead: { assignedStaff: 'shubham', company: 'CCL FOOD AND BEVERAGES PVT LTD' }, sla: _id === 'producer' ? { status: 'Yes' } : {} }));
+  const purchases = clients.map(client => ({ clientId: client._id, managerVerificationStatus: 'Approved', complianceVerificationStatus: client._id === 'producer' ? 'Approved' : 'Pending' }));
+  const [group] = buildUploadTracker(clients, users, purchases, [{ clientId: 'producer', managerVerificationStatus: 'Approved' }]);
+  assert.equal(group.clients.length, 1);
+  assert.equal(group.clients[0].slaReceived, true);
+  assert.equal(group.slaReceived, 1);
+  assert.equal(group.slaNotReceived, 0);
+  assert.equal(group.purchase[6].complete, 1);
+  assert.equal(group.purchase[7].pending, 1);
+  assert.equal(group.sales[6].pending, 1);
+  assert.equal(group.sales[6].progress, 0);
+  assert.equal(group.clients[0].purchase[6], 'complete');
+  assert.equal(group.clients[0].purchase[7], 'pending');
+});
 const { buildDataWorkflowEmail } = require('../src/services/dataWorkflowEmail');
 test('tracker counts allocated clients once and separates Purchase and Sales stages', () => {
   const clients = [{ _id:'c1', selectedLead:{assignedStaff:'u1'}, createdBy:'admin', adminControls:{assignedTo:'u1'}, sla:{status:'Yes'}, data:{basic:{clientLegalName:'Alpha'}} },{ _id:'c2', selectedLead:{assignedStaffText:'First User'}, createdBy:'u2', data:{importMeta:{assignedTo:'First User'}} }];
