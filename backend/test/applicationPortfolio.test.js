@@ -203,7 +203,7 @@ test('service breakdown counts each application once and agrees with the Clients
 test('annual year summary uses only saved PO annual year for the assigned service', async () => {
   const {buildApplicationPortfolio, applicationSummaryRecords} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const row=client('year','sonal','Producer','Approved'); row.selectedLead.status='Closed'; row.assignedServiceId='annual'; row.data.basic.servicesOffered='Annual Return Filling';
-  row.selectedLead.assignments=[{assignedServiceId:'annual', assignedStaff:'sonal',poApprovalStatus:'APPROVED',assignedTo:'manager',poYearRows:[{annualReturnYear:'2025-26',poFinancialYear:'2026-27'},{annualReturnYear:'2025-26'}]},{assignedServiceId:'other',poYearRows:[{annualReturnYear:'2027-28'}]}];
+  row.selectedLead.assignments=[{assignedServiceId:'annual', assignedStaff:'sonal',poStatus:'received',poApprovalStatus:'APPROVED',assignedTo:'manager',poYearRows:[{annualReturnYear:'2025-26',poFinancialYear:'2026-27'},{annualReturnYear:'2025-26'}]},{assignedServiceId:'other',poYearRows:[{annualReturnYear:'2027-28'}]}];
   let [group]=buildApplicationPortfolio([row],users);
   assert.deepEqual(applicationSummaryRecords(group)[0].annualYears,['2025-26']);
   row.selectedLead.assignments[0].poYearRows=[{poFinancialYear:'2026-27'}];
@@ -220,7 +220,7 @@ test('status annual applicability and years use the same exclusive closed servic
   const registration=client('registration','sonal','Producer'), sibling=client('annual','sonal','Producer'), owner=client('owner','sonal','Brand Owner'), open=client('open','sonal','Importer');
   registration.data.basic.servicesOffered='New Registration';registration.selectedLead.status='Closed';
   sibling.data.basic.servicesOffered='Annual Return Filling';sibling.selectedLead.status='Closed';
-  owner.data.basic.servicesOffered='Annual Return';owner.selectedLead.status='Closed';
+  owner.data.basic.servicesOffered='Annual Return';owner.data.cpcb.status='Approved';owner.selectedLead.status='Closed';owner.selectedLead.assignments[0].poStatus='received';owner.selectedLead.assignments[0].poYearRows=[{poFinancialYear:'2026-27',annualReturnYear:'2025-26'}];
   open.data.basic.servicesOffered='Annual Return Filling';
   const records=applicationSummaryRecords(buildApplicationPortfolio([registration,sibling,owner,open],users)[0]);
   assert.equal(records.length,3);
@@ -236,11 +236,36 @@ test('Annual Filling aliases require manager-to-staff assignment; rejected PO do
   const {buildApplicationPortfolio, applicationSummaryRecords, canonicalOfferedServices, matchesApplicationService} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   assert.deepEqual(canonicalOfferedServices(['Annual Filling','Annual Return Filling','Annual Return']),['Annual Return Filling']);
   for(const missing of ['assignedTo','assignedStaff',null]) {
-    const row=client('workflow','sonal','Producer');row.selectedLead.status='Closed';row.data.basic.servicesOffered='Annual Filling';
-    row.selectedLead.assignments[0].poApprovalStatus='REJECTED';
+    const row=client('workflow','sonal','Producer','Approved');row.selectedLead.status='Closed';row.data.basic.servicesOffered='Annual Filling';
+    row.selectedLead.assignments[0].poApprovalStatus='REJECTED';row.selectedLead.assignments[0].poStatus='received';row.selectedLead.assignments[0].poYearRows=[{poFinancialYear:'2026-27',annualReturnYear:'2025-26'}];
     if(missing) row.selectedLead.assignments[0][missing]='';
     const result=applicationSummaryRecords(buildApplicationPortfolio([row],users)[0])[0];
     assert.equal(result.annual,missing===null);
     assert.equal(matchesApplicationService(result,'Assignment Pending'),missing!==null);
   }
+});
+
+test('current-FY approved annual applications count once in their earliest annual return year', async () => {
+  const {buildApplicationPortfolio, applicationSummaryRecords, financialYearForDate, STATUS_COLUMNS} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  assert.equal(financialYearForDate(new Date('2026-10-08T12:00:00+05:30')), '2026-27');
+  assert.equal(STATUS_COLUMNS.some(([key]) => key === 'annual'), false);
+  const make = (id, cpcbStatus, poYears) => {
+    const row=client(id,'sonal','Producer',cpcbStatus);row.assignedServiceId=id;row.selectedLead.status='Closed';row.data.basic.servicesOffered='Annual Return Filling';
+    row.selectedLead.assignments=[{assignedServiceId:id,assignedStaff:'sonal',assignedTo:'manager',poStatus:'received',poYearRows:poYears}];
+    return row;
+  };
+  const approved=make('approved','Approved',[
+    {poFinancialYear:'2026-27',annualReturnYear:'2027-28'},
+    {poFinancialYear:'2026-27',annualReturnYear:'2025-26'},
+    {poFinancialYear:'2026-27',annualReturnYear:'2026-27'},
+    {poFinancialYear:'2025-26',annualReturnYear:'2024-25'}
+  ]);
+  let result=applicationSummaryRecords(buildApplicationPortfolio([approved],users)[0])[0];
+  assert.equal(result.annual,true);assert.deepEqual(result.annualYears,['2025-26']);
+  for(const status of ['Applied','Under Review','Not Started','Rejected']) {
+    result=applicationSummaryRecords(buildApplicationPortfolio([make(status,status,[{poFinancialYear:'2026-27',annualReturnYear:'2025-26'}])],users)[0])[0];
+    assert.equal(result.annual,false);assert.deepEqual(result.annualYears,[]);
+  }
+  result=applicationSummaryRecords(buildApplicationPortfolio([make('wrong-fy','Approved',[{poFinancialYear:'2025-26',annualReturnYear:'2025-26'}])],users)[0])[0];
+  assert.equal(result.annual,false);assert.deepEqual(result.annualYears,[]);
 });

@@ -30,6 +30,23 @@ function mergeManagerStaffAllocations(clients = [], leads = []) {
       linked.add(key);
       const service = services.find(s => value(s.assignedServiceId || s.serviceAssignmentId) === serviceId) || services[index] || {};
       const signature = row => [row.subApplicantType || row.piboCategory, row.plantUnit, row.eprCategory, offering(row.servicesOffered)].map(normalize).join(':');
+      const matchingAssignments = (lead.assignments || []).flatMap((candidate, candidateIndex) => {
+        const candidateId = value(candidate.assignedServiceId || candidate.serviceAssignmentId || services[candidateIndex]?.assignedServiceId || services[candidateIndex]?.serviceAssignmentId || `assignment-${candidateIndex}`);
+        const candidateService = services.find(s => value(s.assignedServiceId || s.serviceAssignmentId) === candidateId) || services[candidateIndex] || {};
+        return signature(candidateService) === signature(service)
+          ? [{ ...candidate, assignedServiceId: candidateId }]
+          : [];
+      });
+      const matchingPoRows = matchingAssignments.flatMap(candidate => [
+        ...(Array.isArray(candidate.poYearRows) ? candidate.poYearRows : []),
+        ...(candidate.originalPoDetails ? [candidate.originalPoDetails] : [])
+      ]);
+      const enrichedAssignment = {
+        ...assignment,
+        assignedServiceId: serviceId,
+        ...(matchingPoRows.length ? { poYearRows: matchingPoRows } : {}),
+        ...(matchingAssignments.some(candidate => normalize(candidate.poStatus) === 'received') ? { poStatus: 'received' } : {})
+      };
       const master = clients.find(client => {
         if (value(client.selectedLead || client.data?.selectedLeadSnapshot?.id) !== value(lead._id)) return false;
         const selectedId = client.assignedServiceId || client.data?.selectedLeadSnapshot?.assignedServiceId;
@@ -41,7 +58,7 @@ function mergeManagerStaffAllocations(clients = [], leads = []) {
       result.push({ _id: `assignment:${key}`, assignedServiceId: serviceId,
         statusSourceClientId: master ? value(master._id) : undefined,
         workflowStatus: master?.workflowStatus,
-        selectedLead: { ...lead, assignments: [{ ...assignment, assignedServiceId: serviceId }], serviceSelections: [service] },
+        selectedLead: { ...lead, assignments: [enrichedAssignment], serviceSelections: [service] },
         data: { cpcb: masterData.cpcb?.status ? { status: masterData.cpcb.status } : {}, registeredAddress: masterData.registeredAddress?.state ? { state: masterData.registeredAddress.state } : {}, basic: { clientLegalName: lead.company || lead.companyName || lead.clientName || 'Untitled client' }, importMeta: { leadNumber: lead.leadCode || lead.sourceLeadId || '' } },
         adminControls: { visibilityStatus: master?.adminControls?.visibilityStatus }, sla: {}, assignmentOnly: true
       });

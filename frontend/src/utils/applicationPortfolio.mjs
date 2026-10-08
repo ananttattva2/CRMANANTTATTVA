@@ -3,7 +3,6 @@ import { buildOperationsProgressGroups, assignedCompanyKey } from './operationsU
 export const PIBO_CATEGORIES = ['Producer', 'Brand Owner', 'PWP', 'Importer', 'Producer (Small & Micro)', 'Importer of Raw Material', 'Recycler']
 export const STATUS_COLUMNS = [
   ['total', 'Total'],
-  ['annual', 'Annual Return Applicable'],
   ['annual:2025-26', '2025-26'], ['annual:2026-27', '2026-27'], ['annual:2027-28', '2027-28'], ['annual:unrecorded', 'Not Recorded'],
   ['applied', 'Applied'], ['underReview', 'Under Review'],
   ['notStarted', 'Not Started'], ['rejected', 'Rejected']
@@ -16,8 +15,9 @@ export function applicationSummaryRecords(group) {
     const priority = ['rejected', 'underReview', 'applied', 'notStarted', 'approved']
     const bucket = priority.find(status => statusServices.some(service => service.bucket === status))
     const labels = { rejected: 'Rejected', underReview: 'Under Review', applied: 'Applied', notStarted: 'Not Started', approved: 'Approved' }
-    const annual = summaryService === 'Annual Return Filling'
-    const annualYears = annual ? [...new Set(record.services.filter(service => service.closed && service.annual && service.annualWorkflowReady).flatMap(service => service.annualYears || []))] : []
+    const annual = summaryService === 'Annual Return Filling' && bucket === 'approved' && statusServices.some(service => service.annualCurrentFyPo)
+    const recordedYears = annual ? [...new Set(statusServices.filter(service => service.closed && service.annual && service.annualWorkflowReady).flatMap(service => service.annualYears || []))].sort() : []
+    const annualYears = recordedYears.length ? [recordedYears[0]] : []
     return { ...record, bucket, cpcb: labels[bucket], summaryService, annual, annualYears,
       offered: summaryService === 'unclassified' ? 'Not Closed / Service Not Recorded' : summaryService }
   })
@@ -80,7 +80,12 @@ export function applicationRecord(client) {
   const annual = isAnnualReturnService(offered)
   const annualWorkflowReady = Boolean(assignment.assignedTo || assignment.assignedToText || assignment.assignedToEmail)
     && Boolean(assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail)
-  const annualYears = annual ? [...new Set([...(assignment.poYearRows || []), ...(assignment.originalPoDetails ? [assignment.originalPoDetails] : [])].filter(po => !po.services?.length || isAnnualReturnService(po.services)).map(po => po.annualReturnYear).filter(Boolean))] : []
+  const currentPoRows = annual && String(assignment.poStatus || '').toLowerCase() === 'received' ? [...(assignment.poYearRows || []), ...(assignment.originalPoDetails ? [assignment.originalPoDetails] : [])]
+    .filter(po => String(po.poFinancialYear || '').trim() === financialYearForDate())
+    .filter(po => !po.services?.length || isAnnualReturnService(po.services))
+    : []
+  const annualCurrentFyPo = currentPoRows.length > 0
+  const annualYears = [...new Set(currentPoRows.map(po => po.annualReturnYear).filter(Boolean))]
   const category = applicantCategory(text(service.subApplicantType, service.piboCategory, basic.piboCategory, basic.subApplicantType, service.applicantType, basic.applicantType))
   const cpcb = text(data.cpcb?.status, data.cpcb?.approvalStatus, data.cpcb?.applicationStatus, basic.cpcbStatus, meta.cpcbStatus)
   const state = text(data.registeredAddress?.state, data.address?.state, data.addresses?.state, basic.state, meta.state)
@@ -89,7 +94,7 @@ export function applicationRecord(client) {
   const status = normalize(cpcb)
   const inactive = /suspend|discontinu|inactive/.test(normalize(`${clientStatus} ${visibility} ${cpcb}`))
   const bucket = cpcbStatusBucket(cpcb)
-  return { id: String(client._id), assignmentOnly: Boolean(client.assignmentOnly), statusSourceClientId: client.statusSourceClientId || '', leadId: String(lead._id || ''), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), offeredServices: canonicalOfferedServices(offered), closed, bucket, live: !inactive, annual, annualWorkflowReady, annualYears, sourceIds: [String(client._id)] }
+  return { id: String(client._id), assignmentOnly: Boolean(client.assignmentOnly), statusSourceClientId: client.statusSourceClientId || '', leadId: String(lead._id || ''), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), offeredServices: canonicalOfferedServices(offered), closed, bucket, live: !inactive, annual, annualCurrentFyPo, annualWorkflowReady, annualYears, sourceIds: [String(client._id)] }
 }
 // Placeholders and blank drafts do not represent another application when
 // this lead already has a submitted master for the same applicant/unit/service.
@@ -101,6 +106,7 @@ export function effectiveApplicationServices(services) {
     const key = `${service.statusSourceClientId}:${signature(service)}`
     const existing = hydrated.get(key)
     if (!existing) { hydrated.set(key, service); return true }
+    existing.annualCurrentFyPo ||= service.annualCurrentFyPo
     existing.annualYears = [...new Set([...(existing.annualYears || []), ...(service.annualYears || [])])]
     return false
   })
@@ -112,6 +118,7 @@ export function effectiveApplicationServices(services) {
       && signature(candidate) === signature(service)
       && (!blankDraft || normalize(candidate.clientStatus) === 'submitted' && normalize(candidate.cpcb) !== 'notrecorded'))
     if (!master) return true
+    master.annualCurrentFyPo ||= service.annualCurrentFyPo
     master.annualYears = [...new Set([...(master.annualYears || []), ...(service.annualYears || [])])]
     return false
   })
@@ -159,6 +166,13 @@ export function isAnnualReturnService(value) {
     const normalized = String(service || '').toLowerCase().replace(/[^a-z0-9]/g, '')
     return /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalized)
   })
+}
+
+export function financialYearForDate(date = new Date()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' }).formatToParts(date).map(part => [part.type, part.value]))
+  const calendarYear = Number(parts.year)
+  const startYear = Number(parts.month) >= 4 ? calendarYear : calendarYear - 1
+  return `${startYear}-${String(startYear + 1).slice(-2)}`
 }
 
 

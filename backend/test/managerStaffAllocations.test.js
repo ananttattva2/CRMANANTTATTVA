@@ -32,3 +32,17 @@ test('new staff assignments inherit matching Client Master CPCB status across al
   assert.equal(mergeManagerStaffAllocations([sanitized],[unrelated]).find(c=>c.assignmentOnly).data.cpcb.status,undefined);
  }
 });
+
+test('staff placeholders carry current-FY PO rows from the same applicant, unit and annual service',()=>{
+ const base={subApplicantType:'Importer',plantUnit:'Unit 1',eprCategory:'Plastic Waste',servicesOffered:'Annual Return Filling'};
+ const lead={_id:'lead',company:'KANDUI',serviceSelections:[
+  {...base,assignedServiceId:'current'},
+  {...base,assignedServiceId:'future'}
+ ],assignments:[
+  {assignedServiceId:'current',poStatus:'received',poYearRows:[{poFinancialYear:'2026-27',annualReturnYear:'2025-26'}]},
+  {assignedServiceId:'future',assignedTo:'manager',assignedStaff:'staff',poStatus:'received',poYearRows:[{poFinancialYear:'2027-28',annualReturnYear:'2026-27'}]}
+ ]};
+ const [placeholder]=mergeManagerStaffAllocations([], [lead]);
+ assert.equal(placeholder.selectedLead.assignments[0].poStatus,'received');
+ assert.deepEqual(placeholder.selectedLead.assignments[0].poYearRows.map(row=>row.annualReturnYear),['2025-26','2026-27']);
+});
