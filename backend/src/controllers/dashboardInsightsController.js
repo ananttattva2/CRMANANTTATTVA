@@ -230,7 +230,7 @@ exports.uploadTracker = async (req, res) => {
     const projection = 'clientId checklist baseUpload.importStatus portalUpload.importStatus managerVerificationStatus complianceVerificationStatus';
     const [purchases, sales] = await Promise.all([PurchaseData.find(filter).select(projection).maxTimeMS(15000).lean(), SalesData.find(filter).select(projection).maxTimeMS(15000).lean()]);
     res.set('Cache-Control', 'private, no-store');
-    res.json({ ok: true, financialYear, serviceType, scope: scope === null ? 'all' : 'role-scoped', stages: STAGES, users: buildUploadTracker(trackerClients, users, purchases, sales) });
+    res.json({ ok: true, financialYear, serviceType, scope: scope === null ? 'all' : 'role-scoped', stages: STAGES, users: buildUploadTracker(trackerClients, users, purchases, sales, { groupBy: serviceType ? 'application' : 'company', serviceType }) });
   } catch (error) {
     console.error('Upload tracker failed', { message: error.message });
     res.status(500).json({ error: 'Unable to load client upload tracker.' });

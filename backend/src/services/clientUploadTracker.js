@@ -24,7 +24,23 @@ function stageState(record, stage) {
   if (row?.yesNo === 'Yes') return row.partialDataReceived && !row.completeDataReceived ? 'progress' : 'complete';
   return row?.date || row?.files?.length || row?.remarks ? 'progress' : 'pending';
 }
-function buildUploadTracker(clients, users, purchases, sales) {
+function applicationDescriptor(client) {
+  const data = client.data || {}, basic = data.basic || {}, lead = client.selectedLead || {};
+  const selections = lead.serviceSelections || [];
+  const service = selections.find(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === String(client.assignedServiceId || '')) || (selections.length === 1 ? selections[0] : {});
+  const category = [basic.piboCategory, basic.subApplicantType, service.subApplicantType, service.piboCategory, basic.applicantType, service.applicantType].find(value => typeof value === 'string' && value.trim()) || 'Not recorded';
+  const key = category.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const canonical = key.includes('rawmaterial') && key.includes('import') || key.includes('simp') && key.includes('import') ? 'Importer of Raw Material'
+    : (key.includes('simp') || key.includes('smallmicro')) && key.includes('produc') ? 'Producer (Small & Micro)'
+    : key.includes('recycler') ? 'Recycler' : key.includes('brandowner') ? 'Brand Owner' : key.includes('importer') ? 'Importer'
+    : key.includes('producer') ? 'Producer' : key === 'pwp' || key.includes('plasticwasteprocessor') ? 'PWP' : category.trim();
+  const offered = service.servicesOffered ?? basic.servicesOffered ?? data.selectedLeadSnapshot?.servicesOffered ?? [];
+  const primary = (Array.isArray(offered) ? offered : [offered]).flatMap(value => String(value || '').split(/[,;\n]/)).map(value => value.trim()).find(Boolean) || '';
+  const normalized = primary.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const serviceType = /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalized) ? 'annual' : ['registration','newregistration'].includes(normalized) ? 'registration' : '';
+  return { category: canonical, serviceType, offered: primary };
+}
+function buildUploadTracker(clients, users, purchases, sales, options = {}) {
   const identities = new Map();
   users = users.filter(user => user.isActive !== false && userHasAnyRole(user, ['operation', 'operations', 'manager']) && !userHasAnyRole(user, ['admin', 'superadmin', 'sales']));
   users.forEach(user => [user._id, user.crmUserId, user.name, user.email].filter(Boolean).forEach(value => identities.set(id(value).trim().toLowerCase(), user)));
@@ -34,6 +50,7 @@ function buildUploadTracker(clients, users, purchases, sales) {
   users.filter(user => userHasAnyRole(user, ['manager'])).forEach(user => groups.set(id(user._id), emptyGroup(user)));
   const seen = new Set();
   for (const client of clients) {
+    if (options.serviceType && !matchesTrackedService(client, options.serviceType)) continue;
     const clientId = id(client._id);
     if (!clientId || seen.has(clientId)) continue;
     seen.add(clientId);
@@ -46,6 +63,11 @@ function buildUploadTracker(clients, users, purchases, sales) {
     const detail = { clientId: id(client._id), clientName: client.selectedLead?.company || client.selectedLead?.companyName || client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || client.data?.importMeta?.companyName || 'Untitled client', slaReceived: client.sla?.status === 'Yes', purchase: STAGES.map(stage => stageState(purchaseIndex.get(id(client._id)), stage)), sales: STAGES.map(stage => stageState(salesIndex.get(id(client._id)), stage)) };
     detail.companyKey = assignedCompanyKey(client);
     detail.clientIds = [clientId];
+    if (options.groupBy === 'application') {
+      const descriptor = applicationDescriptor(client);
+      Object.assign(detail, descriptor);
+      detail.companyKey += ':' + descriptor.category.toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
     const existing = group.clients.find(row => row.companyKey === detail.companyKey);
     if (existing) {
       existing.clientIds.push(clientId);
@@ -60,4 +82,4 @@ function buildUploadTracker(clients, users, purchases, sales) {
   }
   return [...groups.values()].sort((a, b) => a.userName.localeCompare(b.userName));
 }
-module.exports = { STAGES, stageState, buildUploadTracker, matchesTrackedService };
+module.exports = { STAGES, stageState, buildUploadTracker, matchesTrackedService, applicationDescriptor };
