@@ -43,7 +43,7 @@ function applicationDescriptor(client) {
   const closed = Boolean(assignment.closedAt || assignment.closedBy || assignment.closedByText || assignment.permanentClosedAt || (selections.length === 1 && (lead.closedAt || lead.closedBy)) || String(lead.status || '').toLowerCase() === 'closed');
   const annualWorkflowReady = Boolean(assignment.assignedTo || assignment.assignedToText || assignment.assignedToEmail)
     && Boolean(assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail);
-  return { category: canonical, serviceType, offered: primary, closed, annualWorkflowReady };
+  return { category: canonical, unit: String(service.plantUnit || basic.plantUnit || data.selectedLeadSnapshot?.plantUnit || '').trim(), serviceType, offered: primary, closed, annualWorkflowReady };
 }
 function buildUploadTracker(clients, users, purchases, sales, options = {}) {
   const identities = new Map();
@@ -71,7 +71,7 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
     if (options.groupBy === 'application') {
       const descriptor = applicationDescriptor(client);
       Object.assign(detail, descriptor);
-      detail.companyKey += ':' + descriptor.category.toLowerCase().replace(/[^a-z0-9]/g, '');
+      detail.companyKey += ':' + descriptor.category.toLowerCase().replace(/[^a-z0-9]/g, '') + ':' + descriptor.unit.toLowerCase().replace(/[^a-z0-9]/g, '');
       detail.sources = [{ ...descriptor, clientId, slaReceived: detail.slaReceived, purchase: detail.purchase, sales: detail.sales }];
     }
     const existing = group.clients.find(row => row.companyKey === detail.companyKey);
@@ -85,13 +85,14 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
   }
   if (options.groupBy === 'application') for (const group of groups.values()) {
     group.clients = group.clients.flatMap(detail => {
-      // Match Service Summary: one representative closed service per company/category.
+      // Match Service Summary: one representative closed service per company/category/unit.
       const representative = detail.sources.find(source => source.closed && source.offered);
       if (!representative || options.serviceType && representative.serviceType !== options.serviceType) return [];
       const sources = detail.sources.filter(source => source.closed && source.serviceType === representative.serviceType && (representative.serviceType !== 'annual' || source.annualWorkflowReady));
       if (!sources.length) return [];
       detail.clientId = representative.clientId;
       detail.category = representative.category;
+      detail.unit = representative.unit;
       detail.offered = representative.offered;
       detail.clientIds = sources.map(source => source.clientId);
       detail.slaReceived = sources.some(source => source.slaReceived);

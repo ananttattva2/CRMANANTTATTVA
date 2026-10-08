@@ -14,7 +14,7 @@ export function buildUploadTrackerExport(users) {
     summaryHeaders: ['User Name', 'Allocated Clients', 'SLA Received', 'SLA Not Received', ...modules.flatMap(module => UPLOAD_TRACKER_STAGES.map(stage => `${module === 'purchase' ? 'Purchase' : 'Sales'} — ${stage}`))],
     summary: [...users.map(user => summaryRow(user.userName, user.clients)), summaryRow('Grand Total', clients)],
     clientHeaders: ['User Name', 'Client Name', 'SLA', ...modules.flatMap(module => UPLOAD_TRACKER_STAGES.map(stage => `${module === 'purchase' ? 'Purchase' : 'Sales'} — ${stage}`))],
-    clients: clients.map(client => [safe(client.userName), safe(client.category ? `${client.clientName}\n${client.category} · ${client.offered}` : client.clientName), client.slaReceived ? 'Received' : 'Not received', ...modules.flatMap(module => UPLOAD_TRACKER_STAGES.map((_, index) => stateLabel(client[module]?.[index], index)))])
+    clients: clients.map(client => [safe(client.userName), safe(client.category ? `${client.clientName}\n${client.category}${client.unit ? ' · ' + client.unit : ''} · ${client.offered}` : client.clientName), client.slaReceived ? 'Received' : 'Not received', ...modules.flatMap(module => UPLOAD_TRACKER_STAGES.map((_, index) => stateLabel(client[module]?.[index], index)))])
   }
 }
 const filename = (scope, year, extension) => `Client-Upload-Tracker-${String(scope || 'All-users').replace(/[^a-zA-Z0-9_-]+/g, '-')}-${year}.${extension}`

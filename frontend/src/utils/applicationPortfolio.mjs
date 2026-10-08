@@ -114,7 +114,7 @@ export function buildApplicationPortfolio(assignments, users) {
     const records = new Map()
     for (const company of group.rows) for (const row of company.serviceRows || [company]) {
       const record = applicationRecord(row.client)
-      const identity = `${record.companyKey}:${normalize(record.category)}`
+      const identity = `${record.companyKey}:${normalize(record.category)}:${normalize(record.unit)}`
       const existing = records.get(identity)
       if (!existing) records.set(identity, { ...record, services: [record] })
       else {
