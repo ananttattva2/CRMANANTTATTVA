@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const users = [{ _id: 'sonal', name: 'Sonal', role: 'operation' }, { _id: 'krishna', name: 'Krishna', role: 'operation' }];
-const client = (id, owner, category, status = '') => ({ _id: id, selectedLead: { company: '20 MICRONS LIMITED', assignedStaff: owner }, data: { basic: { piboCategory: category }, cpcb: { status }, importMeta: { visibilityStatus: 'LIVE' } } });
+const client = (id, owner, category, status = '') => ({ _id: id, selectedLead: { company: '20 MICRONS LIMITED', assignedStaff: owner, assignments: [{ poApprovalStatus:'APPROVED',assignedTo:'manager',assignedStaff:owner }] }, data: { basic: { piboCategory: category }, cpcb: { status }, importMeta: { visibilityStatus: 'LIVE' } } });
 
 test('SPOC distribution deduplicates a company category, retains distinct categories and never merges staff', async () => {
   const { buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
@@ -126,8 +126,8 @@ test('Annual Return and Annual Filing/Filling aliases appear in the same applica
 
 test('service summary headers come only from closed assigned services and annual aliases merge', async () => {
   const { buildApplicationPortfolio, offeredServiceColumns } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
-  const a = client('a', 'sonal', 'Producer'); a.assignedServiceId = 'a'; a.selectedLead.assignments = [{ assignedStaff: 'sonal', assignedServiceId: 'a', closedAt: '2026-10-01' }]; a.data.basic.servicesOffered = 'Annual Filling';
-  const b = client('b', 'sonal', 'Importer'); b.assignedServiceId = 'b'; b.selectedLead.assignments = [{ assignedStaff: 'sonal', assignedServiceId: 'b', closedAt: '2026-10-01' }]; b.data.basic.servicesOffered = 'Annual Return Filling';
+  const a = client('a', 'sonal', 'Producer'); a.assignedServiceId = 'a'; a.selectedLead.assignments = [{ assignedStaff: 'sonal', assignedServiceId: 'a', poApprovalStatus:'APPROVED',assignedTo:'manager', closedAt: '2026-10-01' }]; a.data.basic.servicesOffered = 'Annual Filling';
+  const b = client('b', 'sonal', 'Importer'); b.assignedServiceId = 'b'; b.selectedLead.assignments = [{ assignedStaff: 'sonal', assignedServiceId: 'b', poApprovalStatus:'APPROVED',assignedTo:'manager', closedAt: '2026-10-01' }]; b.data.basic.servicesOffered = 'Annual Return Filling';
   const c = client('c', 'sonal', 'Producer'); c.selectedLead.company = 'Other Ltd'; c.data.basic.servicesOffered = 'Consulting';
   const d = client('d', 'krishna', 'Importer'); d.assignedServiceId = 'd'; d.selectedLead.assignments = [{ assignedStaff: 'krishna', assignedServiceId: 'd', closedAt: '2026-10-01' }]; d.data.basic.servicesOffered = 'New Registration';
   const groups = buildApplicationPortfolio([a, b, c, d], users);
@@ -203,7 +203,7 @@ test('service breakdown counts each application once and agrees with the Clients
 test('annual year summary uses only saved PO annual year for the assigned service', async () => {
   const {buildApplicationPortfolio, applicationSummaryRecords} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const row=client('year','sonal','Producer','Approved'); row.selectedLead.status='Closed'; row.assignedServiceId='annual'; row.data.basic.servicesOffered='Annual Return Filling';
-  row.selectedLead.assignments=[{assignedServiceId:'annual', assignedStaff:'sonal',poYearRows:[{annualReturnYear:'2025-26',poFinancialYear:'2026-27'},{annualReturnYear:'2025-26'}]},{assignedServiceId:'other',poYearRows:[{annualReturnYear:'2027-28'}]}];
+  row.selectedLead.assignments=[{assignedServiceId:'annual', assignedStaff:'sonal',poApprovalStatus:'APPROVED',assignedTo:'manager',poYearRows:[{annualReturnYear:'2025-26',poFinancialYear:'2026-27'},{annualReturnYear:'2025-26'}]},{assignedServiceId:'other',poYearRows:[{annualReturnYear:'2027-28'}]}];
   let [group]=buildApplicationPortfolio([row],users);
   assert.deepEqual(applicationSummaryRecords(group)[0].annualYears,['2025-26']);
   row.selectedLead.assignments[0].poYearRows=[{poFinancialYear:'2026-27'}];
@@ -229,4 +229,17 @@ test('status annual applicability and years use the same exclusive closed servic
   assert.equal(records[0].annual,false);
   assert.deepEqual(records[0].annualYears,[]);
   assert.equal(records[2].annual,false);
+});
+
+
+test('Annual Filling aliases require PO approval and manager-to-staff assignment before applicability', async () => {
+  const {buildApplicationPortfolio, applicationSummaryRecords, canonicalOfferedServices, matchesApplicationService} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  assert.deepEqual(canonicalOfferedServices(['Annual Filling','Annual Return Filling','Annual Return']),['Annual Return Filling']);
+  for(const missing of ['poApprovalStatus','assignedTo','assignedStaff',null]) {
+    const row=client('workflow','sonal','Producer');row.selectedLead.status='Closed';row.data.basic.servicesOffered='Annual Filling';
+    if(missing) row.selectedLead.assignments[0][missing]='';
+    const result=applicationSummaryRecords(buildApplicationPortfolio([row],users)[0])[0];
+    assert.equal(result.annual,missing===null);
+    assert.equal(matchesApplicationService(result,'PO Approval / Assignment Pending'),missing!==null);
+  }
 });

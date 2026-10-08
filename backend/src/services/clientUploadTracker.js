@@ -41,7 +41,10 @@ function applicationDescriptor(client) {
   const assignments = lead.assignments || [];
   const assignment = assignments.find(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === String(client.assignedServiceId || '')) || (assignments.length === 1 ? assignments[0] : {});
   const closed = Boolean(assignment.closedAt || assignment.closedBy || assignment.closedByText || assignment.permanentClosedAt || (selections.length === 1 && (lead.closedAt || lead.closedBy)) || String(lead.status || '').toLowerCase() === 'closed');
-  return { category: canonical, serviceType, offered: primary, closed };
+  const annualWorkflowReady = String(assignment.poApprovalStatus || '').toUpperCase() === 'APPROVED'
+    && Boolean(assignment.assignedTo || assignment.assignedToText || assignment.assignedToEmail)
+    && Boolean(assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail);
+  return { category: canonical, serviceType, offered: primary, closed, annualWorkflowReady };
 }
 function buildUploadTracker(clients, users, purchases, sales, options = {}) {
   const identities = new Map();
@@ -86,7 +89,8 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
       // Match Service Summary: one representative closed service per company/category.
       const representative = detail.sources.find(source => source.closed && source.offered);
       if (!representative || options.serviceType && representative.serviceType !== options.serviceType) return [];
-      const sources = detail.sources.filter(source => source.closed && source.serviceType === representative.serviceType);
+      const sources = detail.sources.filter(source => source.closed && source.serviceType === representative.serviceType && (representative.serviceType !== 'annual' || source.annualWorkflowReady));
+      if (!sources.length) return [];
       detail.clientId = representative.clientId;
       detail.category = representative.category;
       detail.offered = representative.offered;

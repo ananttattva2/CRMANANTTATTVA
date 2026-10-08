@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { matchesTrackedService, buildUploadTracker } = require('../src/services/clientUploadTracker');
 const user = { _id: 'sonal', name: 'Sonal', role: 'operation' };
 function client(id, offered) {
-  return { _id: id, assignedServiceId: id, selectedLead: { status: 'Closed', company: 'Example Ltd', assignments: [{ assignedServiceId: id, assignedStaff: user._id }], serviceSelections: [{ assignedServiceId: id, servicesOffered: offered }] }, data: { basic: {} } };
+  return { _id: id, assignedServiceId: id, selectedLead: { status: 'Closed', company: 'Example Ltd', assignments: [{ assignedServiceId: id, assignedStaff: user._id, assignedTo:'manager', poApprovalStatus:'APPROVED' }], serviceSelections: [{ assignedServiceId: id, servicesOffered: offered }] }, data: { basic: {} } };
 }
 test('annual and registration tabs match saved service aliases and arrays', () => {
   for (const name of ['Annual Return', 'Annual Filling', 'Annual Filing', 'Annual Return Filling']) {
@@ -78,5 +78,15 @@ test('AR tracker counts agree with Service Summary for mixed and unclosed catego
   for (const [serviceType,label] of [['annual','Annual Return Filling'],['registration','New Registration']]) {
     const tracker=buildUploadTracker(rows,[user],[],[],{groupBy:'application',serviceType});
     assert.equal(tracker[0].clients.length,summary.filter(row=>matchesApplicationService(row,label)).length);
+  }
+});
+
+
+test('AR allocation requires approved PO plus both manager and permanent staff assignment', () => {
+  for(const missing of ['poApprovalStatus','assignedTo','assignedStaff',null]) {
+    const row=client('workflow','Annual Filling');
+    if(missing) row.selectedLead.assignments[0][missing]='';
+    const tracker=buildUploadTracker([row],[user],[],[],{groupBy:'application',serviceType:'annual'});
+    assert.equal(tracker.reduce((sum,g)=>sum+g.clients.length,0),missing===null?1:0);
   }
 });

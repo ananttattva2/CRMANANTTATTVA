@@ -15,7 +15,7 @@ export function applicationSummaryRecords(group) {
     const labels = { rejected: 'Rejected', underReview: 'Under Review', applied: 'Applied', notStarted: 'Not Started', approved: 'Approved' }
     const summaryService = applicationSummaryService(record)
     const annual = summaryService === 'Annual Return Filling'
-    const annualYears = annual ? [...new Set(record.services.filter(service => service.closed && service.annual).flatMap(service => service.annualYears || []))] : []
+    const annualYears = annual ? [...new Set(record.services.filter(service => service.closed && service.annual && service.annualWorkflowReady).flatMap(service => service.annualYears || []))] : []
     return { ...record, bucket, cpcb: labels[bucket], summaryService, annual, annualYears,
       offered: summaryService === 'unclassified' ? 'Not Closed / Service Not Recorded' : summaryService }
   })
@@ -30,7 +30,9 @@ export function applicationSummaryService(record) {
   // sibling assignments in details rather than counting this application twice.
   const representative = closed.find(service => service.id === record.id && service.offeredServices.length)
     || closed.find(service => service.offeredServices.length)
-  return representative?.offeredServices[0] || 'unclassified'
+  const offered = representative?.offeredServices[0] || 'unclassified'
+  if (offered === 'Annual Return Filling' && !closed.some(service => service.offeredServices[0] === offered && service.annualWorkflowReady)) return 'PO Approval / Assignment Pending'
+  return offered
 }
 export function cpcbStatusBucket(value) {
   const status = String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -74,6 +76,9 @@ export function applicationRecord(client) {
   const closed = Boolean(assignment.closedAt || assignment.closedBy || assignment.closedByText || assignment.permanentClosedAt || (services.length === 1 && (lead.closedAt || lead.closedBy)) || String(lead.status || '').toLowerCase() === 'closed')
   const offered = service.servicesOffered ?? basic.servicesOffered ?? data.selectedLeadSnapshot?.servicesOffered ?? []
   const annual = isAnnualReturnService(offered)
+  const annualWorkflowReady = String(assignment.poApprovalStatus || '').toUpperCase() === 'APPROVED'
+    && Boolean(assignment.assignedTo || assignment.assignedToText || assignment.assignedToEmail)
+    && Boolean(assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail)
   const annualYears = annual ? [...new Set([...(assignment.poYearRows || []), ...(assignment.originalPoDetails ? [assignment.originalPoDetails] : [])].filter(po => !po.services?.length || isAnnualReturnService(po.services)).map(po => po.annualReturnYear).filter(Boolean))] : []
   const category = applicantCategory(text(basic.piboCategory, basic.subApplicantType, service.subApplicantType, service.piboCategory, basic.applicantType, service.applicantType))
   const cpcb = text(data.cpcb?.status, data.cpcb?.approvalStatus, data.cpcb?.applicationStatus, basic.cpcbStatus, meta.cpcbStatus)
@@ -83,7 +88,7 @@ export function applicationRecord(client) {
   const status = normalize(cpcb)
   const inactive = /suspend|discontinu|inactive/.test(normalize(`${clientStatus} ${visibility} ${cpcb}`))
   const bucket = cpcbStatusBucket(cpcb)
-  return { id: String(client._id), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), offeredServices: canonicalOfferedServices(offered), closed, bucket, live: !inactive, annual, annualYears, sourceIds: [String(client._id)] }
+  return { id: String(client._id), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), offeredServices: canonicalOfferedServices(offered), closed, bucket, live: !inactive, annual, annualWorkflowReady, annualYears, sourceIds: [String(client._id)] }
 }
 export function buildApplicationPortfolio(assignments, users) {
   const groups = buildOperationsProgressGroups(assignments.map(client => ({ id: String(client._id), client, companyName: applicationRecord(client).name })), users)
@@ -129,5 +134,5 @@ export function canonicalOfferedServices(value) {
 }
 
 export function offeredServiceColumns(groups) {
-  return [...new Set(groups.flatMap(group => group.closedCompanies.flatMap(company => company.services.flatMap(service => service.offeredServices))))].sort((a, b) => a === 'Annual Return Filling' ? -1 : b === 'Annual Return Filling' ? 1 : a.localeCompare(b))
+  return [...new Set([...groups.flatMap(group => group.closedCompanies.flatMap(company => company.services.flatMap(service => service.offeredServices))), ...(groups.some(group => group.records.some(record => applicationSummaryService(record) === 'PO Approval / Assignment Pending')) ? ['PO Approval / Assignment Pending'] : [])])].sort((a, b) => a === 'Annual Return Filling' ? -1 : b === 'Annual Return Filling' ? 1 : a.localeCompare(b))
 }
