@@ -28,7 +28,7 @@ function applicationDescriptor(client) {
   const data = client.data || {}, basic = data.basic || {}, lead = client.selectedLead || {};
   const selections = lead.serviceSelections || [];
   const service = selections.find(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === String(client.assignedServiceId || '')) || (selections.length === 1 ? selections[0] : {});
-  const category = [basic.piboCategory, basic.subApplicantType, service.subApplicantType, service.piboCategory, basic.applicantType, service.applicantType].find(value => typeof value === 'string' && value.trim()) || 'Not recorded';
+  const category = [service.subApplicantType, service.piboCategory, basic.piboCategory, basic.subApplicantType, service.applicantType, basic.applicantType].find(value => typeof value === 'string' && value.trim()) || 'Not recorded';
   const key = category.toLowerCase().replace(/[^a-z0-9]/g, '');
   const canonical = key.includes('rawmaterial') && key.includes('import') || key.includes('simp') && key.includes('import') ? 'Importer of Raw Material'
     : (key.includes('simp') || key.includes('smallmicro')) && key.includes('produc') ? 'Producer (Small & Micro)'

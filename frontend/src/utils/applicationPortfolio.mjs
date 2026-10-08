@@ -81,7 +81,7 @@ export function applicationRecord(client) {
   const annualWorkflowReady = Boolean(assignment.assignedTo || assignment.assignedToText || assignment.assignedToEmail)
     && Boolean(assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail)
   const annualYears = annual ? [...new Set([...(assignment.poYearRows || []), ...(assignment.originalPoDetails ? [assignment.originalPoDetails] : [])].filter(po => !po.services?.length || isAnnualReturnService(po.services)).map(po => po.annualReturnYear).filter(Boolean))] : []
-  const category = applicantCategory(text(basic.piboCategory, basic.subApplicantType, service.subApplicantType, service.piboCategory, basic.applicantType, service.applicantType))
+  const category = applicantCategory(text(service.subApplicantType, service.piboCategory, basic.piboCategory, basic.subApplicantType, service.applicantType, basic.applicantType))
   const cpcb = text(data.cpcb?.status, data.cpcb?.approvalStatus, data.cpcb?.applicationStatus, basic.cpcbStatus, meta.cpcbStatus)
   const state = text(data.registeredAddress?.state, data.address?.state, data.addresses?.state, basic.state, meta.state)
   const clientStatus = text(meta.clientStatus, client.adminControls?.clientStatus, client.workflowStatus)
