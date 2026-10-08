@@ -89,14 +89,17 @@ export function applicationRecord(client) {
   const bucket = cpcbStatusBucket(cpcb)
   return { id: String(client._id), assignmentOnly: Boolean(client.assignmentOnly), leadId: String(lead._id || ''), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), offeredServices: canonicalOfferedServices(offered), closed, bucket, live: !inactive, annual, annualWorkflowReady, annualYears, sourceIds: [String(client._id)] }
 }
-// Assignment placeholders do not represent another Client Master when the
-// same lead already has a saved record for this applicant, unit and service.
+// Placeholders and blank drafts do not represent another application when
+// this lead already has a submitted master for the same applicant/unit/service.
 export function effectiveApplicationServices(services) {
   const signature = service => [service.leadId, service.category, service.unit, service.industry, service.eprCategory, [...service.offeredServices].sort().join('|')].map(normalize).join(':')
   const saved = services.filter(service => !service.assignmentOnly)
   return services.filter(service => {
-    if (!service.assignmentOnly || !service.leadId) return true
-    const master = saved.find(candidate => signature(candidate) === signature(service))
+    const blankDraft = !service.assignmentOnly && normalize(service.clientStatus) === 'draft' && normalize(service.cpcb) === 'notrecorded'
+    if ((!service.assignmentOnly && !blankDraft) || !service.leadId) return true
+    const master = saved.find(candidate => candidate.id !== service.id
+      && signature(candidate) === signature(service)
+      && (!blankDraft || normalize(candidate.clientStatus) === 'submitted' && normalize(candidate.cpcb) !== 'notrecorded'))
     if (!master) return true
     master.annualYears = [...new Set([...(master.annualYears || []), ...(service.annualYears || [])])]
     return false

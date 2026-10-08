@@ -14,3 +14,18 @@ test('matching annual assignment placeholder uses one saved Client Master status
  assert.equal(effectiveApplicationServices([saved,{...placeholder,assignmentOnly:false}]).length,2);
  assert.equal(effectiveApplicationServices([saved,{...placeholder,offeredServices:['New Registration']}]).length,2);
 });
+
+test('blank duplicate drafts use the submitted master across clients without hiding distinct records', async()=>{
+ const {effectiveApplicationServices,applicationSummaryRecords}=await import('../../frontend/src/utils/applicationPortfolio.mjs');
+ for(const name of ['MANGLAM PLASTICS PVT LTD','Another Client']) {
+  const master={id:'submitted',name,leadId:'lead',category:'Producer',unit:'Unit 1',industry:'Manufacturing',eprCategory:'Plastic Waste',offeredServices:['Annual Return Filling'],clientStatus:'submitted',cpcb:'Approved',bucket:'approved',closed:true,annualWorkflowReady:true};
+  const draft={...master,id:'draft',clientStatus:'draft',cpcb:'Not recorded',bucket:'notStarted'};
+  const services=effectiveApplicationServices([draft,master]);
+  assert.equal(services.length,1);
+  assert.equal(applicationSummaryRecords({records:[{...master,services}]})[0].bucket,'approved');
+  assert.equal(effectiveApplicationServices([master,{...draft,cpcb:'Under Review',bucket:'underReview'}]).length,2);
+  assert.equal(effectiveApplicationServices([master,{...draft,unit:'Unit 2'}]).length,2);
+  assert.equal(effectiveApplicationServices([master,{...draft,leadId:'another-lead'}]).length,2);
+  assert.equal(effectiveApplicationServices([draft]).length,1);
+ }
+});
