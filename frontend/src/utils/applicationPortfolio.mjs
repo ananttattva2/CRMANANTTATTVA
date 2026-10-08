@@ -5,7 +5,7 @@ export const STATUS_COLUMNS = [
   ['total', 'Total'],
   ['annual', 'Annual Return Applicable'],
   ['annual:2025-26', '2025-26'], ['annual:2026-27', '2026-27'], ['annual:2027-28', '2027-28'], ['annual:unrecorded', 'Not Recorded'],
-  ['approved', 'Approved'], ['applied', 'Applied'], ['underReview', 'Under Review'],
+  ['applied', 'Applied'], ['underReview', 'Under Review'],
   ['notStarted', 'Not Started'], ['rejected', 'Rejected']
 ]
 export function applicationSummaryRecords(group) {
@@ -87,8 +87,22 @@ export function applicationRecord(client) {
   const status = normalize(cpcb)
   const inactive = /suspend|discontinu|inactive/.test(normalize(`${clientStatus} ${visibility} ${cpcb}`))
   const bucket = cpcbStatusBucket(cpcb)
-  return { id: String(client._id), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), offeredServices: canonicalOfferedServices(offered), closed, bucket, live: !inactive, annual, annualWorkflowReady, annualYears, sourceIds: [String(client._id)] }
+  return { id: String(client._id), assignmentOnly: Boolean(client.assignmentOnly), leadId: String(lead._id || ''), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), offeredServices: canonicalOfferedServices(offered), closed, bucket, live: !inactive, annual, annualWorkflowReady, annualYears, sourceIds: [String(client._id)] }
 }
+// Assignment placeholders do not represent another Client Master when the
+// same lead already has a saved record for this applicant, unit and service.
+export function effectiveApplicationServices(services) {
+  const signature = service => [service.leadId, service.category, service.unit, service.industry, service.eprCategory, [...service.offeredServices].sort().join('|')].map(normalize).join(':')
+  const saved = services.filter(service => !service.assignmentOnly)
+  return services.filter(service => {
+    if (!service.assignmentOnly || !service.leadId) return true
+    const master = saved.find(candidate => signature(candidate) === signature(service))
+    if (!master) return true
+    master.annualYears = [...new Set([...(master.annualYears || []), ...(service.annualYears || [])])]
+    return false
+  })
+}
+
 export function buildApplicationPortfolio(assignments, users) {
   const groups = buildOperationsProgressGroups(assignments.map(client => ({ id: String(client._id), client, companyName: applicationRecord(client).name })), users)
   return groups.map(group => {
@@ -107,6 +121,12 @@ export function buildApplicationPortfolio(assignments, users) {
         existing.leadCode = [...new Set(existing.services.map(service => service.leadCode).filter(Boolean))].join(' / ')
         if (existing.bucket !== record.bucket) { existing.bucket = 'mixed'; existing.cpcb = 'Mixed status — view individual services' }
       }
+    }
+    for (const record of records.values()) {
+      record.services = effectiveApplicationServices(record.services)
+      const buckets = [...new Set(record.services.map(service => service.bucket))]
+      record.bucket = buckets.length === 1 ? buckets[0] : 'mixed'
+      record.cpcb = buckets.length === 1 ? record.services[0].cpcb : 'Mixed status — view individual services'
     }
     return { ...group, records: [...records.values()], companyRecords: group.rows.map(company => companyStatusRecord(company.serviceRows || [company])), closedCompanies: group.rows.map(company => (company.serviceRows || [company]).filter(row => applicationRecord(row.client).closed)).filter(rows => rows.length).map(companyStatusRecord) }
   }).filter(group => group.records.length)

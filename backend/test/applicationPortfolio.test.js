@@ -56,7 +56,7 @@ test('application summary counts one company per user across applicant categorie
   assert.equal(sonal.companyRecords[0].bucket, 'applied');
   assert.equal(sonal.companyRecords[0].services.length, 2);
   assert.equal(groups.find(group => group.id === 'krishna').companyRecords[0].bucket, 'approved');
-  assert.deepEqual(STATUS_COLUMNS.filter(([key]) => ['approved','applied','underReview','notStarted','rejected'].includes(key)).map(column => column[1]), ['Approved', 'Applied', 'Under Review', 'Not Started', 'Rejected']);
+  assert.deepEqual(STATUS_COLUMNS.filter(([key]) => ['approved','applied','underReview','notStarted','rejected'].includes(key)).map(column => column[1]), ['Applied', 'Under Review', 'Not Started', 'Rejected']);
 });
 
 test('company approval requires all assigned service statuses approved; missing status remains visible in details', async () => {
