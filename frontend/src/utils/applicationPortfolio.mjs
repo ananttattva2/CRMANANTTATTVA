@@ -13,9 +13,10 @@ export function applicationSummaryRecords(group) {
     const priority = ['rejected', 'underReview', 'applied', 'notStarted', 'approved']
     const bucket = priority.find(status => record.services.some(service => service.bucket === status))
     const labels = { rejected: 'Rejected', underReview: 'Under Review', applied: 'Applied', notStarted: 'Not Started', approved: 'Approved' }
-    const annualYears = [...new Set(record.services.filter(service => service.annual).flatMap(service => service.annualYears || []))]
     const summaryService = applicationSummaryService(record)
-    return { ...record, bucket, cpcb: labels[bucket], summaryService, annualYears,
+    const annual = summaryService === 'Annual Return Filling'
+    const annualYears = annual ? [...new Set(record.services.filter(service => service.closed && service.annual).flatMap(service => service.annualYears || []))] : []
+    return { ...record, bucket, cpcb: labels[bucket], summaryService, annual, annualYears,
       offered: summaryService === 'unclassified' ? 'Not Closed / Service Not Recorded' : summaryService }
   })
 }

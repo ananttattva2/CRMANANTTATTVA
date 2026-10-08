@@ -202,7 +202,7 @@ test('service breakdown counts each application once and agrees with the Clients
 
 test('annual year summary uses only saved PO annual year for the assigned service', async () => {
   const {buildApplicationPortfolio, applicationSummaryRecords} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
-  const row=client('year','sonal','Producer','Approved'); row.assignedServiceId='annual'; row.data.basic.servicesOffered='Annual Return Filling';
+  const row=client('year','sonal','Producer','Approved'); row.selectedLead.status='Closed'; row.assignedServiceId='annual'; row.data.basic.servicesOffered='Annual Return Filling';
   row.selectedLead.assignments=[{assignedServiceId:'annual', assignedStaff:'sonal',poYearRows:[{annualReturnYear:'2025-26',poFinancialYear:'2026-27'},{annualReturnYear:'2025-26'}]},{assignedServiceId:'other',poYearRows:[{annualReturnYear:'2027-28'}]}];
   let [group]=buildApplicationPortfolio([row],users);
   assert.deepEqual(applicationSummaryRecords(group)[0].annualYears,['2025-26']);
@@ -212,4 +212,21 @@ test('annual year summary uses only saved PO annual year for the assigned servic
   row.data.basic.servicesOffered='New Registration'; row.selectedLead.assignments[0].poYearRows=[{registrationYear:'2026-27'}];
   [group]=buildApplicationPortfolio([row],users);
   assert.equal(applicationSummaryRecords(group)[0].annual,false);
+});
+
+
+test('status annual applicability and years use the same exclusive closed service as Service Summary', async () => {
+  const {buildApplicationPortfolio, applicationSummaryRecords, matchesApplicationService} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const registration=client('registration','sonal','Producer'), sibling=client('annual','sonal','Producer'), owner=client('owner','sonal','Brand Owner'), open=client('open','sonal','Importer');
+  registration.data.basic.servicesOffered='New Registration';registration.selectedLead.status='Closed';
+  sibling.data.basic.servicesOffered='Annual Return Filling';sibling.selectedLead.status='Closed';
+  owner.data.basic.servicesOffered='Annual Return';owner.selectedLead.status='Closed';
+  open.data.basic.servicesOffered='Annual Return Filling';
+  const records=applicationSummaryRecords(buildApplicationPortfolio([registration,sibling,owner,open],users)[0]);
+  assert.equal(records.length,3);
+  assert.equal(records.filter(row=>row.annual).length,1);
+  assert.equal(records.filter(row=>row.annual).length,records.filter(row=>matchesApplicationService(row,'Annual Return Filling')).length);
+  assert.equal(records[0].annual,false);
+  assert.deepEqual(records[0].annualYears,[]);
+  assert.equal(records[2].annual,false);
 });
