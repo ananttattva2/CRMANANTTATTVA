@@ -264,10 +264,12 @@ test('current-FY approved annual applications count once in their earliest annua
   let result=applicationSummaryRecords(buildApplicationPortfolio([approved],users)[0])[0];
   assert.equal(result.annual,true);assert.deepEqual(result.annualYears,['2025-26']);
   assert.equal(matchesServiceSummary(result,'Annual Return Filling',new Date('2026-10-08T12:00:00+05:30')),true);
+  assert.equal(matchesServiceSummary(result,'total',new Date('2026-10-08T12:00:00+05:30')),true);
   for(const status of ['Applied','Under Review','Not Started','Rejected']) {
     result=applicationSummaryRecords(buildApplicationPortfolio([make(status,status,[{poFinancialYear:'2026-27',annualReturnYear:'2025-26'}])],users)[0])[0];
     assert.equal(result.annual,false);assert.deepEqual(result.annualYears,[]);
     assert.equal(matchesServiceSummary(result,'Annual Return Filling',new Date('2026-10-08T12:00:00+05:30')),false);
+    assert.equal(matchesServiceSummary(result,'total',new Date('2026-10-08T12:00:00+05:30')),false);
   }
   result=applicationSummaryRecords(buildApplicationPortfolio([make('wrong-fy','Approved',[{poFinancialYear:'2025-26',annualReturnYear:'2025-26'}])],users)[0])[0];
   assert.equal(result.annual,false);assert.deepEqual(result.annualYears,[]);

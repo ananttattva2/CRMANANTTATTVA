@@ -27,9 +27,11 @@ export function matchesApplicationService(record, key) {
   return applicationSummaryService(record) === key
 }
 export function matchesServiceSummary(record, key, date = new Date()) {
-  if (key !== 'Annual Return Filling') return matchesApplicationService(record, key)
   const summary = record.annualYears ? record : applicationSummaryRecords({ records: [record] })[0]
-  return summary.annual && summary.annualYears.includes(annualReturnYearForDate(date))
+  const annualForYear = summary.annual && summary.annualYears.includes(annualReturnYearForDate(date))
+  if (key === 'Annual Return Filling') return annualForYear
+  if (key === 'total') return applicationSummaryService(summary) !== 'Annual Return Filling' || annualForYear
+  return matchesApplicationService(summary, key)
 }
 export function applicationSummaryService(record) {
   const closed = record.services.filter(service => service.closed)
