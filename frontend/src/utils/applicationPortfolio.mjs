@@ -10,10 +10,12 @@ export const STATUS_COLUMNS = [
 ]
 export function applicationSummaryRecords(group) {
   return group.records.map(record => {
-    const priority = ['rejected', 'underReview', 'applied', 'notStarted', 'approved']
-    const bucket = priority.find(status => record.services.some(service => service.bucket === status))
-    const labels = { rejected: 'Rejected', underReview: 'Under Review', applied: 'Applied', notStarted: 'Not Started', approved: 'Approved' }
     const summaryService = applicationSummaryService(record)
+    const matchingServices = record.services.filter(service => service.closed && service.offeredServices[0] === summaryService)
+    const statusServices = matchingServices.length ? matchingServices : record.services
+    const priority = ['rejected', 'underReview', 'applied', 'notStarted', 'approved']
+    const bucket = priority.find(status => statusServices.some(service => service.bucket === status))
+    const labels = { rejected: 'Rejected', underReview: 'Under Review', applied: 'Applied', notStarted: 'Not Started', approved: 'Approved' }
     const annual = summaryService === 'Annual Return Filling'
     const annualYears = annual ? [...new Set(record.services.filter(service => service.closed && service.annual && service.annualWorkflowReady).flatMap(service => service.annualYears || []))] : []
     return { ...record, bucket, cpcb: labels[bucket], summaryService, annual, annualYears,

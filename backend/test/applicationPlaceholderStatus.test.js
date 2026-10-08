@@ -29,3 +29,17 @@ test('blank duplicate drafts use the submitted master across clients without hid
   assert.equal(effectiveApplicationServices([draft]).length,1);
  }
 });
+
+test('summary CPCB status excludes other offered services but retains all units and detail records',async()=>{
+ const {applicationSummaryRecords}=await import('../../frontend/src/utils/applicationPortfolio.mjs');
+ const annual={id:'unit1',closed:true,offeredServices:['Annual Return Filling'],bucket:'approved',annual:true,annualWorkflowReady:true};
+ const unit2={...annual,id:'unit2'};
+ const credit={...annual,id:'credit',offeredServices:['Credit Procurement'],bucket:'notStarted',annual:false};
+ for(const name of ['APEX PACKING PRODUCTS PVT LTD','Another Client']) {
+  const group={records:[{...annual,name,services:[annual,unit2,credit]}]};
+  const [summary]=applicationSummaryRecords(group);
+  assert.equal(summary.bucket,'approved');assert.equal(summary.services.length,3);
+  unit2.bucket='notStarted';assert.equal(applicationSummaryRecords(group)[0].bucket,'notStarted');
+  unit2.bucket='approved';credit.bucket='rejected';assert.equal(applicationSummaryRecords(group)[0].bucket,'approved');
+ }
+});
