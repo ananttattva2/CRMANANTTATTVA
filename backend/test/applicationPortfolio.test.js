@@ -246,8 +246,9 @@ test('Annual Filling aliases require manager-to-staff assignment; rejected PO do
 });
 
 test('current-FY approved annual applications count once in their earliest annual return year', async () => {
-  const {buildApplicationPortfolio, applicationSummaryRecords, financialYearForDate, STATUS_COLUMNS} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const {buildApplicationPortfolio, applicationSummaryRecords, financialYearForDate, annualReturnYearForDate, matchesServiceSummary, STATUS_COLUMNS} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   assert.equal(financialYearForDate(new Date('2026-10-08T12:00:00+05:30')), '2026-27');
+  assert.equal(annualReturnYearForDate(new Date('2026-10-08T12:00:00+05:30')), '2025-26');
   assert.equal(STATUS_COLUMNS.some(([key]) => key === 'annual'), false);
   const make = (id, cpcbStatus, poYears) => {
     const row=client(id,'sonal','Producer',cpcbStatus);row.assignedServiceId=id;row.selectedLead.status='Closed';row.data.basic.servicesOffered='Annual Return Filling';
@@ -262,9 +263,11 @@ test('current-FY approved annual applications count once in their earliest annua
   ]);
   let result=applicationSummaryRecords(buildApplicationPortfolio([approved],users)[0])[0];
   assert.equal(result.annual,true);assert.deepEqual(result.annualYears,['2025-26']);
+  assert.equal(matchesServiceSummary(result,'Annual Return Filling',new Date('2026-10-08T12:00:00+05:30')),true);
   for(const status of ['Applied','Under Review','Not Started','Rejected']) {
     result=applicationSummaryRecords(buildApplicationPortfolio([make(status,status,[{poFinancialYear:'2026-27',annualReturnYear:'2025-26'}])],users)[0])[0];
     assert.equal(result.annual,false);assert.deepEqual(result.annualYears,[]);
+    assert.equal(matchesServiceSummary(result,'Annual Return Filling',new Date('2026-10-08T12:00:00+05:30')),false);
   }
   result=applicationSummaryRecords(buildApplicationPortfolio([make('wrong-fy','Approved',[{poFinancialYear:'2025-26',annualReturnYear:'2025-26'}])],users)[0])[0];
   assert.equal(result.annual,false);assert.deepEqual(result.annualYears,[]);

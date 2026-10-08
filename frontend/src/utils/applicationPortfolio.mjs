@@ -26,6 +26,11 @@ export function matchesApplicationService(record, key) {
   if (key === 'total') return true
   return applicationSummaryService(record) === key
 }
+export function matchesServiceSummary(record, key, date = new Date()) {
+  if (key !== 'Annual Return Filling') return matchesApplicationService(record, key)
+  const summary = record.annualYears ? record : applicationSummaryRecords({ records: [record] })[0]
+  return summary.annual && summary.annualYears.includes(annualReturnYearForDate(date))
+}
 export function applicationSummaryService(record) {
   const closed = record.services.filter(service => service.closed)
   // Keep the representative application used by the Clients export. Retain
@@ -172,6 +177,11 @@ export function financialYearForDate(date = new Date()) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' }).formatToParts(date).map(part => [part.type, part.value]))
   const calendarYear = Number(parts.year)
   const startYear = Number(parts.month) >= 4 ? calendarYear : calendarYear - 1
+  return `${startYear}-${String(startYear + 1).slice(-2)}`
+}
+
+export function annualReturnYearForDate(date = new Date()) {
+  const startYear = Number(financialYearForDate(date).slice(0, 4)) - 1
   return `${startYear}-${String(startYear + 1).slice(-2)}`
 }
 
