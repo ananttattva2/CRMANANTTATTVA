@@ -4,6 +4,7 @@ export const PIBO_CATEGORIES = ['Producer', 'Brand Owner', 'PWP', 'Importer', 'P
 export const STATUS_COLUMNS = [
   ['total', 'Total'],
   ['annual:2025-26', '2025-26'], ['annual:2026-27', '2026-27'], ['annual:2027-28', '2027-28'], ['annual:unrecorded', 'Not Recorded'],
+  ['annualActionRequired', 'AR Action Required'],
   ['applied', 'Applied'], ['underReview', 'Under Review'],
   ['notStarted', 'Not Started'], ['rejected', 'Rejected']
 ]
