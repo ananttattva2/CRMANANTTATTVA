@@ -1476,13 +1476,21 @@ exports.searchClientMasterCompanies = async (req, res) => {
   return res.json({ ok: true, items: responseItems, count: responseItems.length, queryMs: Date.now() - startedAt });
 };
 
-exports.listClientMasterServices = async (req, res) => {
+exports.listClientReviewApplicants = async (req, res) => {
+  if (!userHasAnyRole(req.user, CLIENT_APPROVAL_ROLES)) return res.status(403).json({ error: 'Client review access required' });
+  return exports.listClientMasterServices({ ...req, query: { identity: `client:${req.params.id}` } }, res, { clientReview: true });
+};
+
+exports.listClientMasterServices = async (req, res, options = {}) => {
   const identity = String(req.query.identity || req.query.leadId || req.query.clientMasterId || '').trim();
   if (!identity) return res.status(400).json({ error: 'Client or Lead identity is required' });
 
   const explicitClientId = identity.startsWith('client:') ? identity.slice(7) : String(req.query.clientMasterId || '').trim();
-  const clientVisibility = await clientAccessFilter(req.user);
-  const leadVisibility = await leadAccessFilter(req.user);
+  // Reviewers can inspect the same Client Masters available to the review API.
+  // Keep ordinary Client Master discovery restricted to ownership visibility.
+  const reviewerDiscovery = options.clientReview === true && userHasAnyRole(req.user, CLIENT_APPROVAL_ROLES);
+  const clientVisibility = reviewerDiscovery ? {} : await clientAccessFilter(req.user);
+  const leadVisibility = reviewerDiscovery ? { _id: { $exists: false } } : await leadAccessFilter(req.user);
   const baseClient = mongoose.Types.ObjectId.isValid(explicitClientId)
     ? await Client.findOne(combineAccessFilters({ _id: explicitClientId }, clientVisibility)).select(clientDiscoveryProjection()).lean()
     : null;

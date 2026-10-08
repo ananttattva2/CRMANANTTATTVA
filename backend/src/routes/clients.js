@@ -31,6 +31,7 @@ router.get('/dashboard/compliance-records', requireAuth, clientCtrl.listDashboar
 router.get('/discovery/search', requireAuth, clientCtrl.searchClientMasterCompanies);
 router.get('/discovery/services', requireAuth, clientCtrl.listClientMasterServices);
 router.get('/discovery/catalog', requireAuth, clientCtrl.listClientMasterCatalog);
+router.get('/pending-approvals/clients/:id/applicants', requireAuth, requireRoles(CLIENT_APPROVAL_ROLES), clientCtrl.listClientReviewApplicants);
 router.get('/pending-approvals', requireAuth, clientCtrl.listPendingApprovals);
 router.patch('/pending-approvals/clients/approve-all', requireAuth, requireRoles(CLIENT_APPROVAL_ROLES), clientCtrl.approveAllPendingClients);
 router.post('/bulk', requireAuth, requireRoles(ADMIN_ROLES), clientCtrl.bulkCreateClients);

@@ -13,7 +13,7 @@ export default function ClientApplicantPicker({ row, onClose, onSelect }) {
     const controller = new AbortController()
     setLoading(true)
     setError('')
-    api.get('/clients/discovery/services', { params: { identity: `client:${row.id}` }, signal: controller.signal, timeout: 20000 })
+    api.get(`/clients/pending-approvals/clients/${encodeURIComponent(row.id)}/applicants`, { signal: controller.signal, timeout: 20000 })
       .then(response => {
         if (controller.signal.aborted) return
         const seen = new Set()
