@@ -38,7 +38,10 @@ function applicationDescriptor(client) {
   const primary = (Array.isArray(offered) ? offered : [offered]).flatMap(value => String(value || '').split(/[,;\n]/)).map(value => value.trim()).find(Boolean) || '';
   const normalized = primary.toLowerCase().replace(/[^a-z0-9]/g, '');
   const serviceType = /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalized) ? 'annual' : ['registration','newregistration'].includes(normalized) ? 'registration' : '';
-  return { category: canonical, serviceType, offered: primary };
+  const assignments = lead.assignments || [];
+  const assignment = assignments.find(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === String(client.assignedServiceId || '')) || (assignments.length === 1 ? assignments[0] : {});
+  const closed = Boolean(assignment.closedAt || assignment.closedBy || assignment.closedByText || assignment.permanentClosedAt || (selections.length === 1 && (lead.closedAt || lead.closedBy)) || String(lead.status || '').toLowerCase() === 'closed');
+  return { category: canonical, serviceType, offered: primary, closed };
 }
 function buildUploadTracker(clients, users, purchases, sales, options = {}) {
   const identities = new Map();
@@ -50,7 +53,7 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
   users.filter(user => userHasAnyRole(user, ['manager'])).forEach(user => groups.set(id(user._id), emptyGroup(user)));
   const seen = new Set();
   for (const client of clients) {
-    if (options.serviceType && !matchesTrackedService(client, options.serviceType)) continue;
+    if (options.groupBy !== 'application' && options.serviceType && !matchesTrackedService(client, options.serviceType)) continue;
     const clientId = id(client._id);
     if (!clientId || seen.has(clientId)) continue;
     seen.add(clientId);
@@ -67,14 +70,35 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
       const descriptor = applicationDescriptor(client);
       Object.assign(detail, descriptor);
       detail.companyKey += ':' + descriptor.category.toLowerCase().replace(/[^a-z0-9]/g, '');
+      detail.sources = [{ ...descriptor, clientId, slaReceived: detail.slaReceived, purchase: detail.purchase, sales: detail.sales }];
     }
     const existing = group.clients.find(row => row.companyKey === detail.companyKey);
     if (existing) {
       existing.clientIds.push(clientId);
+      if (options.groupBy === 'application') existing.sources.push(...detail.sources);
       // SLA is a company-level receipt, even when only one service's Client Master stores it.
       existing.slaReceived = existing.slaReceived || detail.slaReceived;
       for (const module of ['purchase', 'sales']) existing[module] = existing[module].map((state, position) => state === 'complete' && detail[module][position] === 'complete' ? 'complete' : position >= 6 || state === 'pending' && detail[module][position] === 'pending' ? 'pending' : 'progress');
     } else group.clients.push(detail);
+  }
+  if (options.groupBy === 'application') for (const group of groups.values()) {
+    group.clients = group.clients.flatMap(detail => {
+      // Match Service Summary: one representative closed service per company/category.
+      const representative = detail.sources.find(source => source.closed && source.offered);
+      if (!representative || options.serviceType && representative.serviceType !== options.serviceType) return [];
+      const sources = detail.sources.filter(source => source.closed && source.serviceType === representative.serviceType);
+      detail.clientId = representative.clientId;
+      detail.category = representative.category;
+      detail.offered = representative.offered;
+      detail.clientIds = sources.map(source => source.clientId);
+      detail.slaReceived = sources.some(source => source.slaReceived);
+      for (const module of ['purchase', 'sales']) detail[module] = STAGES.map((_, position) => {
+        const states = sources.map(source => source[module][position]);
+        return states.every(state => state === 'complete') ? 'complete' : position >= 6 || states.every(state => state === 'pending') ? 'pending' : 'progress';
+      });
+      delete detail.sources;
+      return [detail];
+    });
   }
   for (const group of groups.values()) for (const detail of group.clients) {
     group[detail.slaReceived ? 'slaReceived' : 'slaNotReceived']++;

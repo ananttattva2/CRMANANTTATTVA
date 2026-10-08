@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { matchesTrackedService, buildUploadTracker } = require('../src/services/clientUploadTracker');
 const user = { _id: 'sonal', name: 'Sonal', role: 'operation' };
 function client(id, offered) {
-  return { _id: id, assignedServiceId: id, selectedLead: { company: 'Example Ltd', assignments: [{ assignedServiceId: id, assignedStaff: user._id }], serviceSelections: [{ assignedServiceId: id, servicesOffered: offered }] }, data: { basic: {} } };
+  return { _id: id, assignedServiceId: id, selectedLead: { status: 'Closed', company: 'Example Ltd', assignments: [{ assignedServiceId: id, assignedStaff: user._id }], serviceSelections: [{ assignedServiceId: id, servicesOffered: offered }] }, data: { basic: {} } };
 }
 test('annual and registration tabs match saved service aliases and arrays', () => {
   for (const name of ['Annual Return', 'Annual Filling', 'Annual Filing', 'Annual Return Filling']) {
@@ -57,10 +57,26 @@ test('AR allocation counts company categories separately and excludes registrati
   assert.deepEqual(reg[0].clients[0].clientIds,['registration']);
 });
 
-test('AR service is included even if the same company category also has a registration assignment', () => {
+test('tracker follows Service Summary representative and prevents annual/registration double allocation', () => {
   const annual=client('annual','Annual Return Filling'), registration=client('registration','New Registration');
   annual.data.basic.piboCategory=registration.data.basic.piboCategory='Producer';
   const ar=buildUploadTracker([registration,annual],[user],[],[],{groupBy:'application',serviceType:'annual'});
-  assert.equal(ar[0].clients.length,1);
-  assert.deepEqual(ar[0].clients[0].clientIds,['annual']);
+  assert.equal(ar[0].clients.length,0);
+  const reg=buildUploadTracker([registration,annual],[user],[],[],{groupBy:'application',serviceType:'registration'});
+  assert.equal(reg[0].clients.length,1);
+  assert.deepEqual(reg[0].clients[0].clientIds,['registration']);
+});
+
+
+test('AR tracker counts agree with Service Summary for mixed and unclosed category records', async () => {
+  const {buildApplicationPortfolio, applicationSummaryRecords, matchesApplicationService} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const registration=client('registration','New Registration'), annual=client('annual','Annual Return Filling'), owner=client('owner','Annual Return'), open=client('open','Annual Return');
+  registration.data.basic.piboCategory=annual.data.basic.piboCategory='Producer';
+  owner.data.basic.piboCategory='Brand Owner';open.data.basic.piboCategory='Importer';open.selectedLead.status='Open';
+  const rows=[registration,annual,owner,open];
+  const summary=applicationSummaryRecords(buildApplicationPortfolio(rows,[user])[0]);
+  for (const [serviceType,label] of [['annual','Annual Return Filling'],['registration','New Registration']]) {
+    const tracker=buildUploadTracker(rows,[user],[],[],{groupBy:'application',serviceType});
+    assert.equal(tracker[0].clients.length,summary.filter(row=>matchesApplicationService(row,label)).length);
+  }
 });

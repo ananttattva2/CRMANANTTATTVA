@@ -225,7 +225,7 @@ exports.uploadTracker = async (req, res) => {
       res.set('Cache-Control', 'private, no-store');
       return res.json({ ok: true, users, assignments: visibleClients.map(client => ({ ...client, complianceReview: reviewByClient.get(String(client._id)) || null, operationsSla: approvalByClient.get(String(client._id)) || null })) });
     }
-    const trackerClients = serviceType ? visibleClients.filter(client => require('../services/clientUploadTracker').matchesTrackedService(client, serviceType)) : visibleClients;
+    const trackerClients = visibleClients;
     const filter = { clientId: { $in: trackerClients.filter(client => !client.assignmentOnly).map(client => client._id) }, financialYear };
     const projection = 'clientId checklist baseUpload.importStatus portalUpload.importStatus managerVerificationStatus complianceVerificationStatus';
     const [purchases, sales] = await Promise.all([PurchaseData.find(filter).select(projection).maxTimeMS(15000).lean(), SalesData.find(filter).select(projection).maxTimeMS(15000).lean()]);
