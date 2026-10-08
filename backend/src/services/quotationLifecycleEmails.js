@@ -9,8 +9,8 @@ function escapeHtml(value) {
 
 function eventLabel(event) {
   return {
-    created: 'Generated — Draft',
-    revised: 'Revised — Management Approval Required',
+    created: 'Generated — Super Admin Approval Pending',
+    revised: 'Revised — Super Admin Approval Pending',
     admin_approved: 'Admin Approved — PDF Available',
     approved: 'Approved',
     rejected: 'Rejected'
@@ -99,8 +99,8 @@ function quotationLifecycleEmailContent({ quotation = {}, event, actor = {} }) {
     : decision
     ? `${quotationNumber} for ${company} has been ${event}.`
     : event === 'revised'
-      ? `${quotationNumber} for ${company} was revised. Use Management Approval in quotation Actions when it is ready for final review.`
-      : `${quotationNumber} for ${company} was generated as a draft. Use Management Approval in quotation Actions when it is ready for final review.`;
+      ? `${quotationNumber} for ${company} was revised and sent directly to Super Admin for final approval. Admin approval is not required.`
+      : `${quotationNumber} for ${company} was generated and sent directly to Super Admin for final approval. Admin approval is not required.`;
   const html = `<div style="font-family:Arial,sans-serif;color:#334155">
     <h2 style="color:#0f766e">Quotation ${escapeHtml(label)}</h2>
     <p>${escapeHtml(intro)}</p>

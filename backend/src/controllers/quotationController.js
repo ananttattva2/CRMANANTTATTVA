@@ -1,3 +1,4 @@
+const { directQuotationApproval } = require('../services/directQuotationApproval');
 const Quotation = require('../models/Quotation');
 const mongoose = require('mongoose');
 const ProformaInvoice = require('../models/ProformaInvoice');
@@ -563,7 +564,7 @@ function mapQuotationPendingApprovalRow(quotation, approvalType = 'CREATE') {
   };
 }
 
-async function upsertQuotationPendingApproval(quotation, approvalType = 'CREATE') {
+async function upsertQuotationPendingApproval(quotation, approvalType = 'CREATE', automatic = false) {
   const row = mapQuotationPendingApprovalRow(quotation, approvalType);
   const source = row.source || 'crm';
   const status = normalizeApprovalStatus(row.approvalStatus) || 'PENDING';
@@ -594,18 +595,18 @@ async function upsertQuotationPendingApproval(quotation, approvalType = 'CREATE'
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );
 
-  if (approvalType === 'UPDATE') {
-    const reviewers = await User.find({ role: { $in: ['admin', 'superadmin'] }, isActive: { $ne: false } }).select('_id').lean();
+  if (approvalType === 'UPDATE' || automatic) {
+    const reviewers = await User.find({ $or: [{ role: 'superadmin' }, { roles: 'superadmin' }], isActive: { $ne: false } }).select('_id').lean();
     const notification = await Notification.create({
-      title: 'Quotation updated — re-approval required',
-      description: `${row.quotationNumber || 'Quotation'} for ${row.companyName || 'a client'} was updated and returned to Pending Approval.`,
+      title: approvalType === 'UPDATE' ? 'Quotation updated — Super Admin approval required' : 'New quotation — Super Admin approval required',
+      description: `${row.quotationNumber || 'Quotation'} for ${row.companyName || 'a client'} is waiting for final Super Admin approval.`,
       tag: 'Quotation Approval',
-      kind: 'quotation_reapproval_required',
+      kind: approvalType === 'UPDATE' ? 'quotation_reapproval_required' : 'management_quotation_approval_requested',
       audience: reviewers.map((user) => user._id),
-      visibleToRoles: ['admin', 'superadmin'],
+      visibleToRoles: ['superadmin'],
       createdBy: quotation.createdBy?._id || quotation.createdBy,
       createdByName: row.createdBy || 'CRM User',
-      metadata: { quotationId: String(quotation._id), approvalRecordId: String(record._id), approvalType: 'UPDATE' }
+      metadata: { quotationId: String(quotation._id), approvalRecordId: String(record._id), approvalType }
     });
     notification.crmNotificationId = String(notification._id);
     await notification.save();
@@ -798,11 +799,12 @@ exports.createQuotation = async (req, res) => {
   const quotation = await Quotation.create({
     ...data,
     ...await resolveCrmRelationships(data),
-    status: 'draft',
+    ...directQuotationApproval(req.user, data),
     quotationNumber: await nextQuotationNumber(),
     createdBy: req.user?._id
   });
   await quotation.populate('createdBy', 'name email');
+  await upsertQuotationPendingApproval(quotation, 'CREATE', true);
   await sendQuotationLifecycleEmail({ quotation, event: 'created', actor: req.user })
     .catch((error) => console.error('[Quotation lifecycle email] create failed', error));
   res.status(201).json({ ok: true, quotation });
@@ -841,9 +843,7 @@ exports.updateQuotation = async (req, res) => {
   }));
   Object.assign(quotation, data);
   Object.assign(quotation, await resolveCrmRelationships(data));
-  quotation.status = 'draft';
-  quotation.managementApproval = {};
-  quotation.approvalDecision = {};
+  Object.assign(quotation, directQuotationApproval(req.user, quotation));
   quotation.revisionHistory = [
     ...(Array.isArray(quotation.revisionHistory) ? quotation.revisionHistory : []),
     {
@@ -859,6 +859,7 @@ exports.updateQuotation = async (req, res) => {
   await quotation.save();
   await quotation.populate('createdBy', 'name email');
   await PendingApproval.deleteMany({ type: 'quotation', sourceClientId: String(quotation._id), approvalStatus: 'PENDING' });
+  await upsertQuotationPendingApproval(quotation, 'UPDATE', true);
   await sendQuotationLifecycleEmail({ quotation, event: 'revised', actor: req.user })
     .catch((error) => console.error('[Quotation lifecycle email] revision failed', error));
   res.json({ ok: true, quotation });

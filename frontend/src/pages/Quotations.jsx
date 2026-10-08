@@ -2054,7 +2054,7 @@ export default function Quotations() {
         : await api.post(API_ENDPOINTS.quotations.create, payload);
       setSuccessModal({
         title: editingId ? 'Quotation updated' : 'Quotation saved',
-        message: `${response.data.quotation?.quotationNumber || 'Quotation'} was saved successfully. Use Management Approval in quotation Actions to send it to Pending Approval.`
+        message: `${response.data.quotation?.quotationNumber || 'Quotation'} was saved and sent directly to Super Admin for approval. Admin approval is not required.`
       });
       setQuotation({ ...emptyQuotation, leadDetails: { ...emptyLeadDetails }, items: [], terms: [] });
       setEditingId('');
@@ -2542,7 +2542,7 @@ export default function Quotations() {
 
         <div className="mt-6 flex flex-wrap gap-3">
           <button type="button" disabled={saving} onClick={() => saveQuotation('draft')} className="btn-lift inline-flex min-h-11 items-center gap-2 rounded-lg bg-orange-500 px-6 font-black text-white shadow-lg shadow-orange-500/20 disabled:opacity-60">
-            <Save className="h-4 w-4" /> {editingId ? 'Update Quotation' : 'Save Quotation'}
+            <Save className="h-4 w-4" /> {editingId ? 'Update & Send for Approval' : 'Save & Send for Approval'}
           </button>
           <button type="button" onClick={showQuotationList} className="btn-lift min-h-11 rounded-lg border border-slate-200 bg-white px-5 font-black text-slate-600">Cancel</button>
         </div>
