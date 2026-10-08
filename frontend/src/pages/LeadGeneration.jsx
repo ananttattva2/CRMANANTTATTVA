@@ -1,3 +1,4 @@
+import { canReviseQuotation } from '../utils/quotationRevision.mjs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -4726,10 +4727,7 @@ function LeadDetailView({ lead, quotations = [], staff = [], currentUser = null,
       || (quotationLeadCode && quotationLeadCode === normalize(activeLead.leadCode))
     );
   });
-  const revisableLeadQuotations = leadQuotations.filter((quotation) => {
-    const status = String(quotation?.status || '').trim().toLowerCase();
-    return status === 'approved' || status === 'rejected';
-  });
+  const revisableLeadQuotations = leadQuotations.filter(canReviseQuotation);
   const ownedServiceIndexes = new Set(ownedServiceOptions.map((option) => Number(option.value)));
   const followUpRows = buildLeadFollowUpRows(activeLead).map((item) => ({
     ...item,

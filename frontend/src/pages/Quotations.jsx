@@ -1,3 +1,4 @@
+import { canReviseQuotation } from '../utils/quotationRevision.mjs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -837,14 +838,6 @@ function readAdminApprovalStatus(row = {}) {
   return 'approved';
 }
 
-function canReviseQuotation(row = {}) {
-  const approvalStatus = String(row.approvalStatus || row.adminApproval || '').trim().toLowerCase();
-  const quotationStatus = String(row.status || row.quotationStatus || '').trim().toLowerCase();
-  return approvalStatus.includes('approved')
-    || approvalStatus.includes('reject')
-    || quotationStatus === 'approved'
-    || quotationStatus === 'rejected';
-}
 
 function quotationUserNames(row = {}) {
   return [...new Set([
@@ -1172,10 +1165,7 @@ export default function Quotations() {
     if (leadAction === 'revise' && quotationContext && !loading) {
       const target = [...quotations]
         .filter((row) => contextMatchesQuotation(row, quotationContext))
-        .filter((row) => {
-          const status = String(row?.status || '').trim().toLowerCase();
-          return status === 'approved' || status === 'rejected';
-        })
+        .filter(canReviseQuotation)
         .sort((left, right) => new Date(right.updatedAt || right.createdAt || 0) - new Date(left.updatedAt || left.createdAt || 0))[0];
       if (target) {
         editQuotation(target);
