@@ -1,4 +1,4 @@
-const { mergeManagerStaffAllocations } = require('../services/managerStaffAllocations');
+const { mergeManagerStaffAllocations, dashboardStatusClient } = require('../services/managerStaffAllocations');
 const Client = require('../models/Client');
 const Lead = require('../models/Lead');
 const PurchaseData = require('../models/PurchaseData');
@@ -205,12 +205,12 @@ exports.uploadTracker = async (req, res) => {
     const scope = await getVisibleUserScope(req.user);
     const excluded = await getAssignmentDashboardLeadReferences();
     const [clients, users, staffLeads] = await Promise.all([
-      Client.find(dashboardClientExclusionFilter(excluded)).select('_id createdBy workflowStatus assignedServiceId adminControls serviceAllocations data.basic data.importMeta data.cpcb.status data.cpcb.approvalStatus data.cpcb.applicationStatus data.address.state data.addresses.state data.registeredAddress.state data.selectedLeadSnapshot data.serviceAllocations data.financials data.otp data.authorised data.coordinating createdAt submittedAt sla.status selectedLead').populate('selectedLead', 'company companyName leadCode status closedAt closedBy assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail assignments serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId serviceSelections.subApplicantType serviceSelections.piboCategory serviceSelections.applicantType serviceSelections.firstAnnualReturnYearApplicable serviceSelections.servicesOffered serviceSelections.industryType serviceSelections.eprCategory serviceSelections.plantUnit').maxTimeMS(15000).lean(),
+      Client.find(dashboardClientExclusionFilter(excluded)).select('_id createdBy workflowStatus assignedServiceId adminControls serviceAllocations data.basic data.importMeta data.cpcb.status data.cpcb.approvalStatus data.cpcb.applicationStatus data.cpcbDataByAssignedServiceId data.serviceDetailsByAssignedServiceId data.assignedServiceId data.address.state data.addresses.state data.registeredAddress.state data.selectedLeadSnapshot data.serviceAllocations data.financials data.otp data.authorised data.coordinating createdAt submittedAt sla.status selectedLead').populate('selectedLead', 'company companyName leadCode status closedAt closedBy assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail assignments serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId serviceSelections.subApplicantType serviceSelections.piboCategory serviceSelections.applicantType serviceSelections.firstAnnualReturnYearApplicable serviceSelections.servicesOffered serviceSelections.industryType serviceSelections.eprCategory serviceSelections.plantUnit').maxTimeMS(15000).lean(),
       visibleUsers(scope, req.user),
       Lead.find(dashboardLeadExclusionFilter(excluded)).select('_id company companyName leadCode sourceLeadId status closedAt closedBy assignments serviceSelections firstAnnualReturnYearApplicable').maxTimeMS(15000).lean()
     ]);
     const { STAGES, buildUploadTracker } = require('../services/clientUploadTracker');
-    const assignedClients = mergeManagerStaffAllocations(clients, staffLeads);
+    const assignedClients = mergeManagerStaffAllocations(clients.map(dashboardStatusClient), staffLeads);
     const allocated = buildUploadTracker(assignedClients, users, [], []);
     const visibleIds = new Set(allocated.flatMap(user => user.clients.flatMap(client => client.clientIds || [client.clientId])));
     const visibleClients = assignedClients.filter(client => visibleIds.has(String(client._id)));

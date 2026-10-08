@@ -43,3 +43,11 @@ test('summary CPCB status excludes other offered services but retains all units 
   unit2.bucket='approved';credit.bucket='rejected';assert.equal(applicationSummaryRecords(group)[0].bucket,'approved');
  }
 });
+
+test('multiple new assignments linked to one saved CPCB master show one service',async()=>{
+ const {effectiveApplicationServices}=await import('../../frontend/src/utils/applicationPortfolio.mjs');
+ const service={id:'assignment:new1',assignmentOnly:true,statusSourceClientId:'master',leadId:'lead',category:'Importer',unit:'Unit 1',industry:'Manufacturing',eprCategory:'Plastic Waste',offeredServices:['Annual Return Filling'],cpcb:'Approved',bucket:'approved',annualYears:['2025-26']};
+ const services=effectiveApplicationServices([service,{...service,id:'assignment:new2',annualYears:['2026-27']}]);
+ assert.equal(services.length,1);assert.equal(services[0].cpcb,'Approved');assert.deepEqual(services[0].annualYears,['2025-26','2026-27']);
+ assert.equal(effectiveApplicationServices([service,{...service,id:'assignment:unit2',unit:'Unit 2'}]).length,2);
+});

@@ -1,4 +1,14 @@
+const { resolveClientMasterData } = require('./clientMasterResolver');
+const normalize = input => String(input || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const offering = input => (Array.isArray(input) ? input : [input]).map(v => /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalize(v)) ? 'annualreturn' : normalize(v)).sort().join('|');
 const value = input => String(input?._id || input || '');
+function dashboardStatusClient(client) {
+  const resolved = resolveClientMasterData(client);
+  const data = { ...client.data, cpcb: Object.fromEntries(['status', 'approvalStatus', 'applicationStatus'].map(key => [key, resolved.cpcb?.[key]]).filter(([,v]) => v !== undefined)) };
+  delete data.cpcbDataByAssignedServiceId;
+  delete data.serviceDetailsByAssignedServiceId;
+  return { ...client, data };
+}
 // Count permanent staff assignments per lead service, including services whose Client Master is not created yet.
 function mergeManagerStaffAllocations(clients = [], leads = []) {
   const linked = new Set();
@@ -18,13 +28,25 @@ function mergeManagerStaffAllocations(clients = [], leads = []) {
       const key = `${value(lead._id)}:${serviceId}`;
       if (linked.has(key)) return;
       linked.add(key);
+      const service = services.find(s => value(s.assignedServiceId || s.serviceAssignmentId) === serviceId) || services[index] || {};
+      const signature = row => [row.subApplicantType || row.piboCategory, row.plantUnit, row.eprCategory, offering(row.servicesOffered)].map(normalize).join(':');
+      const master = clients.find(client => {
+        if (value(client.selectedLead || client.data?.selectedLeadSnapshot?.id) !== value(lead._id)) return false;
+        const selectedId = client.assignedServiceId || client.data?.selectedLeadSnapshot?.assignedServiceId;
+        const selected = services.find(s => value(s.assignedServiceId || s.serviceAssignmentId) === value(selectedId));
+        return selected && signature(selected) === signature(service)
+          && Boolean(resolveClientMasterData(client, selectedId).cpcb?.status);
+      });
+      const masterData = master ? resolveClientMasterData(master) : {};
       result.push({ _id: `assignment:${key}`, assignedServiceId: serviceId,
-        selectedLead: { ...lead, assignments: [{ ...assignment, assignedServiceId: serviceId }], serviceSelections: [services[index] || {}] },
-        data: { basic: { clientLegalName: lead.company || lead.companyName || lead.clientName || 'Untitled client' }, importMeta: { leadNumber: lead.leadCode || lead.sourceLeadId || '' } },
-        adminControls: {}, sla: {}, assignmentOnly: true
+        statusSourceClientId: master ? value(master._id) : undefined,
+        workflowStatus: master?.workflowStatus,
+        selectedLead: { ...lead, assignments: [{ ...assignment, assignedServiceId: serviceId }], serviceSelections: [service] },
+        data: { cpcb: masterData.cpcb?.status ? { status: masterData.cpcb.status } : {}, registeredAddress: masterData.registeredAddress?.state ? { state: masterData.registeredAddress.state } : {}, basic: { clientLegalName: lead.company || lead.companyName || lead.clientName || 'Untitled client' }, importMeta: { leadNumber: lead.leadCode || lead.sourceLeadId || '' } },
+        adminControls: { visibilityStatus: master?.adminControls?.visibilityStatus }, sla: {}, assignmentOnly: true
       });
     });
   }
   return result;
 }
-module.exports = { mergeManagerStaffAllocations };
+module.exports = { mergeManagerStaffAllocations, dashboardStatusClient };
