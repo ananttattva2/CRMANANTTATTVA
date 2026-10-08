@@ -28,20 +28,36 @@ export function matchesApplicationService(record, key) {
 }
 export function matchesServiceSummary(record, key, date = new Date()) {
   const summary = record.annualYears ? record : applicationSummaryRecords({ records: [record] })[0]
+  const representativeService = rawApplicationSummaryService(summary)
   const annualForYear = summary.annual && summary.annualYears.includes(annualReturnYearForDate(date))
   if (key === 'Annual Return Filling') return annualForYear
-  if (key === 'total') return applicationSummaryService(summary) !== 'Annual Return Filling' || annualForYear
+  if (key === 'annualActionRequired') return representativeService === 'Annual Return Filling' && !annualForYear
+  if (key === 'total') return true
   return matchesApplicationService(summary, key)
 }
+export function annualActionReasons(record) {
+  const services = (record.services || []).filter(service => service.offeredServices?.includes('Annual Return Filling'))
+  const reasons = []
+  if (!services.some(service => service.closed)) reasons.push('Service closure pending')
+  if (!services.some(service => service.bucket === 'approved')) reasons.push('CPCB status is not Approved')
+  if (!services.some(service => service.annualCurrentFyPo)) reasons.push(`Received PO for FY ${financialYearForDate()} is missing`)
+  if (!services.some(service => service.annualWorkflowReady)) reasons.push('Manager or permanent staff assignment is incomplete')
+  if (services.some(service => service.annualCurrentFyPo) && !services.some(service => service.annualYears?.length)) reasons.push('Annual Return Year is missing')
+  return reasons.length ? reasons : ['Does not qualify for the selected Annual Return year']
+}
 export function applicationSummaryService(record) {
+  const offered = rawApplicationSummaryService(record)
+  const closed = record.services.filter(service => service.closed)
+  if (offered === 'Annual Return Filling' && !closed.some(service => service.offeredServices[0] === offered && service.annualWorkflowReady)) return 'Assignment Pending'
+  return offered
+}
+function rawApplicationSummaryService(record) {
   const closed = record.services.filter(service => service.closed)
   // Keep the representative application used by the Clients export. Retain
   // sibling assignments in details rather than counting this application twice.
   const representative = closed.find(service => service.id === record.id && service.offeredServices.length)
     || closed.find(service => service.offeredServices.length)
-  const offered = representative?.offeredServices[0] || 'unclassified'
-  if (offered === 'Annual Return Filling' && !closed.some(service => service.offeredServices[0] === offered && service.annualWorkflowReady)) return 'Assignment Pending'
-  return offered
+  return representative?.offeredServices[0] || 'unclassified'
 }
 export function cpcbStatusBucket(value) {
   const status = String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -193,5 +209,5 @@ export function canonicalOfferedServices(value) {
 }
 
 export function offeredServiceColumns(groups) {
-  return [...new Set([...groups.flatMap(group => group.closedCompanies.flatMap(company => company.services.flatMap(service => service.offeredServices))), ...(groups.some(group => group.records.some(record => applicationSummaryService(record) === 'Assignment Pending')) ? ['Assignment Pending'] : [])])].sort((a, b) => a === 'Annual Return Filling' ? -1 : b === 'Annual Return Filling' ? 1 : a.localeCompare(b))
+  return [...new Set(groups.flatMap(group => group.closedCompanies.flatMap(company => company.services.flatMap(service => service.offeredServices))))].sort((a, b) => a === 'Annual Return Filling' ? -1 : b === 'Annual Return Filling' ? 1 : a.localeCompare(b))
 }

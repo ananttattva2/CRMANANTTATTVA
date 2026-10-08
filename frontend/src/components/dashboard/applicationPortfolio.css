@@ -20,6 +20,7 @@
 .portfolio-matrix .portfolio-live-column { background:#ddf5ed; color:#116957; font-weight:800; border-left:1px solid #bde7db; border-right:1px solid #bde7db; }
 .portfolio-matrix tr:hover .portfolio-live-column { background:#ccefe3; }
 .portfolio-matrix .portfolio-live-column button { background:transparent; color:#116957; font-weight:800; }
+.portfolio-matrix .portfolio-action-column{background:#fff8e7;color:#9a6200;font-weight:800}.portfolio-matrix td.portfolio-action-column .portfolio-count.has-records{background:#ffe6a8;color:#8a5200;box-shadow:inset 0 0 0 1px #f1c75b}.portfolio-action-reasons{margin:0;padding-left:18px;color:#8a5200;font-weight:600;white-space:nowrap}
 
 /* Keep grouped headers aligned with their data columns across all summary tabs. */
 .portfolio-matrix table{table-layout:fixed;min-width:1280px;font-size:14px;font-variant-numeric:tabular-nums}
