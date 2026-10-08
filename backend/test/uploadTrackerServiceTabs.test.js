@@ -82,9 +82,10 @@ test('AR tracker counts agree with Service Summary for mixed and unclosed catego
 });
 
 
-test('AR allocation requires approved PO plus both manager and permanent staff assignment', () => {
-  for(const missing of ['poApprovalStatus','assignedTo','assignedStaff',null]) {
+test('AR allocation requires manager and permanent staff assignment; rejected PO retains allocated work', () => {
+  for(const missing of ['assignedTo','assignedStaff',null]) {
     const row=client('workflow','Annual Filling');
+    row.selectedLead.assignments[0].poApprovalStatus='REJECTED';
     if(missing) row.selectedLead.assignments[0][missing]='';
     const tracker=buildUploadTracker([row],[user],[],[],{groupBy:'application',serviceType:'annual'});
     assert.equal(tracker.reduce((sum,g)=>sum+g.clients.length,0),missing===null?1:0);

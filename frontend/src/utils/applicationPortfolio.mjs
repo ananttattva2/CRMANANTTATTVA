@@ -31,7 +31,7 @@ export function applicationSummaryService(record) {
   const representative = closed.find(service => service.id === record.id && service.offeredServices.length)
     || closed.find(service => service.offeredServices.length)
   const offered = representative?.offeredServices[0] || 'unclassified'
-  if (offered === 'Annual Return Filling' && !closed.some(service => service.offeredServices[0] === offered && service.annualWorkflowReady)) return 'PO Approval / Assignment Pending'
+  if (offered === 'Annual Return Filling' && !closed.some(service => service.offeredServices[0] === offered && service.annualWorkflowReady)) return 'Assignment Pending'
   return offered
 }
 export function cpcbStatusBucket(value) {
@@ -76,8 +76,7 @@ export function applicationRecord(client) {
   const closed = Boolean(assignment.closedAt || assignment.closedBy || assignment.closedByText || assignment.permanentClosedAt || (services.length === 1 && (lead.closedAt || lead.closedBy)) || String(lead.status || '').toLowerCase() === 'closed')
   const offered = service.servicesOffered ?? basic.servicesOffered ?? data.selectedLeadSnapshot?.servicesOffered ?? []
   const annual = isAnnualReturnService(offered)
-  const annualWorkflowReady = String(assignment.poApprovalStatus || '').toUpperCase() === 'APPROVED'
-    && Boolean(assignment.assignedTo || assignment.assignedToText || assignment.assignedToEmail)
+  const annualWorkflowReady = Boolean(assignment.assignedTo || assignment.assignedToText || assignment.assignedToEmail)
     && Boolean(assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail)
   const annualYears = annual ? [...new Set([...(assignment.poYearRows || []), ...(assignment.originalPoDetails ? [assignment.originalPoDetails] : [])].filter(po => !po.services?.length || isAnnualReturnService(po.services)).map(po => po.annualReturnYear).filter(Boolean))] : []
   const category = applicantCategory(text(basic.piboCategory, basic.subApplicantType, service.subApplicantType, service.piboCategory, basic.applicantType, service.applicantType))
@@ -134,5 +133,5 @@ export function canonicalOfferedServices(value) {
 }
 
 export function offeredServiceColumns(groups) {
-  return [...new Set([...groups.flatMap(group => group.closedCompanies.flatMap(company => company.services.flatMap(service => service.offeredServices))), ...(groups.some(group => group.records.some(record => applicationSummaryService(record) === 'PO Approval / Assignment Pending')) ? ['PO Approval / Assignment Pending'] : [])])].sort((a, b) => a === 'Annual Return Filling' ? -1 : b === 'Annual Return Filling' ? 1 : a.localeCompare(b))
+  return [...new Set([...groups.flatMap(group => group.closedCompanies.flatMap(company => company.services.flatMap(service => service.offeredServices))), ...(groups.some(group => group.records.some(record => applicationSummaryService(record) === 'Assignment Pending')) ? ['Assignment Pending'] : [])])].sort((a, b) => a === 'Annual Return Filling' ? -1 : b === 'Annual Return Filling' ? 1 : a.localeCompare(b))
 }

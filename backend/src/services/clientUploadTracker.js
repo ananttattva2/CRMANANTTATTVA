@@ -41,8 +41,7 @@ function applicationDescriptor(client) {
   const assignments = lead.assignments || [];
   const assignment = assignments.find(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === String(client.assignedServiceId || '')) || (assignments.length === 1 ? assignments[0] : {});
   const closed = Boolean(assignment.closedAt || assignment.closedBy || assignment.closedByText || assignment.permanentClosedAt || (selections.length === 1 && (lead.closedAt || lead.closedBy)) || String(lead.status || '').toLowerCase() === 'closed');
-  const annualWorkflowReady = String(assignment.poApprovalStatus || '').toUpperCase() === 'APPROVED'
-    && Boolean(assignment.assignedTo || assignment.assignedToText || assignment.assignedToEmail)
+  const annualWorkflowReady = Boolean(assignment.assignedTo || assignment.assignedToText || assignment.assignedToEmail)
     && Boolean(assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail);
   return { category: canonical, serviceType, offered: primary, closed, annualWorkflowReady };
 }

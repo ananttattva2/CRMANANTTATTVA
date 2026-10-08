@@ -232,14 +232,15 @@ test('status annual applicability and years use the same exclusive closed servic
 });
 
 
-test('Annual Filling aliases require PO approval and manager-to-staff assignment before applicability', async () => {
+test('Annual Filling aliases require manager-to-staff assignment; rejected PO does not remove allocated work', async () => {
   const {buildApplicationPortfolio, applicationSummaryRecords, canonicalOfferedServices, matchesApplicationService} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   assert.deepEqual(canonicalOfferedServices(['Annual Filling','Annual Return Filling','Annual Return']),['Annual Return Filling']);
-  for(const missing of ['poApprovalStatus','assignedTo','assignedStaff',null]) {
+  for(const missing of ['assignedTo','assignedStaff',null]) {
     const row=client('workflow','sonal','Producer');row.selectedLead.status='Closed';row.data.basic.servicesOffered='Annual Filling';
+    row.selectedLead.assignments[0].poApprovalStatus='REJECTED';
     if(missing) row.selectedLead.assignments[0][missing]='';
     const result=applicationSummaryRecords(buildApplicationPortfolio([row],users)[0])[0];
     assert.equal(result.annual,missing===null);
-    assert.equal(matchesApplicationService(result,'PO Approval / Assignment Pending'),missing!==null);
+    assert.equal(matchesApplicationService(result,'Assignment Pending'),missing!==null);
   }
 });
