@@ -133,6 +133,13 @@ export function applicationRecord(client) {
 export function effectiveApplicationServices(services) {
   const signature = service => [service.leadId, service.category, service.unit, service.industry, service.eprCategory, [...service.offeredServices].sort().join('|')].map(normalize).join(':')
   const sameDraftApplication = (draft, submitted) => {
+    // A unitless draft without an offered service is an unfinished applicant
+    // shell. Its provisional industry can differ from the submitted master.
+    const incompleteShell = !draft.offeredServices.length && !normalize(draft.unit)
+      && normalize(draft.leadId) === normalize(submitted.leadId)
+      && normalize(draft.category) === normalize(submitted.category)
+      && (!normalize(draft.eprCategory) || normalize(draft.eprCategory) === normalize(submitted.eprCategory))
+    if (incompleteShell) return true
     const fieldsMatch = [draft.leadId, draft.category, draft.industry, draft.eprCategory, [...draft.offeredServices].sort().join('|')]
       .map(normalize).join(':') === [submitted.leadId, submitted.category, submitted.industry, submitted.eprCategory, [...submitted.offeredServices].sort().join('|')]
         .map(normalize).join(':')

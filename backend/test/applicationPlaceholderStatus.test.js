@@ -1,5 +1,17 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
+test('ASIA incomplete approved importer draft yields to submitted importer with a different industry',async()=>{
+ const {effectiveApplicationServices}=await import('../../frontend/src/utils/applicationPortfolio.mjs');
+ const importer={id:'importer',leadId:'asia',category:'Importer',unit:'Unit 1',industry:'Packaging Manufacture',eprCategory:'EPR - Plastic Waste',offeredServices:['Annual Return Filling'],clientStatus:'submitted',cpcb:'Approved'};
+ const draft={...importer,id:'draft',unit:'',industry:'Manufacturing',offeredServices:[],clientStatus:'draft'};
+ const producer={...importer,id:'producer',category:'Producer'};
+ assert.deepEqual(effectiveApplicationServices([draft,producer,importer]).map(row=>row.id),['producer','importer']);
+ assert.equal(effectiveApplicationServices([draft,producer]).length,2);
+ assert.equal(effectiveApplicationServices([draft,{...importer,leadId:'other'}]).length,2);
+ assert.equal(effectiveApplicationServices([{...draft,unit:'Unit 2'},importer]).length,2);
+ assert.equal(effectiveApplicationServices([{...draft,offeredServices:['New Registration']},importer]).length,2);
+ assert.equal(effectiveApplicationServices([{...draft,cpcb:'Under Review'},importer]).length,2);
+});
 test('matching annual assignment placeholder uses one saved Client Master status',async()=>{
  const {effectiveApplicationServices,applicationSummaryRecords,STATUS_COLUMNS}=await import('../../frontend/src/utils/applicationPortfolio.mjs');
  const saved={id:'master',leadId:'lead',assignmentOnly:false,category:'Producer',unit:'Unit 1',industry:'Consumer Goods',eprCategory:'Plastic Waste',offeredServices:['Annual Return Filling'],annualYears:['2025-26'],bucket:'approved',closed:true,annual:true,annualWorkflowReady:true};
