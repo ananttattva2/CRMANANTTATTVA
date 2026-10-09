@@ -1068,10 +1068,17 @@ function uniqueClientMasterServices(services = []) {
   return services.filter((service, index) => {
     const fingerprint = clientMasterServiceFingerprint(service);
     const groupingIdentity = clientMasterGroupingIdentity(service);
+    const normalizeOffering = (value) => {
+      const normalized = String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalized) ? 'annualreturn' : normalized;
+    };
+    const offeringIdentity = (Array.isArray(service.servicesOffered) ? service.servicesOffered : [service.servicesOffered])
+      .map(normalizeOffering).filter(Boolean).sort().join('|');
+    const categoryIdentity = String(service.eprCategory || service.serviceCategory || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const key = groupingIdentity
-      ? `client-master-group:${groupingIdentity}`
+      ? `client-master-group:${groupingIdentity}:${categoryIdentity}:${offeringIdentity}`
       : (service.clientMasterId
-          ? `client-master:${service.clientMasterId}`
+          ? `client-master:${service.clientMasterId}:${categoryIdentity}:${offeringIdentity}`
           : (readAssignedServiceId(service) || (fingerprint.replace(/:/g, '') ? fingerprint : `service-${index}`)));
     if (seen.has(key)) return false;
     seen.add(key);
@@ -2059,11 +2066,7 @@ export default function ClientMaster() {
       setError('This Lead has no current assigned services. Add a service in Lead Generation first.');
       return;
     }
-    if (!selectedService && visibleServices.length === 1) {
-      beginServiceOnboarding({ lead: baseLead, value }, visibleServices[0]);
-      return;
-    }
-    if (!selectedService && visibleServices.length > 1) {
+    if (!selectedService) {
       clientRecordRequestRef.current += 1;
       setClient({ ...emptyClient, selectedLead: value });
       setEditingClientId('');
@@ -3053,9 +3056,12 @@ export default function ClientMaster() {
 
           {pendingLeadServices && (
             <div className="fixed inset-0 z-[10000] grid place-items-center bg-slate-950/55 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="service-choice-title">
-              <section className="w-full max-w-2xl overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-2xl">
+              <section className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-emerald-100 bg-white shadow-2xl">
                 <header className="bg-gradient-to-r from-emerald-50 to-cyan-50 px-6 py-5">
-                  <p className="text-xs font-black uppercase tracking-[.18em] text-emerald-700">Multiple assigned services</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-black uppercase tracking-[.18em] text-emerald-700">Select assigned service</p>
+                    <button type="button" onClick={() => setPendingLeadServices(null)} className="rounded-lg border border-emerald-200 px-3 py-1.5 text-sm font-bold text-emerald-800 hover:bg-emerald-100" aria-label="Close service selection">Close</button>
+                  </div>
                   <h2 id="service-choice-title" className="mt-1 text-xl font-black text-slate-950">{pendingLeadServices.lead.company}</h2>
                   <p className="mt-1 text-sm font-bold text-slate-500">
                     {pendingLeadServices.services.filter((service) => service._clientMasterEligible).length} of {pendingLeadServices.services.length} services are PO closed. Only closed services can be onboarded.
