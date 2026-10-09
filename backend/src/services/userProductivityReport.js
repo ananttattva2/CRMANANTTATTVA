@@ -11,6 +11,10 @@ const ONLINE_WINDOW_MS = 15 * 60 * 1000;
 const REPORT_CACHE_TTL_MS = 60 * 1000;
 const productivityReportCache = new Map();
 const productivityReportInFlight = new Map();
+// Constructing an ICU formatter for every audit event dominates large reports.
+const indiaDayFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit'
+});
 
 function entityId(value) {
   const id = value && typeof value === 'object' ? value._id || value.id || value : value;
@@ -60,9 +64,7 @@ function riskForUser(row, now = new Date()) {
 
 function indiaDateKey(value) {
   if (!value) return '';
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit'
-  }).formatToParts(new Date(value));
+  const parts = indiaDayFormatter.formatToParts(new Date(value));
   const pick = (type) => parts.find((part) => part.type === type)?.value || '';
   return `${pick('year')}-${pick('month')}-${pick('day')}`;
 }

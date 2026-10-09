@@ -7,6 +7,21 @@ function user(id, name) {
   return { _id: id, name, email: `${name.toLowerCase()}@example.com`, role: 'operation', isActive: true, lastLogin: new Date('2026-08-08T04:30:00.000Z') };
 }
 
+test('productivity timeline retains India midnight boundaries across a large audit batch', () => {
+  const activities = Array.from({ length: 10000 }, (_, index) => ({
+    userId: 'u-a', action: 'view', module: 'leads',
+    occurredAt: index % 2 ? '2026-10-08T18:30:00.000Z' : '2026-10-08T18:29:59.000Z'
+  }));
+  const report = buildUserProductivityReport({
+    users: [user('u-a', 'User A')], sessions: [], activities,
+    leads: [], clients: [], ticketStats: [], period: { from: '2026-10-08', to: '2026-10-09' }
+  });
+  assert.equal(report.summary.actions, 10000);
+  assert.deepEqual(report.users[0].timeline.map(({ date, actions }) => ({ date, actions })), [
+    { date: '2026-10-09', actions: 5000 }, { date: '2026-10-08', actions: 5000 }
+  ]);
+});
+
 test('temporary captured counts include converted records and stay separate from permanent ownership', () => {
   const report = buildUserProductivityReport({
     users: [user('u-a', 'User A'), user('u-b', 'User B'), user('u-c', 'User C')],

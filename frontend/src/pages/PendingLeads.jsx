@@ -27,8 +27,9 @@ function serviceClosedAt(row = {}, index = 0) {
   const assignment = allAssignments(row)[index] || {};
   return service.closedAt || assignment.closedAt || (allServices(row).length === 1 ? row.closedAt : '') || '';
 }
+const indiaDayFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' });
 function indiaDateParts(input = new Date()) {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' })
+  return indiaDayFormatter
     .formatToParts(new Date(input)).reduce((result, part) => ({ ...result, [part.type]: part.value }), {});
 }
 function indiaMonthKey(input) {
@@ -193,7 +194,7 @@ export default function PendingLeads({ mode = 'open' }) {
 
   async function load() {
     setLoading(true);
-    const [me, result, quotationResult] = await Promise.allSettled([api.get(API_ENDPOINTS.auth.me), api.get(API_ENDPOINTS.leads.list), api.get(API_ENDPOINTS.quotations.list)]);
+    const [me, result, quotationResult] = await Promise.allSettled([api.get(API_ENDPOINTS.auth.me), api.get(API_ENDPOINTS.leads.list, { params: { view: 'review' } }), api.get(API_ENDPOINTS.quotations.list, { params: { compact: 'true' } })]);
     if (me.status === 'fulfilled') setCurrentUser(me.value.data?.user);
     setLeads(result.status === 'fulfilled' ? (result.value.data?.leads || []) : []);
     setQuotations(quotationResult.status === 'fulfilled' ? (quotationResult.value.data?.quotations || []) : []);

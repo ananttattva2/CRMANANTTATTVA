@@ -758,7 +758,7 @@ exports.listQuotations = async (req, res) => {
   );
   const query = Quotation.find(scopedFilter)
     .select(req.query.compact === 'true'
-      ? 'quotationNumber leadId leadRef clientRef leadCode businessLeadCode companyName leadDetails quotationDate validUntil serviceState combinedBasicAmount items subtotal grandTotal status source createdByName preparedByName leadGeneratedBy assignedUserName managementApproval approvalDecision createdBy createdAt updatedAt'
+      ? 'quotationNumber leadId leadRef clientRef leadCode businessLeadCode companyName leadDetails quotationDate validUntil serviceState pricingMode combinedBasicAmount items subtotal grandTotal status source createdByName preparedByName leadGeneratedBy assignedUserName managementApproval approvalDecision createdBy createdAt updatedAt'
       : '')
     .populate('createdBy', 'name email')
     .populate('approvalDecision.actionBy', 'name email role')

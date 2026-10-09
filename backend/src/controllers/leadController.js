@@ -1265,6 +1265,9 @@ exports.listLeads = async (req, res) => {
   if (!paginated) {
     const queryStartedAt = process.hrtime.bigint();
     const leads = await Lead.find(accessFilter)
+    .select(req.query.view === 'review'
+      ? 'leadCode sourceLeadId company createdAt updatedAt importedCreatedAt leadDate importedCreatedBy createdBy createdByCrmUserId createdByEmail createdByName applicantType subApplicantType piboCategory industryType eprCategory servicesOffered firstAnnualReturnYearApplicable assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail closedAt closedBy closedByText serviceSelections.applicantType serviceSelections.subApplicantType serviceSelections.piboCategory serviceSelections.eprCategory serviceSelections.servicesOffered serviceSelections.firstAnnualReturnYearApplicable serviceSelections.createdAt serviceSelections.createdByName serviceSelections.createdByEmail serviceSelections.closedAt serviceSelections.closedBy serviceSelections.closedByText assignments.closedAt assignments.closedBy assignments.closedByText'
+      : '')
     .populate('assignedTo', 'name email avatarUrl role')
     .populate('closedBy', 'name email avatarUrl role')
     .populate('createdBy', 'name email')
