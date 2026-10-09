@@ -3,7 +3,7 @@ import { motion, useReducedMotion } from 'framer-motion'
 import { ArrowUpRight, FileSpreadsheet, Loader2, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react'
 import api from '../../services/api'
 import { formatDisplayDate } from '../../utils/dateFormat'
-import { buildApplicationPortfolio, PIBO_CATEGORIES, STATUS_COLUMNS, matchesPortfolioSearch, offeredServiceColumns, applicationSummaryRecords, matchesApplicationService, matchesServiceSummary, annualReturnYearForDate, annualActionReasons } from '../../utils/applicationPortfolio.mjs'
+import { buildApplicationPortfolio, PIBO_CATEGORIES, STATUS_COLUMNS, matchesPortfolioSearch, offeredServiceColumns, applicationSummaryRecords, matchesApplicationService, matchesServiceSummary, matchesStatusSummary, annualReturnYearForDate, annualActionReasons } from '../../utils/applicationPortfolio.mjs'
 import './applicationPortfolio.css'
 
 function ClientRecordsPopup({ selection, onClose }) {
@@ -55,7 +55,7 @@ export default function ApplicationPortfolio({ mode }) {
   const annualReturnYear = annualReturnYearForDate()
   const serviceColumns = useMemo(() => offeredServiceColumns(groups), [groups])
   const columns = distribution ? [['total', 'Total'], ...categories.map(category => [category, category])] : serviceSummary ? [['total', 'Total'], ...serviceColumns.flatMap(service => service === 'Annual Return Filling' ? [[service, `Annual Return Filling (${annualReturnYear})`], ['annualActionRequired', 'AR Action Required']] : [[service, service]]), ...(groups.some(group => group.records.some(row => matchesApplicationService(row, 'unclassified'))) ? [['unclassified', 'Not Closed / Service Not Recorded']] : [])] : [...STATUS_COLUMNS.slice(0, 6), ...[...new Set(groups.flatMap(group => applicationSummaryRecords(group).flatMap(row => row.annualYears)))].filter(year => !['2025-26', '2026-27', '2027-28'].includes(year)).sort().map(year => [`annual:${year}`, year]), ...STATUS_COLUMNS.slice(6)]
-  const matches = (row, key) => distribution ? key === 'total' || row.category === key : serviceSummary ? matchesServiceSummary(row, key) : key === 'total' ? true : key === 'annualActionRequired' ? matchesServiceSummary(row, key) : key === 'live' ? row.live : key === 'annual' ? row.annual : key.startsWith('annual:') ? row.annual && (key === 'annual:unrecorded' ? !row.annualYears.length : row.annualYears.includes(key.slice(7))) : row.bucket === key
+  const matches = (row, key) => distribution ? key === 'total' || row.category === key : serviceSummary ? matchesServiceSummary(row, key) : matchesStatusSummary(row, key)
   const open = (name, records, label = 'All categories', key = '') => setSelection({ name, records, label, key })
   const title = distribution ? 'Application Distribution by SPOC & PIBo' : serviceSummary ? 'Application servise Summary' : 'Application Status Summary'
   return <motion.section role="tabpanel" id={`portfolio-${mode}`} aria-labelledby={`dashboard-tab-${mode}`} initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .2 }} className="application-portfolio">

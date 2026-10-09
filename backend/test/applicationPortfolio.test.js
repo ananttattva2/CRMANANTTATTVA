@@ -246,7 +246,7 @@ test('Annual Filling aliases require manager-to-staff assignment; rejected PO do
 });
 
 test('current-FY approved annual applications count once in their earliest annual return year', async () => {
-  const {buildApplicationPortfolio, applicationSummaryRecords, financialYearForDate, annualReturnYearForDate, matchesServiceSummary, STATUS_COLUMNS} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const {buildApplicationPortfolio, applicationSummaryRecords, financialYearForDate, annualReturnYearForDate, matchesServiceSummary, matchesStatusSummary, STATUS_COLUMNS} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   assert.equal(financialYearForDate(new Date('2026-10-08T12:00:00+05:30')), '2026-27');
   assert.equal(annualReturnYearForDate(new Date('2026-10-08T12:00:00+05:30')), '2025-26');
   assert.equal(STATUS_COLUMNS.some(([key]) => key === 'annual'), false);
@@ -271,6 +271,8 @@ test('current-FY approved annual applications count once in their earliest annua
     assert.equal(matchesServiceSummary(result,'Annual Return Filling',new Date('2026-10-08T12:00:00+05:30')),false);
     assert.equal(matchesServiceSummary(result,'total',new Date('2026-10-08T12:00:00+05:30')),true);
     assert.equal(matchesServiceSummary(result,'annualActionRequired',new Date('2026-10-08T12:00:00+05:30')),true);
+    assert.equal(matchesStatusSummary(result,'annualActionRequired',new Date('2026-10-08T12:00:00+05:30')),true);
+    assert.equal(matchesStatusSummary(result,result.bucket,new Date('2026-10-08T12:00:00+05:30')),false);
   }
   result=applicationSummaryRecords(buildApplicationPortfolio([make('wrong-fy','Approved',[{poFinancialYear:'2025-26',annualReturnYear:'2025-26'}])],users)[0])[0];
   assert.equal(result.annual,false);assert.deepEqual(result.annualYears,[]);

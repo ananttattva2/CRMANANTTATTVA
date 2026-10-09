@@ -36,6 +36,14 @@ export function matchesServiceSummary(record, key, date = new Date()) {
   if (key === 'total') return true
   return matchesApplicationService(summary, key)
 }
+export function matchesStatusSummary(record, key, date = new Date()) {
+  if (key === 'total') return true
+  const actionRequired = matchesServiceSummary(record, 'annualActionRequired', date)
+  if (key === 'annualActionRequired') return actionRequired
+  if (key.startsWith('annual:')) return !actionRequired && record.annual
+    && (key === 'annual:unrecorded' ? !record.annualYears.length : record.annualYears.includes(key.slice(7)))
+  return !actionRequired && record.bucket === key
+}
 export function annualActionReasons(record) {
   const services = (record.services || []).filter(service => service.offeredServices?.includes('Annual Return Filling'))
   const reasons = []
