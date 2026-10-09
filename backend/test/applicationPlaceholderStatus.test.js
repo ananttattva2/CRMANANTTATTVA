@@ -1,5 +1,21 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
+test('service summaries keep registration in Not Started and only annual records in AR actions',async()=>{
+ const {applicationServiceSummaryRecords,matchesStatusSummary,STATUS_COLUMNS}=await import('../../frontend/src/utils/applicationPortfolio.mjs');
+ const registration={id:'registration',closed:true,offeredServices:['New Registration'],bucket:'notStarted',annual:false,clientStatus:'submitted'};
+ const annual={id:'annual',closed:true,offeredServices:['Annual Return Filling'],bucket:'notStarted',annual:true,annualWorkflowReady:true};
+ const rows=applicationServiceSummaryRecords({records:[{...registration,services:[registration,annual]}]});
+ assert.equal(rows.length,2);
+ const actions=rows.filter(row=>matchesStatusSummary(row,'annualActionRequired'));
+ const notStarted=rows.filter(row=>matchesStatusSummary(row,'notStarted'));
+ assert.equal(actions.length,1);assert.equal(notStarted.length,1);
+ assert.deepEqual(actions[0].services.map(s=>s.offeredServices),[['Annual Return Filling']]);
+ assert.deepEqual(notStarted[0].services.map(s=>s.offeredServices),[['New Registration']]);
+ for(const row of rows) assert.equal(STATUS_COLUMNS.filter(([key])=>key!=='total'&&matchesStatusSummary(row,key)).length,1);
+ assert.equal(new Set(rows.map(row=>row.id)).size,2);
+ const open=applicationServiceSummaryRecords({records:[{...registration,services:[registration,{...annual,closed:false}]}]});
+ assert.equal(open.filter(row=>matchesStatusSummary(row,'annualActionRequired')).length,1);
+});
 test('NUVIASHOP registration master retains annual sibling action in an exclusive status bucket',async()=>{
  const {applicationSummaryRecords,matchesStatusSummary,matchesServiceSummary,STATUS_COLUMNS}=await import('../../frontend/src/utils/applicationPortfolio.mjs');
  const registration={id:'registration',closed:true,offeredServices:['New Registration'],bucket:'notStarted',annual:false};

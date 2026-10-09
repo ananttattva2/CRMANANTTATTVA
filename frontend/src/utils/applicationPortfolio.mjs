@@ -23,6 +23,22 @@ export function applicationSummaryRecords(group) {
       offered: summaryService === 'unclassified' ? 'Not Closed / Service Not Recorded' : summaryService }
   })
 }
+export function applicationServiceSummaryRecords(group) {
+  const records = group.records.flatMap(record => {
+    const byService = new Map()
+    for (const service of record.services) {
+      for (const offered of service.offeredServices.length ? service.offeredServices : ['unclassified']) {
+        if (!byService.has(offered)) byService.set(offered, [])
+        byService.get(offered).push({ ...service, offeredServices: offered === 'unclassified' ? [] : [offered], offered: offered === 'unclassified' ? 'Not recorded' : offered })
+      }
+    }
+    return [...byService].map(([offered, services]) => ({
+      ...record, ...services[0], id: `${record.id}:${offered}`, services,
+      sourceIds: services.map(service => service.id)
+    }))
+  })
+  return applicationSummaryRecords({ records })
+}
 export function matchesApplicationService(record, key) {
   if (key === 'total') return true
   return applicationSummaryService(record) === key
@@ -67,6 +83,7 @@ function rawApplicationSummaryService(record) {
   const representative = closed.find(service => service.offeredServices.includes('Annual Return Filling'))
     || closed.find(service => service.id === record.id && service.offeredServices.length)
     || closed.find(service => service.offeredServices.length)
+    || record.services.find(service => service.offeredServices.includes('Annual Return Filling'))
   return representative?.offeredServices.includes('Annual Return Filling') ? 'Annual Return Filling' : representative?.offeredServices[0] || 'unclassified'
 }
 export function cpcbStatusBucket(value) {

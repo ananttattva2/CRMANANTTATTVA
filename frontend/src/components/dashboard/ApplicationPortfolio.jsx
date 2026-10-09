@@ -3,7 +3,7 @@ import { motion, useReducedMotion } from 'framer-motion'
 import { ArrowUpRight, FileSpreadsheet, Loader2, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react'
 import api from '../../services/api'
 import { formatDisplayDate } from '../../utils/dateFormat'
-import { buildApplicationPortfolio, PIBO_CATEGORIES, STATUS_COLUMNS, matchesPortfolioSearch, offeredServiceColumns, applicationSummaryRecords, matchesApplicationService, matchesServiceSummary, matchesStatusSummary, annualReturnYearForDate, annualActionReasons } from '../../utils/applicationPortfolio.mjs'
+import { buildApplicationPortfolio, PIBO_CATEGORIES, STATUS_COLUMNS, matchesPortfolioSearch, offeredServiceColumns, applicationServiceSummaryRecords as applicationSummaryRecords, matchesApplicationService, matchesServiceSummary, matchesStatusSummary, annualReturnYearForDate, annualActionReasons } from '../../utils/applicationPortfolio.mjs'
 import './applicationPortfolio.css'
 
 function ClientRecordsPopup({ selection, onClose }) {
