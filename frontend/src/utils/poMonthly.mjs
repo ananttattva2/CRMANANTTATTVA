@@ -22,6 +22,21 @@ export function monthlyPO(records, year, search = '') {
   return { records: selected, rows: [...groups.values()].sort((a, b) => b.records.length - a.records.length || a.name.localeCompare(b.name)) }
 }
 export const poAmount = records => records.reduce((sum, r) => sum + (Number.isFinite(Number(r.poAmount)) ? Number(r.poAmount) : 0), 0)
+export const poApproval = record => String(record.approvalStatus || 'PENDING').trim().toUpperCase()
+export function filterPoApproval(records, status = 'ALL') {
+  return status === 'ALL' ? records : records.filter(record => poApproval(record) === status)
+}
+export function poDetailExportRows(records) {
+  return records.map(record => ({
+    User: record.ownerName || 'Unassigned',
+    Client: record.clientName || '',
+    'PO number': record.poNumber || '',
+    'PO date': poPeriod(record.poDate) ? new Date(record.poDate).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : '',
+    'Amount (INR)': Number.isFinite(Number(record.poAmount)) ? Number(record.poAmount) : 0,
+    'Applicant category': poApplicantCategory(record),
+    Approval: poApproval(record)
+  }))
+}
 
 export function poApplicantCategory(record) {
   const clean = value => String(value || '').trim().replace(/\s+/g, ' ')

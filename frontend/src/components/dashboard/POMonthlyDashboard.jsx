@@ -2,15 +2,35 @@ import './poMonthlyDashboard.css'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { BarChart3, CalendarDays, Coins, Download, RefreshCw, UserRound, X } from 'lucide-react'
 import api, { readApiError } from '../../services/api'
-import { PO_MONTHS, poPeriod, monthlyPO, piboPO, poApplicantCategory, poAmount } from '../../utils/poMonthly.mjs'
+import { PO_MONTHS, poPeriod, monthlyPO, piboPO, poApplicantCategory, poAmount, poApproval, filterPoApproval, poDetailExportRows } from '../../utils/poMonthly.mjs'
 
 const money = value => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value)
 function Details({ selection, onClose }) {
   const dialog = useRef(null)
+  const [status, setStatus] = useState('ALL')
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
+  const filtered = useMemo(() => filterPoApproval(selection.records, status), [selection.records, status])
   useEffect(() => { dialog.current?.showModal() }, [])
-  return <dialog ref={dialog} onCancel={onClose} className="w-[min(1100px,95vw)] rounded-2xl p-0 backdrop:bg-slate-900/50">
-    <header className="flex items-center justify-between border-b p-5"><div><h3 className="text-lg font-bold">{selection.title}</h3><p className="text-sm text-slate-500">{selection.records.length} PO entries · {money(poAmount(selection.records))}</p></div><button type="button" aria-label="Close PO details" onClick={onClose} className="rounded-lg p-2 hover:bg-slate-100"><X size={20} /></button></header>
-    <div className="max-h-[65vh] overflow-auto"><table className="w-full text-left text-sm"><thead className="sticky top-0 bg-slate-100"><tr>{['User', 'Client', 'PO number', 'PO date', 'Amount', 'Applicant category', 'Approval'].map(h => <th key={h} className="p-4">{h}</th>)}</tr></thead><tbody>{selection.records.map(r => <tr key={r.id} className="border-b"><td className="p-4">{r.ownerName}</td><td className="p-4">{r.clientName}</td><td className="p-4">{r.poNumber || 'Not recorded'}</td><td className="p-4">{poPeriod(r.poDate) ? new Date(r.poDate).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'Not recorded'}</td><td className="whitespace-nowrap p-4">{money(Number(r.poAmount) || 0)}</td><td className="p-4">{poApplicantCategory(r)}</td><td className="p-4">{r.approvalStatus}</td></tr>)}</tbody></table></div>
+  async function exportDetails() {
+    if (exporting || !filtered.length) return
+    setExporting(true); setExportError('')
+    try {
+      const XLSX = await import('xlsx')
+      const worksheet = XLSX.utils.json_to_sheet(poDetailExportRows(filtered))
+      worksheet['!cols'] = [{ wch: 24 }, { wch: 40 }, { wch: 24 }, { wch: 16 }, { wch: 20 }, { wch: 32 }, { wch: 16 }]
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'PO Details')
+      const name = selection.title.replace(/[^a-z0-9-]+/gi, '-').slice(0, 90)
+      XLSX.writeFile(workbook, `PO-details-${name}-${status}.xlsx`)
+    } catch { setExportError('Excel export could not complete. Please retry.') }
+    finally { setExporting(false) }
+  }
+  return <dialog ref={dialog} aria-labelledby="po-details-title" onCancel={onClose} className="w-[min(1100px,95vw)] rounded-2xl p-0 backdrop:bg-slate-900/50">
+    <header className="flex items-center justify-between gap-4 border-b p-5"><div><h3 id="po-details-title" className="text-lg font-bold">{selection.title}</h3><p className="text-sm text-slate-500">{filtered.length} of {selection.records.length} PO entries · {money(poAmount(filtered))}</p></div><button type="button" aria-label="Close PO details" onClick={onClose} className="rounded-lg p-2 hover:bg-slate-100"><X size={20} /></button></header>
+    <div className="flex flex-wrap items-end justify-between gap-4 border-b bg-orange-50/50 px-5 py-4"><label className="text-xs font-bold text-slate-600">Approval status<select value={status} onChange={event => setStatus(event.target.value)} className="mt-1 block min-w-44 rounded-xl border border-orange-200 bg-white px-3 py-2.5 text-sm"><option value="ALL">All statuses</option><option value="APPROVED">APPROVED</option><option value="PENDING">PENDING</option></select></label><button type="button" onClick={exportDetails} disabled={!filtered.length || exporting} className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-bold text-white hover:bg-orange-600 disabled:opacity-50"><Download size={16} />{exporting ? 'Exporting…' : 'Export Excel'}</button></div>
+    {exportError && <p role="alert" className="px-5 py-3 text-sm text-rose-700">{exportError}</p>}
+    <div className="max-h-[60vh] overflow-auto"><table className="w-full text-left text-sm"><thead className="sticky top-0 bg-slate-100"><tr>{['User', 'Client', 'PO number', 'PO date', 'Amount', 'Applicant category', 'Approval'].map(h => <th scope="col" key={h} className="p-4">{h}</th>)}</tr></thead><tbody>{filtered.map(r => <tr key={r.id} className="border-b"><td className="p-4">{r.ownerName}</td><td className="p-4">{r.clientName}</td><td className="p-4">{r.poNumber || 'Not recorded'}</td><td className="p-4">{poPeriod(r.poDate) ? new Date(r.poDate).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'Not recorded'}</td><td className="whitespace-nowrap p-4">{money(Number(r.poAmount) || 0)}</td><td className="p-4">{poApplicantCategory(r)}</td><td className="p-4"><span className={`rounded-full px-3 py-1 text-xs font-bold ${poApproval(r) === 'APPROVED' ? 'bg-emerald-50 text-emerald-700' : poApproval(r) === 'PENDING' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>{poApproval(r)}</span></td></tr>)}{!filtered.length && <tr><td colSpan={7} className="p-10 text-center text-slate-500">No PO entries match this approval status.</td></tr>}</tbody></table></div>
   </dialog>
 }
 export default function POMonthlyDashboard({ refreshToken }) {
