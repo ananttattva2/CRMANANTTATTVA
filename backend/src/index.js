@@ -3,6 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
 const { invalidateDashboardReads } = require('./services/dashboardReadModel');
+const { createInvalidationMiddleware } = require('./middleware/readCacheInvalidation');
+const { startConnection: startRedisConnection, cacheConnectionStatus } = require('./services/redisConnection');
 const mongoose = require('mongoose');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/auth');
@@ -73,12 +75,8 @@ app.use(cors({
 }));
 app.use(compression({ threshold: 1024 }));
 app.use(express.json({ limit: '12mb' }));
-app.use('/api', (req, res, next) => {
-  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && /^\/api\/(clients|leads|teams|dashboard-insights|pending-approvals)(?:\/|$)/.test(req.originalUrl)) {
-    res.on('finish', () => { if (res.statusCode < 400) invalidateDashboardReads(); });
-  }
-  next();
-});
+app.use('/api', createInvalidationMiddleware());
+startRedisConnection();
 
 let schedulerStarted = false;
 let dbReady;
@@ -92,7 +90,7 @@ function connectAndStartServices() {
     // Run once on every deployment/startup so legacy RED records immediately
     // receive their fresh 24-hour recovery window and email notification.
     await runClientComplianceCorrectionReminders().catch((error) => console.error('Compliance correction startup scan failed', error));
-    invalidateDashboardReads();
+    await invalidateDashboardReads();
     // Persistent interval schedulers must never run inside short-lived serverless
     // function instances. Their work is handled by explicit cron endpoints.
     if (!schedulerStarted && !isServerlessRuntime) {
@@ -132,6 +130,7 @@ app.use('/api', async (req, res, next) => {
 app.get('/api/health', (req, res) => res.json({
   ok: true,
   database: mongoose.connection.readyState === 1 ? 'connected' : 'unavailable',
+  cache: cacheConnectionStatus(),
   release: String(process.env.DEPLOY_COMMIT || process.env.RENDER_GIT_COMMIT || process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 12) || undefined
 }));
 

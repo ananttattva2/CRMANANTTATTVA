@@ -1,5 +1,5 @@
 // Dashboard reads need status and ownership, never embedded proof documents.
-const { createOverallCache } = require('./overallDashboardData');
+const { readCache } = require('./readCache');
 const compactFields = (prefix, fields) => Object.fromEntries(fields.split(' ').map(field => [field, `${prefix}.${field}`]));
 const poFields = 'fy poFinancialYear annualReturnYear poNumber poNo poDate poReceivedDate poEndDate poAmount paymentTerm services';
 function compactPo(prefix) {
@@ -54,15 +54,11 @@ clientProjection['data.selectedLeadSnapshot.serviceSelections'] = {
   $map: { input: { $ifNull: ['$data.selectedLeadSnapshot.serviceSelections', []] }, as: 'service', in: leadProjection.serviceSelections.$map.in }
 };
 
-const caches = new Set();
 function createDashboardCache(options = {}) {
-  let read = createOverallCache({ ttl: 15000, ...options });
-  const invalidate = () => { read = createOverallCache({ ttl: 15000, ...options }); };
-  caches.add(invalidate);
-  return (key, load) => read(key, load);
+  return readCache.createCache({ name: 'dashboard', ttl: 15000, ...options });
 }
-function invalidateDashboardReads() { for (const invalidate of caches) invalidate(); }
-const cachedAssignments = createDashboardCache({ maxEntries: 2 });
+function invalidateDashboardReads() { return readCache.invalidate(); }
+const cachedAssignments = createDashboardCache({ name: 'assignments', maxEntries: 2 });
 const staffFields = ['assignedStaff', 'assignedStaffText', 'assignedStaffEmail'];
 const present = field => ({ [field]: { $exists: true, $nin: [null, ''] } });
 const permanentStaffFilter = {

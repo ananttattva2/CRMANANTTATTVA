@@ -43,9 +43,9 @@ jobs:
         shell: bash
         run: find backend/src -type f -name '*.js' -print0 | xargs -0 -n1 node --check
 
-      - name: Test paginated directory APIs
+      - name: Test directory APIs and optional read cache
         working-directory: backend
-        run: node --test test/directoryServerPagination.test.js
+        run: node --test test/directoryServerPagination.test.js test/readCache.test.js test/redisConnection.test.js test/dashboardReadModel.test.js test/userProductivityReport.test.js
 
       - name: Build frontend
         env:

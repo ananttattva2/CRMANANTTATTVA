@@ -9,8 +9,8 @@ const Team = require('../models/Team');
 
 const ONLINE_WINDOW_MS = 15 * 60 * 1000;
 const REPORT_CACHE_TTL_MS = 60 * 1000;
-const productivityReportCache = new Map();
-const productivityReportInFlight = new Map();
+const { readCache } = require('./readCache');
+const cachedProductivityReport = readCache.createCache({ name: 'productivity', ttl: REPORT_CACHE_TTL_MS, maxEntries: 50 });
 // Constructing an ICU formatter for every audit event dominates large reports.
 const indiaDayFormatter = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit'
@@ -225,10 +225,7 @@ async function getUserProductivityReport({ from, to, requester }) {
   const isAdmin = ['admin', 'superadmin'].includes(requesterRole);
   const requesterId = requester?._id || requester?.id;
   const cacheKey = `${String(requesterId || 'anonymous')}:${requesterRole}:${period.from}:${period.to}`;
-  const cached = productivityReportCache.get(cacheKey);
-  if (cached && Date.now() - cached.createdAt < REPORT_CACHE_TTL_MS) return cached.report;
-  if (productivityReportInFlight.has(cacheKey)) return productivityReportInFlight.get(cacheKey);
-  const reportPromise = (async () => {
+  return cachedProductivityReport(cacheKey, async () => {
     const operationTeams = await reportQuery('teams', isAdmin
       ? Team.find().select('name manager operationHead members').sort({ name: 1 }).lean()
       : Team.find({ $or: [{ manager: requesterId }, { operationHead: requesterId }] }).select('name manager operationHead members').sort({ name: 1 }).lean());
@@ -265,16 +262,7 @@ async function getUserProductivityReport({ from, to, requester }) {
         operationTeams: operationTeams.map((team) => ({ id: entityId(team._id), name: String(team.name || 'Operations Team'), managerId: entityId(team.manager), operationHeadId: entityId(team.operationHead), memberIds: (team.members || []).map(entityId).filter(Boolean) }))
       }
     };
-  })();
-  productivityReportInFlight.set(cacheKey, reportPromise);
-  try {
-    const report = await reportPromise;
-    productivityReportCache.set(cacheKey, { createdAt: Date.now(), report });
-    if (productivityReportCache.size > 50) productivityReportCache.delete(productivityReportCache.keys().next().value);
-    return report;
-  } finally {
-    if (productivityReportInFlight.get(cacheKey) === reportPromise) productivityReportInFlight.delete(cacheKey);
-  }
+  });
 }
 
 function canViewUserWorkReport({ requester, targetUserId, operationTeams = [] }) {

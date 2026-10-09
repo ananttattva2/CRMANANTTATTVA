@@ -10,7 +10,8 @@
     "seed-admin": "node src/seed/adminSeed.js",
     "backfill:ccp": "node src/scripts/backfillCcpToCrm.js",
     "migrate:quotation-numbers": "node src/scripts/renumberQuotations.js",
-    "fix:sd-international-ownership": "node src/scripts/fixSdInternationalOwnership.js"
+    "fix:sd-international-ownership": "node src/scripts/fixSdInternationalOwnership.js",
+    "cache:check": "node src/scripts/checkRedisCache.js"
   },
   "dependencies": {
     "@kenjiuno/msgreader": "^1.28.0",
@@ -24,6 +25,7 @@
     "mongoose": "^7.8.7",
     "multer": "^2.2.0",
     "nodemailer": "^6.9.0",
+    "redis": "^6.3.0",
     "sanitize-html": "2.17.4"
   },
   "devDependencies": {
