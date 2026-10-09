@@ -132,6 +132,13 @@ export function applicationRecord(client) {
 // this lead already has a submitted master for the same applicant/unit/service.
 export function effectiveApplicationServices(services) {
   const signature = service => [service.leadId, service.category, service.unit, service.industry, service.eprCategory, [...service.offeredServices].sort().join('|')].map(normalize).join(':')
+  const sameDraftApplication = (draft, submitted) => {
+    const fieldsMatch = [draft.leadId, draft.category, draft.industry, draft.eprCategory, [...draft.offeredServices].sort().join('|')]
+      .map(normalize).join(':') === [submitted.leadId, submitted.category, submitted.industry, submitted.eprCategory, [...submitted.offeredServices].sort().join('|')]
+        .map(normalize).join(':')
+    const draftUnit = normalize(draft.unit), submittedUnit = normalize(submitted.unit)
+    return fieldsMatch && (!draftUnit || draftUnit === 'notrecorded' || !submittedUnit || draftUnit === submittedUnit)
+  }
   const hydrated = new Map()
   services = services.filter(service => {
     if (!service.assignmentOnly || !service.statusSourceClientId) return true
@@ -144,11 +151,12 @@ export function effectiveApplicationServices(services) {
   })
   const saved = services.filter(service => !service.assignmentOnly)
   return services.filter(service => {
-    const blankDraft = !service.assignmentOnly && normalize(service.clientStatus) === 'draft' && normalize(service.cpcb) === 'notrecorded'
-    if ((!service.assignmentOnly && !blankDraft) || !service.leadId) return true
+    const draft = !service.assignmentOnly && normalize(service.clientStatus) === 'draft'
+    const replaceableDraft = draft && ['notrecorded', 'approved'].includes(normalize(service.cpcb))
+    if ((!service.assignmentOnly && !replaceableDraft) || !service.leadId) return true
     const master = saved.find(candidate => candidate.id !== service.id
-      && signature(candidate) === signature(service)
-      && (!blankDraft || normalize(candidate.clientStatus) === 'submitted' && normalize(candidate.cpcb) !== 'notrecorded'))
+      && (service.assignmentOnly ? signature(candidate) === signature(service) : sameDraftApplication(service, candidate))
+      && (!replaceableDraft || normalize(candidate.clientStatus) === 'submitted'))
     if (!master) return true
     master.annualCurrentFyPo ||= service.annualCurrentFyPo
     master.annualYears = [...new Set([...(master.annualYears || []), ...(service.annualYears || [])])]
@@ -160,8 +168,8 @@ export function buildApplicationPortfolio(assignments, users) {
   const groups = buildOperationsProgressGroups(assignments.map(client => ({ id: String(client._id), client, companyName: applicationRecord(client).name })), users)
   return groups.map(group => {
     const records = new Map()
-    for (const company of group.rows) for (const row of company.serviceRows || [company]) {
-      const record = applicationRecord(row.client)
+    const assignedServices = effectiveApplicationServices(group.rows.flatMap(company => (company.serviceRows || [company]).map(row => applicationRecord(row.client))))
+    for (const record of assignedServices) {
       const identity = `${record.companyKey}:${normalize(record.category)}:${normalize(record.unit)}`
       const existing = records.get(identity)
       if (!existing) records.set(identity, { ...record, services: [record] })

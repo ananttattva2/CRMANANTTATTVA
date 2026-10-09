@@ -245,6 +245,26 @@ test('Annual Filling aliases require manager-to-staff assignment; rejected PO do
   }
 });
 
+test('submitted applicant replaces a matching draft whose unit was not recorded', async () => {
+  const { buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const makeAsia = (id, category, workflowStatus, unit) => {
+    const row = client(id, 'sonal', category, 'Approved');
+    row.workflowStatus = workflowStatus;
+    row.assignedServiceId = id;
+    row.selectedLead._id = 'asia-lead';
+    row.selectedLead.company = 'ASIA BULK SACKS PRIVATE LIMITED';
+    row.selectedLead.serviceSelections = [{ assignedServiceId: id, subApplicantType: category, plantUnit: unit, servicesOffered: 'Annual Return Filling' }];
+    row.selectedLead.assignments = [{ assignedServiceId: id, assignedStaff: 'sonal', assignedTo: 'manager', closedAt: '2026-08-18' }];
+    return row;
+  };
+  const draftImporter = makeAsia('draft-importer', 'Importer', 'draft', '');
+  const submittedImporter = makeAsia('submitted-importer', 'Importer', 'submitted', 'Unit 1');
+  const submittedProducer = makeAsia('submitted-producer', 'Producer', 'submitted', 'Unit 1');
+  const [group] = buildApplicationPortfolio([draftImporter, submittedImporter, submittedProducer], users);
+  assert.equal(group.records.length, 2);
+  assert.deepEqual(group.records.map(record => record.id).sort(), ['submitted-importer', 'submitted-producer']);
+});
+
 test('current-FY approved annual applications count once in their earliest annual return year', async () => {
   const {buildApplicationPortfolio, applicationSummaryRecords, financialYearForDate, annualReturnYearForDate, matchesServiceSummary, matchesStatusSummary, STATUS_COLUMNS} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   assert.equal(financialYearForDate(new Date('2026-10-08T12:00:00+05:30')), '2026-27');
