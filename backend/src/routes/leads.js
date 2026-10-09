@@ -41,5 +41,6 @@ router.patch('/purchase-order-approvals/:id', requireAuth, requireRoles(ADMIN_RO
 router.patch('/purchase-order-approvals/:id/proof', requireAuth, requireRoles(ADMIN_ROLES), leadCtrl.uploadPurchaseOrderProof);
 router.get('/:leadId/quotations', requireAuth, quotationCtrl.listLeadQuotations);
 router.put('/:id', requireAuth, leadCtrl.updateLead);
+router.delete('/:id', requireAuth, requireRoles(ADMIN_ROLES), require('../controllers/leadDeletionController').deleteLead);
 
 module.exports = router;

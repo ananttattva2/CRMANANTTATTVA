@@ -31,6 +31,7 @@ const API_ENDPOINTS = {
     create: '/leads',
     bulk: '/leads/bulk',
     detail: (id) => `/leads/${encodePathValue(id)}`
+    ,delete: (id) => `/leads/${encodePathValue(id)}`
     ,allocation: (id) => `/leads/${encodePathValue(id)}/allocation`
     ,creator: (id) => `/leads/${encodePathValue(id)}/creator`
     ,history: (id) => `/leads/${encodePathValue(id)}/history`
@@ -67,6 +68,7 @@ const API_ENDPOINTS = {
     pendingApprovals: '/clients/pending-approvals',
     approveAllPendingClients: '/clients/pending-approvals/clients/approve-all',
     detail: (id) => `/clients/${encodePathValue(id)}`,
+    sla: (id) => `/clients/${encodePathValue(id)}/sla`,
     lifecycle: (id) => `/clients/${encodePathValue(id)}/lifecycle`,
     approval: (id) => `/clients/${encodePathValue(id)}/approval`,
     complianceReview: (id) => `/clients/${encodePathValue(id)}/compliance-review`,

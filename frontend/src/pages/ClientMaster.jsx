@@ -12,6 +12,7 @@ import { adminRoles } from '../constants/dashboard';
 import api from '../services/api';
 import { API_ENDPOINTS } from '../services/apiEndpoints';
 import ClientDirectoryView from '../features/clientMaster/ClientDirectoryView';
+import ClientSlaPage from '../features/clientMaster/ClientSlaPage';
 import ClientLifecycleTracker from '../features/clientMaster/ClientLifecycleTracker';
 import { selectOptions } from '../features/clientMaster/clientMaster.constants';
 import {
@@ -1067,10 +1068,17 @@ function uniqueClientMasterServices(services = []) {
   return services.filter((service, index) => {
     const fingerprint = clientMasterServiceFingerprint(service);
     const groupingIdentity = clientMasterGroupingIdentity(service);
+    const normalizeOffering = (value) => {
+      const normalized = String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalized) ? 'annualreturn' : normalized;
+    };
+    const offeringIdentity = (Array.isArray(service.servicesOffered) ? service.servicesOffered : [service.servicesOffered])
+      .map(normalizeOffering).filter(Boolean).sort().join('|');
+    const categoryIdentity = String(service.eprCategory || service.serviceCategory || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const key = groupingIdentity
-      ? `client-master-group:${groupingIdentity}`
+      ? `client-master-group:${groupingIdentity}:${categoryIdentity}:${offeringIdentity}`
       : (service.clientMasterId
-          ? `client-master:${service.clientMasterId}`
+          ? `client-master:${service.clientMasterId}:${categoryIdentity}:${offeringIdentity}`
           : (readAssignedServiceId(service) || (fingerprint.replace(/:/g, '') ? fingerprint : `service-${index}`)));
     if (seen.has(key)) return false;
     seen.add(key);
@@ -1350,6 +1358,8 @@ export default function ClientMaster() {
   const [viewMode, setViewMode] = useState('list');
   const [pendingLeadServices, setPendingLeadServices] = useState(null);
   const [pendingServiceView, setPendingServiceView] = useState(null);
+  const [pendingSlaView, setPendingSlaView] = useState(null);
+  const [slaAccessClient, setSlaAccessClient] = useState(null);
   const [pendingCpcbOnboarding, setPendingCpcbOnboarding] = useState(null);
   const [saving, setSaving] = useState(false);
   const [savingMode, setSavingMode] = useState('');
@@ -2056,11 +2066,7 @@ export default function ClientMaster() {
       setError('This Lead has no current assigned services. Add a service in Lead Generation first.');
       return;
     }
-    if (!selectedService && visibleServices.length === 1) {
-      beginServiceOnboarding({ lead: baseLead, value }, visibleServices[0]);
-      return;
-    }
-    if (!selectedService && visibleServices.length > 1) {
+    if (!selectedService) {
       clientRecordRequestRef.current += 1;
       setClient({ ...emptyClient, selectedLead: value });
       setEditingClientId('');
@@ -2838,6 +2844,8 @@ export default function ClientMaster() {
   }
 
   function closeViewClient() {
+    setSlaAccessClient(null);
+    setPendingSlaView(null);
     clientRecordRequestRef.current += 1;
     setViewClient(null);
     setViewServiceClients([]);
@@ -2853,6 +2861,30 @@ export default function ClientMaster() {
         ? updatedClient
         : item
     )));
+  }
+
+  async function requestDirectoryClientView(selectedClient) {
+    const requestId = ++clientRecordRequestRef.current;
+    setPendingServiceView(null);
+    setPendingSlaView(null);
+    setSlaAccessClient(selectedClient);
+    setViewLoading(true);
+    setError('');
+    try {
+      const clientId = String(selectedClient?._id || selectedClient?.id || selectedClient?.clientMasterId || '').trim();
+      const { data: response } = await api.get(API_ENDPOINTS.clients.sla(clientId));
+      if (requestId !== clientRecordRequestRef.current) return;
+      if (response.ready === true && response.sla?.status !== 'No') {
+        await openDirectoryClientView(selectedClient);
+      } else {
+        setViewLoading(false);
+        setPendingSlaView({ client: selectedClient, returnToDetails: false });
+      }
+    } catch (err) {
+      if (requestId !== clientRecordRequestRef.current) return;
+      setViewLoading(false);
+      setError(err?.response?.data?.error || 'Unable to check saved SLA details. Please try again.');
+    }
   }
 
   async function openDirectoryClientView(selectedClient) {
@@ -2893,7 +2925,13 @@ export default function ClientMaster() {
   if (viewMode === 'list') {
     return (
       <DashboardShell currentUser={currentUser} onOpenProfile={() => setProfileOpen(true)} onLogout={handleLogout}>
-        {viewLoading ? (
+        {pendingSlaView ? (
+          <ClientSlaPage key={pendingSlaView.client._id || pendingSlaView.client.id || pendingSlaView.client.clientMasterId} client={pendingSlaView.client} backLabel={pendingSlaView.returnToDetails ? 'Back to Client Details' : 'Back to Client Master list'} onClose={() => setPendingSlaView(null)} onContinue={() => {
+            const { client: selectedClient, returnToDetails } = pendingSlaView;
+            setPendingSlaView(null);
+            if (!returnToDetails) openDirectoryClientView(selectedClient);
+          }} />
+        ) : viewLoading ? (
           <div className="grid min-h-[calc(100vh-64px)] place-items-center bg-[#f3f8f6] px-4">
             <div className="rounded-xl border border-slate-200 bg-white px-6 py-5 text-sm font-black text-[#30737B] shadow-sm">Loading Client Master...</div>
           </div>
@@ -2910,6 +2948,7 @@ export default function ClientMaster() {
             currentUser={currentUser}
             onClose={closeViewClient}
             onClientUpdated={handleViewedClientUpdated}
+            onEditSla={() => setPendingSlaView({ client: slaAccessClient || viewClient, returnToDetails: true })}
           />
         ) : (
           <ClientDirectoryView
@@ -2924,7 +2963,7 @@ export default function ClientMaster() {
             onRefresh={loadPage}
             onDirectoryQueryChange={loadClientDirectory}
             onExportAll={loadAllClientsForExport}
-            onView={openDirectoryClientView}
+            onView={requestDirectoryClientView}
             onEdit={openClientEdit}
             canEdit={adminRoles.includes(String(currentUser?.role || '').toLowerCase())}
             onCreate={openClientForm}
@@ -3017,9 +3056,12 @@ export default function ClientMaster() {
 
           {pendingLeadServices && (
             <div className="fixed inset-0 z-[10000] grid place-items-center bg-slate-950/55 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="service-choice-title">
-              <section className="w-full max-w-2xl overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-2xl">
+              <section className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-emerald-100 bg-white shadow-2xl">
                 <header className="bg-gradient-to-r from-emerald-50 to-cyan-50 px-6 py-5">
-                  <p className="text-xs font-black uppercase tracking-[.18em] text-emerald-700">Multiple assigned services</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-black uppercase tracking-[.18em] text-emerald-700">Select assigned service</p>
+                    <button type="button" onClick={() => setPendingLeadServices(null)} className="rounded-lg border border-emerald-200 px-3 py-1.5 text-sm font-bold text-emerald-800 hover:bg-emerald-100" aria-label="Close service selection">Close</button>
+                  </div>
                   <h2 id="service-choice-title" className="mt-1 text-xl font-black text-slate-950">{pendingLeadServices.lead.company}</h2>
                   <p className="mt-1 text-sm font-bold text-slate-500">
                     {pendingLeadServices.services.filter((service) => service._clientMasterEligible).length} of {pendingLeadServices.services.length} services are PO closed. Only closed services can be onboarded.
@@ -3470,7 +3512,7 @@ function openableClientDocumentUrl(url) {
   return /^(https?:|data:|blob:)/i.test(value) ? value : normalizeDocumentUrl(value);
 }
 
-function ClientViewModal({ client, serviceClients = [], onServiceChange, quotations = [], proformaInvoices = [], staff = [], onClose, initialTab = 'basic', initialAnnualYear = '', currentUser, onClientUpdated }) {
+function ClientViewModal({ client, serviceClients = [], onServiceChange, onEditSla, quotations = [], proformaInvoices = [], staff = [], onClose, initialTab = 'basic', initialAnnualYear = '', currentUser, onClientUpdated }) {
   const navigate = useNavigate();
   const data = readClientData(client);
   const msmeRows = getMsmeRows(data);
@@ -3515,7 +3557,9 @@ function ClientViewModal({ client, serviceClients = [], onServiceChange, quotati
     ['City with PIN', cityPin, MapPin],
     ['PIBO Category', data.basic?.piboCategory, FolderCheck],
     ['Service Category', data.basic?.eprCategory, FileCheck2],
-    ['Services Offered', data.basic?.servicesOffered, CheckCircle2]
+    ['Services Offered', data.basic?.servicesOffered, CheckCircle2],
+    ['Registered on CPCB Portal', data.cpcbOnboarding?.cpcbPortalRegistered === true ? 'Yes' : data.cpcbOnboarding?.cpcbPortalRegistered === false ? 'No' : 'Not answered', ShieldCheck],
+    ...(data.cpcbOnboarding?.cpcbPortalRegistered === false && data.cpcbOnboarding?.cpcbApplicationStatus ? [['CPCB Application Status', data.cpcbOnboarding.cpcbApplicationStatus, ClipboardList]] : [])
   ];
   const companyHistoryRows = [
     ['Lead ID', data.importMeta?.leadNumber || data.importMeta?.uniqueId || getClientUniqueId(client), FileText],
@@ -3540,111 +3584,6 @@ function ClientViewModal({ client, serviceClients = [], onServiceChange, quotati
     ['Factory License', data.compliance?.factoryLicense || data.compliance?.factoryLicenseNumber, FileText, complianceDocument('factoryLicense', docLinks.factory)],
     ['EPR Certificate', data.compliance?.eprCertificate || data.compliance?.eprCertificateNumber, ShieldCheck, complianceDocument('eprCertificate', docLinks.epr)]
   ];
-  const hasMultipleServices = serviceClients.length > 1;
-  const perServiceData = useMemo(() => {
-    if (!hasMultipleServices) return [];
-    return serviceClients.map((svc, idx) => {
-      const svcData = readClientData(svc);
-      const svcName = svcData.basic?.piboCategory || `Service ${idx + 1}`;
-      const svcCat = svcData.basic?.eprCategory || '';
-      const svcServicesOffered = svcData.basic?.servicesOffered || '';
-      const svcCityPin = `${svcData.registeredAddress?.city || ''} ${svcData.registeredAddress?.pincode || ''}`.trim();
-      const svcMsmeRows = getMsmeRows(svcData);
-      const svcRawDocUrls = svcData.validation?.documentUrls;
-      const svcDocUrls = Array.isArray(svcRawDocUrls)
-        ? svcRawDocUrls.map((item) => (typeof item === 'string' ? item : item?.url || item?.fileUrl || item?.path || '')).map((item) => item.trim()).filter(Boolean)
-        : String(svcRawDocUrls || '').split(',').map((item) => item.trim()).filter(Boolean);
-      const svcDocLinks = mapClientDocuments(svcDocUrls);
-      const svcMsmeFiles = svcMsmeRows.map((row) => row?.file).filter(Boolean);
-      const svcComplianceDocument = (name, fallback = '') => svcData.compliance?.[`${name}File`] || fallback;
-      const colorPalette = [
-        { header: 'from-sky-50 to-blue-50', border: 'border-sky-200', badge: 'border-sky-200 bg-sky-50 text-sky-700', badge2: 'border-blue-200 bg-blue-50 text-blue-700', accent: '#0369a1', icon: Package },
-        { header: 'from-emerald-50 to-green-50', border: 'border-emerald-200', badge: 'border-emerald-200 bg-emerald-50 text-emerald-700', badge2: 'border-green-200 bg-green-50 text-green-700', accent: '#047857', icon: Tag },
-        { header: 'from-amber-50 to-orange-50', border: 'border-amber-200', badge: 'border-amber-200 bg-amber-50 text-amber-700', badge2: 'border-orange-200 bg-orange-50 text-orange-700', accent: '#b45309', icon: Factory },
-        { header: 'from-violet-50 to-purple-50', border: 'border-violet-200', badge: 'border-violet-200 bg-violet-50 text-violet-700', badge2: 'border-purple-200 bg-purple-50 text-purple-700', accent: '#6d28d9', icon: Briefcase }
-      ];
-      const palette = colorPalette[idx % colorPalette.length];
-      return {
-        viewKey: getClientServiceViewKey(svc),
-        index: idx,
-        palette,
-        svcName,
-        svcCat,
-        svcServicesOffered,
-        svcInit: String(svcName || 'S').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase() || 'SV',
-        svcProfileRows: [
-          ['PIBO Category', svcName, FolderCheck],
-          ['Service Category', svcCat, FileCheck2],
-          ['Services Offered', svcServicesOffered, CheckCircle2],
-          ['State', svcData.registeredAddress?.state, MapPin],
-          ['City with PIN', svcCityPin, MapPin]
-        ],
-        svcAddressRows: [
-          ['Registered Address 1', svcData.registeredAddress?.address1, MapPin],
-          ['Registered Address 2', svcData.registeredAddress?.address2, MapPin],
-          ['Registered Address 3', svcData.registeredAddress?.address3, MapPin],
-          ['Registered State', svcData.registeredAddress?.state, MapPin],
-          ['Registered City', svcData.registeredAddress?.city, MapPin],
-          ['Registered PIN', svcData.registeredAddress?.pincode, MapPin],
-          ['Communication Address 1', svcData.communicationAddress?.address1, MapPin],
-          ['Communication City', svcData.communicationAddress?.city, MapPin],
-          ['Communication State', svcData.communicationAddress?.state, MapPin],
-          ['Communication PIN', svcData.communicationAddress?.pincode, MapPin]
-        ],
-        svcComplianceRows: [
-          ['Factory License', svcData.compliance?.factoryLicense || svcData.compliance?.factoryLicenseNumber, FileText, svcComplianceDocument('factoryLicense', svcDocLinks.factory)],
-          ['EPR Certificate', svcData.compliance?.eprCertificate || svcData.compliance?.eprCertificateNumber, ShieldCheck, svcComplianceDocument('eprCertificate', svcDocLinks.epr)],
-          ['MSME (if service specific)', getMsmeSummary(svcData), FileCheck2, svcMsmeFiles.length ? svcMsmeFiles : svcDocLinks.msme]
-        ],
-        svcDocRows: [
-          ['Factory License Date', svcData.compliance?.factoryLicenseDate, FileText, svcComplianceDocument('factoryLicense', svcDocLinks.factory)],
-          ['EPR Certificate Date', svcData.compliance?.eprCertificateDate, ShieldCheck, svcComplianceDocument('eprCertificate', svcDocLinks.epr)],
-          ['GST Certificate Date (shared)', svcData.compliance?.gstDate, FileText, svcComplianceDocument('gst', svcDocLinks.gst)],
-          ['CIN Document Date (shared)', svcData.compliance?.cinDate, FileText, svcComplianceDocument('cin', svcDocLinks.cin)],
-          ['PAN Document Date (shared)', svcData.compliance?.panDate, FileText, svcComplianceDocument('pan', svcDocLinks.pan)],
-          ...(svcDocLinks.application ? [['Application Page', 'Uploaded document', FileText, svcDocLinks.application]] : [])
-        ],
-        svcContactRows: [
-          ['Contact Person', svcData.otp?.personName || svcData.authorised?.name, UserRound],
-          ['Contact No', svcData.otp?.mobile || svcData.authorised?.mobile, UserRound],
-          ['Email', svcData.authorised?.email || svcData.coordinating?.email, FileText],
-          ['Authorised Person', svcData.authorised?.name, UserRound],
-          ['Authorised Designation', svcData.authorised?.designation, UserRound],
-          ['Authorised Email', svcData.authorised?.email, FileText],
-          ['Authorised Mobile', svcData.authorised?.mobile, UserRound],
-          ['Coordinator', svcData.coordinating?.name, UserRound],
-          ['Coordinator Designation', svcData.coordinating?.designation, UserRound],
-          ['Coordinator Email', svcData.coordinating?.email, FileText],
-          ['Coordinator Mobile', svcData.coordinating?.mobile, UserRound],
-          ['OTP Mobile', svcData.otp?.mobile, UserRound],
-          ['OTP Person', svcData.otp?.personName, UserRound],
-          ['OTP Designation', svcData.otp?.designation, UserRound]
-        ],
-        svcCpcb: svcData.cpcb || {},
-        svcCpcbDocs: svcData.cpcbScreenshots || [],
-        svcCpcbRows: [
-          ['Linked to Common Portal', (svcData.cpcb || {}).linkedToCommonPortal, ShieldCheck],
-          ['CPCB Registration No', (svcData.cpcb || {}).registrationNumber, ShieldCheck],
-          ['CPCB Application No', (svcData.cpcb || {}).applicationNumber, FileText],
-          ['CPCB Status', (svcData.cpcb || {}).status, CheckCircle2],
-          ['CEPR User ID', (svcData.cpcb || {}).ceprUserId, KeyRound],
-          ['CEPR Password', (svcData.cpcb || {}).ceprPassword, KeyRound],
-          ['Portal Login ID', (svcData.cpcb || {}).loginId, UserRound],
-          ['Portal Login Password', (svcData.cpcb || {}).loginPassword, KeyRound],
-          ['CPCB Unit ID', (svcData.cpcb || {}).unitId, FileText],
-          ['CPCB Application Date', (svcData.cpcb || {}).applicationDate, CalendarDays],
-          ['CPCB Approval Date', (svcData.cpcb || {}).approvalDate, CalendarDays],
-          ['CPCB Remark', (svcData.cpcb || {}).remark, ClipboardList],
-          ...((svcData.cpcb || {}).homePageFile ? [['CPCB Home Page', 'Uploaded document', Images, (svcData.cpcb || {}).homePageFile]] : []),
-          ...(clientDocumentActionUrls(svcData.cpcbScreenshots).length ? [['CPCB Screenshots / Documents', `${clientDocumentActionUrls(svcData.cpcbScreenshots).length} uploaded`, Images, svcData.cpcbScreenshots]] : []),
-          ...(clientDocumentActionUrls(svcData.processDiagrams).length ? [['Process Diagrams', `${clientDocumentActionUrls(svcData.processDiagrams).length} uploaded`, Images, svcData.processDiagrams]] : [])
-        ].filter(([, v]) => String(v || '').trim() !== ''),
-        svcCpcbFileCount: Array.isArray(svcData.cpcbScreenshots) ? svcData.cpcbScreenshots.length : 0,
-        svcProgress: 0,
-        isSelected: selectedServiceKey && String(selectedServiceKey) === String(getClientServiceViewKey(svc))
-      };
-    });
-  }, [serviceClients, hasMultipleServices, selectedServiceKey, serviceClients.length]);
   const initials = clientName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'CL';
   const [activeClientTab, setActiveClientTab] = useState(initialTab || 'basic');
   const [openDetailGroups, setOpenDetailGroups] = useState({});
@@ -3834,6 +3773,7 @@ function ClientViewModal({ client, serviceClients = [], onServiceChange, quotati
             </div>
             <div className="flex flex-wrap gap-2">
               <a href="https://eprplastic.cpcb.gov.in/#/plastic/home" target="_blank" rel="noreferrer" className="btn-lift inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 text-sm font-black text-violet-700"><ShieldCheck className="h-4 w-4" />CPCB Login</a>
+              {onEditSla && <button type="button" onClick={onEditSla} className="btn-lift inline-flex min-h-9 items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3.5 text-sm font-black text-teal-700 hover:bg-teal-100"><Edit3 className="h-4 w-4" />SLA EDIT</button>}
               <button type="button" onClick={() => navigate('/sales/quotations?mode=add', { state: { quotationContext } })} className="btn-lift inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 text-sm font-black text-violet-700"><Plus className="h-4 w-4" />Quotation</button>
               <button type="button" onClick={() => setHistoryOpen(true)} className="btn-lift inline-flex min-h-9 items-center gap-2 rounded-lg bg-teal-700 px-3.5 text-sm font-black text-white"><FileText className="h-4 w-4" />History</button>
             </div>
@@ -3930,111 +3870,6 @@ function ClientViewModal({ client, serviceClients = [], onServiceChange, quotati
                 <div key={activeClientTab} className="client-detail-tab-panel">
                   {activeClientTab === 'basic' && (
                     <div className="mt-5 grid gap-4">
-                      {hasMultipleServices && perServiceData.length > 0 && (
-                        <section className={`rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 shadow-sm`}>
-                          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                              <p className="text-xs font-black uppercase tracking-[0.2em] text-[#30737B]">Service-wise Client Details</p>
-                              <h4 className="mt-1 text-lg font-black text-slate-900">Importer, Brand Owner & Producer records shown separately</h4>
-                            </div>
-                            <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 px-3 py-1 text-xs font-black uppercase text-teal-700 border border-teal-200">
-                              {perServiceData.length} Service{perServiceData.length === 1 ? '' : 's'}
-                            </span>
-                          </div>
-                          <div className={`grid gap-4 ${perServiceData.length === 2 ? 'lg:grid-cols-2' : perServiceData.length === 3 ? 'lg:grid-cols-3' : perServiceData.length >= 4 ? 'xl:grid-cols-2' : ''}`}>
-                            {perServiceData.map((svcBlock) => {
-                              const PIcon = svcBlock.palette.icon || Package;
-                              return (
-                                <article key={svcBlock.viewKey} className={`group rounded-xl border ${svcBlock.palette.border} bg-white shadow-sm transition hover:shadow-md ${svcBlock.isSelected ? 'ring-2 ring-[#30737B] ring-offset-2' : ''}`}>
-                                  <header className={`rounded-t-xl bg-gradient-to-br ${svcBlock.palette.header} p-4`}>
-                                    <div className="flex flex-wrap items-start justify-between gap-3">
-                                      <div className="flex items-center gap-3">
-                                        <div className="grid h-12 w-12 place-items-center rounded-xl text-white shadow-lg" style={{ backgroundColor: svcBlock.palette.accent }}>
-                                          <PIcon className="h-6 w-6" />
-                                        </div>
-                                        <div>
-                                          <div className="flex flex-wrap items-center gap-1.5">
-                                            <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase border ${svcBlock.palette.badge}`}>{svcBlock.svcName || `Service ${svcBlock.index + 1}`}</span>
-                                            {svcBlock.svcCat && <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase border ${svcBlock.palette.badge2}`}>{svcBlock.svcCat}</span>}
-                                            {svcBlock.isSelected && <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-[10px] font-black uppercase text-teal-700">Currently Viewing</span>}
-                                          </div>
-                                          <p className="mt-1 text-sm font-bold text-slate-600">{svcBlock.svcServicesOffered || 'Service details'}</p>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </header>
-                                  <div className="space-y-3 p-4">
-                                    <div>
-                                      <p className="mb-1.5 text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">Service Summary</p>
-                                      <DetailSheet columns={1}>
-                                        {svcBlock.svcProfileRows.map(([label, value, Icon, actionUrl]) => (
-                                          <DetailValue key={`${svcBlock.viewKey}-sum-${label}`} label={label} value={value} icon={Icon} actionUrl={actionUrl} />
-                                        ))}
-                                      </DetailSheet>
-                                    </div>
-                                    <div>
-                                      <p className="mb-1.5 text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">Addresses</p>
-                                      <DetailSheet columns={1}>
-                                        {svcBlock.svcAddressRows.map(([label, value, Icon, actionUrl]) => (
-                                          <DetailValue key={`${svcBlock.viewKey}-addr-${label}`} label={label} value={value} icon={Icon} actionUrl={actionUrl} />
-                                        ))}
-                                      </DetailSheet>
-                                    </div>
-                                    <div>
-                                      <p className="mb-1.5 text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">Service-Specific Contacts</p>
-                                      <DetailSheet columns={1}>
-                                        {svcBlock.svcContactRows.map(([label, value, Icon, actionUrl]) => (
-                                          <DetailValue key={`${svcBlock.viewKey}-cont-${label}`} label={label} value={value} icon={Icon} actionUrl={actionUrl} link={label.includes('Email') || label.includes('Website')} />
-                                        ))}
-                                      </DetailSheet>
-                                    </div>
-                                    <div>
-                                      <p className="mb-1.5 text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">Service-Specific Compliance</p>
-                                      <DetailSheet columns={1}>
-                                        {[...svcBlock.svcComplianceRows, ...svcBlock.svcDocRows].map(([label, value, Icon, actionUrl]) => (
-                                          <DetailValue key={`${svcBlock.viewKey}-doc-${label}`} label={label} value={value} icon={Icon} actionUrl={actionUrl} />
-                                        ))}
-                                      </DetailSheet>
-                                    </div>
-                                    {svcBlock.svcCpcbRows.length > 0 && (
-                                      <div>
-                                        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-                                          <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">CPCB / EPR Portal Credentials</p>
-                                          {svcBlock.svcCpcbFileCount > 0 && (
-                                            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black uppercase border ${svcBlock.palette.badge}`}>
-                                              <Images className="h-3 w-3" /> {svcBlock.svcCpcbFileCount} Screenshot{svcBlock.svcCpcbFileCount === 1 ? '' : 's'}
-                                            </span>
-                                          )}
-                                        </div>
-                                        <DetailSheet columns={1}>
-                                          {svcBlock.svcCpcbRows.map(([label, value, Icon, actionUrl]) => (
-                                            <DetailValue key={`${svcBlock.viewKey}-cpcb-${label}`} label={label} value={value} icon={Icon} actionUrl={actionUrl} />
-                                          ))}
-                                        </DetailSheet>
-                                      </div>
-                                    )}
-                                    {hasMultipleServices && svcBlock.isSelected === false && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const matched = serviceClients.find((item) => getClientServiceViewKey(item) === svcBlock.viewKey);
-                                          if (matched) onServiceChange?.(matched);
-                                        }}
-                                        className={`mt-1 w-full inline-flex items-center justify-center gap-2 rounded-lg border ${svcBlock.palette.border} bg-gradient-to-br ${svcBlock.palette.header} px-3 py-2 text-xs font-black uppercase tracking-wider text-slate-800 shadow-sm hover:shadow transition`}
-                                        title="Switch view to this service's data"
-                                      >
-                                        <Eye className="h-4 w-4" />
-                                        View Only {svcBlock.svcName || `Service ${svcBlock.index + 1}`}
-                                      </button>
-                                    )}
-                                  </div>
-                                </article>
-                              );
-                            })}
-                          </div>
-                        </section>
-                      )}
-
                       <DetailAccordion title="Company-wide Shared Details (Common across all services)" open={Boolean(openDetailGroups.companyWide ?? true)} onToggle={() => toggleDetailGroup('companyWide')}>
                         <DetailSheet columns={2}>
                           {companyWideProfileRows.map(([label, value, Icon, actionUrl]) => <DetailValue key={`cw-${label}`} label={label} value={value} icon={Icon} actionUrl={actionUrl} link={label === 'Website'} />)}

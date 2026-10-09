@@ -1252,9 +1252,16 @@ exports.listClients = async (req, res) => {
     ])
   ]);
   if (req.query.dashboard === 'true' && clients.length) {
-    const approvals = await PendingApproval.find({
-      type: 'client', source: 'crm', sourceClientId: { $in: clients.map((client) => String(client._id)) }
-    }).select('sourceClientId approvalStatus actionAt createdAt reminderFlag redFlagAt greenFlagDeadline correctionStatus correctionStartedAt correctionDueAt correctionBreachedAt correctionDeadlinePolicy').lean();
+    const [approvals, complianceReviews] = await Promise.all([
+      PendingApproval.find({
+        type: 'client', source: 'crm', sourceClientId: { $in: clients.map((client) => String(client._id)) }
+      }).select('sourceClientId approvalStatus actionAt createdAt reminderFlag redFlagAt greenFlagDeadline correctionStatus correctionStartedAt correctionDueAt correctionBreachedAt correctionDeadlinePolicy').lean(),
+      ClientComplianceReview.find({ client: { $in: clients.map((client) => client._id) } })
+        .select('client status sections finalRemarks updatedAt')
+        .populate('sections.reviewedBy', 'name email').lean()
+    ]);
+    const reviewByClient = new Map(complianceReviews.map((review) => [String(review.client), review]));
+    clients.forEach((client) => { client.complianceReview = reviewByClient.get(String(client._id)) || null; });
     const approvalByClient = new Map(approvals.map((approval) => [String(approval.sourceClientId), approval]));
     clients.forEach((client) => { client.operationsSla = approvalByClient.get(String(client._id)) || null; });
   }
@@ -1469,13 +1476,21 @@ exports.searchClientMasterCompanies = async (req, res) => {
   return res.json({ ok: true, items: responseItems, count: responseItems.length, queryMs: Date.now() - startedAt });
 };
 
-exports.listClientMasterServices = async (req, res) => {
+exports.listClientReviewApplicants = async (req, res) => {
+  if (!userHasAnyRole(req.user, CLIENT_APPROVAL_ROLES)) return res.status(403).json({ error: 'Client review access required' });
+  return exports.listClientMasterServices({ ...req, query: { identity: `client:${req.params.id}` } }, res, { clientReview: true });
+};
+
+exports.listClientMasterServices = async (req, res, options = {}) => {
   const identity = String(req.query.identity || req.query.leadId || req.query.clientMasterId || '').trim();
   if (!identity) return res.status(400).json({ error: 'Client or Lead identity is required' });
 
   const explicitClientId = identity.startsWith('client:') ? identity.slice(7) : String(req.query.clientMasterId || '').trim();
-  const clientVisibility = await clientAccessFilter(req.user);
-  const leadVisibility = await leadAccessFilter(req.user);
+  // Reviewers can inspect the same Client Masters available to the review API.
+  // Keep ordinary Client Master discovery restricted to ownership visibility.
+  const reviewerDiscovery = options.clientReview === true && userHasAnyRole(req.user, CLIENT_APPROVAL_ROLES);
+  const clientVisibility = reviewerDiscovery ? {} : await clientAccessFilter(req.user);
+  const leadVisibility = reviewerDiscovery ? { _id: { $exists: false } } : await leadAccessFilter(req.user);
   const baseClient = mongoose.Types.ObjectId.isValid(explicitClientId)
     ? await Client.findOne(combineAccessFilters({ _id: explicitClientId }, clientVisibility)).select(clientDiscoveryProjection()).lean()
     : null;
@@ -1563,6 +1578,32 @@ exports.getClient = async (req, res) => {
     identity: normalizeClientMaster(client),
     resolvedData: resolveClientMasterData(client, requestedAssignedServiceId)
   });
+};
+
+// SLA uses the same record visibility rules as the Client Master directory.
+exports.getClientSla = async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Invalid Client Master ID' });
+    const client = await Client.findOne(combineAccessFilters({ _id: req.params.id }, await clientAccessFilter(req.user))).select('sla');
+    if (!client) return res.status(404).json({ error: 'Client Master record not found' });
+    const { validationError } = require('../services/clientSla');
+    const sla = client.sla || {};
+    res.json({ ok: true, sla, ready: !validationError(sla) });
+  } catch (error) { res.status(500).json({ error: 'Unable to load SLA details.' }); }
+};
+exports.updateClientSla = async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Invalid Client Master ID' });
+    const client = await Client.findOne(combineAccessFilters({ _id: req.params.id }, await clientAccessFilter(req.user)));
+    if (!client) return res.status(404).json({ error: 'Client Master record not found' });
+    const { validationError, cleanSla } = require('../services/clientSla');
+    const invalid = validationError(req.body || {});
+    if (invalid) return res.status(400).json({ error: invalid, ready: false });
+    client.sla = { ...cleanSla(req.body), updatedAt: new Date(), updatedBy: req.user?._id, updatedByName: req.user?.name || req.user?.email || 'CRM User' };
+    client.markModified('sla');
+    await client.save();
+    res.json({ ok: true, sla: client.sla, ready: true });
+  } catch (error) { res.status(500).json({ error: 'Unable to save SLA details.' }); }
 };
 
 exports.updateCpcbOnboarding = async (req, res) => {

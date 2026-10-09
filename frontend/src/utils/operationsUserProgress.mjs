@@ -1,4 +1,31 @@
 const key = (value) => String(value || '').trim().toLowerCase()
+export function operationsClientWindow(count, scrollTop = 0) {
+  const rowHeight = 128
+  const start = Math.min(Math.max(0, count - 10), Math.max(0, Math.floor(Math.max(0, scrollTop - 100) / rowHeight) - 2))
+  return { start, end: Math.min(count, start + 10), rowHeight }
+}
+export function assignedCompanyKey(client = {}, fallbackName = '') {
+  const data = client.data || {}
+  const lead = client.selectedLead || data.selectedLeadSnapshot || {}
+  const name = lead.company || lead.companyName || data.basic?.clientLegalName || data.importMeta?.companyName || data.basic?.tradeName || fallbackName
+  const normalized = String(name || '').normalize('NFKC').toLowerCase().replace(/&/g, ' and ').replace(/[^\p{L}\p{N}]/gu, '')
+  return normalized && !['untitledclient', 'unnamedclient'].includes(normalized) ? `company:${normalized}` : `client:${String(client._id || client.id || '')}`
+}
+
+function mergeCompanyRows(rows) {
+  if (rows.length === 1) return rows[0]
+  const representative = rows.find(row => !row.client?.assignmentOnly) || rows[0]
+  const approved = rows.every(row => key(row.client?.operationsSla?.approvalStatus || row.client?.adminControls?.approvalStatus) === 'approved')
+  const records = rows.filter(row => row.hasPo).flatMap(poRecords)
+  const sla = Object.fromEntries([48, 72, 96].map(hours => {
+    const flags = rows.map(row => row.sla[hours])
+    const dates = flags.map(flag => flag.due).filter(value => value !== null && value !== undefined)
+    return [hours, { breached: flags.some(flag => flag.breached), known: flags.some(flag => flag.known), due: dates.length ? Math.min(...dates) : null }]
+  }))
+  return { ...representative, serviceRows: rows, hasPo: rows.some(row => row.hasPo), sla,
+    client: { ...representative.client, operationsSla: { ...representative.client?.operationsSla, approvalStatus: approved ? 'APPROVED' : 'PENDING' } },
+    poDetails: { ...representative.poDetails, ...records[0], records } }
+}
 const identity = (value) => value && typeof value === 'object'
   ? [value._id, value.id, value.userId, value.email, value.name].map(key).filter(Boolean)
   : [key(value)].filter(Boolean)
@@ -41,12 +68,19 @@ export function permanentStaffOwnerKeys(client = {}) {
     ? client.selectedLead
     : (data.selectedLeadSnapshot && typeof data.selectedLeadSnapshot === 'object' ? data.selectedLeadSnapshot : {})
   const serviceId = String(client.assignedServiceId || data.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId || '')
-  const assignments = (Array.isArray(lead.assignments) ? lead.assignments : [])
-    .filter((assignment) => !serviceId || String(assignment?.assignedServiceId || assignment?.serviceAssignmentId || '') === serviceId)
+  const allAssignments = Array.isArray(lead.assignments) ? lead.assignments : []
+  let assignments = allAssignments.filter(assignment => !serviceId || String(assignment?.assignedServiceId || assignment?.serviceAssignmentId || '') === serviceId)
+  if (serviceId && !assignments.length) {
+    const serviceIndex = (lead.serviceSelections || []).findIndex(service => String(service?.assignedServiceId || service?.serviceAssignmentId || '') === serviceId)
+    const legacy = allAssignments.filter(assignment => !assignment.assignedServiceId && !assignment.serviceAssignmentId)
+    const owners = new Set(legacy.map(assignment => key(assignment.assignedStaff || assignment.assignedStaffText)).filter(Boolean))
+    if (serviceIndex >= 0 && allAssignments[serviceIndex] && !allAssignments[serviceIndex].assignedServiceId && !allAssignments[serviceIndex].serviceAssignmentId) assignments = [allAssignments[serviceIndex]]
+    else if (owners.size === 1) assignments = legacy
+  }
   return [...new Set([
-    lead.assignedStaff, lead.assignedStaffText, lead.assignedStaffEmail,
+    ...assignments.flatMap((assignment) => [assignment?.assignedStaff, assignment?.assignedStaffText, assignment?.assignedStaffEmail]),
     client.assignedStaff, client.assignedStaffText, client.assignedStaffEmail,
-    ...assignments.flatMap((assignment) => [assignment?.assignedStaff, assignment?.assignedStaffText, assignment?.assignedStaffEmail])
+    lead.assignedStaff, lead.assignedStaffText, lead.assignedStaffEmail
   ].flatMap(identity))]
 }
 
@@ -97,20 +131,24 @@ export function buildOperationsProgressGroups(rows, users, getLegacyKeys, now = 
     return null
   }
   rows.forEach((row) => {
-    const allocationKeys = allocationOwnerKeys(row.client)
     const permanentStaffKeys = permanentStaffOwnerKeys(row.client)
-    // A client belongs to exactly one primary/original owner in this report.
-    // Prefer the owner already resolved from client-level assignment data;
-    // service allocations are used only when no primary owner can be resolved.
-    const resolvedOwnerKeys = [...identity(row.user), key(row.user?.crmUserId)].filter(Boolean)
-    const legacyKeys = getLegacyKeys(row.client || {})
-    const owner = findOwner(permanentStaffKeys) || findOwner(resolvedOwnerKeys) || findOwner(legacyKeys) || findOwner(allocationKeys)
+    // Assigned counts follow Manager Assigned to Staff, never temporary or importer ownership.
+    const owner = findOwner(permanentStaffKeys)
     if (!owner) return
     const group = groups.get(key(owner._id || owner.id || owner.userId || owner.email))
     if (group && !group.rows.some((item) => String(item.id) === String(row.id))) {
       group.rows.push({ ...row, sla: getOperationsSla(row.client?.operationsSla || row.approval || {}, now) })
     }
   })
+  for (const group of groups.values()) {
+    const companies = new Map()
+    for (const row of group.rows) {
+      const companyKey = assignedCompanyKey({ ...row.client, _id: row.client?._id || row.id }, row.companyName)
+      if (!companies.has(companyKey)) companies.set(companyKey, [])
+      companies.get(companyKey).push(row)
+    }
+    group.rows = [...companies.values()].map(mergeCompanyRows)
+  }
   return [...groups.values()].map((group) => ({ ...group, total: group.rows.length,
     complianceDone: group.rows.filter((row) => key(row.client?.operationsSla?.approvalStatus || row.client?.adminControls?.approvalStatus) === 'approved').length,
     poDone: group.rows.filter((row) => row.hasPo).length,
@@ -148,19 +186,29 @@ function poRecords(row = {}) {
   return Array.isArray(details.records) && details.records.length ? details.records : [details]
 }
 
+export function getOperationsTabRemarks(row = {}) {
+  if (row.serviceRows) return row.serviceRows.flatMap(getOperationsTabRemarks)
+  const review = row.client?.complianceReview || row.complianceReview || {}
+  return (Array.isArray(review.sections) ? review.sections : []).map((section) => ({
+    key: section.key || section.label,
+    label: section.label || section.key || 'Compliance tab',
+    status: section.status || 'NOT_REVIEWED',
+    remarks: String(section.remarks || '').trim(),
+    reviewedBy: section.reviewedBy?.name || section.reviewedBy?.email || '',
+    reviewedAt: section.reviewedAt || ''
+  }))
+}
+
 export function buildOperationsWorkbookData(groups = [], financialYear = 'all') {
   const summary = groups.map((group) => {
     const finalRed = group.rows.filter((row) => getOperationsFinalFlag(row.sla) === 'red').length
-    const recordedValues = (field) => [...new Set(group.rows.flatMap((row) => poRecords(row).map((po) => excelText(po[field]))).filter(Boolean))].join(' | ')
     return {
       'Operations User': excelText(group.name, 'Unassigned'),
       'Financial Year Filter': excelText(financialYear, 'All'),
       'Assigned Clients': group.total,
       'Compliance Approved': group.complianceDone,
       'PO Received': group.poDone,
-      'PO End Dates': recordedValues('poEndDate'),
-      'PO Financial Years': recordedValues('poFinancialYear'),
-      'Payment Terms': recordedValues('paymentTerm'),
+      'Compliance Tabs With Remarks': group.rows.reduce((count, row) => count + getOperationsTabRemarks(row).filter(tab => tab.remarks).length, 0),
       '48h+ Red Flags': group.milestones[48],
       '72h+ Red Flags': group.milestones[72],
       '96h+ Red Flags': group.milestones[96],
@@ -208,9 +256,8 @@ export function buildOperationsWorkbookData(groups = [], financialYear = 'all') 
       'PO Record Count': row.hasPo ? records.length : 0,
       'PO Number(s)': uniquePoValues(records.map((po) => ({ ...po, poNumber: po.poNo || po.poNumber })), 'poNumber'),
       'PO Date(s)': uniquePoValues(records, 'poDate'),
-      'PO End Date(s)': uniquePoValues(records, 'poEndDate'),
-      'PO Financial Year(s)': uniquePoValues(records, 'poFinancialYear'),
-      'Payment Term(s)': uniquePoValues(records, 'paymentTerm'),
+      'Tab remarks': excelText(getOperationsTabRemarks(row).map(tab => `${tab.label} [${tab.status.replace(/_/g, ' ')}]: ${tab.remarks || 'No remarks added'}`).join('\n'), 'No tab reviews recorded'),
+      'Final Compliance Remarks': excelText((row.serviceRows || [row]).map(service => service.client?.complianceReview?.finalRemarks).filter(Boolean).join('\n'), 'No final remarks added'),
       'Total PO Amount (INR)': amounts.length ? amounts.reduce((sum, amount) => sum + amount, 0) : '',
       'PO Proof Link(s)': uniquePoValues(records.map((po) => ({ ...po, proofLink: po.fileUrl || row.poDetails?.fileUrl })), 'proofLink')
     }
@@ -233,7 +280,18 @@ export function buildOperationsWorkbookData(groups = [], financialYear = 'all') 
       'PO Proof Link': excelText(po.fileUrl || row.poDetails?.fileUrl, 'Not recorded')
     }))
   }))
-  return { summary, clients, poDetails }
+  const tabRemarks = groups.flatMap(group => group.rows.flatMap(row => getOperationsTabRemarks(row).map(tab => ({
+    'Operations User': excelText(group.name),
+    'Client Name': excelText(row.companyName),
+    'ATPL Code': excelText(row.atplCode),
+    'Tab': excelText(tab.label),
+    'Status': excelText(tab.status.replace(/_/g, ' ')),
+    'Tab remarks': excelText(tab.remarks, 'No remarks added'),
+    'Compliance Status': excelText(String(row.client?.operationsSla?.approvalStatus || row.client?.adminControls?.approvalStatus || row.client?.complianceReview?.status || 'PENDING').replace(/_/g, ' ')),
+    'Reviewed By': excelText(tab.reviewedBy, 'Not recorded'),
+    'Reviewed At': excelText(tab.reviewedAt, 'Not recorded')
+  }))))
+  return { summary, clients, poDetails, tabRemarks }
 }
 
 export function getPoFinancialYear(row = {}) {

@@ -1,0 +1,15 @@
+.operations-tab-remarks { min-width: 270px; max-height: 190px; overflow: auto; padding: 4px; text-align: left; scrollbar-width: thin; scrollbar-color: #83c9b5 #f1f7f5; }
+.operations-tab-remarks section + section { margin-top: 10px; }
+.operations-tab-remarks header { margin-bottom: 6px; font-size: 11px; font-weight: 700; color: #234d43; }
+.operations-tab-remarks header small { display: block; font-size: 9px; font-weight: 400; color: #64748b; }
+.operations-tab-remarks article { padding: 8px 10px; border: 1px solid #dcece5; border-radius: 7px; background: #f7fcf9; margin-top: 5px; }
+.operations-tab-remarks article > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.operations-tab-remarks strong { font-size: 10px; color: #1a4c3c; }
+.operations-tab-remarks article span { font-size: 8px; font-weight: 600; color: #168259; }
+.operations-tab-remarks article span.needs-changes { color: #c3494d; }
+.operations-tab-remarks p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; line-height: 1.5; color: #334155; }
+.operations-tab-remarks article > small { display: block; margin-top: 4px; font-size: 9px; color: #64748b; }
+.operations-remarks-empty { font-size: 10px; color: #94a3b8; }
+.operations-user-status-table > thead th:nth-child(5) { min-width: 320px; }
+.operations-user-status-table.operations-with-remarks { min-width: 1450px; }
+.operations-client-details > table { min-width: 1250px; }

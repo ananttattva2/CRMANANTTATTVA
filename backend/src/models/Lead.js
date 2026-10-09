@@ -87,6 +87,8 @@ const LeadSchema = new mongoose.Schema({
   importedCreatedAt: { type: String, trim: true },
   importedUpdatedAt: { type: String, trim: true },
   recordStatus: { type: String, trim: true, default: 'ACTIVE' },
+  deletedAt: { type: Date, default: null },
+  deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   complianceHealthReport: { type: mongoose.Schema.Types.Mixed },
   workflowStatus: { type: String, enum: ['draft', 'submitted'], default: 'draft' },
   formStartedAt: { type: Date },
@@ -104,5 +106,6 @@ const LeadSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 LeadSchema.index({ companyIdentity: 1, workflowStatus: 1 });
+LeadSchema.plugin(require('../utils/leadDeletionVisibility'));
 
 module.exports = mongoose.model('Lead', LeadSchema);

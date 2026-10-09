@@ -1,4 +1,5 @@
 import { withExplanationStages } from './uploadChecklist.utils.mjs';
+import SalesUploadChecklist from './SalesUploadChecklist';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Download, ExternalLink, FileSpreadsheet, History, Loader2, RefreshCw, Search, ShieldCheck, Trash2, Upload, X } from 'lucide-react';
 import api from '../../services/api';
@@ -6,11 +7,9 @@ import { API_ENDPOINTS } from '../../services/apiEndpoints';
 import { uploadMedia, uploadMediaBatch } from '../../services/mediaUpload';
 import { downloadCsv, downloadPurchaseTemplate, formatMetric, getPurchaseFinancialYearMismatch, readPurchaseWorkbook } from './purchaseData.utils';
 import OutlookMsgViewer from './OutlookMsgViewer';
-import PurchaseProofDropzone from './PurchaseProofDropzone';
 import SalesDataPanel from './SalesDataPanel';
 
 const WORKSPACE_TABS = ['Purchase Data', 'Sales Data', 'Pre Consumer / State / Annual', 'EPR Target', 'EPR CREDIT'];
-const REQUIRED_NORMAL_ROWS = new Set(['Received from client', 'Ready to upload', 'Client Approval on data', 'Upload Complete']);
 const EMPTY_PAGINATION = { page: 1, pages: 1, total: 0 };
 const statusTone = (value) => {
   const status = String(value || '').toLowerCase();
@@ -74,7 +73,6 @@ export default function PurchaseDataWorkspace({ clientId, financialYear, current
   const canEdit = purchase?.permissions?.canEdit !== false;
   const uploadUnlocked = purchase?.checklist?.find((row) => row.particular === 'Upload Complete')?.yesNo === 'Yes';
   const nilUpload = purchase?.readiness?.nilUpload;
-  const nilUploadSelected = purchase?.checklist?.find((row) => row.particular === 'Nil Upload')?.yesNo === 'Yes';
 
   const loadPurchase = useCallback(async (quiet = false) => {
     if (!clientId || !financialYear) return;
@@ -107,7 +105,7 @@ export default function PurchaseDataWorkspace({ clientId, financialYear, current
     if (immediate) saveChecklist(next, 'Checklist saved.'); else saveTimer.current = setTimeout(() => saveChecklist(next), 650);
     const changedRow = next.checklist[index];
     const nilSelected = next.checklist.find((row) => row.particular === 'Nil Upload')?.yesNo === 'Yes';
-    const mandatory = changedRow.particular === 'Client Approval on data' || (!nilSelected && REQUIRED_NORMAL_ROWS.has(changedRow.particular));
+    const mandatory = changedRow.particular !== 'Client Approval on data' && !nilSelected && REQUIRED_NORMAL_ROWS.has(changedRow.particular);
     if (mandatory && patch.yesNo === 'Yes' && (!changedRow.date || !changedRow.files?.length)) setNotice({ type: 'warning', text: `${changedRow.particular}: date and supporting proof are required.` });
   };
 
@@ -208,12 +206,6 @@ export default function PurchaseDataWorkspace({ clientId, financialYear, current
     else { setRows([]); setPagination(EMPTY_PAGINATION); }
   }, [purchase?.baseUpload?.uploadId, purchase?.portalUpload?.uploadId, rowsSource]);
 
-  const submit = async () => {
-    setBusy('submit');
-    try { const { data } = await api.post(API_ENDPOINTS.clients.purchaseSubmit(clientId), { financialYear, message: reviewMessage }); setPurchase(withExplanationStages(data.purchaseData)); setNotice({ type: 'success', text: data.duplicateSubmission ? 'Already pending with Manager.' : 'Submitted to Manager for verification.' }); }
-    catch (error) { const errors = error?.response?.data?.errors?.join(' · '); setNotice({ type: 'error', text: `${errorText(error)}${errors ? ` ${errors}` : ''}` }); }
-    finally { setBusy(''); }
-  };
 
   const review = async (stage, decision) => {
     if (decision === 'REJECTED' && !reviewMessage.trim()) { setNotice({ type: 'error', text: 'Rejection comments are required.' }); return; }
@@ -240,41 +232,8 @@ export default function PurchaseDataWorkspace({ clientId, financialYear, current
     {notice && <div className={`m-4 flex items-start justify-between gap-3 rounded-xl border p-3 text-sm font-bold ${notice.type === 'error' ? 'border-rose-200 bg-rose-50 text-rose-700' : notice.type === 'warning' ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}><span>{notice.text}</span><button type="button" onClick={() => setNotice(null)}><X className="h-4 w-4" /></button></div>}
 
     {activeTab === 'Purchase Data' && <div className="space-y-4 p-4">
-      <div className="rounded-2xl border border-teal-200 bg-gradient-to-r from-teal-50 via-white to-cyan-50 p-5 text-slate-900 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-teal-700">Purchase progress tracker</p><h5 className="mt-1 text-xl font-black">Purchase Data Upload Checklist</h5><p className="mt-1 text-xs font-bold text-slate-600">Normal flow requires the four marked controls. Nil Upload requires only Client Approval on data.</p></div><div className="flex items-center gap-2"><Badge value={purchase.calculatedStatus}>{purchase.calculatedStatus}</Badge><button type="button" aria-label="Refresh Purchase Data" onClick={() => loadPurchase()} className="rounded-xl border border-teal-200 bg-white p-2.5 text-teal-700 hover:bg-teal-50"><RefreshCw className="h-4 w-4" /></button></div></div></div>
-      <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
-        {purchase.checklist.map((row, index) => {
-          const mandatory = row.particular === 'Client Approval on data' || (!nilUploadSelected && REQUIRED_NORMAL_ROWS.has(row.particular));
-          const statusMissing = mandatory && row.yesNo !== 'Yes';
-          const proofMissing = mandatory && !row.files?.length;
-          const dateMissing = mandatory && !row.date;
-          const complete = mandatory && !statusMissing && !proofMissing && !dateMissing;
-          return <article key={row._id || row.particular || index} className={`min-w-0 overflow-hidden rounded-2xl border-2 bg-white shadow-sm transition ${statusMissing || proofMissing || dateMissing ? 'border-rose-200' : complete ? 'border-emerald-300 shadow-emerald-100' : mandatory ? 'border-amber-200' : 'border-sky-100'}`}>
-            <div className={`grid grid-cols-[2.75rem_minmax(0,1fr)_6.5rem_9.5rem] text-[10px] font-black uppercase tracking-wider max-sm:grid-cols-[2.5rem_minmax(0,1fr)] ${mandatory ? 'bg-gradient-to-r from-amber-50 to-orange-50 text-amber-800' : 'bg-gradient-to-r from-sky-50 to-cyan-50 text-sky-700'}`}>
-              <span className="px-3 py-2.5">Sr.</span>
-              <span className="px-3 py-2.5">Particular</span>
-              <span className="px-3 py-2.5 max-sm:hidden">Status</span>
-              <span className="px-3 py-2.5 max-sm:hidden">Date</span>
-            </div>
-            <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_6.5rem_9.5rem] border-b border-slate-200 text-xs max-sm:grid-cols-[2.5rem_minmax(0,1fr)]">
-              <div className="px-3 py-3 font-black text-slate-500">{index + 1}</div>
-              <div className="min-w-0 px-3 py-3"><div className="flex flex-wrap items-center gap-2"><strong className="break-words text-slate-900">{row.particular}</strong>{['Data Explained', 'Data Format Sent'].includes(row.particular) && <span className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">Data Status: Not applicable</span>}{mandatory && <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-black uppercase text-rose-700">Required</span>}</div><p className="mt-1 text-[10px] font-bold text-slate-400">{mandatory ? 'Yes, date and supporting proof are mandatory.' : 'Optional workflow evidence.'}</p></div>
-              <div className="px-2 py-3 max-sm:col-span-2 max-sm:grid max-sm:grid-cols-[2.5rem_minmax(0,1fr)] max-sm:border-t max-sm:border-slate-200 max-sm:px-0 max-sm:py-0"><span className="hidden bg-slate-50 px-3 py-3 text-[10px] font-black uppercase text-slate-500 max-sm:block">Status</span><div className="max-sm:px-3 max-sm:py-2"><select disabled={!canEdit} value={row.yesNo} onChange={(event) => updateChecklistRow(index, { yesNo: event.target.value }, true)} className={`w-full rounded-lg border bg-white px-2.5 py-2 font-black ${statusMissing ? 'border-rose-300 text-slate-900' : 'border-slate-200'}`}><option value="">Select</option><option>Yes</option><option>No</option></select>{statusMissing && <p className="mt-2 text-[10px] font-black leading-4 text-rose-600">Select Yes.</p>}{proofMissing && <p className="mt-2 text-[10px] font-black leading-4 text-rose-600">Supporting proof is required.</p>}</div></div>
-              <div className="px-2 py-3 max-sm:col-span-2 max-sm:grid max-sm:grid-cols-[2.5rem_minmax(0,1fr)] max-sm:border-t max-sm:border-slate-200 max-sm:px-0 max-sm:py-0"><span className="hidden bg-slate-50 px-3 py-3 text-[10px] font-black uppercase text-slate-500 max-sm:block">Date</span><div className="max-sm:px-3 max-sm:py-2"><input disabled={!canEdit} type="date" value={row.date || ''} onChange={(event) => updateChecklistRow(index, { date: event.target.value })} className={`w-full rounded-lg border bg-white px-2.5 py-2 font-bold ${dateMissing ? 'border-rose-300' : 'border-slate-200'}`} />{dateMissing && <p className="mt-2 text-[10px] font-black text-rose-600">Date is required.</p>}</div></div>
-            </div>
-            <div className="grid grid-cols-1 gap-3 p-3 md:grid-cols-[minmax(0,1.7fr)_minmax(12rem,1fr)]">
-              <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-50/60">
-                <p className="border-b border-slate-200 bg-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-slate-500">Upload proof</p>
-                <div className="p-2"><PurchaseProofDropzone files={row.files || []} required={mandatory} disabled={!canEdit} busy={busy === `proof-${index}`} onUpload={(selected) => uploadProof(index, selected)} onRemove={(fileIndex, file) => removeProof(index, fileIndex, file)} onPreview={setMailPreview} onError={(text) => setNotice({ type: 'error', text })} /></div>
-              </section>
-              <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-50/60">
-                <p className="border-b border-slate-200 bg-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-slate-500">Remarks</p>
-                <div className="p-2"><textarea disabled={!canEdit} rows="4" maxLength="2000" value={row.remarks || ''} onChange={(event) => updateChecklistRow(index, { remarks: event.target.value })} placeholder="Add remarks…" className="min-h-28 w-full resize-y rounded-lg border border-slate-200 bg-white p-2.5 font-bold" /></div>
-              </section>
-            </div>
-          </article>;
-        })}
-      </div>
-
+      <SalesUploadChecklist title="Purchase Data Upload Checklist" checklist={purchase.checklist || []} canEdit={canEdit} busy={busy} onChange={updateChecklistRow} onUploadProof={uploadProof} onRemoveProof={removeProof} onPreview={setMailPreview} onError={(text) => setNotice({ type: 'error', text })} />
+      <fieldset disabled={!uploadUnlocked && !nilUpload} className={`min-w-0 space-y-3 ${!uploadUnlocked && !nilUpload ? 'opacity-50' : ''}`} inert={!uploadUnlocked && !nilUpload ? '' : undefined}>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><Metric label="Status" value={purchase.calculatedStatus} /><Metric label="Received date" value={purchase.readiness?.startDate || '-'} /><Metric label="Portal upload date" value={purchase.readiness?.endDate || '-'} /><Metric label="Blocking issues" value={purchase.reconciliation?.blockingIssueCount || 0} tone="orange" /><Metric label="Warnings" value={purchase.reconciliation?.warningIssueCount || 0} tone="orange" /></div>
       {!uploadUnlocked && !nilUpload && <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">Set “Upload Complete” to “Yes” in the tracker to unlock Purchase Excel uploads.</div>}
       {nilUpload ? <div className="rounded-2xl border border-violet-300 bg-gradient-to-r from-violet-50 via-fuchsia-50 to-pink-50 px-5 py-4 text-sm font-black text-violet-900 shadow-sm">Nil Upload path is active. Only “Client Approval on data” is mandatory; Excel files and the other checklist validations are bypassed.</div> : <div className="grid gap-4 lg:grid-cols-2"><UploadCard source="base" upload={purchase.baseUpload} locked={!uploadUnlocked} disabled={!canEdit} busy={Boolean(busy)} onSelect={selectExcel} onRemove={removeImport} financialYear={financialYear} /><UploadCard source="portal" upload={purchase.portalUpload} locked={!uploadUnlocked} disabled={!canEdit} busy={Boolean(busy)} onSelect={selectExcel} onRemove={removeImport} financialYear={financialYear} /></div>}
@@ -288,8 +247,9 @@ export default function PurchaseDataWorkspace({ clientId, financialYear, current
 
       <div className="overflow-hidden rounded-2xl border border-slate-200"><div className="flex flex-wrap items-center justify-between gap-2 border-b bg-slate-50 p-3"><div><h6 className="text-sm font-black">Imported Raw Data</h6><p className="mt-1 text-[10px] font-bold text-slate-500">Uploaded rows appear here automatically after a successful import.</p></div><div className="flex gap-2"><select value={rowsSource} onChange={(event) => { setRowsSource(event.target.value); setRows([]); }} className="rounded-lg border px-3 py-2 text-xs font-black"><option value="base">Base data</option><option value="portal">Portal data</option></select><div className="flex rounded-lg border bg-white"><input value={rowSearch} onChange={(event) => setRowSearch(event.target.value)} placeholder="Entity / GSTIN" className="w-36 px-3 text-xs font-bold outline-none" /><button type="button" onClick={() => loadRows(1)} className="p-2 text-[#087A70]"><Search className="h-4 w-4" /></button></div><button type="button" onClick={() => loadRows(1)} className="rounded-lg border bg-white px-3 py-2 text-xs font-black">Refresh rows</button></div></div><div className="overflow-x-auto"><table className="min-w-[900px] w-full text-xs"><thead className="bg-slate-100"><tr>{['Row','Entity','Registration','GSTIN','Category','Material','Quantity','GST','Status'].map((label) => <th key={label} className="px-3 py-2 text-left">{label}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={row._id || `${rowsSource}-${row.rowNumber}-${index}`} className="border-t"><td className="px-3 py-2">{row.rowNumber}</td><td className="font-black">{row.entityName}</td><td>{row.registrationType}</td><td>{row.gstin || '-'}</td><td>{row.plasticCategory}</td><td>{row.materialType}</td><td>{formatMetric(row.quantity)}</td><td>{formatMetric(row.gstPaid)}</td><td><Badge value={row.validationStatus}>{row.validationStatus}</Badge></td></tr>)}{!rows.length && <tr><td colSpan="9" className="p-6 text-center font-bold text-slate-400">Upload and confirm an Excel file, or click “Refresh rows” for an existing import.</td></tr>}</tbody></table></div>{pagination.total > 0 && <div className="flex items-center justify-end gap-2 border-t p-3 text-xs font-black"><span>{pagination.total} rows</span><button type="button" disabled={pagination.page <= 1} onClick={() => loadRows(pagination.page - 1)} className="rounded border p-1 disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button><span>{pagination.page}/{pagination.pages}</span><button type="button" disabled={pagination.page >= pagination.pages} onClick={() => loadRows(pagination.page + 1)} className="rounded border p-1 disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button></div>}</div>
 
-      <div className="rounded-2xl border border-slate-200 p-4"><div className="flex items-start gap-3"><ShieldCheck className="mt-1 h-5 w-5 text-[#087A70]" /><div className="flex-1"><h6 className="text-sm font-black">Approval Workflow</h6><div className="mt-2 flex flex-wrap gap-2"><Badge value={purchase.managerVerificationStatus}>Manager: {purchase.managerVerificationStatus}</Badge><Badge value={purchase.complianceVerificationStatus}>Compliance: {purchase.complianceVerificationStatus}</Badge></div><textarea value={reviewMessage} onChange={(event) => setReviewMessage(event.target.value)} rows="2" placeholder="Submission note, warning explanation or rejection comments…" className="mt-3 w-full rounded-xl border border-slate-200 p-3 text-sm font-bold" /><div className="mt-3 flex flex-wrap gap-2">{canEdit && <button type="button" onClick={submit} disabled={busy === 'submit'} className="rounded-lg bg-[#087A70] px-4 py-2.5 text-xs font-black text-white disabled:opacity-50">Submit to Manager</button>}{purchase.permissions?.canManagerReview && purchase.managerVerificationStatus === 'Pending' && <><button type="button" onClick={() => review('manager','APPROVED')} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-xs font-black text-white">Manager Approve</button><button type="button" onClick={() => review('manager','REJECTED')} className="rounded-lg bg-rose-600 px-4 py-2.5 text-xs font-black text-white">Manager Reject</button></>}{purchase.permissions?.canComplianceReview && purchase.complianceVerificationStatus === 'Pending' && <><button type="button" onClick={() => review('compliance','APPROVED')} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-xs font-black text-white">Compliance Approve</button><button type="button" onClick={() => review('compliance','REJECTED')} className="rounded-lg bg-rose-600 px-4 py-2.5 text-xs font-black text-white">Compliance Reject</button></>}</div></div></div>
-      {!!purchase.reviewHistory?.length && <div className="mt-4 border-t pt-4"><p className="mb-2 flex items-center gap-2 text-xs font-black uppercase text-slate-500"><History className="h-4 w-4" />Audit history</p><div className="space-y-2">{[...purchase.reviewHistory].reverse().map((item, index) => <div key={index} className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600"><strong className="text-slate-900">{item.stage} · {item.decision}</strong> by {item.by?.name || '-'} · {item.at ? new Date(item.at).toLocaleString('en-IN') : '-'}{item.message && <span className="block mt-1">{item.message}</span>}</div>)}</div></div>}</div>
+      </fieldset>
+      {(purchase.permissions?.canManagerReview || purchase.permissions?.canComplianceReview) && <div className="rounded-2xl border border-slate-200 p-4"><div className="flex items-start gap-3"><ShieldCheck className="mt-1 h-5 w-5 text-[#087A70]" /><div className="flex-1"><h6 className="text-sm font-black">Approval Workflow</h6><div className="mt-2 flex flex-wrap gap-2"><Badge value={purchase.managerVerificationStatus}>Manager: {purchase.managerVerificationStatus}</Badge><Badge value={purchase.complianceVerificationStatus}>Compliance: {purchase.complianceVerificationStatus}</Badge></div><textarea value={reviewMessage} onChange={(event) => setReviewMessage(event.target.value)} rows="2" placeholder="Submission note, warning explanation or rejection comments…" className="mt-3 w-full rounded-xl border border-slate-200 p-3 text-sm font-bold" /><div className="mt-3 flex flex-wrap gap-2">{purchase.permissions?.canManagerReview && purchase.managerVerificationStatus === 'Pending' && <><button type="button" onClick={() => review('manager','APPROVED')} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-xs font-black text-white">Manager Approve</button><button type="button" onClick={() => review('manager','REJECTED')} className="rounded-lg bg-rose-600 px-4 py-2.5 text-xs font-black text-white">Manager Reject</button></>}{purchase.permissions?.canComplianceReview && purchase.complianceVerificationStatus === 'Pending' && <><button type="button" onClick={() => review('compliance','APPROVED')} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-xs font-black text-white">Compliance Approve</button><button type="button" onClick={() => review('compliance','REJECTED')} className="rounded-lg bg-rose-600 px-4 py-2.5 text-xs font-black text-white">Compliance Reject</button></>}</div></div></div>
+      {!!purchase.reviewHistory?.length && <div className="mt-4 border-t pt-4"><p className="mb-2 flex items-center gap-2 text-xs font-black uppercase text-slate-500"><History className="h-4 w-4" />Audit history</p><div className="space-y-2">{[...purchase.reviewHistory].reverse().map((item, index) => <div key={index} className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600"><strong className="text-slate-900">{item.stage} · {item.decision}</strong> by {item.by?.name || '-'} · {item.at ? new Date(item.at).toLocaleString('en-IN') : '-'}{item.message && <span className="block mt-1">{item.message}</span>}</div>)}</div></div>}</div>}
     </div>}
 
 

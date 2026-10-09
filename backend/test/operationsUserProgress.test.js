@@ -2,6 +2,37 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const helpers = import('../../frontend/src/utils/operationsUserProgress.mjs');
 
+test('client scroll window renders at most ten rows and reaches every assigned client', async () => {
+  const { operationsClientWindow } = await helpers;
+  const seen = new Set();
+  for (let offset = 0; offset <= 49 * 128; offset += 64) {
+    const { start, end, rowHeight } = operationsClientWindow(49, offset);
+    assert.ok(end - start <= 10);
+    assert.equal(start * rowHeight + (end - start) * rowHeight + (49 - end) * rowHeight, 49 * 128);
+    for (let index = start; index < end; index++) seen.add(index);
+  }
+  assert.equal(seen.size, 49);
+  assert.deepEqual(operationsClientWindow(0), { start: 0, end: 0, rowHeight: 128 });
+  assert.deepEqual(operationsClientWindow(3, 10000), { start: 0, end: 3, rowHeight: 128 });
+});
+
+test('all 49 permanent assignments remain the denominator for 39 confirmed Client Master POs', async () => {
+  const { mergeManagerStaffAllocations } = require('../src/services/managerStaffAllocations');
+  const { buildOperationsProgressGroups } = await helpers;
+  const leads = Array.from({ length: 49 }, (_, index) => ({ _id: `lead-${index}`,
+    serviceSelections: [{ assignedServiceId: 'service' }],
+    assignments: [{ assignedServiceId: 'service', assignedStaff: 'sonal' }] }));
+  const clients = leads.slice(0, 39).map((lead, index) => ({ _id: `client-${index}`,
+    assignedServiceId: 'service', selectedLead: lead }));
+  const rows = mergeManagerStaffAllocations(clients, leads).map(client => ({
+    id: client._id, client, hasPo: !client.assignmentOnly
+  }));
+  const [group] = buildOperationsProgressGroups(rows, [{ _id: 'sonal', name: 'SONAL MORE', role: 'operation' }], () => []);
+  assert.equal(group.total, 49);
+  assert.equal(group.poDone, 39);
+  assert.equal(group.rows.filter(row => !row.hasPo).length, 10);
+});
+
 test('operations PDF keeps the aggregate table and excludes client detail rows', () => {
   const fs = require('node:fs');
   const path = require('node:path');
@@ -9,9 +40,7 @@ test('operations PDF keeps the aggregate table and excludes client detail rows',
   const pdf = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/operationsReportPdf.mjs'), 'utf8');
   assert.match(page, /const open = !pdfMode && expandedUser === group\.id/);
   assert.match(page, /aggregate user metrics only; client names are excluded/);
-  assert.match(page, /!pdfMode && <th>Payment Term/);
-  assert.match(page, /\.\.\.\(!pdfMode \? \["paymentTerm"\] : \[\]\)/);
-  assert.match(page, /colSpan=\{pdfMode \? 2 : 3\}/);
+  assert.doesNotMatch(page, /<OperationsTabRemarks/);
   assert.match(pdf, /\.operations-client-details,\.operations-user-detail-row/);
   assert.match(pdf, /\.operations-user-status-table/);
 });
@@ -63,7 +92,7 @@ test('operations report includes active managers and excludes inactive operation
     { _id: 'inactive-manager', name: 'Inactive manager', role: 'manager', isActive: 'inactive' },
     { _id: 'inactive-zero', name: 'Inactive zero', role: 'operation', isActive: 0 }
   ];
-  const groups = buildOperationsProgressGroups([{ id: 'client', client: { serviceAllocations: { service: { userId: 'manager' } } } }], users, () => []);
+  const groups = buildOperationsProgressGroups([{ id: 'client', client: { selectedLead: { assignedStaff: 'manager' }, serviceAllocations: { service: { userId: 'manager' } } } }], users, () => []);
   assert.deepEqual(groups.map((group) => group.id).sort(), ['manager', 'operator', 'secondary-manager']);
   assert.equal(groups.find((group) => group.id === 'manager').total, 1);
 });
@@ -101,7 +130,7 @@ const users = [{ _id: 'sonal', name: 'SONAL MORE', role: 'operation' },
 
 test('Operations client counts use service allocations and exclude admin/sales/creator', async () => {
   const { buildOperationsProgressGroups } = await helpers;
-  const rows = [{ id: 'client1', hasPo: true, client: { serviceAllocations: {
+  const rows = [{ id: 'client1', hasPo: true, client: { selectedLead: { assignedStaff: 'sonal' }, serviceAllocations: {
     registration: { userId: 'sonal' }, annual: { userId: 'sonal' }
   }, adminControls: { assignedTo: 'admin', approvalStatus: 'PENDING' } } }];
   const groups = buildOperationsProgressGroups(rows, users, () => ['admin']);
@@ -113,7 +142,7 @@ test('Operations client counts use service allocations and exclude admin/sales/c
 
 test('a client with multiple service allocations is counted once under its primary owner', async () => {
   const { buildOperationsProgressGroups } = await helpers;
-  const row = { id: 'shared', user: users[0], client: { serviceAllocations: { a: 'sonal', b: { assignedUserId: 'other' } } } };
+  const row = { id: 'shared', user: users[0], client: { selectedLead: { assignedStaff: 'sonal' }, serviceAllocations: { a: 'sonal', b: { assignedUserId: 'other' } } } };
   const groups = buildOperationsProgressGroups([row, row], users, () => []);
   assert.equal(groups.find((group) => group.id === 'sonal').total, 1);
   assert.equal(groups.find((group) => group.id === 'other').total, 0);
@@ -124,7 +153,7 @@ test('original Sonal assignment overrides a historical Tushar service allocation
   const { buildOperationsProgressGroups } = await helpers;
   const localUsers = [{ _id: 'sonal', name: 'Sonal More', role: 'operation' }, { _id: 'tushar', name: 'Tushar Gawas', role: 'operation' }];
   const row = { id: '20-microns', user: localUsers[0], companyName: '20 MICRONS NANO MINERALS LIMITED',
-    client: { serviceAllocations: { old_service: { userId: 'tushar' }, current_service: { userId: 'sonal' } } } };
+    client: { selectedLead: { assignedStaff: 'sonal' }, serviceAllocations: { old_service: { userId: 'tushar' }, current_service: { userId: 'sonal' } } } };
   const groups = buildOperationsProgressGroups([row], localUsers, () => ['tushar', 'sonal']);
   assert.equal(groups.find((group) => group.id === 'sonal').total, 1);
   assert.equal(groups.find((group) => group.id === 'tushar').total, 0);
@@ -175,7 +204,7 @@ test('lead directory Assigned To uses permanent staff and Assigned By resolves t
 test('legacy assignment names work when no service allocations exist', async () => {
   const { buildOperationsProgressGroups } = await helpers;
   const groups = buildOperationsProgressGroups([{ id: 'legacy', client: {} }], users, () => ['sonal more']);
-  assert.equal(groups.find((group) => group.id === 'sonal').total, 1);
+  assert.equal(groups.find((group) => group.id === 'sonal').total, 0);
 });
 
 test('48/72/96 count actual overdue deadlines cumulatively at their boundaries', async () => {
@@ -210,4 +239,29 @@ test('correction hours skip first and third Saturdays in IST and respect saved f
   assert.equal(addCorrectionHours(start, 96), addClientCorrectionHours(start, 96).getTime());
   const final = '2026-10-08T06:00:00Z';
   assert.equal(getOperationsSla({ correctionStartedAt: start, greenFlagDeadline: final })[96].due, Date.parse(final));
+});
+
+test('all compliance tab remarks survive workbook export with client and reviewer identity', async () => {
+ const { buildOperationsWorkbookData } = await helpers;
+ const longRemark = 'Check factory documents.\n' + 'Detailed note '.repeat(70);
+ const rows = ['Client A', 'Client B'].map((companyName, index) => ({companyName, atplCode:`ATPL-${index}`, hasPo:false, sla:{}, client:{complianceReview:{finalRemarks:'Final note',sections:[
+  {key:'companyOverview',label:'Company Overview',status:'VERIFIED',remarks:`Verified ${companyName}`,reviewedBy:{name:'Reviewer'},reviewedAt:'2026-10-06T10:00:00Z'},
+  {key:'documents',label:'Documents',status:'CHANGES_REQUIRED',remarks:longRemark},
+  {key:'cpcb',label:'CPCB Login Credentials',status:'NOT_REVIEWED',remarks:''}
+ ]}}}));
+ const result = buildOperationsWorkbookData([{name:'Operations User',total:2,complianceDone:0,poDone:0,milestones:{48:0,72:0,96:0},rows}]);
+ assert.equal(result.tabRemarks.length,6);
+ assert.equal(result.tabRemarks[0]['Client Name'],'Client A');
+ assert.equal(result.tabRemarks[0]['Reviewed By'],'Reviewer');
+ assert.equal(result.tabRemarks[1]['Tab remarks'],longRemark.trim());
+ assert.equal(result.tabRemarks[3]['Tab remarks'],'Verified Client B');
+ assert.match(result.clients[0]['Tab remarks'],/Company Overview.*Verified Client A/);
+ assert.equal(result.clients[0]['Final Compliance Remarks'],'Final note');
+ assert.equal(result.summary[0]['Compliance Tabs With Remarks'],4);
+ const XLSX = require('../../frontend/node_modules/xlsx');
+ const workbook = XLSX.utils.book_new();
+ XLSX.utils.book_append_sheet(workbook,XLSX.utils.json_to_sheet(result.tabRemarks),'Compliance Tab Remarks');
+ const roundtrip = XLSX.read(XLSX.write(workbook,{type:'buffer',bookType:'xlsx'}),{type:'buffer'});
+ const exported = XLSX.utils.sheet_to_json(roundtrip.Sheets['Compliance Tab Remarks']);
+ assert.equal(exported.length,6); assert.equal(exported[1]['Tab remarks'],longRemark.trim());
 });

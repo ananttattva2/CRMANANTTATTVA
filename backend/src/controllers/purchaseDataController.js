@@ -80,9 +80,11 @@ async function submitForManagerApproval({ purchase, client, user, message }) {
     purchase.lastSubmissionVersion = purchase.dataVersion;
     purchase.reviewHistory.push(historyItem('User', wasSubmitted ? 'Revised' : 'Submitted', user, message));
     purchase.markModified('reviewHistory');
+    purchase.calculatedStatus = calculatePurchaseStatus(purchase);
     await purchase.save();
   }
-  const notification = await notifyPurchaseWorkflow({ stage: 'manager_pending', client, purchase, actor: user, message, preventDuplicate: duplicate });
+  if (purchase.baseUpload && purchase.portalUpload) message += ` Uploaded by ${user.name || user.email || 'CRM User'}: Purchase Base Data (${purchase.baseUpload.name}) and Purchase Portal Upload (${purchase.portalUpload.name}).`;
+  const notification = await notifyPurchaseWorkflow({ stage: 'manager_pending', client, purchase, actor: user, message, preventDuplicate: true });
   return { duplicate, notification };
 }
 
@@ -152,14 +154,17 @@ exports.updateChecklist = async (req, res) => {
       const existingProofs = new Map((existingRows.get(particular)?.files || []).filter((file) => file?.proofId).map((file) => [String(file.proofId), file]));
       const requestedProofs = (Array.isArray(row.files) ? row.files : []).filter((file) => file?.proofId).map((file) => existingProofs.get(String(file.proofId))).filter(Boolean);
       const ordinaryFiles = cleanEvidenceFiles((Array.isArray(row.files) ? row.files : []).filter((file) => !file?.proofId));
-      return { particular, yesNo: ['Yes', 'No'].includes(row.yesNo) ? row.yesNo : '', date: /^\d{4}-\d{2}-\d{2}$/.test(row.date || '') ? row.date : '', files: [...requestedProofs, ...ordinaryFiles].slice(0, 20), remarks: String(row.remarks || '').trim().slice(0, 2000) };
+      return { particular, partialDataReceived: row.yesNo === 'Yes' && row.partialDataReceived === true, completeDataReceived: row.yesNo === 'Yes' && row.completeDataReceived === true, yesNo: ['Yes', 'No'].includes(row.yesNo) ? row.yesNo : '', date: /^\d{4}-\d{2}-\d{2}$/.test(row.date || '') ? row.date : '', files: [...requestedProofs, ...ordinaryFiles].slice(0, 20), remarks: String(row.remarks || '').trim().slice(0, 2000) };
     });
     if (req.body.userRemarks !== undefined) purchase.userRemarks = String(req.body.userRemarks || '').trim().slice(0, 3000);
     purchase.updatedBy = req.user._id;
-    resetApprovals(purchase);
     purchase.calculatedStatus = calculatePurchaseStatus(purchase);
     purchase.markModified('checklist');
     await purchase.save();
+    const nilReadiness = purchaseReadiness(purchase);
+    if (nilReadiness.nilUpload && nilReadiness.ready && purchase.managerVerificationStatus === 'Not Submitted') {
+      await submitForManagerApproval({ purchase, client, user: req.user, message: 'Nil Upload automatically submitted after client approval.' });
+    }
     const uploadNotification = await notifyCompletedExcelUpload({ purchase, client, user: req.user });
     res.json({ ok: true, purchaseData: payload(purchase, req.user), managerUploadEmailSent: Number(uploadNotification?.emailSent || 0) > 0 });
   } catch (error) { console.error('Purchase checklist update failed', error); res.status(500).json({ error: 'Unable to save Purchase Data checklist.' }); }
@@ -235,7 +240,7 @@ exports.importPurchaseRows = async (req, res) => {
     const uploadNotification = await notifyCompletedExcelUpload({ purchase, client, user: req.user });
     let automaticSubmission = null;
     const readiness = purchaseReadiness(purchase);
-    if (hasBothExcelImports(purchase) && readiness.ready) {
+    if (hasBothExcelImports(purchase)) {
       const warningNote = readiness.warningIssueCount ? ` Reconciliation includes ${readiness.warningIssueCount} warning(s) for Manager review.` : '';
       try {
         automaticSubmission = await submitForManagerApproval({ purchase, client, user: req.user, message: `Automatically submitted after both Purchase Excel files were imported.${warningNote}` });
@@ -252,7 +257,8 @@ exports.importPurchaseRows = async (req, res) => {
       validationErrors: parsed.validationErrors,
       summary: purchase.reconciliation,
       purchaseData: payload(purchase, req.user),
-      managerUploadEmailSent: Number(uploadNotification?.emailSent || 0) > 0, autoSubmitted: Boolean(automaticSubmission && !automaticSubmission.duplicate),
+      managerUploadEmailSent: Number(uploadNotification?.emailSent || 0) > 0,
+      autoSubmitted: Boolean(automaticSubmission && !automaticSubmission.duplicate) || (purchase.managerVerificationStatus === 'Pending' && purchase.lastSubmissionVersion === purchase.dataVersion),
       managerNotificationCreated: Boolean(automaticSubmission?.notification?.ok),
       managerEmailSent: Number(automaticSubmission?.notification?.emailSent || 0) > 0,
       partialImport: parsed.invalidRowCount > 0 || parsed.duplicateRowCount > 0,

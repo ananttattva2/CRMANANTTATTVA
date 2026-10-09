@@ -1,3 +1,4 @@
+import ArComplianceList from './pages/ArCompliance'
 import React, { useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -125,6 +126,8 @@ function App(){
         <Route path="/po-dashboard" element={<ProtectedRoute><PurchaseOrderDashboard/></ProtectedRoute>} />
         <Route path="/purchase-sales-dashboard" element={<ProtectedRoute><PurchaseSalesDashboard/></ProtectedRoute>} />
         <Route path="/pending-approval" element={<ProtectedRoute><PendingApproval/></ProtectedRoute>} />
+        <Route path="/compliance/ar" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'compliance', 'manager']}><ArComplianceList/></ProtectedRoute>} />
+        <Route path="/compliance/ar/:clientId" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'compliance', 'manager']}><ClientComplianceReview defaultAr/></ProtectedRoute>} />
         <Route path="/pending-approval/clients/:clientId/review" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'compliance']}><ClientComplianceReview/></ProtectedRoute>} />
         <Route path="/pending-leads" element={<Navigate to="/pending-leads/open" replace />} />
         <Route path="/pending-leads/open" element={<ProtectedRoute allowedRoles={['admin', 'superadmin']}><PendingLeads mode="open"/></ProtectedRoute>} />

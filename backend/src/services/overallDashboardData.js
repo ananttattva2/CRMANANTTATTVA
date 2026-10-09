@@ -64,7 +64,9 @@ function overallRecordsFromLeads(leads, scope = null) {
           clientName: lead.company || lead.companyName || 'Untitled client', financialYear: po.poFinancialYear || po.fy,
           applicantType: service.applicantType || service.piboParent || lead.applicantType || 'Not specified',
           subApplicantType: service.subApplicantType || service.piboCategory || lead.subApplicantType || lead.piboCategory || 'Not specified',
-          owners: overallOwners(lead, service, assignment), isClosed: true, services: names.map((name) => ({ name }))
+          owners: overallOwners(lead, service, assignment),
+          staffOwners: [{ id: assignment.assignedStaff || lead.assignedStaff, email: assignment.assignedStaffEmail || lead.assignedStaffEmail, name: assignment.assignedStaffText || lead.assignedStaffText }].filter(owner => owner.id || owner.email || owner.name),
+          isClosed: true, services: names.map((name) => ({ name }))
         });
       }
     }

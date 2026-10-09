@@ -273,7 +273,7 @@ function defaultChecklist(existing = []) {
   const map = new Map((Array.isArray(existing) ? existing : []).map((row) => [text(row.particular).toLowerCase(), row]));
   return PURCHASE_CHECKLIST_PARTICULARS.map((particular) => {
     const row = map.get(particular.toLowerCase()) || {};
-    return { particular, yesNo: ['Yes', 'No'].includes(row.yesNo) ? row.yesNo : '', date: /^\d{4}-\d{2}-\d{2}$/.test(row.date || '') ? row.date : '', files: Array.isArray(row.files) ? row.files : [], remarks: text(row.remarks) };
+    return { particular, partialDataReceived: row.yesNo === 'Yes' && row.partialDataReceived === true, completeDataReceived: row.yesNo === 'Yes' && row.completeDataReceived === true, yesNo: ['Yes', 'No'].includes(row.yesNo) ? row.yesNo : '', date: /^\d{4}-\d{2}-\d{2}$/.test(row.date || '') ? row.date : '', files: Array.isArray(row.files) ? row.files : [], remarks: text(row.remarks) };
   });
 }
 function checklistRow(purchase, name) { return defaultChecklist(purchase?.checklist).find((row) => row.particular === name) || {}; }
@@ -288,8 +288,8 @@ function purchaseReadiness(purchase = {}) {
   const errors = [];
   requiredRows.forEach((row) => {
     if (row.yesNo !== 'Yes') errors.push(`${row.particular}: status must be Yes.`);
-    if (!row.date) errors.push(`${row.particular}: date is required.`);
-    if (!row.files?.length) errors.push(`${row.particular}: proof is required.`);
+    if (row.particular !== 'Client Approval on data' && !row.date) errors.push(`${row.particular}: date is required.`);
+    if (row.particular !== 'Client Approval on data' && !row.files?.length) errors.push(`${row.particular}: proof is required.`);
   });
   if (!nilUpload) {
     if (!purchase.baseUpload || purchase.baseUpload.importStatus !== 'Imported') errors.push('Purchase Base Data is required.');
@@ -301,6 +301,7 @@ function purchaseReadiness(purchase = {}) {
 function calculatePurchaseStatus(purchase = {}) {
   if (purchase.complianceVerificationStatus === 'Approved') return 'Fully Approved';
   if (purchase.complianceVerificationStatus === 'Rejected') return 'Compliance Rework Required';
+  if (purchase.managerVerificationStatus === 'Pending') return 'Manager Review Pending';
   if (purchase.managerVerificationStatus === 'Approved') return 'Manager Approved';
   if (purchase.managerVerificationStatus === 'Rejected') return 'Rework Required';
   const readiness = purchaseReadiness(purchase);

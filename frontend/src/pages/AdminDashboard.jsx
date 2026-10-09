@@ -3953,12 +3953,6 @@ function OperationsFinalFlag({ rows = [], sla }) {
   return <span className={`operations-final-flag is-${tone}`} aria-label={`Final Flag: ${tone}`} title="Final flag is red only when 48h, 72h and 96h are all red."><Flag aria-hidden="true" fill="currentColor" /><strong>{tone === 'red' ? 'Red' : 'Green'}</strong>{!sla && <small>{red} / {rows.length} red</small>}</span>
 }
 
-function OperationsPoCommercialCell({ rows, field, pdfMode = false }) {
-  const values = [...new Set(rows.flatMap((row) => (row.poDetails?.records?.length ? row.poDetails.records : [row.poDetails || {}]).map((po) => String(po[field] || '').trim())).filter(Boolean))].sort()
-  const shown = pdfMode ? values : values.slice(0, 2)
-  return <div className="operations-po-commercial">{shown.length ? shown.map((value) => <span key={value}>{field === 'poEndDate' ? formatDisplayDate(value) : value}</span>) : <span className="operations-po-unrecorded">Not recorded</span>}{!pdfMode && values.length > 2 && <small>+{values.length - 2} more · View clients</small>}</div>
-}
-
 function fitOperationsWorksheet(sheet, rows = []) {
   const headers = rows.length ? Object.keys(rows[0]) : []
   sheet['!cols'] = headers.map((header) => ({ wch: Math.min(55, Math.max(12, header.length + 2, ...rows.map((row) => String(row[header] ?? '').length + 2))) }))
@@ -3967,22 +3961,75 @@ function fitOperationsWorksheet(sheet, rows = []) {
 }
 
 function downloadOperationsExcel(groups, financialYear) {
-  const { summary, clients, poDetails } = buildOperationsWorkbookData(groups, financialYear)
+  const { summary, clients, poDetails, tabRemarks } = buildOperationsWorkbookData(groups, financialYear)
   const summarySheet = XLSX.utils.json_to_sheet(summary)
   const clientSheet = XLSX.utils.json_to_sheet(clients)
   const poSheet = XLSX.utils.json_to_sheet(poDetails)
+  const remarksSheet = XLSX.utils.json_to_sheet(tabRemarks)
   fitOperationsWorksheet(summarySheet, summary)
   fitOperationsWorksheet(clientSheet, clients)
   fitOperationsWorksheet(poSheet, poDetails)
+  fitOperationsWorksheet(remarksSheet, tabRemarks)
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, summarySheet, 'User Summary')
   XLSX.utils.book_append_sheet(workbook, clientSheet, 'Client Details')
   XLSX.utils.book_append_sheet(workbook, poSheet, 'PO Details')
+  XLSX.utils.book_append_sheet(workbook, remarksSheet, 'Compliance Tab Remarks')
   const yearLabel = String(financialYear || 'all').replace(/[^a-z0-9-]+/gi, '-')
   XLSX.writeFile(workbook, `Operations-Dashboard-${yearLabel}-${new Date().toISOString().slice(0, 10)}.xlsx`)
 }
 
-function OperationsUserProgressTable({ rows = [], users = [], pdfMode = false, reportTime, financialYear = currentFinancialYear() }) {
+const OperationsClientDetails = React.memo(function OperationsClientDetails({ group }) {
+  const [expandedCompany, setExpandedCompany] = useState(null)
+  return <div className="operations-client-details operations-company-details">
+                <header><strong>{group.name} · Assigned clients</strong><span>{group.total} client records</span></header>
+                {group.rows.length ? <div className="operations-company-list">{group.rows.map(company => <section key={company.id}>
+                  <button type="button" className="operations-company-toggle" aria-expanded={expandedCompany === company.id} onClick={() => setExpandedCompany(current => current === company.id ? null : company.id)}><span>{expandedCompany === company.id ? '⌄' : '›'}</span><strong>{company.companyName}</strong></button>
+                  {expandedCompany === company.id && <div className="operations-company-services"><table><thead><tr><th>Client / Applicant</th><th>Compliance Status</th><th>PO Status</th>{OPERATIONS_PROGRESS_MILESTONES.map(hours => <th key={hours}>{hours}h+ Red Flag</th>)}<th>Final Flag</th></tr></thead><tbody>{(company.serviceRows || [company]).map(row => {
+                    const basic = row.client?.data?.basic || {}
+                    const services = row.client?.selectedLead?.serviceSelections || []
+                    const service = services.find(item => String(item.assignedServiceId || item.serviceAssignmentId || '') === String(row.client?.assignedServiceId || '')) || (services.length === 1 ? services[0] : {})
+                    const applicant = basic.piboCategory || basic.subApplicantType || service.subApplicantType || service.piboCategory || basic.applicantType || service.applicantType || 'Applicant not recorded'
+                    const approval = row.client?.operationsSla?.approvalStatus || row.client?.adminControls?.approvalStatus || 'PENDING'
+                    const statusDates = getOperationsStatusDates(row)
+                    return <tr key={row.id} ><td><div className="operations-client-name"><FileText aria-hidden="true" /><span><strong title={row.companyName}>{row.companyName}</strong><small>{applicant} · {row.atplCode}</small></span></div></td>
+                      <td><em className={approval === 'APPROVED' ? 'status-applicable' : 'status-partial'}>{String(approval).replace(/_/g, ' ')}</em><small className="operations-status-date"><CalendarDays aria-hidden="true" />{statusDates.compliance.value ? `${statusDates.compliance.label} ${formatDisplayDateTime(statusDates.compliance.value)}` : 'Status date not recorded'}</small></td>
+                      <td><em className={row.hasPo ? 'status-received' : 'status-missing'}>{row.hasPo ? 'Received' : 'Pending'}</em><small className="operations-status-date"><CalendarDays aria-hidden="true" />{statusDates.po.value ? `PO date ${formatDisplayDate(statusDates.po.value)}` : row.hasPo ? 'PO date not recorded' : 'Awaiting PO'}</small>{row.poDetails?.poNo && <small className="operations-po-number">PO #{row.poDetails.poNo}</small>}{row.poDetails?.fileUrl && <a className="operations-po-proof-link" href={row.poDetails.fileUrl} target="_blank" rel="noopener noreferrer"><Eye aria-hidden="true" />View PO Proof</a>}</td>
+
+                      {OPERATIONS_PROGRESS_MILESTONES.map((hours) => <td key={hours}><em className={row.sla[hours].breached ? 'status-missing' : row.sla[hours].known ? 'status-received' : 'status-neutral'}>{row.sla[hours].breached ? 'Red flag' : row.sla[hours].known ? 'Clear' : 'No correction deadline'}</em>{row.sla[hours].due && <small className="operations-sla-date">Due {formatDisplayDateTime(row.sla[hours].due)}</small>}</td>)}
+                      <td><OperationsFinalFlag sla={row.sla} /></td>
+                    </tr>
+                  })}</tbody></table></div>}
+                </section>)}</div> : <p className="operations-client-empty">No clients allocated to this Operations user.</p>}
+              </div>
+})
+
+const OperationsUserProgressTable = React.memo(function OperationsUserProgressTable({ rows = [], users = [], pdfMode = false, reportTime, financialYear = currentFinancialYear() }) {
+  const [assignedClients, setAssignedClients] = useState(null)
+  const [assignmentError, setAssignmentError] = useState('')
+  const [assignmentRefresh, setAssignmentRefresh] = useState(0)
+  useEffect(() => {
+    if (pdfMode) return
+    const controller = new AbortController()
+    api.get('/dashboard-insights/upload-tracker', { params: { assignmentsOnly: 'true' }, signal: controller.signal, timeout: 45000 })
+      .then(({ data }) => { setAssignedClients(data.assignments || []); setAssignmentError('') })
+      .catch(error => { if (error.code !== 'ERR_CANCELED') setAssignmentError('Could not refresh manager-to-staff assignments. Please retry.') })
+    return () => controller.abort()
+  }, [pdfMode, assignmentRefresh])
+  const reportRows = useMemo(() => {
+    if (!assignedClients) return pdfMode ? rows : []
+    const existing = new Map(rows.map(row => [String(row.client?._id || row.id), row]))
+    return assignedClients.map(client => {
+      const row = existing.get(String(client._id))
+      if (row) return { ...row, companyName: client.selectedLead?.company || client.selectedLead?.companyName || row.companyName, client: { ...row.client, ...client } }
+      const assignment = client.selectedLead?.assignments?.find(item => item.assignedServiceId === client.assignedServiceId) || client.selectedLead?.assignments?.[0] || {}
+      const poRecords = [...(assignment.poYearRows || []), ...(assignment.originalPoDetails ? [assignment.originalPoDetails] : [])]
+      const financials = client.data?.financials || {}
+      // Lead assignments contribute to the total; confirmed PO progress comes from Client Master records.
+      const hasPo = !client.assignmentOnly && (poRecords.some(po => po.poNumber || po.poNo || po.poDate || po.poReceivedDate || po.poFileName) || Boolean(financials.compliancePoNo || financials.poNo || financials.poNumber || financials.compliancePoDate || financials.poDate || financials.compliancePoFileName || financials.poFileName))
+      return { id: String(client._id), client, companyName: client.selectedLead?.company || client.selectedLead?.companyName || client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || client.data?.importMeta?.companyName || 'Untitled client', atplCode: client.data?.importMeta?.leadNumber || '', hasPo, poDetails: { ...poRecords[0], records: poRecords } }
+    })
+  }, [rows, assignedClients, pdfMode])
   const [activeTab, setActiveTab] = useState('ownership')
   const [expandedUser, setExpandedUser] = useState('')
   const [search, setSearch] = useState('')
@@ -4002,7 +4049,7 @@ function OperationsUserProgressTable({ rows = [], users = [], pdfMode = false, r
       .catch((error) => setExportError(error.message || 'PDF download failed. Please try again.'))
       .finally(() => setExporting(false))
   }, [exporting])
-  const groups = useMemo(() => buildOperationsProgressGroups(rows, users, getAssignedUserKeysFromClient, now), [rows, users, now])
+  const groups = useMemo(() => buildOperationsProgressGroups(reportRows, users, getAssignedUserKeysFromClient, now), [reportRows, users, now])
   const visibleGroups = groups.filter((group) => [group.name, ...group.rows.flatMap((row) => [row.companyName, row.atplCode])].some((value) => normalizeKey(value).includes(normalizeKey(search))))
   const totals = useMemo(() => groups.reduce((result, group) => ({
     clients: result.clients + group.total,
@@ -4020,52 +4067,40 @@ function OperationsUserProgressTable({ rows = [], users = [], pdfMode = false, r
       <div className="operations-report-actions">{pdfMode ? <b><Users aria-hidden="true" />{groups.length} Operations users</b> : <div role="tablist" aria-label="Operations reports" className="flex flex-wrap gap-2"><button type="button" role="tab" aria-selected={activeTab === 'ownership'} className="operations-report-download" onClick={() => setActiveTab('ownership')}><Users aria-hidden="true" />{groups.length} Operations users</button><button type="button" role="tab" aria-selected={activeTab === 'data'} className="operations-report-download" onClick={() => setActiveTab('data')}>Purchase &amp; Sales</button></div>}{!pdfMode && activeTab === 'ownership' && <><button type="button" className="operations-report-download" disabled={!groups.length} onClick={() => downloadOperationsExcel(groups, financialYear)}><Download aria-hidden="true" />Export Excel</button><button type="button" className="operations-report-download" disabled={exporting || !groups.length} onClick={() => { setExportError(''); setPdfProgress('Preparing PDF…'); setExporting(true) }}><Download aria-hidden="true" />{exporting ? pdfProgress : 'Download full PDF'}</button></>}</div>
     </header>
     <div className="operations-report-meta"><span><CalendarDays aria-hidden="true" />Updated {formatDisplayDateTime(now)} IST</span><span>{pdfMode ? 'PDF contains aggregate user metrics only; client names are excluded.' : 'PDF includes every Operations user as an aggregate table without client names.'}</span></div>
+    {assignmentError && <p role="alert" className="operations-export-error">{assignmentError} <button type="button" onClick={() => { setAssignmentError(''); setAssignmentRefresh(value => value + 1) }} className="ml-2 font-bold underline">Retry</button></p>}
+    {!pdfMode && !assignedClients && !assignmentError && <p role="status" className="p-5 text-sm text-slate-500">Loading all manager-to-staff assignments…</p>}
     {exportError && <p className="operations-export-error" role="alert">{exportError}</p>}
     {!pdfMode && <div className="operations-user-toolbar"><label><Search aria-hidden="true" /><input aria-label="Search Operations users or clients" placeholder="Search user, client or ATPL code" value={search} onChange={(event) => setSearch(event.target.value)} /></label><span>{new Set(groups.flatMap((group) => group.rows.map((row) => row.id))).size} assigned clients · {totals[48]} overdue assignments</span></div>}
     {activeTab === 'data' ? <PurchaseSalesProgress groups={visibleGroups} financialYear={financialYear} /> : <>
     <div className="operations-user-status-scroll">
       <table className="operations-user-status-table">
-        <thead><tr><th>Operations User</th><th>Assigned Clients</th><th>Compliance<small>Approved / Assigned</small></th><th>Purchase Order<small>Received / Assigned</small></th><th>PO End Date<small>Recorded dates</small></th><th>PO Financial Year<small>Recorded years</small></th>{!pdfMode && <th>Payment Term<small>As per PO</small></th>}{OPERATIONS_PROGRESS_MILESTONES.map((milestone) => <th key={milestone}>{milestone}h+ Red Flags<small>Overdue / Assigned</small></th>)}<th>Final Flag<small>All three red = Red</small></th><th aria-label="Action">View</th></tr></thead>
+        <thead><tr><th>Operations User</th><th>Assigned Clients</th><th>Compliance<small>Approved / Assigned</small></th><th>Purchase Order<small>Received / Assigned</small></th>{OPERATIONS_PROGRESS_MILESTONES.map((milestone) => <th key={milestone}>{milestone}h+ Red Flags<small>Overdue / Assigned</small></th>)}<th>Final Flag<small>All three red = Red</small></th><th aria-label="Action">View</th></tr></thead>
         <tbody>
           {visibleGroups.map((group, groupIndex) => {
             const open = !pdfMode && expandedUser === group.id
             const initials = group.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'U'
             return <React.Fragment key={group.id}>
-              <motion.tr className={`operations-user-summary-row ${open ? 'is-open' : ''}`} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: groupIndex * .045 }}>
+              <tr className={`operations-user-summary-row ${open ? 'is-open' : ''}`}>
                 <td><button type="button" className="operations-user-toggle" aria-expanded={open} onClick={() => setExpandedUser(open ? '' : group.id)}><ChevronRight aria-hidden="true" /><i className={`avatar-${tones[groupIndex % tones.length]}`}>{initials}</i><strong>{group.name}</strong></button></td>
                 <td><b>{group.total}</b></td>
                 <td><OperationsProgressValue done={group.complianceDone} total={group.total} tone={group.complianceDone === group.total ? 'green' : 'red'} /></td>
-                <td><OperationsProgressValue done={group.poDone} total={group.total} tone="green" /></td>{["poEndDate", "poFinancialYear", ...(!pdfMode ? ["paymentTerm"] : [])].map((field) => <td key={field}><OperationsPoCommercialCell rows={group.rows} field={field} pdfMode={pdfMode} /></td>)}
+                <td><OperationsProgressValue done={group.poDone} total={group.total} tone="green" /></td>
                 {OPERATIONS_PROGRESS_MILESTONES.map((hours) => <td key={hours}><OperationsProgressValue done={group.milestones[hours]} total={group.total} tone={group.milestones[hours] ? 'red' : 'green'} /></td>)}
                 <td><OperationsFinalFlag rows={group.rows} /></td>
                 <td><button type="button" className="operations-user-view" aria-label={`${open ? 'Hide' : 'View'} ${group.name} clients`} onClick={() => setExpandedUser(open ? '' : group.id)}><Eye aria-hidden="true" /></button></td>
-              </motion.tr>
-              {open && <tr className="operations-user-detail-row"><td colSpan={12}><div className="operations-client-details">
-                <header><strong>{group.name} · Assigned clients</strong><span>{group.total} client records</span></header>
-                {group.rows.length ? <table><thead><tr><th>Client Name</th><th>Compliance Status</th><th>PO Status</th><th>PO End Date</th><th>PO Financial Year</th><th>Payment Term</th>{OPERATIONS_PROGRESS_MILESTONES.map((hours) => <th key={hours}>{hours}h+ Red Flag</th>)}<th>Final Flag</th></tr></thead>
-                  <tbody>{group.rows.map((row) => {
-                    const approval = row.client?.operationsSla?.approvalStatus || row.client?.adminControls?.approvalStatus || 'PENDING'
-                    const statusDates = getOperationsStatusDates(row)
-                    return <tr key={row.id}><td><div className="operations-client-name"><FileText aria-hidden="true" /><span><strong title={row.companyName}>{row.companyName}</strong><small>{row.atplCode}</small></span></div></td>
-                      <td><em className={approval === 'APPROVED' ? 'status-applicable' : 'status-partial'}>{String(approval).replace(/_/g, ' ')}</em><small className="operations-status-date"><CalendarDays aria-hidden="true" />{statusDates.compliance.value ? `${statusDates.compliance.label} ${formatDisplayDateTime(statusDates.compliance.value)}` : 'Status date not recorded'}</small></td>
-                      <td><em className={row.hasPo ? 'status-received' : 'status-missing'}>{row.hasPo ? 'Received' : 'Pending'}</em><small className="operations-status-date"><CalendarDays aria-hidden="true" />{statusDates.po.value ? `PO date ${formatDisplayDate(statusDates.po.value)}` : row.hasPo ? 'PO date not recorded' : 'Awaiting PO'}</small>{row.poDetails?.poNo && <small className="operations-po-number">PO #{row.poDetails.poNo}</small>}{row.poDetails?.fileUrl && <a className="operations-po-proof-link" href={row.poDetails.fileUrl} target="_blank" rel="noopener noreferrer"><Eye aria-hidden="true" />View PO Proof</a>}</td>
-                      {["poEndDate", "poFinancialYear", "paymentTerm"].map((field) => <td key={field}><OperationsPoCommercialCell rows={[row]} field={field} pdfMode /></td>)}
-                      {OPERATIONS_PROGRESS_MILESTONES.map((hours) => <td key={hours}><em className={row.sla[hours].breached ? 'status-missing' : row.sla[hours].known ? 'status-received' : 'status-neutral'}>{row.sla[hours].breached ? 'Red flag' : row.sla[hours].known ? 'Clear' : 'No correction deadline'}</em>{row.sla[hours].due && <small className="operations-sla-date">Due {formatDisplayDateTime(row.sla[hours].due)}</small>}</td>)}
-                      <td><OperationsFinalFlag sla={row.sla} /></td>
-                    </tr>
-                  })}</tbody></table> : <p className="operations-client-empty">No clients allocated to this Operations user.</p>}
-              </div></td></tr>}
+              </tr>
+              {open && <tr className="operations-user-detail-row"><td colSpan={9}><OperationsClientDetails key={group.id} group={group} /></td></tr>}
             </React.Fragment>
           })}
         </tbody>
-        <tfoot><tr><td><span><BarChart3 aria-hidden="true" />Total (Operations assignments)</span></td><td><b>{totals.clients}</b></td><td><OperationsProgressValue done={totals.compliance} total={totals.clients} tone="green" /></td><td><OperationsProgressValue done={totals.po} total={totals.clients} tone="green" /></td><td colSpan={pdfMode ? 2 : 3}><small>{pdfMode ? 'Aggregated PO details' : 'PO details are listed by client above'}</small></td><td><OperationsProgressValue done={totals[48]} total={totals.clients} tone="red" /></td><td><OperationsProgressValue done={totals[72]} total={totals.clients} tone="red" /></td><td><OperationsProgressValue done={totals[96]} total={totals.clients} tone="red" /></td><td><OperationsFinalFlag rows={groups.flatMap((group) => group.rows)} /></td><td /></tr></tfoot>
+        <tfoot><tr><td><span><BarChart3 aria-hidden="true" />Total (Operations assignments)</span></td><td><b>{totals.clients}</b></td><td><OperationsProgressValue done={totals.compliance} total={totals.clients} tone="green" /></td><td><OperationsProgressValue done={totals.po} total={totals.clients} tone="green" /></td><td><OperationsProgressValue done={totals[48]} total={totals.clients} tone="red" /></td><td><OperationsProgressValue done={totals[72]} total={totals.clients} tone="red" /></td><td><OperationsProgressValue done={totals[96]} total={totals.clients} tone="red" /></td><td><OperationsFinalFlag rows={groups.flatMap((group) => group.rows)} /></td><td /></tr></tfoot>
       </table>
     </div>
     </>}
     {!groups.length && <div className="operations-user-status-empty"><Users aria-hidden="true" /><strong>No assigned client records found</strong></div>}
-    {!pdfMode && exporting && <div ref={pdfRef} className="operations-pdf-source" aria-hidden="true"><OperationsUserProgressTable rows={rows} users={users} pdfMode reportTime={now} /></div>}
+    {!pdfMode && exporting && <div ref={pdfRef} className="operations-pdf-source" aria-hidden="true"><OperationsUserProgressTable rows={reportRows} users={users} pdfMode reportTime={now} /></div>}
   </section>
-}
+})
 
 function EprAnalyticsDashboard({ rows = [], complianceRows = [], leads = [], users = [], onRefresh }) {
   const leadPoRows = useMemo(() => buildLeadPoRows(leads, users), [leads, users])

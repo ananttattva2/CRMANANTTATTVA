@@ -10,6 +10,7 @@ const ClientSchema = new mongoose.Schema({
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
   },
   data: { type: mongoose.Schema.Types.Mixed, default: {} },
+  sla: { type: mongoose.Schema.Types.Mixed, default: {} },
   // Per-service CRM staff assignments. This must be part of the strict schema;
   // otherwise Mongoose silently strips it from findByIdAndUpdate() writes.
   serviceAllocations: { type: mongoose.Schema.Types.Mixed, default: {} },

@@ -1,3 +1,4 @@
+import { canReviseQuotation } from '../utils/quotationRevision.mjs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -837,14 +838,6 @@ function readAdminApprovalStatus(row = {}) {
   return 'approved';
 }
 
-function canReviseQuotation(row = {}) {
-  const approvalStatus = String(row.approvalStatus || row.adminApproval || '').trim().toLowerCase();
-  const quotationStatus = String(row.status || row.quotationStatus || '').trim().toLowerCase();
-  return approvalStatus.includes('approved')
-    || approvalStatus.includes('reject')
-    || quotationStatus === 'approved'
-    || quotationStatus === 'rejected';
-}
 
 function quotationUserNames(row = {}) {
   return [...new Set([
@@ -1172,10 +1165,7 @@ export default function Quotations() {
     if (leadAction === 'revise' && quotationContext && !loading) {
       const target = [...quotations]
         .filter((row) => contextMatchesQuotation(row, quotationContext))
-        .filter((row) => {
-          const status = String(row?.status || '').trim().toLowerCase();
-          return status === 'approved' || status === 'rejected';
-        })
+        .filter(canReviseQuotation)
         .sort((left, right) => new Date(right.updatedAt || right.createdAt || 0) - new Date(left.updatedAt || left.createdAt || 0))[0];
       if (target) {
         editQuotation(target);
@@ -2064,7 +2054,7 @@ export default function Quotations() {
         : await api.post(API_ENDPOINTS.quotations.create, payload);
       setSuccessModal({
         title: editingId ? 'Quotation updated' : 'Quotation saved',
-        message: `${response.data.quotation?.quotationNumber || 'Quotation'} was saved successfully. Use Management Approval in quotation Actions to send it to Pending Approval.`
+        message: `${response.data.quotation?.quotationNumber || 'Quotation'} was saved and sent directly to Super Admin for approval. Admin approval is not required.`
       });
       setQuotation({ ...emptyQuotation, leadDetails: { ...emptyLeadDetails }, items: [], terms: [] });
       setEditingId('');
@@ -2552,7 +2542,7 @@ export default function Quotations() {
 
         <div className="mt-6 flex flex-wrap gap-3">
           <button type="button" disabled={saving} onClick={() => saveQuotation('draft')} className="btn-lift inline-flex min-h-11 items-center gap-2 rounded-lg bg-orange-500 px-6 font-black text-white shadow-lg shadow-orange-500/20 disabled:opacity-60">
-            <Save className="h-4 w-4" /> {editingId ? 'Update Quotation' : 'Save Quotation'}
+            <Save className="h-4 w-4" /> {editingId ? 'Update & Send for Approval' : 'Save & Send for Approval'}
           </button>
           <button type="button" onClick={showQuotationList} className="btn-lift min-h-11 rounded-lg border border-slate-200 bg-white px-5 font-black text-slate-600">Cancel</button>
         </div>

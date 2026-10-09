@@ -30,7 +30,7 @@ test('Sales routes expose imports, rows, reconciliation and two-level approvals'
 test('second Sales Excel import automatically creates Manager review and notification', () => {
   const controller = read('../src/controllers/salesDataController.js');
   const notifications = read('../src/services/salesDataNotifications.js');
-  assert.match(controller, /if \(readiness\(sales\)\.ready\) \{[\s\S]*?automaticSubmission = await submitForManager/);
+  assert.match(controller, /if \(sales\.baseUpload\?\.importStatus === 'Imported' && sales\.portalUpload\?\.importStatus === 'Imported'\) \{[\s\S]*?automaticSubmission = await submitForManager/);
   assert.match(controller, /purchaseReadiness\(sales\)/);
   assert.match(controller, /Automatically submitted after both Sales Excel files were imported/);
   assert.match(controller, /managerVerificationStatus = 'Pending'/);
@@ -54,8 +54,10 @@ test('Sales UI provides two templates, preview, reconciliation and approval cont
   assert.match(panel, /Upload Complete/);
   assert.match(panel, /!canEdit \|\| !uploadUnlocked/);
   assert.match(checklist, /Sales Data Upload Checklist/);
-  assert.match(checklist, /Normal flow requires four marked rows/);
-  assert.match(checklist, /Nil Upload requires only Client Approval on data/);
+  assert.match(checklist, /partialDataReceived/);
+  assert.match(checklist, /completeDataReceived/);
+  assert.match(checklist, /disabled=\{!editable \|\| !enabled\}/);
+  assert.match(checklist, /const SIMPLE = new Set\(\['Nil Upload', 'Client Approval on data'\]\)/);
 });
 
 test('Sales EML and Outlook MSG proofs use the same decoded mail viewer as Purchase', () => {

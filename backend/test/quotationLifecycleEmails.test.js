@@ -11,17 +11,17 @@ const quotation = {
 };
 const actor = { name: 'KRISHNA Yadav', email: 'krishna@example.com' };
 
-test('quotation generation email identifies a draft awaiting management request', () => {
+test('quotation generation email identifies direct Super Admin approval', () => {
   const content = quotationLifecycleEmailContent({ quotation, event: 'created', actor });
-  assert.match(content.subject, /Draft/);
-  assert.match(content.html, /generated as a draft/);
+  assert.match(content.subject, /Super Admin Approval Pending/);
+  assert.match(content.html, /sent directly to Super Admin/);
   assert.match(content.html, /AT\/26-27\/001/);
 });
 
-test('quotation revision email requires a new management approval request', () => {
+test('quotation revision email confirms direct Super Admin approval', () => {
   const content = quotationLifecycleEmailContent({ quotation, event: 'revised', actor });
-  assert.equal(eventLabel('revised'), 'Revised — Management Approval Required');
-  assert.match(content.html, /Use Management Approval/);
+  assert.equal(eventLabel('revised'), 'Revised — Super Admin Approval Pending');
+  assert.match(content.html, /Admin approval is not required/);
 });
 
 test('quotation decision emails clearly identify approved and rejected status', () => {

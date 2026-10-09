@@ -1,0 +1,139 @@
+const { userHasAnyRole } = require('../utils/userRoles');
+const { allocatedOwnerKeyGroups } = require('./overallDashboardUsers');
+const { assignedCompanyKey } = require('./assignedCompanyIdentity');
+const STAGES = ['Data Explained', 'Data Format Sent', 'Received from client', 'Ready to upload', 'Client Approval on data', 'Upload Complete', 'Manager Review', 'Compliance Review'];
+const id = value => String(value?._id || value || '');
+const normalizeYear = value => {
+  const match = String(value || '').match(/(20\d{2})\s*[-/]\s*(\d{2,4})/);
+  return match ? `${match[1]}-${match[2].slice(-2)}` : '';
+};
+const yearsFrom = value => (Array.isArray(value) ? value : [value]).flatMap(item => String(item || '').split(/[,;\n]/)).map(normalizeYear).filter(Boolean);
+const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const isAnnualService = value => (Array.isArray(value) ? value : [value]).some(item => /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalize(item?.name || item?.label || item?.service || item)));
+const hasPoEvidence = row => [row?.poNumber, row?.poNo, row?.poDate, row?.poReceivedDate, row?.poFileName, row?.fileName, row?.poFileUrl]
+  .some(value => Boolean(String(value || '').trim()));
+function financialYearForDate(date = new Date()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' }).formatToParts(date).map(part => [part.type, part.value]));
+  const year = Number(parts.year);
+  const start = Number(parts.month) >= 4 ? year : year - 1;
+  return `${start}-${String(start + 1).slice(-2)}`;
+}
+function matchesTrackedService(client, type) {
+  const data = client.data || {}, lead = client.selectedLead || {};
+  const selected = String(client.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId || '');
+  const selections = lead.serviceSelections || [];
+  const service = selections.find(item => String(item.assignedServiceId || item.serviceAssignmentId || '') === selected) || (selections.length === 1 ? selections[0] : {});
+  const offered = service.servicesOffered ?? data.basic?.servicesOffered ?? data.selectedLeadSnapshot?.servicesOffered ?? [];
+  return (Array.isArray(offered) ? offered : [offered]).some(value => {
+    const normalized = String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    return type === 'annual' ? /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalized) : type === 'registration' ? ['registration', 'newregistration'].includes(normalized) : true;
+  });
+}
+function stageState(record, stage) {
+  if (stage === 'Manager Review' || stage === 'Compliance Review') {
+    const status = stage === 'Manager Review' ? record?.managerVerificationStatus : record?.complianceVerificationStatus;
+    return String(status || '').trim().toLowerCase() === 'approved' ? 'complete' : 'pending';
+  }
+  const row = record?.checklist?.find(item => item.particular === stage);
+  if (stage === 'Upload Complete') return record?.baseUpload?.importStatus === 'Imported' && record?.portalUpload?.importStatus === 'Imported' ? 'complete' : record?.baseUpload?.importStatus === 'Imported' || record?.portalUpload?.importStatus === 'Imported' || row?.yesNo === 'Yes' ? 'progress' : 'pending';
+  if (row?.yesNo === 'Yes') return row.partialDataReceived && !row.completeDataReceived ? 'progress' : 'complete';
+  return row?.date || row?.files?.length || row?.remarks ? 'progress' : 'pending';
+}
+function applicationDescriptor(client) {
+  const data = client.data || {}, basic = data.basic || {}, lead = client.selectedLead || {};
+  const selections = lead.serviceSelections || [];
+  const service = selections.find(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === String(client.assignedServiceId || '')) || (selections.length === 1 ? selections[0] : {});
+  const category = [service.subApplicantType, service.piboCategory, basic.piboCategory, basic.subApplicantType, service.applicantType, basic.applicantType].find(value => typeof value === 'string' && value.trim()) || 'Not recorded';
+  const key = category.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const canonical = key.includes('rawmaterial') && key.includes('import') || key.includes('simp') && key.includes('import') ? 'Importer of Raw Material'
+    : (key.includes('simp') || key.includes('smallmicro')) && key.includes('produc') ? 'Producer (Small & Micro)'
+    : key.includes('recycler') ? 'Recycler' : key.includes('brandowner') ? 'Brand Owner' : key.includes('importer') ? 'Importer'
+    : key.includes('producer') ? 'Producer' : key === 'pwp' || key.includes('plasticwasteprocessor') ? 'PWP' : category.trim();
+  const offered = service.servicesOffered ?? basic.servicesOffered ?? data.selectedLeadSnapshot?.servicesOffered ?? [];
+  const primary = (Array.isArray(offered) ? offered : [offered]).flatMap(value => String(value || '').split(/[,;\n]/)).map(value => value.trim()).find(Boolean) || '';
+  const normalized = primary.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const serviceType = /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalized) ? 'annual' : ['registration','newregistration'].includes(normalized) ? 'registration' : '';
+  const assignments = lead.assignments || [];
+  const assignment = assignments.find(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === String(client.assignedServiceId || '')) || (assignments.length === 1 ? assignments[0] : {});
+  const closed = Boolean(assignment.closedAt || assignment.closedBy || assignment.closedByText || assignment.permanentClosedAt || (selections.length === 1 && (lead.closedAt || lead.closedBy)) || String(lead.status || '').toLowerCase() === 'closed');
+  const annualWorkflowReady = Boolean(assignment.assignedTo || assignment.assignedToText || assignment.assignedToEmail)
+    && Boolean(assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail);
+  const poRows = [...(assignment.poYearRows || []), ...(assignment.originalPoDetails ? [assignment.originalPoDetails] : [])];
+  const poReceived = normalize(assignment.poStatus) === 'received' || poRows.some(hasPoEvidence);
+  const currentAnnualPoRows = poReceived ? poRows.filter(row => normalizeYear(row?.poFinancialYear) === financialYearForDate())
+    .filter(row => !row?.services?.length || isAnnualService(row.services)) : [];
+  const annualReturnYears = [...new Set(currentAnnualPoRows.flatMap(row => yearsFrom(row?.annualReturnYear)))];
+  const cpcb = data.cpcb?.status || data.cpcb?.approvalStatus || data.cpcb?.applicationStatus || basic.cpcbStatus || data.importMeta?.cpcbStatus;
+  const cpcbApproved = /approved|registered|processed|annualreturnapplicable/.test(normalize(cpcb));
+  const annualQualified = cpcbApproved && currentAnnualPoRows.length > 0;
+  return { category: canonical, unit: String(service.plantUnit || basic.plantUnit || data.selectedLeadSnapshot?.plantUnit || '').trim(), serviceType, offered: primary, closed, annualWorkflowReady, annualReturnYears, annualQualified };
+}
+function buildUploadTracker(clients, users, purchases, sales, options = {}) {
+  const identities = new Map();
+  users = users.filter(user => user.isActive !== false && userHasAnyRole(user, ['operation', 'operations', 'manager']) && !userHasAnyRole(user, ['admin', 'superadmin', 'sales']));
+  users.forEach(user => [user._id, user.crmUserId, user.name, user.email].filter(Boolean).forEach(value => identities.set(id(value).trim().toLowerCase(), user)));
+  const index = records => new Map(records.map(record => [id(record.clientId), record]));
+  const purchaseIndex = index(purchases), salesIndex = index(sales), groups = new Map();
+  const emptyGroup = user => ({ userId: id(user._id), userName: user.name || user.email || 'Team member', clients: [], slaReceived: 0, slaNotReceived: 0, purchase: STAGES.map(() => ({ complete: 0, progress: 0, pending: 0 })), sales: STAGES.map(() => ({ complete: 0, progress: 0, pending: 0 })) });
+  users.filter(user => userHasAnyRole(user, ['manager'])).forEach(user => groups.set(id(user._id), emptyGroup(user)));
+  const seen = new Set();
+  for (const client of clients) {
+    if (options.groupBy !== 'application' && options.serviceType && !matchesTrackedService(client, options.serviceType)) continue;
+    const clientId = id(client._id);
+    if (!clientId || seen.has(clientId)) continue;
+    seen.add(clientId);
+    const [permanent] = allocatedOwnerKeyGroups(client);
+    const user = permanent.map(key => identities.get(key)).find(Boolean);
+    if (!user) continue;
+    const ownerId = id(user._id);
+    if (!groups.has(ownerId)) groups.set(ownerId, emptyGroup(user));
+    const group = groups.get(ownerId);
+    const detail = { clientId: id(client._id), clientName: client.selectedLead?.company || client.selectedLead?.companyName || client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || client.data?.importMeta?.companyName || 'Untitled client', slaReceived: client.sla?.status === 'Yes', purchase: STAGES.map(stage => stageState(purchaseIndex.get(id(client._id)), stage)), sales: STAGES.map(stage => stageState(salesIndex.get(id(client._id)), stage)) };
+    detail.companyKey = assignedCompanyKey(client);
+    detail.clientIds = [clientId];
+    if (options.groupBy === 'application') {
+      const descriptor = applicationDescriptor(client);
+      Object.assign(detail, descriptor);
+      detail.companyKey += ':' + descriptor.category.toLowerCase().replace(/[^a-z0-9]/g, '') + ':' + descriptor.unit.toLowerCase().replace(/[^a-z0-9]/g, '');
+      detail.sources = [{ ...descriptor, clientId, slaReceived: detail.slaReceived, purchase: detail.purchase, sales: detail.sales }];
+    }
+    const existing = group.clients.find(row => row.companyKey === detail.companyKey);
+    if (existing) {
+      existing.clientIds.push(clientId);
+      if (options.groupBy === 'application') existing.sources.push(...detail.sources);
+      // SLA is a company-level receipt, even when only one service's Client Master stores it.
+      existing.slaReceived = existing.slaReceived || detail.slaReceived;
+      for (const module of ['purchase', 'sales']) existing[module] = existing[module].map((state, position) => state === 'complete' && detail[module][position] === 'complete' ? 'complete' : position >= 6 || state === 'pending' && detail[module][position] === 'pending' ? 'pending' : 'progress');
+    } else group.clients.push(detail);
+  }
+  if (options.groupBy === 'application') for (const group of groups.values()) {
+    group.clients = group.clients.flatMap(detail => {
+      // Match Service Summary: one representative closed service per company/category/unit.
+      const representative = detail.sources.find(source => source.closed && source.offered);
+      if (!representative || options.serviceType && representative.serviceType !== options.serviceType) return [];
+      const sources = detail.sources.filter(source => source.closed
+        && source.serviceType === representative.serviceType
+        && (representative.serviceType !== 'annual' || source.annualWorkflowReady)
+        && (representative.serviceType !== 'annual' || !options.financialYear || source.annualQualified && source.annualReturnYears.includes(options.financialYear)));
+      if (!sources.length) return [];
+      detail.clientId = representative.clientId;
+      detail.category = representative.category;
+      detail.unit = representative.unit;
+      detail.offered = representative.offered;
+      detail.clientIds = sources.map(source => source.clientId);
+      detail.slaReceived = sources.some(source => source.slaReceived);
+      for (const module of ['purchase', 'sales']) detail[module] = STAGES.map((_, position) => {
+        const states = sources.map(source => source[module][position]);
+        return states.every(state => state === 'complete') ? 'complete' : position >= 6 || states.every(state => state === 'pending') ? 'pending' : 'progress';
+      });
+      delete detail.sources;
+      return [detail];
+    });
+  }
+  for (const group of groups.values()) for (const detail of group.clients) {
+    group[detail.slaReceived ? 'slaReceived' : 'slaNotReceived']++;
+    for (const module of ['purchase', 'sales']) detail[module].forEach((state, position) => group[module][position][state]++);
+  }
+  return [...groups.values()].sort((a, b) => a.userName.localeCompare(b.userName));
+}
+module.exports = { STAGES, stageState, buildUploadTracker, matchesTrackedService, applicationDescriptor, financialYearForDate };

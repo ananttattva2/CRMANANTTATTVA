@@ -1,0 +1,57 @@
+.client-sla-page { padding: 12px; background: #f4f8f7; color: #17233a; }
+.client-sla-page .sla-back { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 10px; border: 1px solid #dae5e2; border-radius: 9px; padding: 10px 14px; background: #fff; color: #356b6d; font-size: 13px; font-weight: 600; cursor: pointer; }
+.client-sla-page .sla-card { width: 100%; max-width: none; margin: 0; background: #fff; border: 1px solid #dfebe7; border-radius: 14px; overflow: hidden; box-shadow: 0 5px 20px #163d340a; animation: sla-enter 360ms cubic-bezier(.2,.7,.3,1) both; }
+.client-sla-page .sla-header { display: flex; align-items: center; gap: 12px; padding: 16px 18px; border-bottom: 1px solid #e6efec; background: linear-gradient(110deg,#fff,#f3fcf8); }
+.client-sla-page .sla-icon { display: grid; place-items: center; flex-shrink: 0; width: 46px; height: 46px; border-radius: 12px; background: linear-gradient(135deg,#178b7b,#086854); color: #fff; }
+.client-sla-page .sla-header p { margin: 0 0 5px; font-size: 10px; letter-spacing: .15em; color: #278174; font-weight: 700; }
+.client-sla-page .sla-header h1 { margin: 0; font-size: 22px; font-weight: 750; color: #15203a; line-height: 1.3; }
+.client-sla-page .sla-header div > span { display: block; margin-top: 5px; font-size: 13px; color: #627487; }
+.client-sla-page .sla-access { display: flex; align-items: center; gap: 7px; margin-left: auto; border: 1px solid #ffe0ae; border-radius: 30px; padding: 8px 12px; background: #fff8e9; color: #a66c18; font-size: 12px; }
+.client-sla-page .sla-access-ready { color: #168256; background: #edfbf2; border-color: #bfe9d1; }
+.client-sla-page .sla-fields { min-width: 0; padding: 12px; border: 0; margin: 0; }
+.client-sla-page .sla-table-wrap { border: 1px solid #e4eae9; border-radius: 11px; overflow: auto; }
+.client-sla-page .sla-table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+.client-sla-page .sla-table th { width: 33.333%; padding: 11px 14px; color: white; background: #087b68; text-align: left; font-size: 13px; font-weight: 700; border-right: 1px solid #ffffff30; }
+.client-sla-page .sla-table td { padding: 14px; vertical-align: top; border-right: 1px solid #edf1ef; }
+.client-sla-page .sla-table tr > :last-child { border-right: 0; }
+.client-sla-page .sla-label { display: block; margin-bottom: 10px; font-size: 12px; font-weight: 650; color: #41556c; }
+.client-sla-page .sla-label > span { color: #e2594d; }
+.client-sla-page .sla-label :is(select,input,textarea) { display: block; width: 100%; min-height: 40px; margin-top: 6px; padding: 9px 11px; border: 1px solid #d9e3e8; border-radius: 8px; color: #24374d; background: #fff; font-size: 13px; font-weight: 400; }
+.client-sla-page .sla-label textarea { min-height: 114px; resize: vertical; }
+.client-sla-page .sla-upload { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 11px; border: 1px dashed #9ccfbe; border-radius: 9px; background: #f3fbf7; color: #137859; font-size: 13px; font-weight: 600; cursor: pointer; }
+.client-sla-page .sla-upload input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.client-sla-page .sla-hint { margin: 8px 0 0; color: #7c8b9e; font-size: 11px; line-height: 1.6; }
+.client-sla-page .sla-date-heading { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 650; color: #257b6b; margin-bottom: 13px; }
+.client-sla-page .sla-files { display: grid; gap: 7px; margin-top: 14px; }
+.client-sla-page .sla-files > div { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid #e0e9e6; border-radius: 7px; font-size: 12px; }
+.client-sla-page .sla-files a { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #167b64; text-decoration: underline; }
+.client-sla-page .sla-files button { background: #fff3f3; border: 0; color: #d55360; padding: 4px; border-radius: 5px; cursor: pointer; }
+.client-sla-page .sla-footer { display: flex; gap: 12px; justify-content: space-between; align-items: center; padding: 12px 16px; background: #f8fbfa; border-top: 1px solid #e5edea; }
+.client-sla-page .sla-footer p { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12px; color: #687d88; }
+.client-sla-page .sla-continue { display: flex; gap: 8px; align-items: center; padding: 10px 16px; border-radius: 9px; border: 0; background: #087b68; color: #fff; font-size: 13px; font-weight: 650; cursor: pointer; white-space: nowrap; }
+.client-sla-page :is(button,input,textarea,select):disabled { opacity: .5; cursor: not-allowed; }
+.client-sla-page :is(button,input,textarea,select):focus-visible { outline: 2px solid #159c7c; outline-offset: 3px; }
+.client-sla-page .sla-error { margin: 12px 12px 0; padding: 12px; border: 1px solid #ffc7c7; border-radius: 8px; background: #fff3f3; color: #b84040; font-size: 13px; }
+.client-sla-page .sla-error button { margin-left: 12px; border: 0; background: transparent; color: #b84040; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.client-sla-page .sla-message { padding: 12px 14px 0; font-size: 13px; color: #687d88; }
+@media (max-width: 700px) { .client-sla-page { padding: 10px; } .client-sla-page .sla-header { flex-wrap: wrap; padding: 14px; } .client-sla-page .sla-access { margin-left: 0; } .client-sla-page .sla-fields { padding: 10px; } .client-sla-page .sla-table { min-width: 780px; } .client-sla-page .sla-footer { flex-wrap: wrap; padding: 12px; gap: 10px; } .client-sla-page .sla-continue { width: 100%; justify-content: center; } }
+
+.client-sla-page .sla-date-range { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.client-sla-page .sla-date-range .sla-label { margin-bottom: 0; }
+.client-sla-page .sla-date-heading { margin-bottom: 10px; }
+.client-sla-page .sla-footer p > svg { flex-shrink: 0; }
+.client-sla-page .sla-access { transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease; }
+.client-sla-page :is(.sla-back,.sla-continue,.sla-upload) { transition: transform 180ms ease, background-color 180ms ease, box-shadow 180ms ease; }
+.client-sla-page .sla-back:hover:not(:disabled) { background: #f0faf6; transform: translateX(-2px); }
+.client-sla-page .sla-continue:hover:not(:disabled) { background: #066653; transform: translateY(-1px); box-shadow: 0 5px 14px #087b6824; }
+.client-sla-page .sla-continue:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
+.client-sla-page .sla-continue > svg { transition: transform 180ms ease; }
+.client-sla-page .sla-continue:hover:not(:disabled) > svg { transform: translateX(3px); }
+.client-sla-page .sla-upload:hover { background: #eaf8f0; box-shadow: 0 3px 10px #087b6810; }
+.client-sla-page .sla-upload:has(input:disabled) { cursor: not-allowed; opacity: .5; box-shadow: none; }
+.client-sla-page .sla-label :is(select,input,textarea) { transition: border-color 180ms ease, box-shadow 180ms ease; }
+.client-sla-page .sla-label :is(select,input,textarea):focus { border-color: #61b99d; box-shadow: 0 0 0 3px #159c7c0d; }
+.client-sla-page .sla-files > div, .client-sla-page .sla-error { animation: sla-enter 220ms ease both; }
+@keyframes sla-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 1050px) { .client-sla-page .sla-date-range { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .client-sla-page *, .client-sla-page *::before, .client-sla-page *::after { animation: none !important; transition: none !important; } }

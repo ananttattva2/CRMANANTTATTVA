@@ -1,3 +1,6 @@
+const Lead = require('../models/Lead');
+const PendingApproval = require('../models/PendingApproval');
+const { serviceId } = require('./onboardingAssignmentIdentity');
 const mongoose = require('mongoose');
 const Client = require('../models/Client');
 const ClientOnboardingReminder = require('../models/ClientOnboardingReminder');
@@ -125,6 +128,18 @@ async function registerStaffOnboardingAssignments({ lead, manager, now = new Dat
   return { registered };
 }
 
+async function assignmentReviewState(record) {
+  if (!mongoose.isValidObjectId(record.leadKey)) return null;
+  const lead = await Lead.findById(record.leadKey).select('assignments.assignedServiceId assignments.serviceAssignmentId serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId').lean();
+  const selected = serviceId(lead?.assignments?.[record.rowIndex]) || serviceId(lead?.serviceSelections?.[record.rowIndex]);
+  const clients = await Client.find({ selectedLead: record.leadKey }).select('_id assignedServiceId data.selectedLeadSnapshot.assignedServiceId adminControls.approvalStatus').lean();
+  const relevant = clients.filter(client => selected ? serviceId(client) === selected : lead?.assignments?.length === 1 && clients.length === 1);
+  if (!relevant.length) return null;
+  if (relevant.every(client => client.adminControls?.approvalStatus === 'APPROVED')) return 'APPROVED';
+  const pending = await PendingApproval.exists({ type: 'client', sourceClientId: { $in: relevant.map(client => String(client._id)) }, approvalStatus: 'PENDING' });
+  return pending ? 'PENDING' : null;
+}
+
 async function onboardingCompleted(record) {
   return ClientOnboardingReminder.exists({
     sourceLeadId: record.leadKey,
@@ -165,6 +180,8 @@ async function syncStaffOnboardingCpcbStatus({ leadKey, staffId, registered, now
 }
 
 async function sendWorkflowEmail(record, stage) {
+  const current = await StaffOnboardingAssignment.findById(record._id).select('status').lean();
+  if (current?.status !== 'ACTIVE' || await assignmentReviewState(record)) return false;
   const redFlag = stage === 'RED_FLAG';
   const subject = redFlag
     ? `RED FLAG: ${record.company} client onboarding is incomplete`
@@ -187,12 +204,26 @@ async function sendWorkflowEmail(record, stage) {
     audience: [record.staffId, ...(redFlag && record.managerId ? [record.managerId] : [])],
     metadata: { leadKey: record.leadKey, rowIndex: record.rowIndex, company: record.company }
   });
+  return true;
 }
 
 async function runStaffOnboardingWorkflow(now = new Date()) {
-  const due = await StaffOnboardingAssignment.find({ status: 'ACTIVE', nextActionAt: { $lte: now } });
+  const due = await StaffOnboardingAssignment.find({ status: { $in: ['ACTIVE', 'RED_FLAG', 'PENDING_COMPLIANCE'] }, nextActionAt: { $lte: now } });
   let completed = 0; let reminded = 0; let redFlagged = 0;
   for (const record of due) {
+    const reviewState = await assignmentReviewState(record);
+    if (reviewState === 'APPROVED') {
+      await StaffOnboardingAssignment.updateOne({ _id: record._id }, { $set: { status: 'COMPLETED', completedAt: now }, $unset: { redFlaggedAt: 1, pausedAt: 1, pausedRemainingMs: 1, pausedFromStatus: 1, emailError: 1 } });
+      completed += 1;
+      continue;
+    }
+    if (reviewState === 'PENDING') {
+      if (record.status !== 'PENDING_COMPLIANCE') {
+        await StaffOnboardingAssignment.updateOne({ _id: record._id, status: record.status }, { $set: { status: 'PENDING_COMPLIANCE', pausedAt: now, pausedFromStatus: record.status, pausedRemainingMs: Math.max(0, new Date(record.nextActionAt).getTime() - now.getTime()) } });
+      }
+      continue;
+    }
+    if (record.status !== 'ACTIVE') continue;
     if (await readCpcbPortalRegistration(record) === false) {
       record.status = 'CPCB_NOT_REGISTERED';
       record.lastReminderAt = undefined;
@@ -208,7 +239,8 @@ async function runStaffOnboardingWorkflow(now = new Date()) {
       continue;
     }
     if (record.reminderCount < 2) {
-      await sendWorkflowEmail(record, 'REMINDER').catch((error) => { record.emailError = error.message; });
+      const sent = await sendWorkflowEmail(record, 'REMINDER').catch((error) => { record.emailError = error.message; });
+      if (sent === false) continue;
       record.reminderCount += 1;
       record.lastReminderAt = now;
       record.nextActionAt = new Date(now.getTime() + REMINDER_GAP_MS);
@@ -216,7 +248,8 @@ async function runStaffOnboardingWorkflow(now = new Date()) {
       reminded += 1;
       continue;
     }
-    await sendWorkflowEmail(record, 'RED_FLAG').catch((error) => { record.emailError = error.message; });
+    const sent = await sendWorkflowEmail(record, 'RED_FLAG').catch((error) => { record.emailError = error.message; });
+    if (sent === false) continue;
     record.status = 'RED_FLAG';
     record.redFlaggedAt = now;
     await record.save();
@@ -235,6 +268,7 @@ function startStaffOnboardingWorkflowScheduler() {
 }
 
 module.exports = {
+  assignmentReviewState,
   ONBOARDING_LIMIT_MS,
   REMINDER_GAP_MS,
   assignmentEmailHtml,

@@ -7,12 +7,17 @@ const { PURCHASE_CHECKLIST_PARTICULARS, defaultChecklist, purchaseReadiness, cal
 const { safeName, sha256, validateFile, decodeEmail, uploadBuffer, deleteStored, publicEmailData } = require('../services/purchaseEmailProofService');
 const { logActivity } = require('../services/activityLogService');
 const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
+const { userHasAnyRole } = require('../utils/userRoles');
 
 function normalizedRole(user) { return String(user?.role || '').toLowerCase().replace(/[\s_-]+/g, ''); }
 function canEdit(user) { const role = normalizedRole(user); return ['admin', 'superadmin'].includes(role) || (role !== 'manager' && !role.includes('compliance')); }
 function validYear(value) { return /^20\d{2}-\d{2}$/.test(String(value || '').trim()); }
-async function findClient(value, user) {
+async function findClient(value, user, reviewRead = false) {
   if (!mongoose.Types.ObjectId.isValid(value)) return null;
+  if (reviewRead) {
+    const scope = userHasAnyRole(user, ['admin', 'superadmin', 'compliance']) ? {} : await require('./clientController').clientAccessFilter(user);
+    return Client.findOne({ $and: [{ _id: value }, scope] });
+  }
   const visibility = ownerFilter(await getVisibleUserScope(user), 'createdBy', 'adminControls.assignedTo', [
     'data.importMeta.assignedTo', 'data.importMeta.user', 'data.importMeta.userName',
     'data.importMeta.createdBy', 'data.importMeta.createdByEmail'
@@ -74,16 +79,16 @@ exports.uploadEmailProof = async (req, res) => {
   }
 };
 
-async function loadProof(req, res) {
+async function loadProof(req, res, reviewRead = false) {
   if (!mongoose.Types.ObjectId.isValid(req.params.proofId)) { res.status(404).json({ error: 'Proof not found.' }); return null; }
   const proof = await PurchaseProof.findById(req.params.proofId);
-  if (!proof || !await findClient(proof.clientId, req.user)) { res.status(404).json({ error: 'Proof not found or not accessible.' }); return null; }
+  if (!proof || !await findClient(proof.clientId, req.user, reviewRead)) { res.status(404).json({ error: 'Proof not found or not accessible.' }); return null; }
   return proof;
 }
-exports.getProof = async (req, res) => { const proof = await loadProof(req, res); if (!proof) return; await audit(req, 'PURCHASE_EMAIL_PROOF_PREVIEWED', proof); return res.json({ success: true, proof: proofReference(proof) }); };
+exports.getProof = async (req, res) => { const proof = await loadProof(req, res, true); if (!proof) return; await audit(req, 'PURCHASE_EMAIL_PROOF_PREVIEWED', proof); return res.json({ success: true, proof: proofReference(proof) }); };
 async function streamStored(req, res, proof, stored, name, action) { const response = await fetch(stored.storageUrl); if (!response.ok) return res.status(502).json({ error: 'Stored file is temporarily unavailable.' }); const buffer = Buffer.from(await response.arrayBuffer()); res.set({ 'Content-Type': response.headers.get('content-type') || 'application/octet-stream', 'Content-Length': String(buffer.length), 'Content-Disposition': `attachment; filename="${safeName(name).replace(/"/g, '')}"`, 'Cache-Control': 'private, no-store' }); await audit(req, action, proof); return res.send(buffer); }
-exports.downloadProof = async (req, res) => { const proof = await loadProof(req, res); if (!proof) return; return streamStored(req, res, proof, proof, proof.name, 'PURCHASE_EMAIL_PROOF_DOWNLOADED'); };
-exports.downloadAttachment = async (req, res) => { const proof = await loadProof(req, res); if (!proof) return; const attachment = (proof.attachments || []).find((item) => item.attachmentId === req.params.attachmentId); if (!attachment) return res.status(404).json({ error: 'Attachment not found.' }); return streamStored(req, res, proof, attachment, attachment.fileName, 'PURCHASE_EMAIL_ATTACHMENT_DOWNLOADED'); };
+exports.downloadProof = async (req, res) => { const proof = await loadProof(req, res, true); if (!proof) return; return streamStored(req, res, proof, proof, proof.name, 'PURCHASE_EMAIL_PROOF_DOWNLOADED'); };
+exports.downloadAttachment = async (req, res) => { const proof = await loadProof(req, res, true); if (!proof) return; const attachment = (proof.attachments || []).find((item) => item.attachmentId === req.params.attachmentId); if (!attachment) return res.status(404).json({ error: 'Attachment not found.' }); return streamStored(req, res, proof, attachment, attachment.fileName, 'PURCHASE_EMAIL_ATTACHMENT_DOWNLOADED'); };
 exports.deleteProof = async (req, res) => {
   const proof = await loadProof(req, res); if (!proof) return;
   const role = normalizedRole(req.user); if (!(String(proof.uploadedBy) === String(req.user._id) || ['admin', 'superadmin'].includes(role))) return res.status(403).json({ error: 'Only the uploader or an administrator can remove this proof.' });

@@ -160,7 +160,7 @@ test('quantity inside tolerance is matched', () => { const summary = reconcilePu
 test('short upload becomes a warning issue', () => { const summary = reconcilePurchaseRows(parsed([baseRow()], 'base').acceptedRows, parsed([portalRow({ 'Total Plastic Qty (Tons)': 9 })], 'portal').acceptedRows); assert.equal(summary.totals.result, 'Short Upload'); assert.equal(summary.warningIssueCount, 1); });
 test('GST difference is detected even when quantity matches', () => { const summary = reconcilePurchaseRows(parsed([baseRow()], 'base').acceptedRows, parsed([portalRow({ 'GST Paid': 1700 })], 'portal').acceptedRows); assert.equal(summary.totals.result, 'GST Mismatch'); });
 test('normal path is not ready until tracker, proof and both imports exist', () => { const value = { checklist: defaultChecklist() }; assert.equal(purchaseReadiness(value).ready, false); assert.match(purchaseReadiness(value).errors.join(' '), /Upload Complete/); });
-test('Nil Upload path requires only Client Approval on data', () => { const checklist = defaultChecklist().map((row) => row.particular === 'Nil Upload' ? { ...row, yesNo: 'Yes' } : row); const readiness = purchaseReadiness({ checklist }); assert.equal(readiness.ready, false); assert.equal(readiness.nilUpload, true); assert.deepEqual(readiness.errors, ['Client Approval on data: status must be Yes.', 'Client Approval on data: date is required.', 'Client Approval on data: proof is required.']); });
+test('Nil Upload path requires only Client Approval on data', () => { const checklist = defaultChecklist().map((row) => row.particular === 'Nil Upload' ? { ...row, yesNo: 'Yes' } : row); const readiness = purchaseReadiness({ checklist }); assert.equal(readiness.ready, false); assert.equal(readiness.nilUpload, true); assert.deepEqual(readiness.errors, ['Client Approval on data: status must be Yes.']); });
 test('approved Nil Upload bypasses other tracker rows, evidence and both Excel files', () => { const checklist = defaultChecklist().map((row) => row.particular === 'Nil Upload' ? { ...row, yesNo: 'Yes' } : row.particular === 'Client Approval on data' ? { ...row, yesNo: 'Yes', date: '2025-04-10', files: [{ url: 'https://x.test/proof.pdf' }] } : row); assert.equal(purchaseReadiness({ checklist }).ready, true); });
 test('fully approved status wins over upload status', () => assert.equal(calculatePurchaseStatus({ complianceVerificationStatus: 'Approved' }), 'Fully Approved'));
 test('routes expose import, reconciliation and two-level approvals behind authentication', () => {
@@ -173,9 +173,9 @@ test('the second valid Excel import automatically submits once and emails the as
   const notifications = fs.readFileSync(path.resolve(__dirname, '../src/services/purchaseDataNotifications.js'), 'utf8');
   const workspace = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/PurchaseDataWorkspace.jsx'), 'utf8');
   assert.match(controller, /function hasBothExcelImports\(purchase\)/);
-  assert.match(controller, /hasBothExcelImports\(purchase\) && readiness\.ready/);
+  assert.match(controller, /if \(hasBothExcelImports\(purchase\)\)/);
   assert.match(controller, /submitForManagerApproval\(\{ purchase, client, user: req\.user/);
-  assert.match(controller, /preventDuplicate: duplicate/);
+  assert.match(controller, /preventDuplicate: true/);
   assert.match(controller, /managerEmailSent/);
   assert.match(notifications, /Promise\.allSettled\(emailRecipients/);
   assert.match(workspace, /Sent to Manager for approval and email notification delivered/);
@@ -190,8 +190,9 @@ test('frontend mounts Purchase Data inside Data Compliance and exposes all reque
 test('mandatory status displays date and drag-drop proof validation', () => {
   const workspace = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/PurchaseDataWorkspace.jsx'), 'utf8');
   const dropzone = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/PurchaseProofDropzone.jsx'), 'utf8');
-  assert.match(workspace, /REQUIRED_NORMAL_ROWS\.has\(row\.particular\)/);
-  assert.match(workspace, /Yes, date and supporting proof are mandatory\./);
+  const checklist = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/SalesUploadChecklist.jsx'), 'utf8');
+  assert.match(workspace, /<SalesUploadChecklist/);
+  assert.match(checklist, /Date and supporting proof are required\./);
   assert.match(dropzone, /onDrop=/);
   assert.match(dropzone, /window\.addEventListener\('drop', preventFileNavigation\)/);
   assert.match(dropzone, /event\.stopPropagation\(\)/);
@@ -207,3 +208,14 @@ test('Outlook MSG proof opens a safe decoded mail viewer with attachments', () =
   assert.match(viewer, /Clean text view/);
   assert.doesNotMatch(viewer, /dangerouslySetInnerHTML/);
 });
+
+ test('checkbox values survive normalization and are cleared when a stage is No', () => {
+   const rows = defaultChecklist([{ particular: 'Received from client', yesNo: 'Yes', partialDataReceived: true, completeDataReceived: true }, { particular: 'Ready to upload', yesNo: 'No', partialDataReceived: true }]);
+   assert.equal(rows.find(row => row.particular === 'Received from client').partialDataReceived, true);
+   assert.equal(rows.find(row => row.particular === 'Received from client').completeDataReceived, true);
+   assert.equal(rows.find(row => row.particular === 'Ready to upload').partialDataReceived, false);
+ });
+ test('Nil Upload approval only needs Yes without date or proof', () => {
+   const checklist = defaultChecklist([{ particular: 'Nil Upload', yesNo: 'Yes' }, { particular: 'Client Approval on data', yesNo: 'Yes' }]);
+   assert.equal(purchaseReadiness({ checklist }).ready, true);
+ });
