@@ -979,7 +979,7 @@ export default function LeadGeneration() {
   function startAddServicesMode() {
     if (!selectedSearchLead) return;
     const rows = normalizeLegacyServiceSelections(selectedSearchLead);
-    setLead({ ...emptyLead, ...selectedSearchLead, leadCode: displayLeadId(selectedSearchLead) === '-' ? nextVisibleLeadCode(allCcpLeads) : selectedSearchLead.leadCode, serviceSelections: rows.map((row, index) => ({ ...row, firstAnnualReturnYearApplicable: row.firstAnnualReturnYearApplicable || (index === 0 ? selectedSearchLead.firstAnnualReturnYearApplicable : '') })), addresses: Array.isArray(selectedSearchLead.addresses) && selectedSearchLead.addresses.length ? selectedSearchLead.addresses : [createAddressRow(selectedSearchLead)] });
+    setLead({ ...emptyLead, ...selectedSearchLead, leadCode: displayLeadId(selectedSearchLead) === '-' ? nextVisibleLeadCode(allCcpLeads) : selectedSearchLead.leadCode, serviceSelections: [...rows.map((row, index) => ({ ...row, firstAnnualReturnYearApplicable: row.firstAnnualReturnYearApplicable || (index === 0 ? selectedSearchLead.firstAnnualReturnYearApplicable : '') })), createServiceSelection()], addresses: Array.isArray(selectedSearchLead.addresses) && selectedSearchLead.addresses.length ? selectedSearchLead.addresses : [createAddressRow(selectedSearchLead)] });
     setEditingLeadId(leadRecordId(selectedSearchLead));
     setRoyaltyClaimed(false);
     setRoyaltyClaiming(false);
@@ -1918,6 +1918,9 @@ export default function LeadGeneration() {
   }
 
   function validateLeadForSubmit(workflowStatus) {
+    if (serviceOnlyMode && serviceRows.length <= frozenServiceRowCount) {
+      return 'Add at least one new service using Add Service before saving or submitting this lead.';
+    }
     const required = workflowStatus === 'submitted' ? ['status', 'company', 'servicesOffered', 'addressLine1', 'state', 'city', 'pinCode'] : [];
     const missing = required.find((field) => !String(lead[field] ?? '').trim());
     if (missing) return `${missing.replace(/([A-Z])/g, ' $1')} is required before submit.`;
@@ -2051,7 +2054,14 @@ export default function LeadGeneration() {
           : '';
       setHealthPromptOpen(false);
       setIntroductionConsent(false);
+      setServiceOnlyMode(false);
+      setFrozenServiceRowCount(0);
+      setFrozenAddressRowCount(0);
+      setFrozenContactRowCount(0);
+      setFrozenAssignmentRowCount(0);
       if (openHealthReport) {
+        setLead(savedLead);
+        setEditingLeadId(leadRecordId(savedLead));
         setHealthReportLead(savedLead);
         setHealthReport(reportToDraft(savedLead.complianceHealthReport));
         setHealthReportError('');
@@ -2063,11 +2073,11 @@ export default function LeadGeneration() {
       const successMessage = workflowStatus === 'submitted' ? `Lead submitted successfully.${introductionMessage}` : 'Lead draft saved successfully.';
       setNotice(successMessage);
       showToast(introductionFailed ? introductionMessage.trim() : successMessage, introductionFailed ? 'error' : 'success');
-      if (workflowStatus === 'submitted') { setLead(emptyLead); formStartedAtRef.current = ''; }
+      if (workflowStatus === 'submitted' || serviceOnlyMode) { setLead(emptyLead); formStartedAtRef.current = ''; }
       setEditingLeadId('');
       setActiveTab('basic');
       await loadPage();
-      if (workflowStatus === 'submitted') setViewMode('list');
+      if (workflowStatus === 'submitted' || serviceOnlyMode) setViewMode('list');
       return savedLead;
     } catch (err) {
       setError(err?.response?.data?.error || 'Unable to save lead');
