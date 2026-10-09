@@ -211,6 +211,7 @@ function ClientDirectoryView({ clients, pagination, summary, staff, loading, err
         'Client Status': data.importMeta?.clientStatus || item.workflowStatus || '',
         'Visibility Status': getVisibilityStatus(item),
         'PO Close': companyPoClosed(item) ? 'Yes' : 'No',
+        'Lead Close': companyPoClosed(item) ? 'Yes' : 'No',
         'Created By': data.importMeta?.createdBy || '',
         'Creation Date': data.importMeta?.creationDate || item.createdAt || '',
         'Assigned To': getAssignedName(item, staff).replace(/^-$/, ''),
@@ -285,6 +286,7 @@ function ClientDirectoryView({ clients, pagination, summary, staff, loading, err
         'Client Name': data.basic?.clientLegalName || item.selectedLead?.company || '',
         'Lead Number': data.importMeta?.leadNumber || item.selectedLead?.leadCode || '',
         'Company PO Close': companyPoClosed(item) ? 'Yes' : 'No',
+        'Company Lead Close': companyPoClosed(item) ? 'Yes' : 'No',
         'Lead Owner': clientLeadOwner(item, staff).replace(/^-$/, ''),
         'Service No': service.index,
         'Service ID': service.id,
@@ -293,6 +295,7 @@ function ClientDirectoryView({ clients, pagination, summary, staff, loading, err
         'Service Category': service.category,
         'Services Offered': service.name,
         'PO Close': service.closed ? 'Yes' : 'No',
+        'Lead Close': service.closed ? 'Yes' : 'No',
         'PO Received': service.received ? 'Yes' : 'No'
       };
     });
