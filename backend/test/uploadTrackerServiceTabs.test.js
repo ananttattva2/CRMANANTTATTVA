@@ -68,17 +68,16 @@ test('tracker follows Service Summary representative and prevents annual/registr
 });
 
 
-test('AR tracker counts agree with Service Summary for mixed and unclosed category records', async () => {
-  const {buildApplicationPortfolio, applicationSummaryRecords, matchesApplicationService} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+test('Service Summary requires received current-FY PO for Annual Return while retaining recorded registration', async () => {
+  const {buildApplicationPortfolio, applicationServiceSummaryRecords, matchesServiceSummary} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const registration=client('registration','New Registration'), annual=client('annual','Annual Return Filling'), owner=client('owner','Annual Return'), open=client('open','Annual Return');
   registration.data.basic.piboCategory=annual.data.basic.piboCategory='Producer';
   owner.data.basic.piboCategory='Brand Owner';open.data.basic.piboCategory='Importer';open.selectedLead.status='Open';
   const rows=[registration,annual,owner,open];
-  const summary=applicationSummaryRecords(buildApplicationPortfolio(rows,[user])[0]);
-  for (const [serviceType,label] of [['annual','Annual Return Filling'],['registration','New Registration']]) {
-    const tracker=buildUploadTracker(rows,[user],[],[],{groupBy:'application',serviceType});
-    assert.equal(tracker[0].clients.length,summary.filter(row=>matchesApplicationService(row,label)).length);
-  }
+  const summary=applicationServiceSummaryRecords(buildApplicationPortfolio(rows,[user])[0]);
+  assert.equal(summary.filter(row=>matchesServiceSummary(row,'Annual Return Filling',new Date('2026-10-09T12:00:00+05:30'))).length,0);
+  const registrationTracker=buildUploadTracker(rows,[user],[],[],{groupBy:'application',serviceType:'registration'});
+  assert.equal(registrationTracker[0].clients.length,summary.filter(row=>matchesServiceSummary(row,'New Registration',new Date('2026-10-09T12:00:00+05:30'))).length);
 });
 
 

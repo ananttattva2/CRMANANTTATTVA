@@ -27,9 +27,11 @@ export function applicationServiceSummaryRecords(group) {
   const records = group.records.flatMap(record => {
     const byService = new Map()
     for (const service of record.services) {
-      for (const offered of service.offeredServices.length ? service.offeredServices : ['unclassified']) {
+      // Blank service placeholders are not applications and must not create a
+      // synthetic "Not recorded" service/status row.
+      for (const offered of service.offeredServices) {
         if (!byService.has(offered)) byService.set(offered, [])
-        byService.get(offered).push({ ...service, offeredServices: offered === 'unclassified' ? [] : [offered], offered: offered === 'unclassified' ? 'Not recorded' : offered })
+        byService.get(offered).push({ ...service, offeredServices: [offered], offered })
       }
     }
     return [...byService].map(([offered, services]) => ({
@@ -95,7 +97,7 @@ export function cpcbStatusBucket(value) {
   return 'notStarted'
 }
 export function companyStatusRecord(rows) {
-  const services = rows.map(row => applicationRecord(row.client))
+  const services = rows.map(row => row?.client ? applicationRecord(row.client) : row).filter(Boolean)
   const first = services.find(row => row.cpcb !== 'Not recorded') || services[0]
   const buckets = services.map(row => row.bucket)
   const bucket = ['rejected', 'underReview', 'applied', 'notStarted', 'approved'].find(status => buckets.includes(status))
@@ -126,11 +128,21 @@ export function applicationRecord(client) {
   const assignments = lead.assignments || []
   const assignment = assignments.find(item => String(item.assignedServiceId || item.serviceAssignmentId || '') === String(client.assignedServiceId || '')) || (assignments.length === 1 ? assignments[0] : {})
   const closed = Boolean(assignment.closedAt || assignment.closedBy || assignment.closedByText || assignment.permanentClosedAt || (services.length === 1 && (lead.closedAt || lead.closedBy)) || String(lead.status || '').toLowerCase() === 'closed')
-  const offered = service.servicesOffered ?? basic.servicesOffered ?? data.selectedLeadSnapshot?.servicesOffered ?? []
+  const hasMatchedLeadService = Boolean(Object.keys(service).length)
+  // A matched lead service is authoritative, including when its service name
+  // is blank. Falling back to Client Master in that case can copy a sibling
+  // service (for example New Registration) into an Annual Return assignment.
+  const offered = hasMatchedLeadService
+    ? (service.servicesOffered ?? service.applicableService ?? [])
+    : (basic.servicesOffered ?? basic.applicableService ?? data.selectedLeadSnapshot?.servicesOffered ?? data.selectedLeadSnapshot?.applicableService ?? [])
   const annual = isAnnualReturnService(offered)
   const annualWorkflowReady = Boolean(assignment.assignedTo || assignment.assignedToText || assignment.assignedToEmail)
     && Boolean(assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail)
-  const currentPoRows = annual && String(assignment.poStatus || '').toLowerCase() === 'received' ? [...(assignment.poYearRows || []), ...(assignment.originalPoDetails ? [assignment.originalPoDetails] : [])]
+  const poRows = [...(assignment.poYearRows || []), ...(assignment.originalPoDetails ? [assignment.originalPoDetails] : [])]
+  const hasPoEvidence = po => [po.poNumber, po.poNo, po.poDate, po.poReceivedDate, po.poFileName, po.fileName, po.poFileUrl]
+    .some(value => Boolean(String(value || '').trim()))
+  const poReceived = String(assignment.poStatus || '').toLowerCase() === 'received' || poRows.some(hasPoEvidence)
+  const currentPoRows = annual && poReceived ? poRows
     .filter(po => String(po.poFinancialYear || '').trim() === financialYearForDate())
     .filter(po => !po.services?.length || isAnnualReturnService(po.services))
     : []
@@ -149,6 +161,10 @@ export function applicationRecord(client) {
 // Placeholders and blank drafts do not represent another application when
 // this lead already has a submitted master for the same applicant/unit/service.
 export function effectiveApplicationServices(services) {
+  // Dashboard counts represent saved, non-draft applications with an actual
+  // service. Draft Client Masters and blank assignment shells remain editable
+  // elsewhere but never contribute to portfolio totals or drill-downs.
+  services = services.filter(service => normalize(service.clientStatus) !== 'draft' && service.offeredServices?.length)
   const signature = service => [service.leadId, service.category, service.unit, service.industry, service.eprCategory, [...service.offeredServices].sort().join('|')].map(normalize).join(':')
   const sameDraftApplication = (draft, submitted) => {
     // A unitless draft without an offered service is an unfinished applicant
@@ -216,7 +232,14 @@ export function buildApplicationPortfolio(assignments, users) {
       record.bucket = buckets.length === 1 ? buckets[0] : 'mixed'
       record.cpcb = buckets.length === 1 ? record.services[0].cpcb : 'Mixed status — view individual services'
     }
-    return { ...group, records: [...records.values()], companyRecords: group.rows.map(company => companyStatusRecord(company.serviceRows || [company])), closedCompanies: group.rows.map(company => (company.serviceRows || [company]).filter(row => applicationRecord(row.client).closed)).filter(rows => rows.length).map(companyStatusRecord) }
+    const companyServices = new Map()
+    assignedServices.forEach(service => {
+      if (!companyServices.has(service.companyKey)) companyServices.set(service.companyKey, [])
+      companyServices.get(service.companyKey).push(service)
+    })
+    const companyRecords = [...companyServices.values()].map(companyStatusRecord)
+    const closedCompanies = [...companyServices.values()].map(rows => rows.filter(row => row.closed)).filter(rows => rows.length).map(companyStatusRecord)
+    return { ...group, records: [...records.values()], companyRecords, closedCompanies }
   }).filter(group => group.records.length)
 }
 
@@ -230,7 +253,10 @@ export function matchesPortfolioSearch(row, query) {
 
 export function isAnnualReturnService(value) {
   return (Array.isArray(value) ? value : [value]).some(service => {
-    const normalized = String(service || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+    const label = service && typeof service === 'object'
+      ? service.name || service.label || service.servicesOffered || service.applicableService || service.service || ''
+      : service
+    const normalized = String(label || '').toLowerCase().replace(/[^a-z0-9]/g, '')
     return /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalized)
   })
 }
@@ -249,7 +275,12 @@ export function annualReturnYearForDate(date = new Date()) {
 
 
 export function canonicalOfferedServices(value) {
-  return [...new Set((Array.isArray(value) ? value : [value]).flatMap(item => String(item || '').split(/[,;\n]/)).map(item => item.trim()).filter(Boolean).map(service => isAnnualReturnService(service) ? 'Annual Return Filling' : service))]
+  return [...new Set((Array.isArray(value) ? value : [value]).flatMap(item => {
+    const label = item && typeof item === 'object'
+      ? item.name || item.label || item.servicesOffered || item.applicableService || item.service || ''
+      : item
+    return String(label || '').split(/[,;\n]/)
+  }).map(item => item.trim()).filter(Boolean).map(service => isAnnualReturnService(service) ? 'Annual Return Filling' : service))]
 }
 
 export function offeredServiceColumns(groups) {

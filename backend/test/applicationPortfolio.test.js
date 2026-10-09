@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const users = [{ _id: 'sonal', name: 'Sonal', role: 'operation' }, { _id: 'krishna', name: 'Krishna', role: 'operation' }];
-const client = (id, owner, category, status = '') => ({ _id: id, selectedLead: { company: '20 MICRONS LIMITED', assignedStaff: owner, assignments: [{ poApprovalStatus:'APPROVED',assignedTo:'manager',assignedStaff:owner }] }, data: { basic: { piboCategory: category }, cpcb: { status }, importMeta: { visibilityStatus: 'LIVE' } } });
+const client = (id, owner, category, status = '') => ({ _id: id, selectedLead: { company: '20 MICRONS LIMITED', assignedStaff: owner, assignments: [{ poApprovalStatus:'APPROVED',assignedTo:'manager',assignedStaff:owner }] }, data: { basic: { piboCategory: category, servicesOffered: 'Consulting' }, cpcb: { status }, importMeta: { visibilityStatus: 'LIVE' } } });
 
 test('SPOC distribution deduplicates a company category, retains distinct categories and never merges staff', async () => {
   const { buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
@@ -298,4 +298,56 @@ test('current-FY approved annual applications count once in their earliest annua
   }
   result=applicationSummaryRecords(buildApplicationPortfolio([make('wrong-fy','Approved',[{poFinancialYear:'2025-26',annualReturnYear:'2025-26'}])],users)[0])[0];
   assert.equal(result.annual,false);assert.deepEqual(result.annualYears,[]);
+});
+
+test('portfolio excludes every draft and every service-not-recorded row', async () => {
+  const { buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const submitted = client('submitted', 'sonal', 'Importer', 'Approved');
+  submitted.workflowStatus = 'submitted';
+  submitted.data.basic.servicesOffered = 'Annual Return Filling';
+  const draft = client('draft', 'sonal', 'Producer (Small & Micro)', 'Approved');
+  draft.workflowStatus = 'draft';
+  draft.data.basic.servicesOffered = 'New Registration';
+  const blank = client('blank', 'sonal', 'Importer', 'Not Started');
+  blank.workflowStatus = 'submitted';
+  blank.data.basic.servicesOffered = '';
+  const [group] = buildApplicationPortfolio([submitted, draft, blank], users);
+  assert.deepEqual(group.records.map(row => row.id), ['submitted']);
+  assert.deepEqual(group.companyRecords.map(row => row.id), ['submitted']);
+});
+
+test('matched blank service never inherits stale New Registration from Client Master', async () => {
+  const { applicationRecord, buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const row = client('annual', 'sonal', 'Importer', 'Approved');
+  row.workflowStatus = 'submitted';
+  row.assignedServiceId = 'annual';
+  row.data.basic.servicesOffered = 'New Registration';
+  row.selectedLead.serviceSelections = [{ assignedServiceId: 'annual', subApplicantType: 'Importer', servicesOffered: '' }];
+  row.selectedLead.assignments = [{ assignedServiceId: 'annual', assignedTo: 'manager', assignedStaff: 'sonal', closedAt: '2026-10-01' }];
+  assert.deepEqual(applicationRecord(row).offeredServices, []);
+  assert.equal(buildApplicationPortfolio([row], users).length, 0);
+});
+
+test('Annual Return PO service objects qualify for all users and applicant types without creating New Registration', async () => {
+  const { buildApplicationPortfolio, applicationSummaryRecords, matchesApplicationService } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const makeAnnual = (id, owner, category) => {
+    const row = client(id, owner, category, 'Approved');
+    row.workflowStatus = 'submitted';
+    row.assignedServiceId = id;
+    row.selectedLead.company = `${category} Client`;
+    row.selectedLead.serviceSelections = [{ assignedServiceId: id, subApplicantType: category, servicesOffered: 'Annual Return Filling' }];
+    row.selectedLead.assignments = [{ assignedServiceId: id, assignedTo: 'manager', assignedStaff: owner, closedAt: '2026-10-01', poStatus: 'received', poYearRows: [{ poFinancialYear: '2026-27', annualReturnYear: '2025-26', services: [{ name: 'Annual Return Filling' }] }] }];
+    return row;
+  };
+  const groups = buildApplicationPortfolio([
+    makeAnnual('small', 'sonal', 'Producer (Small & Micro)'),
+    makeAnnual('importer', 'krishna', 'Importer')
+  ], users);
+  assert.equal(groups.length, 2);
+  for (const group of groups) {
+    const rows = applicationSummaryRecords(group);
+    assert.equal(rows.filter(row => matchesApplicationService(row, 'Annual Return Filling')).length, 1);
+    assert.equal(rows.filter(row => matchesApplicationService(row, 'New Registration')).length, 0);
+    assert.equal(rows[0].annualCurrentFyPo, true);
+  }
 });

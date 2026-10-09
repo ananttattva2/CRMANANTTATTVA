@@ -43,17 +43,17 @@ test('NUVIASHOP registration master retains annual sibling action in an exclusiv
  assert.equal(matchesStatusSummary(approved,'annual:2025-26'),true);
  assert.equal(matchesStatusSummary(approved,'annualActionRequired'),false);
 });
-test('ASIA incomplete approved importer draft yields to submitted importer with a different industry',async()=>{
+test('ASIA draft is excluded regardless of whether another submitted application matches it',async()=>{
  const {effectiveApplicationServices}=await import('../../frontend/src/utils/applicationPortfolio.mjs');
  const importer={id:'importer',leadId:'asia',category:'Importer',unit:'Unit 1',industry:'Packaging Manufacture',eprCategory:'EPR - Plastic Waste',offeredServices:['Annual Return Filling'],clientStatus:'submitted',cpcb:'Approved'};
  const draft={...importer,id:'draft',unit:'',industry:'Manufacturing',offeredServices:[],clientStatus:'draft'};
  const producer={...importer,id:'producer',category:'Producer'};
  assert.deepEqual(effectiveApplicationServices([draft,producer,importer]).map(row=>row.id),['producer','importer']);
- assert.equal(effectiveApplicationServices([draft,producer]).length,2);
- assert.equal(effectiveApplicationServices([draft,{...importer,leadId:'other'}]).length,2);
- assert.equal(effectiveApplicationServices([{...draft,unit:'Unit 2'},importer]).length,2);
- assert.equal(effectiveApplicationServices([{...draft,offeredServices:['New Registration']},importer]).length,2);
- assert.equal(effectiveApplicationServices([{...draft,cpcb:'Under Review'},importer]).length,2);
+ assert.equal(effectiveApplicationServices([draft,producer]).length,1);
+ assert.equal(effectiveApplicationServices([draft,{...importer,leadId:'other'}]).length,1);
+ assert.equal(effectiveApplicationServices([{...draft,unit:'Unit 2'},importer]).length,1);
+ assert.equal(effectiveApplicationServices([{...draft,offeredServices:['New Registration']},importer]).length,1);
+ assert.equal(effectiveApplicationServices([{...draft,cpcb:'Under Review'},importer]).length,1);
 });
 test('matching annual assignment placeholder uses one saved Client Master status',async()=>{
  const {effectiveApplicationServices,applicationSummaryRecords,STATUS_COLUMNS}=await import('../../frontend/src/utils/applicationPortfolio.mjs');
@@ -70,7 +70,7 @@ test('matching annual assignment placeholder uses one saved Client Master status
  assert.equal(effectiveApplicationServices([saved,{...placeholder,offeredServices:['New Registration']}]).length,2);
 });
 
-test('blank duplicate drafts use the submitted master across clients without hiding distinct records', async()=>{
+test('drafts never contribute to application counts even when distinct', async()=>{
  const {effectiveApplicationServices,applicationSummaryRecords}=await import('../../frontend/src/utils/applicationPortfolio.mjs');
  for(const name of ['MANGLAM PLASTICS PVT LTD','Another Client']) {
   const master={id:'submitted',name,leadId:'lead',category:'Producer',unit:'Unit 1',industry:'Manufacturing',eprCategory:'Plastic Waste',offeredServices:['Annual Return Filling'],clientStatus:'submitted',cpcb:'Approved',bucket:'approved',closed:true,annualWorkflowReady:true};
@@ -78,10 +78,10 @@ test('blank duplicate drafts use the submitted master across clients without hid
   const services=effectiveApplicationServices([draft,master]);
   assert.equal(services.length,1);
   assert.equal(applicationSummaryRecords({records:[{...master,services}]})[0].bucket,'approved');
-  assert.equal(effectiveApplicationServices([master,{...draft,cpcb:'Under Review',bucket:'underReview'}]).length,2);
-  assert.equal(effectiveApplicationServices([master,{...draft,unit:'Unit 2'}]).length,2);
-  assert.equal(effectiveApplicationServices([master,{...draft,leadId:'another-lead'}]).length,2);
-  assert.equal(effectiveApplicationServices([draft]).length,1);
+  assert.equal(effectiveApplicationServices([master,{...draft,cpcb:'Under Review',bucket:'underReview'}]).length,1);
+  assert.equal(effectiveApplicationServices([master,{...draft,unit:'Unit 2'}]).length,1);
+  assert.equal(effectiveApplicationServices([master,{...draft,leadId:'another-lead'}]).length,1);
+  assert.equal(effectiveApplicationServices([draft]).length,0);
  }
 });
 
