@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { matchesTrackedService, buildUploadTracker } = require('../src/services/clientUploadTracker');
+const { matchesTrackedService, buildUploadTracker, financialYearForDate } = require('../src/services/clientUploadTracker');
 const user = { _id: 'sonal', name: 'Sonal', role: 'operation' };
 function client(id, offered) {
   return { _id: id, assignedServiceId: id, selectedLead: { status: 'Closed', company: 'Example Ltd', assignments: [{ assignedServiceId: id, assignedStaff: user._id, assignedTo:'manager', poApprovalStatus:'APPROVED' }], serviceSelections: [{ assignedServiceId: id, servicesOffered: offered }] }, data: { basic: {} } };
@@ -94,14 +94,24 @@ test('AR allocation requires manager and permanent staff assignment; rejected PO
 test('AR allocation is restricted to the selected Annual Return year', () => {
   const ar2025 = client('ar-2025', 'Annual Return Filling');
   ar2025.selectedLead.company = 'AR 2025 Client';
-  ar2025.selectedLead.serviceSelections[0].firstAnnualReturnYearApplicable = '2025-26';
+  ar2025.data.cpcb = { status: 'Approved' };
+  ar2025.selectedLead.assignments[0].poStatus = 'received';
+  ar2025.selectedLead.assignments[0].poYearRows = [{ poFinancialYear: financialYearForDate(), annualReturnYear: '2025-26', poNumber: 'PO-1' }];
   const ar2026 = client('ar-2026', 'Annual Return Filling');
   ar2026.selectedLead.company = 'AR 2026 Client';
-  ar2026.selectedLead.serviceSelections[0].firstAnnualReturnYearApplicable = '2026-27';
+  ar2026.data.cpcb = { status: 'Approved' };
+  ar2026.selectedLead.assignments[0].poStatus = 'received';
+  ar2026.selectedLead.assignments[0].poYearRows = [{ poFinancialYear: financialYearForDate(), annualReturnYear: '2026-27', poNumber: 'PO-2' }];
   const poYear = client('po-year', 'Annual Return Filling');
   poYear.selectedLead.company = 'PO Annual Year Client';
-  poYear.selectedLead.serviceSelections[0].firstAnnualReturnYearApplicable = '2024-25';
-  poYear.selectedLead.assignments[0].poYearRows = [{ poFinancialYear: '2026-27', annualReturnYear: '2025-26' }];
-  const tracker = buildUploadTracker([ar2025, ar2026, poYear], [user], [], [], { groupBy: 'application', serviceType: 'annual', financialYear: '2025-26' });
+  poYear.data.cpcb = { status: 'Approved' };
+  poYear.selectedLead.assignments[0].poStatus = 'received';
+  poYear.selectedLead.assignments[0].poYearRows = [{ poFinancialYear: financialYearForDate(), annualReturnYear: '2025-26', poNumber: 'PO-3' }];
+  const actionRequired = client('action-required', 'Annual Return Filling');
+  actionRequired.selectedLead.company = 'Action Required Client';
+  actionRequired.data.cpcb = { status: 'Not Started' };
+  actionRequired.selectedLead.assignments[0].poStatus = 'received';
+  actionRequired.selectedLead.assignments[0].poYearRows = [{ poFinancialYear: financialYearForDate(), annualReturnYear: '2025-26', poNumber: 'PO-4' }];
+  const tracker = buildUploadTracker([ar2025, ar2026, poYear, actionRequired], [user], [], [], { groupBy: 'application', serviceType: 'annual', financialYear: '2025-26' });
   assert.deepEqual(tracker[0].clients.map(row => row.clientName).sort(), ['AR 2025 Client', 'PO Annual Year Client']);
 });

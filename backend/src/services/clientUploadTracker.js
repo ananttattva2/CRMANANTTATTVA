@@ -8,6 +8,16 @@ const normalizeYear = value => {
   return match ? `${match[1]}-${match[2].slice(-2)}` : '';
 };
 const yearsFrom = value => (Array.isArray(value) ? value : [value]).flatMap(item => String(item || '').split(/[,;\n]/)).map(normalizeYear).filter(Boolean);
+const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const isAnnualService = value => (Array.isArray(value) ? value : [value]).some(item => /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalize(item?.name || item?.label || item?.service || item)));
+const hasPoEvidence = row => [row?.poNumber, row?.poNo, row?.poDate, row?.poReceivedDate, row?.poFileName, row?.fileName, row?.poFileUrl]
+  .some(value => Boolean(String(value || '').trim()));
+function financialYearForDate(date = new Date()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' }).formatToParts(date).map(part => [part.type, part.value]));
+  const year = Number(parts.year);
+  const start = Number(parts.month) >= 4 ? year : year - 1;
+  return `${start}-${String(start + 1).slice(-2)}`;
+}
 function matchesTrackedService(client, type) {
   const data = client.data || {}, lead = client.selectedLead || {};
   const selected = String(client.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId || '');
@@ -48,17 +58,15 @@ function applicationDescriptor(client) {
   const closed = Boolean(assignment.closedAt || assignment.closedBy || assignment.closedByText || assignment.permanentClosedAt || (selections.length === 1 && (lead.closedAt || lead.closedBy)) || String(lead.status || '').toLowerCase() === 'closed');
   const annualWorkflowReady = Boolean(assignment.assignedTo || assignment.assignedToText || assignment.assignedToEmail)
     && Boolean(assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail);
-  const poAnnualYears = [...(assignment.poYearRows || []), ...(assignment.originalPoDetails ? [assignment.originalPoDetails] : [])]
-    .flatMap(row => yearsFrom(row?.annualReturnYear));
-  const annualReturnYears = [...new Set(poAnnualYears.length ? poAnnualYears : [
-    service.firstAnnualReturnYearApplicable, service.annualReturnYear, service.servicesForYear,
-    assignment.firstAnnualReturnYearApplicable, assignment.annualReturnYear,
-    lead.firstAnnualReturnYearApplicable,
-    data.selectedLeadSnapshot?.firstAnnualReturnYearApplicable, data.selectedLeadSnapshot?.annualReturnYear,
-    basic.firstAnnualReturnYear, basic.firstAnnualReturnYearApplicable,
-    data.firstAnnualReturnYearApplicable, client.firstAnnualReturnYear
-  ].flatMap(yearsFrom))];
-  return { category: canonical, unit: String(service.plantUnit || basic.plantUnit || data.selectedLeadSnapshot?.plantUnit || '').trim(), serviceType, offered: primary, closed, annualWorkflowReady, annualReturnYears };
+  const poRows = [...(assignment.poYearRows || []), ...(assignment.originalPoDetails ? [assignment.originalPoDetails] : [])];
+  const poReceived = normalize(assignment.poStatus) === 'received' || poRows.some(hasPoEvidence);
+  const currentAnnualPoRows = poReceived ? poRows.filter(row => normalizeYear(row?.poFinancialYear) === financialYearForDate())
+    .filter(row => !row?.services?.length || isAnnualService(row.services)) : [];
+  const annualReturnYears = [...new Set(currentAnnualPoRows.flatMap(row => yearsFrom(row?.annualReturnYear)))];
+  const cpcb = data.cpcb?.status || data.cpcb?.approvalStatus || data.cpcb?.applicationStatus || basic.cpcbStatus || data.importMeta?.cpcbStatus;
+  const cpcbApproved = /approved|registered|processed|annualreturnapplicable/.test(normalize(cpcb));
+  const annualQualified = cpcbApproved && currentAnnualPoRows.length > 0;
+  return { category: canonical, unit: String(service.plantUnit || basic.plantUnit || data.selectedLeadSnapshot?.plantUnit || '').trim(), serviceType, offered: primary, closed, annualWorkflowReady, annualReturnYears, annualQualified };
 }
 function buildUploadTracker(clients, users, purchases, sales, options = {}) {
   const identities = new Map();
@@ -106,7 +114,7 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
       const sources = detail.sources.filter(source => source.closed
         && source.serviceType === representative.serviceType
         && (representative.serviceType !== 'annual' || source.annualWorkflowReady)
-        && (representative.serviceType !== 'annual' || !options.financialYear || source.annualReturnYears.includes(options.financialYear)));
+        && (representative.serviceType !== 'annual' || !options.financialYear || source.annualQualified && source.annualReturnYears.includes(options.financialYear)));
       if (!sources.length) return [];
       detail.clientId = representative.clientId;
       detail.category = representative.category;
@@ -128,4 +136,4 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
   }
   return [...groups.values()].sort((a, b) => a.userName.localeCompare(b.userName));
 }
-module.exports = { STAGES, stageState, buildUploadTracker, matchesTrackedService, applicationDescriptor };
+module.exports = { STAGES, stageState, buildUploadTracker, matchesTrackedService, applicationDescriptor, financialYearForDate };
