@@ -7,8 +7,10 @@ const SalesData = require('../models/SalesData');
 const User = require('../models/User');
 const { loadPurchaseOrders } = require('./purchaseOrderController');
 const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
-const { loadOverallRecords, createOverallCache } = require('../services/overallDashboardData');
-const cachedOverallRecords = createOverallCache({ ttl: 60000 });
+const { loadOverallRecords } = require('../services/overallDashboardData');
+const { loadDashboardAssignments, createDashboardCache } = require('../services/dashboardReadModel');
+const cachedOverallRecords = createDashboardCache();
+const cachedAssignmentReviews = createDashboardCache();
 const { overallLeadFilter } = require('../services/overallDashboardVisibility');
 const { userHasAnyRole } = require('../utils/userRoles');
 const {
@@ -157,35 +159,18 @@ exports.overall = async (req, res) => {
     );
     const canViewUsers = userHasAnyRole(req.user, ['admin', 'superadmin', 'manager']);
     const allocatedClientFilter = canViewUsers ? await require('./clientController').clientAccessFilter(req.user) : {};
-    const [records, requests, users, teams, allocatedClients, staffLeads] = await Promise.all([
+    const [records, requests, users, teams, snapshot] = await Promise.all([
       cachedOverallRecords(JSON.stringify({ filter, scope }), () => loadOverallRecords(Lead, filter, scope)),
       require('../models/ClientDeactivation').find({ status: 'INACTIVE' }).select('companyKey status').maxTimeMS(10000).lean(),
       canViewUsers ? visibleUsers(scope, req.user) : [],
       canViewUsers ? require('../models/Team').find(scope === null ? {} : { manager: { $in: scope.ids } }).select('_id manager members').maxTimeMS(10000).lean() : [],
-      canViewUsers ? Client.find({ $and: [
-        { 'data.importMeta.approvalOverride': { $ne: true } },
-        allocatedClientFilter,
+      canViewUsers ? loadDashboardAssignments({ Client, Lead }, combineFilters(
+        { 'data.importMeta.approvalOverride': { $ne: true } }, allocatedClientFilter,
         dashboardClientExclusionFilter(testLeadReferences)
-      ] }).select('data.basic.clientLegalName data.basic.tradeName data.importMeta.companyName _id selectedLead assignedServiceId assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedUser userName user adminControls.assignedTo adminControls.assignedUser adminControls.user adminControls.userId adminControls.managerId serviceAllocations firstAnnualReturnYear financialYear data.assignedServiceId data.selectedLeadSnapshot data.basic.firstAnnualReturnYear data.basic.servicesForYear data.firstAnnualReturnYearApplicable data.importMeta.assignedTo data.importMeta.user data.importMeta.userName data.serviceAllocations data.financials.compliancePoNo data.financials.poNo data.financials.poNumber data.financials.compliancePoDate data.financials.poDate data.financials.compliancePoFileName data.financials.poFileName data.financials.poFinancialYear data.validation.poNumber data.validation.poNo data.validation.poDate data.validation.poFileName data.validation.poFinancialYear')
-        .populate('selectedLead', [
-          'company', 'companyName', 'assignedTo', 'assignedToText', 'assignedToEmail', 'assignedStaff', 'assignedStaffText', 'assignedStaffEmail',
-          'firstAnnualReturnYearApplicable',
-          'serviceSelections.assignedServiceId', 'serviceSelections.serviceAssignmentId', 'serviceSelections.subApplicantType', 'serviceSelections.piboCategory', 'serviceSelections.applicantType',
-          'serviceSelections.firstAnnualReturnYearApplicable', 'serviceSelections.financialYear', 'serviceSelections.servicesForYear',
-          'assignments.assignedServiceId', 'assignments.serviceAssignmentId',
-          'assignments.assignedTo', 'assignments.assignedToText', 'assignments.assignedToEmail',
-          'assignments.assignedStaff', 'assignments.assignedStaffText', 'assignments.assignedStaffEmail',
-          'assignments.poYearRows.fy', 'assignments.poYearRows.poFinancialYear',
-          'assignments.poYearRows.poNumber', 'assignments.poYearRows.poNo', 'assignments.poYearRows.poDate',
-          'assignments.poYearRows.poReceivedDate', 'assignments.poYearRows.poFileName',
-          'assignments.originalPoDetails.fy', 'assignments.originalPoDetails.poFinancialYear',
-          'assignments.originalPoDetails.poNumber', 'assignments.originalPoDetails.poNo',
-          'assignments.originalPoDetails.poDate', 'assignments.originalPoDetails.poReceivedDate',
-          'assignments.originalPoDetails.poFileName'
-        ].join(' '))
-        .maxTimeMS(12000).lean() : [],
-      canViewUsers ? Lead.find(dashboardLeadExclusionFilter(testLeadReferences)).select('_id company companyName leadCode sourceLeadId status closedAt closedBy assignments serviceSelections firstAnnualReturnYearApplicable').maxTimeMS(12000).lean() : []
+      ), dashboardLeadExclusionFilter(testLeadReferences)) : { clients: [], leads: [] }
     ]);
+    const allocatedClients = snapshot.clients;
+    const staffLeads = snapshot.leads;
     res.set('Cache-Control', 'private, no-store');
     res.set('Server-Timing', `overall;dur=${Date.now() - startedAt}`);
     const visibility = scope === null ? 'all' : userHasAnyRole(req.user, ['manager']) ? 'team' : 'self';
@@ -197,6 +182,7 @@ exports.overall = async (req, res) => {
 };
 
 exports.uploadTracker = async (req, res) => {
+  const startedAt = Date.now();
   try {
     const serviceType = String(req.query.serviceType || '').trim();
     if (serviceType && !['annual', 'registration'].includes(serviceType)) return res.status(400).json({ error: 'Invalid serviceType' });
@@ -204,25 +190,35 @@ exports.uploadTracker = async (req, res) => {
     if (req.query.assignmentsOnly !== 'true' && !/^20\d{2}-\d{2}$/.test(financialYear)) return res.status(400).json({ error: 'Valid financialYear (YYYY-YY) is required.' });
     const scope = await getVisibleUserScope(req.user);
     const excluded = await getAssignmentDashboardLeadReferences();
-    const [clients, users, staffLeads] = await Promise.all([
-      Client.find(dashboardClientExclusionFilter(excluded)).select('_id createdBy workflowStatus assignedServiceId adminControls serviceAllocations data.basic data.importMeta data.cpcb.status data.cpcb.approvalStatus data.cpcb.applicationStatus data.cpcbDataByAssignedServiceId data.serviceDetailsByAssignedServiceId data.assignedServiceId data.address.state data.addresses.state data.registeredAddress.state data.selectedLeadSnapshot data.serviceAllocations data.financials data.otp data.authorised data.coordinating createdAt submittedAt sla.status selectedLead').populate('selectedLead', 'company companyName leadCode status closedAt closedBy assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail assignments serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId serviceSelections.subApplicantType serviceSelections.piboCategory serviceSelections.applicantType serviceSelections.firstAnnualReturnYearApplicable serviceSelections.servicesOffered serviceSelections.industryType serviceSelections.eprCategory serviceSelections.plantUnit').maxTimeMS(15000).lean(),
-      visibleUsers(scope, req.user),
-      Lead.find(dashboardLeadExclusionFilter(excluded)).select('_id company companyName leadCode sourceLeadId status closedAt closedBy assignments serviceSelections firstAnnualReturnYearApplicable').maxTimeMS(15000).lean()
+    const referencesAt = Date.now();
+    const [snapshot, users] = await Promise.all([
+      loadDashboardAssignments({ Client, Lead }, dashboardClientExclusionFilter(excluded), dashboardLeadExclusionFilter(excluded)),
+      visibleUsers(scope, req.user)
     ]);
+    const clients = snapshot.clients, staffLeads = snapshot.leads;
+    const snapshotAt = Date.now();
     const { STAGES, buildUploadTracker } = require('../services/clientUploadTracker');
     const assignedClients = mergeManagerStaffAllocations(clients.map(dashboardStatusClient), staffLeads);
     const allocated = buildUploadTracker(assignedClients, users, [], []);
     const visibleIds = new Set(allocated.flatMap(user => user.clients.flatMap(client => client.clientIds || [client.clientId])));
     const visibleClients = assignedClients.filter(client => visibleIds.has(String(client._id)));
     if (req.query.assignmentsOnly === 'true') {
+      // Portfolio counts need application status, not the full compliance
+      // review/SLA histories used by the operations dashboard.
+      if (req.query.portfolioOnly === 'true') {
+        res.set('Cache-Control', 'private, no-store');
+        res.set('Server-Timing', `references;dur=${referencesAt - startedAt}, snapshot;dur=${snapshotAt - referencesAt}, assignments;dur=${Date.now() - startedAt}`);
+        return res.json({ ok: true, users, assignments: visibleClients });
+      }
       const realIds = visibleClients.filter(client => !client.assignmentOnly).map(client => client._id);
-      const [reviews, approvals] = await Promise.all([
+      const [reviews, approvals] = await cachedAssignmentReviews(JSON.stringify(realIds.map(String).sort()), () => Promise.all([
         require('../models/ClientComplianceReview').find({ client: { $in: realIds } }).select('client status sections finalRemarks updatedAt').populate('sections.reviewedBy', 'name email').maxTimeMS(15000).lean(),
         require('../models/PendingApproval').find({ type: 'client', source: 'crm', sourceClientId: { $in: realIds.map(String) } }).select('sourceClientId approvalStatus actionAt createdAt reminderFlag redFlagAt greenFlagDeadline correctionStatus correctionStartedAt correctionDueAt correctionBreachedAt correctionDeadlinePolicy').maxTimeMS(15000).lean()
-      ]);
+      ]));
       const reviewByClient = new Map(reviews.map(review => [String(review.client), review]));
       const approvalByClient = new Map(approvals.map(approval => [String(approval.sourceClientId), approval]));
       res.set('Cache-Control', 'private, no-store');
+      res.set('Server-Timing', `references;dur=${referencesAt - startedAt}, snapshot;dur=${snapshotAt - referencesAt}, reviews;dur=${Date.now() - snapshotAt}, assignments;dur=${Date.now() - startedAt}`);
       return res.json({ ok: true, users, assignments: visibleClients.map(client => ({ ...client, complianceReview: reviewByClient.get(String(client._id)) || null, operationsSla: approvalByClient.get(String(client._id)) || null })) });
     }
     const trackerClients = visibleClients;

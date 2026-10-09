@@ -30,7 +30,7 @@ function ClientRecordsPopup({ selection, onClose }) {
   </dialog>
 }
 
-export default function ApplicationPortfolio({ mode }) {
+export default function ApplicationPortfolio({ mode, refreshToken = 0 }) {
   const [payload, setPayload] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -41,9 +41,10 @@ export default function ApplicationPortfolio({ mode }) {
   useEffect(() => {
     const controller = new AbortController()
     setLoading(true); setError('')
-    api.get('/dashboard-insights/upload-tracker', { params: { assignmentsOnly: 'true' }, signal: controller.signal, timeout: 45000 }).then(response => { if (!controller.signal.aborted) setPayload(response.data) }).catch(err => { if (!controller.signal.aborted) setError(err.response?.data?.error || 'Unable to load application records. Please retry.') }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    api.get('/dashboard-insights/upload-tracker', { params: { assignmentsOnly: 'true', portfolioOnly: 'true' }, signal: controller.signal, timeout: 45000 }).then(response => { if (!controller.signal.aborted) setPayload(response.data) }).catch(err => { if (!controller.signal.aborted) setError(err.response?.data?.error || 'Unable to load application records. Please retry.') }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [refresh])
+  }, [refresh, refreshToken])
+  useEffect(() => { const timer = setInterval(() => { if (document.visibilityState === 'visible') setRefresh(value => value + 1) }, 60000); return () => clearInterval(timer) }, [])
   useEffect(() => { setSelection(null) }, [mode])
   const groups = useMemo(() => buildApplicationPortfolio(payload?.assignments || [], payload?.users || []), [payload])
   const distribution = mode === 'spoc'

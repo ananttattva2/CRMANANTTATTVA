@@ -1,40 +1,40 @@
-import ArComplianceList from './pages/ArCompliance'
-import React, { useEffect } from 'react'
+const ArComplianceList = lazy(() => import('./pages/ArCompliance'))
+import React, { Suspense, lazy, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
 import ScrollToTop from './components/ScrollToTop'
-import Login from './pages/Login'
-import LandingPage from './pages/LandingPage'
-import VerifyOtp from './pages/VerifyOtp'
-import ForgotPassword from './pages/ForgotPassword'
-import AdminDashboard from './pages/AdminDashboard'
-import LeadGeneration from './pages/LeadGeneration'
-import ClientMaster from './pages/ClientMaster'
-import ClientMasterAllocate from './pages/ClientMasterAllocate'
-import LeadAllocate from './pages/LeadAllocate'
-import HealthReportCheck from './pages/HealthReportCheck'
-import Quotations from './pages/Quotations'
-import AnnualReturns from './pages/AnnualReturns'
-import CalendarTodo from './pages/CalendarTodo'
-import Notifications from './pages/Notifications'
-import PendingApproval from './pages/PendingApproval'
-import ClientComplianceReview from './pages/ClientComplianceReview'
-import NotFound from './pages/NotFound'
-import AssistantPage from './pages/AssistantPage'
-import ProformaInvoices from './pages/ProformaInvoices'
-import ComplianceHealthDashboard from './pages/ComplianceHealthDashboard'
-import PendingLeads from './pages/PendingLeads'
-import HelpYourself from './pages/HelpYourself'
-import SupportTickets from './pages/SupportTickets'
-import InternalTickets from './pages/InternalTickets'
-import SuperAdminDashboard from './pages/SuperAdminDashboard'
-import ActivityLogs from './pages/ActivityLogs'
-import SalesManagementDashboard from './pages/SalesManagementDashboard'
-import ClientDailyMIS from './pages/ClientDailyMIS'
-import Dummey from './pages/Dummey'
-import OverallDashboard from './pages/OverallDashboard'
-import PurchaseOrderDashboard from './pages/PurchaseOrderDashboard'
-import PurchaseSalesDashboard from './pages/PurchaseSalesDashboard'
+const Login = lazy(() => import('./pages/Login'))
+const LandingPage = lazy(() => import('./pages/LandingPage'))
+const VerifyOtp = lazy(() => import('./pages/VerifyOtp'))
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'))
+const LeadGeneration = lazy(() => import('./pages/LeadGeneration'))
+const ClientMaster = lazy(() => import('./pages/ClientMaster'))
+const ClientMasterAllocate = lazy(() => import('./pages/ClientMasterAllocate'))
+const LeadAllocate = lazy(() => import('./pages/LeadAllocate'))
+const HealthReportCheck = lazy(() => import('./pages/HealthReportCheck'))
+const Quotations = lazy(() => import('./pages/Quotations'))
+const AnnualReturns = lazy(() => import('./pages/AnnualReturns'))
+const CalendarTodo = lazy(() => import('./pages/CalendarTodo'))
+const Notifications = lazy(() => import('./pages/Notifications'))
+const PendingApproval = lazy(() => import('./pages/PendingApproval'))
+const ClientComplianceReview = lazy(() => import('./pages/ClientComplianceReview'))
+const NotFound = lazy(() => import('./pages/NotFound'))
+const AssistantPage = lazy(() => import('./pages/AssistantPage'))
+const ProformaInvoices = lazy(() => import('./pages/ProformaInvoices'))
+const ComplianceHealthDashboard = lazy(() => import('./pages/ComplianceHealthDashboard'))
+const PendingLeads = lazy(() => import('./pages/PendingLeads'))
+const HelpYourself = lazy(() => import('./pages/HelpYourself'))
+const SupportTickets = lazy(() => import('./pages/SupportTickets'))
+const InternalTickets = lazy(() => import('./pages/InternalTickets'))
+const SuperAdminDashboard = lazy(() => import('./pages/SuperAdminDashboard'))
+const ActivityLogs = lazy(() => import('./pages/ActivityLogs'))
+const SalesManagementDashboard = lazy(() => import('./pages/SalesManagementDashboard'))
+const ClientDailyMIS = lazy(() => import('./pages/ClientDailyMIS'))
+const Dummey = lazy(() => import('./pages/Dummey'))
+const OverallDashboard = lazy(() => import('./pages/OverallDashboard'))
+const PurchaseOrderDashboard = lazy(() => import('./pages/PurchaseOrderDashboard'))
+const PurchaseSalesDashboard = lazy(() => import('./pages/PurchaseSalesDashboard'))
 import api, { API_ENDPOINTS, hasStoredAuthToken } from './services/api'
 import SupportTicketMilestoneCelebration from './components/SupportTicketMilestoneCelebration'
 
@@ -107,6 +107,7 @@ function App(){
       <ScrollToTop />
       <ActiveCrmTracker />
       <SupportTicketMilestoneCelebration />
+      <Suspense fallback={<div role="status" className="grid min-h-[60vh] place-items-center text-teal-700">Loading page…</div>}>
       <Routes>
         <Route path="/" element={<LandingPage/>} />
         <Route path="/login" element={<Login/>} />
@@ -155,6 +156,7 @@ function App(){
         <Route path="/internal-tickets" element={<ProtectedRoute><InternalTickets/></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
+      </Suspense>
     </div>
   )
 }

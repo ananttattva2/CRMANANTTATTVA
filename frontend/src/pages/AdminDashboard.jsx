@@ -5824,10 +5824,9 @@ export default function AdminDashboard() {
 
       const authenticatedRole = normalizeKey(user.role)
       if (adminRoles.includes(authenticatedRole)) {
-        try {
-          const rolesResponse = await api.get(API_ENDPOINTS.auth.roles, requestConfig)
-          setAvailableRoles(rolesResponse.data.roles || [])
-        } catch { setAvailableRoles(defaultRoles) }
+        api.get(API_ENDPOINTS.auth.roles, requestConfig)
+          .then(response => setAvailableRoles(response.data.roles || []))
+          .catch(() => setAvailableRoles(defaultRoles))
       }
 
       if (isUserManagementView) {
@@ -5867,6 +5866,11 @@ export default function AdminDashboard() {
         }
         return
       }
+
+      const directoryRequests = Promise.allSettled([
+        api.get(adminRoles.includes(authenticatedRole) ? API_ENDPOINTS.auth.adminUsers : API_ENDPOINTS.auth.users, requestConfig),
+        adminRoles.includes(authenticatedRole) ? api.get(API_ENDPOINTS.teams.list, requestConfig) : Promise.resolve({ data: { teams: [] } })
+      ])
 
       const [clientsResult, complianceClientsResult, leadsResult, quotationsResult, annualReturnsResult, approvalsResult, calendarItemsResult] = await Promise.allSettled([
         fetchDashboardCollection(API_ENDPOINTS.clients.list, 'clients', requestConfig, { dashboard: true }),
@@ -5946,10 +5950,7 @@ export default function AdminDashboard() {
         retained.calendarItems
       )
 
-      const [usersResult, teamsResult] = await Promise.allSettled([
-        api.get(adminRoles.includes(authenticatedRole) ? API_ENDPOINTS.auth.adminUsers : API_ENDPOINTS.auth.users, requestConfig),
-        adminRoles.includes(authenticatedRole) ? api.get(API_ENDPOINTS.teams.list, requestConfig) : Promise.resolve({ data: { teams: [] } })
-      ])
+      const [usersResult, teamsResult] = await directoryRequests
       let usersResponse = usersResult.status === 'fulfilled' ? usersResult.value : null
       if (!usersResponse && adminRoles.includes(authenticatedRole)) {
         try { usersResponse = await api.get(API_ENDPOINTS.auth.users, requestConfig) } catch { /* Keep loaded records and report the failure below. */ }
