@@ -1,5 +1,18 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
+test('NUVIASHOP registration master retains annual sibling action in an exclusive status bucket',async()=>{
+ const {applicationSummaryRecords,matchesStatusSummary,matchesServiceSummary,STATUS_COLUMNS}=await import('../../frontend/src/utils/applicationPortfolio.mjs');
+ const registration={id:'registration',closed:true,offeredServices:['New Registration'],bucket:'notStarted',annual:false};
+ const annual={id:'annual',closed:true,assignmentOnly:true,offeredServices:['Annual Return Filling'],bucket:'notStarted',annual:true,annualWorkflowReady:true,annualCurrentFyPo:true,annualYears:['2025-26']};
+ const [summary]=applicationSummaryRecords({records:[{...registration,services:[registration,annual]}]});
+ assert.equal(matchesStatusSummary(summary,'annualActionRequired'),true);
+ assert.equal(matchesStatusSummary(summary,'notStarted'),false);
+ assert.equal(matchesServiceSummary(summary,'annualActionRequired'),true);
+ assert.deepEqual(STATUS_COLUMNS.filter(([key])=>key!=='total'&&matchesStatusSummary(summary,key)).map(([key])=>key),['annualActionRequired']);
+ const [approved]=applicationSummaryRecords({records:[{...registration,services:[registration,{...annual,bucket:'approved'}]}]});
+ assert.equal(matchesStatusSummary(approved,'annual:2025-26'),true);
+ assert.equal(matchesStatusSummary(approved,'annualActionRequired'),false);
+});
 test('ASIA incomplete approved importer draft yields to submitted importer with a different industry',async()=>{
  const {effectiveApplicationServices}=await import('../../frontend/src/utils/applicationPortfolio.mjs');
  const importer={id:'importer',leadId:'asia',category:'Importer',unit:'Unit 1',industry:'Packaging Manufacture',eprCategory:'EPR - Plastic Waste',offeredServices:['Annual Return Filling'],clientStatus:'submitted',cpcb:'Approved'};

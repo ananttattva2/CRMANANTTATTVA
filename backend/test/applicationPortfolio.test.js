@@ -186,14 +186,14 @@ test('service breakdown counts each application once and agrees with the Clients
   const [group] = buildApplicationPortfolio([registration,annual,other], users);
   const rows = applicationSummaryRecords(group);
   assert.equal(rows.length, 2);
-  assert.equal(rows.filter(row => matchesApplicationService(row, 'New Registration')).length, 1);
-  assert.equal(rows.filter(row => matchesApplicationService(row, 'Annual Return Filling')).length, 1);
+  assert.equal(rows.filter(row => matchesApplicationService(row, 'New Registration')).length, 0);
+  assert.equal(rows.filter(row => matchesApplicationService(row, 'Annual Return Filling')).length, 2);
   for (const row of rows) assert.equal(['New Registration', 'Annual Return Filling', 'unclassified'].filter(key => matchesApplicationService(row, key)).length, 1);
   const workbook = await createApplicationPortfolioWorkbook(rows, 'Sonal', 'Total');
   const buffer = await workbook.xlsx.writeBuffer();
   const ExcelJS = require('../../frontend/node_modules/exceljs');
   const loaded = new ExcelJS.Workbook(); await loaded.xlsx.load(buffer);
-  assert.equal(loaded.getWorksheet('Clients').getCell('L4').value, 'New Registration');
+  assert.equal(loaded.getWorksheet('Clients').getCell('L4').value, 'Annual Return Filling');
   assert.equal(loaded.getWorksheet('Clients').getCell('L5').value, 'Annual Return Filling');
   assert.equal(loaded.getWorksheet('Service Statuses').rowCount, 6);
   assert.equal(rows[0].services.length, 2);
@@ -225,7 +225,9 @@ test('status annual applicability and years use the same exclusive closed servic
   const records=applicationSummaryRecords(buildApplicationPortfolio([registration,sibling,owner,open],users)[0]);
   assert.equal(records.length,3);
   assert.equal(records.filter(row=>row.annual).length,1);
-  assert.equal(records.filter(row=>row.annual).length,records.filter(row=>matchesApplicationService(row,'Annual Return Filling')).length);
+  // A closed annual sibling is selected even while its CPCB approval is pending.
+  assert.equal(records.filter(row=>matchesApplicationService(row,'Annual Return Filling')).length,2);
+  assert.equal(records[0].summaryService,'Annual Return Filling');
   assert.equal(records[0].annual,false);
   assert.deepEqual(records[0].annualYears,[]);
   assert.equal(records[2].annual,false);

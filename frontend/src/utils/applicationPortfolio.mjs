@@ -62,11 +62,12 @@ export function applicationSummaryService(record) {
 }
 function rawApplicationSummaryService(record) {
   const closed = record.services.filter(service => service.closed)
-  // Keep the representative application used by the Clients export. Retain
-  // sibling assignments in details rather than counting this application twice.
-  const representative = closed.find(service => service.id === record.id && service.offeredServices.length)
+  // Registration can be the saved master while Annual Return is a sibling
+  // assignment. Annual eligibility and correction work must remain visible.
+  const representative = closed.find(service => service.offeredServices.includes('Annual Return Filling'))
+    || closed.find(service => service.id === record.id && service.offeredServices.length)
     || closed.find(service => service.offeredServices.length)
-  return representative?.offeredServices[0] || 'unclassified'
+  return representative?.offeredServices.includes('Annual Return Filling') ? 'Annual Return Filling' : representative?.offeredServices[0] || 'unclassified'
 }
 export function cpcbStatusBucket(value) {
   const status = String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
