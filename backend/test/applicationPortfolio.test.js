@@ -370,3 +370,42 @@ test('approved Registration and New Registration have a dedicated status-summary
   assert.deepEqual(rows.filter((row) => matchesStatusSummary(row, 'otherServicesApproved')).map((row) => row.name), ['Consulting Client']);
   assert.equal(rows.filter((row) => matchesStatusSummary(row, 'otherServicesApproved')).some((row) => ['Registration', 'New Registration'].includes(row.summaryService)), false);
 });
+
+test('legacy multi-service assignment rows preserve PO qualification by service position', async () => {
+  const { buildApplicationPortfolio, applicationServiceSummaryRecords, financialYearForDate } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const makeRows = (owner, company) => {
+    const selections = [
+      { assignedServiceId: `${owner}-brand-owner`, subApplicantType: 'Brand Owner', servicesOffered: 'Annual Return Filling' },
+      { assignedServiceId: `${owner}-importer`, subApplicantType: 'Importer', servicesOffered: 'Annual Return Filling' }
+    ];
+    const assignments = selections.map((selection, index) => ({
+      assignedTo: 'manager',
+      assignedStaff: owner,
+      closedAt: `2026-10-0${index + 1}`,
+      poStatus: 'received',
+      poYearRows: [{ poFinancialYear: financialYearForDate(), annualReturnYear: '2025-26', poNumber: `${owner}-PO-${index + 1}` }]
+    }));
+    return selections.map((selection, index) => {
+      const category = index === 0 ? 'Brand Owner' : 'Importer';
+      const row = client(selection.assignedServiceId, owner, category, 'Approved');
+      row.workflowStatus = 'submitted';
+      row.assignedServiceId = selection.assignedServiceId;
+      row.selectedLead._id = `${owner}-multi-service-lead`;
+      row.selectedLead.company = company;
+      row.selectedLead.serviceSelections = selections;
+      row.selectedLead.assignments = assignments;
+      return row;
+    });
+  };
+  const groups = buildApplicationPortfolio([
+    ...makeRows('sonal', '20 MICRONS LIMITED'),
+    ...makeRows('krishna', 'SECOND MULTI SERVICE CLIENT')
+  ], users);
+  assert.equal(groups.length, 2);
+  for (const group of groups) {
+    const rows = applicationServiceSummaryRecords(group).filter((row) => row.annualYears.includes('2025-26'));
+    assert.equal(rows.length, 2);
+    assert.deepEqual(rows.map((row) => row.category).sort(), ['Brand Owner', 'Importer']);
+    assert(rows.every((row) => row.annualCurrentFyPo));
+  }
+});

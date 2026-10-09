@@ -42,7 +42,9 @@ function stageState(record, stage) {
 function applicationDescriptor(client) {
   const data = client.data || {}, basic = data.basic || {}, lead = client.selectedLead || {};
   const selections = lead.serviceSelections || [];
-  const service = selections.find(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === String(client.assignedServiceId || '')) || (selections.length === 1 ? selections[0] : {});
+  const selectedServiceId = String(client.assignedServiceId || '');
+  const serviceIndex = selections.findIndex(row => selectedServiceId && String(row.assignedServiceId || row.serviceAssignmentId || '') === selectedServiceId);
+  const service = serviceIndex >= 0 ? selections[serviceIndex] : (selections.length === 1 ? selections[0] : {});
   const category = [service.subApplicantType, service.piboCategory, basic.piboCategory, basic.subApplicantType, service.applicantType, basic.applicantType].find(value => typeof value === 'string' && value.trim()) || 'Not recorded';
   const key = category.toLowerCase().replace(/[^a-z0-9]/g, '');
   const canonical = key.includes('rawmaterial') && key.includes('import') || key.includes('simp') && key.includes('import') ? 'Importer of Raw Material'
@@ -54,7 +56,11 @@ function applicationDescriptor(client) {
   const normalized = primary.toLowerCase().replace(/[^a-z0-9]/g, '');
   const serviceType = /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalized) ? 'annual' : ['registration','newregistration'].includes(normalized) ? 'registration' : '';
   const assignments = lead.assignments || [];
-  const assignment = assignments.find(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === String(client.assignedServiceId || '')) || (assignments.length === 1 ? assignments[0] : {});
+  const exactAssignment = assignments.find(row => selectedServiceId && String(row.assignedServiceId || row.serviceAssignmentId || '') === selectedServiceId);
+  const indexedAssignment = serviceIndex >= 0 && assignments[serviceIndex]
+    && !String(assignments[serviceIndex].assignedServiceId || assignments[serviceIndex].serviceAssignmentId || '')
+    ? assignments[serviceIndex] : null;
+  const assignment = exactAssignment || indexedAssignment || (assignments.length === 1 ? assignments[0] : {});
   const closed = Boolean(assignment.closedAt || assignment.closedBy || assignment.closedByText || assignment.permanentClosedAt || (selections.length === 1 && (lead.closedAt || lead.closedBy)) || String(lead.status || '').toLowerCase() === 'closed');
   const annualWorkflowReady = Boolean(assignment.assignedTo || assignment.assignedToText || assignment.assignedToEmail)
     && Boolean(assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail);

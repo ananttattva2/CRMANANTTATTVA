@@ -142,9 +142,15 @@ export function applicantCategory(value) {
 export function applicationRecord(client) {
   const data = client.data || {}, basic = data.basic || {}, meta = data.importMeta || {}, lead = client.selectedLead || {}
   const services = lead.serviceSelections || []
-  const service = services.find(item => String(item.assignedServiceId || item.serviceAssignmentId || '') === String(client.assignedServiceId || '')) || (services.length === 1 ? services[0] : {})
+  const selectedServiceId = String(client.assignedServiceId || '')
+  const serviceIndex = services.findIndex(item => selectedServiceId && String(item.assignedServiceId || item.serviceAssignmentId || '') === selectedServiceId)
+  const service = serviceIndex >= 0 ? services[serviceIndex] : (services.length === 1 ? services[0] : {})
   const assignments = lead.assignments || []
-  const assignment = assignments.find(item => String(item.assignedServiceId || item.serviceAssignmentId || '') === String(client.assignedServiceId || '')) || (assignments.length === 1 ? assignments[0] : {})
+  const exactAssignment = assignments.find(item => selectedServiceId && String(item.assignedServiceId || item.serviceAssignmentId || '') === selectedServiceId)
+  const indexedAssignment = serviceIndex >= 0 && assignments[serviceIndex]
+    && !String(assignments[serviceIndex].assignedServiceId || assignments[serviceIndex].serviceAssignmentId || '')
+    ? assignments[serviceIndex] : null
+  const assignment = exactAssignment || indexedAssignment || (assignments.length === 1 ? assignments[0] : {})
   const closed = Boolean(assignment.closedAt || assignment.closedBy || assignment.closedByText || assignment.permanentClosedAt || (services.length === 1 && (lead.closedAt || lead.closedBy)) || String(lead.status || '').toLowerCase() === 'closed')
   const hasMatchedLeadService = Boolean(Object.keys(service).length)
   // A matched lead service is authoritative, including when its service name
