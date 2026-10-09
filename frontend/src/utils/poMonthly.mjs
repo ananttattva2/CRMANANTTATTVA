@@ -28,7 +28,7 @@ export function filterPoApproval(records, status = 'ALL') {
 }
 export function poDetailExportRows(records) {
   return records.map(record => ({
-    User: record.ownerName || 'Unassigned',
+    'Lead Owner': record.ownerName || 'Unassigned',
     Client: record.clientName || '',
     'PO number': record.poNumber || '',
     'PO date': poPeriod(record.poDate) ? new Date(record.poDate).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : '',

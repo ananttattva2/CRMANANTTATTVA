@@ -52,13 +52,14 @@ exports.purchaseOrders = async (req, res) => {
     'createdByCrmUserId', 'createdByEmail', 'createdByName', 'assignedToText',
     'assignedStaffText', 'assignedStaffEmail', 'assignments.assignedToText',
     'assignments.assignedToEmail', 'serviceSelections.createdByCrmUserId',
-    'serviceSelections.createdByEmail', 'serviceSelections.createdByName'
-  ], ['assignedStaff', 'assignments.assignedTo', 'assignments.assignedStaff']);
+    'serviceSelections.createdByEmail', 'serviceSelections.createdByName',
+    ...(monthly ? ['generatedForName', 'generatedForEmail', 'createdOnBehalfOfName', 'createdOnBehalfOfEmail'] : [])
+  ], ['assignedStaff', 'assignments.assignedTo', 'assignments.assignedStaff', ...(monthly ? ['generatedForUser', 'createdOnBehalfOfUser'] : [])]);
   const testLeadReferences = await getAdminCreatedLeadReferences();
   const leadFilter = combineFilters(accessFilter, dashboardLeadExclusionFilter(testLeadReferences));
   const [loadedRecords, users] = await Promise.all([
     monthly
-      ? cachedMonthlyPurchaseOrders(JSON.stringify(leadFilter), () => loadPurchaseOrders({ Lead, Client, Quotation }, leadFilter, { monthly: true }))
+      ? cachedMonthlyPurchaseOrders(JSON.stringify(leadFilter), () => loadPurchaseOrders({ Lead, Client, Quotation, User }, leadFilter, { monthly: true }))
       : loadPurchaseOrders({ Lead, Client, Quotation }, leadFilter),
     monthly ? Promise.resolve([]) : visibleUsers(scope, req.user)
   ]);
@@ -66,13 +67,14 @@ exports.purchaseOrders = async (req, res) => {
   const allowedIdentities = new Set((scope?.identities || []).map((value) => String(value).trim().toLowerCase()));
   const records = scope === null ? loadedRecords : loadedRecords.filter((record) => (
     allowedIds.has(text(record.ownerId)) || allowedIdentities.has(String(record.ownerName || '').trim().toLowerCase())
+    || (monthly && (allowedIds.has(text(record.leadOwnerId)) || allowedIdentities.has(String(record.leadOwnerName || '').trim().toLowerCase())))
   ));
   if (req.query?.view === 'monthly') {
     return res.json({
       ok: true,
       scope: scope === null ? 'all' : 'role-scoped',
-      records: records.map(({ id, leadId, clientId, clientName, ownerId, ownerName, poNumber, poDate, poAmount, approvalStatus, applicantType, subApplicantType }) => ({
-        id, leadId, clientId, clientName, ownerId, ownerName, poNumber, poDate, poAmount, approvalStatus, applicantType, subApplicantType
+      records: records.map(({ id, leadId, clientId, clientName, leadOwnerId, leadOwnerName, poNumber, poDate, poAmount, approvalStatus, applicantType, subApplicantType }) => ({
+        id, leadId, clientId, clientName, ownerId: leadOwnerId || null, ownerName: leadOwnerName || 'Unassigned', poNumber, poDate, poAmount, approvalStatus, applicantType, subApplicantType
       }))
     });
   }

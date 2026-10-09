@@ -3,6 +3,7 @@ const Lead = require('../models/Lead');
 const Client = require('../models/Client');
 const Quotation = require('../models/Quotation');
 const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
+const { purchaseOrderLeadOwner } = require('../services/purchaseOrderLeadOwner');
 
 const MIME_BY_EXTENSION = {
   pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
@@ -48,6 +49,9 @@ async function leanFind(Model, filter = {}, projection) {
 const monthlyLeadProjection = {
   _id: 1, leadCode: 1, company: 1, companyName: 1, createdBy: 1,
   createdByName: 1, closedAt: 1, closedBy: 1, createdAt: 1, updatedAt: 1,
+  createdByEmail: 1, createdByCrmUserId: 1, importedCreatedBy: 1,
+  generatedForUser: 1, generatedForName: 1, generatedForEmail: 1,
+  createdOnBehalfOfUser: 1, createdOnBehalfOfName: 1, createdOnBehalfOfEmail: 1,
   applicantType: 1, subApplicantType: 1, piboParent: 1, piboCategory: 1,
   serviceSelections: { $map: {
     input: { $cond: [{ $isArray: '$serviceSelections' }, '$serviceSelections', []] }, as: 'service',
@@ -90,13 +94,16 @@ async function loadPurchaseOrders(models, leadFilter = {}, options = {}) {
   const leadIds = (leads || []).map(idText).filter(Boolean);
   const leadCodes = (leads || []).map((lead) => text(lead.leadCode)).filter(Boolean);
   if (!leadIds.length && !leadCodes.length) return [];
+  const ownerIds = [...new Set(leads.map(lead => purchaseOrderLeadOwner(lead).id).filter(id => /^[a-f\d]{24}$/i.test(id)))];
   const quotationLookup = [];
   if (leadIds.length) quotationLookup.push({ leadRef: { $in: leadIds } }, { leadId: { $in: leadIds } });
   if (leadCodes.length) quotationLookup.push({ leadCode: { $in: leadCodes } }, { businessLeadCode: { $in: leadCodes } });
-  const [clients, quotations] = await Promise.all([
+  const [clients, quotations, ownerUsers] = await Promise.all([
     leanFind(models.Client, { selectedLead: { $in: leadIds } }, compact ? '_id selectedLead' : undefined),
-    leanFind(models.Quotation, { $or: quotationLookup }, compact ? '_id leadRef leadId leadCode businessLeadCode quotationNumber grandTotal' : undefined)
+    leanFind(models.Quotation, { $or: quotationLookup }, compact ? '_id leadRef leadId leadCode businessLeadCode quotationNumber grandTotal' : undefined),
+    compact && models.User && ownerIds.length ? leanFind(models.User, { _id: { $in: ownerIds } }, '_id name email') : Promise.resolve([])
   ]);
+  const ownerMap = new Map((ownerUsers || []).map(user => [idText(user), user]));
   const clientByLead = new Map();
   for (const client of clients || []) {
     const leadId = idText(client.selectedLead);
@@ -106,6 +113,7 @@ async function loadPurchaseOrders(models, leadFilter = {}, options = {}) {
   const records = [];
   for (const lead of leads || []) {
     const leadId = idText(lead);
+    const leadOwner = purchaseOrderLeadOwner(lead, ownerMap);
     for (const [assignmentIndex, assignment] of (Array.isArray(lead.assignments) ? lead.assignments : []).entries()) {
       if (!assignment || typeof assignment !== 'object') continue;
       for (const [rowIndex, row] of (Array.isArray(assignment.poYearRows) ? assignment.poYearRows : []).entries()) {
@@ -127,6 +135,8 @@ async function loadPurchaseOrders(models, leadFilter = {}, options = {}) {
         records.push({
           id: stablePoId(leadId, assignmentIndex, rowIndex),
           leadId,
+          leadOwnerId: leadOwner.id,
+          leadOwnerName: leadOwner.name,
           leadNumber: text(lead.leadCode) || null,
           clientId: clientByLead.get(leadId) || null,
           quotationId: idText(quotation) || idText(row.quotationId) || null,
