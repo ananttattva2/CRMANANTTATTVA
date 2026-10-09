@@ -4,6 +4,7 @@ import { Building2, CheckCircle2, ChevronDown, Download, Edit3, Eye, FileCheck2,
 import { DeactivationButton } from './ClientDeactivation';
 import api from '../../services/api';
 import ToastMessage from '../../components/ToastMessage';
+import { companyPoClosed, clientPoExportEntries } from './clientPoStatus.mjs';
 import {
   getAssignedName,
   getAssignedStaffNames,
@@ -207,6 +208,7 @@ function ClientDirectoryView({ clients, pagination, summary, staff, loading, err
         'Lead Number': data.importMeta?.leadNumber || item.selectedLead?.leadCode || '',
         'Client Status': data.importMeta?.clientStatus || item.workflowStatus || '',
         'Visibility Status': getVisibilityStatus(item),
+        'PO Close': companyPoClosed(item) ? 'Yes' : 'No',
         'Created By': data.importMeta?.createdBy || '',
         'Creation Date': data.importMeta?.creationDate || item.createdAt || '',
         'Assigned To': getAssignedName(item, staff).replace(/^-$/, ''),
@@ -273,6 +275,24 @@ function ClientDirectoryView({ clients, pagination, summary, staff, loading, err
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Clients');
+    const serviceRows = clientPoExportEntries(exportClients).map(({ item, service }) => {
+      const data = readClientData(item);
+      return {
+        'Unique ID': getClientUniqueId(item).replace(/^-$/, ''),
+        'Client Name': data.basic?.clientLegalName || item.selectedLead?.company || '',
+        'Lead Number': data.importMeta?.leadNumber || item.selectedLead?.leadCode || '',
+        'Company PO Close': companyPoClosed(item) ? 'Yes' : 'No',
+        'Service No': service.index,
+        'Service ID': service.id,
+        'Applicant Type': service.applicantType,
+        'Sub Applicant Type': service.subApplicantType,
+        'Service Category': service.category,
+        'Services Offered': service.name,
+        'PO Close': service.closed ? 'Yes' : 'No',
+        'PO Received': service.received ? 'Yes' : 'No'
+      };
+    });
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(serviceRows), 'Service PO Status');
     XLSX.writeFile(workbook, 'clients.xlsx');
   }
 
@@ -313,15 +333,15 @@ function ClientDirectoryView({ clients, pagination, summary, staff, loading, err
         <DirectoryTableHeader showing={visibleClients.length} total={Number(pagination?.total || totalClientCount || 0)} label="clients" rowsPerPage={rowsPerPage} setRowsPerPage={setRowsPerPage} page={page} setPage={setPage} totalPages={totalPages} />
         <div className="client-directory-table-shell overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
           <div className="hidden-scrollbar max-h-[520px] overflow-auto">
-            <table className="crm-data-table w-full min-w-[1240px] table-fixed text-left text-sm">
+            <table className="crm-data-table w-full min-w-[1400px] table-fixed text-left text-sm">
               <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-black uppercase tracking-[0.06em] text-slate-500 shadow-sm">
                 <tr>
-                  {['Unique ID', 'Legal Name', 'Trade Name', 'State', 'Assigned To', 'Visibility Status', 'Service Category', 'MSME', 'CPCB Approval', 'Manager Assigned to Staff', 'Actions'].map((header) => <th key={header} className={`px-5 py-4 ${header === 'Actions' ? 'w-56' : ''}`}>{header}</th>)}
+                  {['Unique ID', 'Legal Name', 'Trade Name', 'State', 'Assigned To', 'Visibility Status', 'PO Close', 'Service Category', 'MSME', 'CPCB Approval', 'Manager Assigned to Staff', 'Actions'].map((header) => <th key={header} className={`px-5 py-4 ${header === 'Actions' ? 'w-56' : ''}`}>{header}</th>)}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {visibleClients.length === 0 ? (
-                  loading ? <ClientTableLoadingRows /> : <tr><td colSpan={11} className="px-5 py-12 text-center font-black text-slate-400">No clients found.</td></tr>
+                  loading ? <ClientTableLoadingRows /> : <tr><td colSpan={12} className="px-5 py-12 text-center font-black text-slate-400">No clients found.</td></tr>
                 ) : visibleClients.map((item) => {
                   const data = readClientData(item);
                   const lifecycle = deactivationStatuses.find((row) => row.clientIds.includes(String(item._id || item.id)));
@@ -334,6 +354,7 @@ function ClientDirectoryView({ clients, pagination, summary, staff, loading, err
                       <td className="px-5 py-4 font-black uppercase text-slate-500"><span className="cell-clip">{data.registeredAddress?.state || '-'}</span></td>
                       <td className="px-5 py-4 font-black uppercase text-slate-500"><span className="cell-clip">{getAssignedName(item, staff)}</span></td>
                       <td className="px-5 py-4"><span className="rounded-full bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-700">{lifecycle?.status === 'INACTIVE' ? 'Inactive' : locked ? 'Deactivation Pending' : getVisibilityStatus(item)}</span></td>
+                      <td className="px-5 py-4"><span title="Yes if at least one service PO is closed" className={`rounded-full px-3 py-2 text-xs font-black ${companyPoClosed(item) ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{companyPoClosed(item) ? 'Yes' : 'No'}</span></td>
                       <td className="px-5 py-4 font-black uppercase text-slate-500"><span className="cell-clamp">{data.basic?.eprCategory || '-'}</span></td>
                       <td className="px-5 py-4 font-black uppercase text-slate-500"><span className="cell-clip">{getMsmeSummary(data)}</span></td>
                       <td className="px-5 py-4 font-black uppercase text-slate-500"><span className="cell-clip">{getCpcbStatus(data)}</span></td>
@@ -543,10 +564,10 @@ function ClientMetricOutputCard({ stat, clients, onClose, onExport }) {
 function ClientTableLoadingRows() {
   return Array.from({ length: 6 }, (_, rowIndex) => (
     <tr key={rowIndex} className="client-table-loading-row">
-      {Array.from({ length: 10 }, (_, cellIndex) => (
+      {Array.from({ length: 12 }, (_, cellIndex) => (
         <td key={cellIndex} className="px-5 py-4">
           <span
-            className={`table-skeleton ${cellIndex === 1 || cellIndex === 2 || cellIndex === 6 ? 'table-skeleton-wide' : ''} ${cellIndex === 9 ? 'table-skeleton-action' : ''}`}
+            className={`table-skeleton ${cellIndex === 1 || cellIndex === 2 || cellIndex === 6 ? 'table-skeleton-wide' : ''} ${cellIndex === 11 ? 'table-skeleton-action' : ''}`}
           />
         </td>
       ))}
