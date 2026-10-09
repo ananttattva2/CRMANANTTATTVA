@@ -22,3 +22,24 @@ export function monthlyPO(records, year, search = '') {
   return { records: selected, rows: [...groups.values()].sort((a, b) => b.records.length - a.records.length || a.name.localeCompare(b.name)) }
 }
 export const poAmount = records => records.reduce((sum, r) => sum + (Number.isFinite(Number(r.poAmount)) ? Number(r.poAmount) : 0), 0)
+
+export function poApplicantCategory(record) {
+  const clean = value => String(value || '').trim().replace(/\s+/g, ' ')
+  const missing = value => !value || /^(not specified|not provided|n\/?a|-)$/i.test(value)
+  const parent = clean(record.applicantType)
+  const child = clean(record.subApplicantType)
+  const known = ['Brand Owner', 'Producer', 'Importer', 'Producer (Small & Micro)']
+  const canonical = known.find(label => label.toLowerCase() === child.toLowerCase()) || child
+  if (!missing(child)) return !missing(parent) && !/^pibo$/i.test(parent) && parent.toLowerCase() !== child.toLowerCase()
+    ? `${parent.toUpperCase()} · ${canonical}` : canonical
+  return missing(parent) ? 'Not specified' : known.find(label => label.toLowerCase() === parent.toLowerCase()) || parent.toUpperCase()
+}
+export function piboPO(records, year, search = '') {
+  const matrix = monthlyPO(records, year, search)
+  const standard = ['Brand Owner', 'Producer', 'Importer', 'Producer (Small & Micro)']
+  const extra = [...new Set(matrix.records.map(poApplicantCategory))].filter(label => !standard.includes(label)).sort()
+  const columns = [...standard, ...extra]
+  return { ...matrix, columns, rows: matrix.rows.map(row => ({
+    ...row, cells: columns.map(label => row.records.filter(record => poApplicantCategory(record) === label))
+  })) }
+}

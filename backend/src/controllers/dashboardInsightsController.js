@@ -71,8 +71,8 @@ exports.purchaseOrders = async (req, res) => {
     return res.json({
       ok: true,
       scope: scope === null ? 'all' : 'role-scoped',
-      records: records.map(({ id, leadId, clientId, clientName, ownerId, ownerName, poNumber, poDate, poAmount, approvalStatus }) => ({
-        id, leadId, clientId, clientName, ownerId, ownerName, poNumber, poDate, poAmount, approvalStatus
+      records: records.map(({ id, leadId, clientId, clientName, ownerId, ownerName, poNumber, poDate, poAmount, approvalStatus, applicantType, subApplicantType }) => ({
+        id, leadId, clientId, clientName, ownerId, ownerName, poNumber, poDate, poAmount, approvalStatus, applicantType, subApplicantType
       }))
     });
   }

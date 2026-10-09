@@ -48,10 +48,15 @@ async function leanFind(Model, filter = {}, projection) {
 const monthlyLeadProjection = {
   _id: 1, leadCode: 1, company: 1, companyName: 1, createdBy: 1,
   createdByName: 1, closedAt: 1, closedBy: 1, createdAt: 1, updatedAt: 1,
+  applicantType: 1, subApplicantType: 1, piboParent: 1, piboCategory: 1,
+  serviceSelections: { $map: {
+    input: { $cond: [{ $isArray: '$serviceSelections' }, '$serviceSelections', []] }, as: 'service',
+    in: Object.fromEntries('assignedServiceId serviceAssignmentId assignmentId applicantType piboParent subApplicantType piboCategory'.split(' ').map(field => [field, `$$service.${field}`]))
+  } },
   assignments: { $map: {
     input: { $cond: [{ $isArray: '$assignments' }, '$assignments', []] }, as: 'assignment',
     in: {
-      ...Object.fromEntries('closedBy closedByText closureRequestedBy closureRequestedByText assignedTo assignedToText assignedStaff assignedStaffText closedAt poApprovalStatus'.split(' ').map(field => [field, `$$assignment.${field}`])),
+      ...Object.fromEntries('assignedServiceId serviceAssignmentId assignmentId closedBy closedByText closureRequestedBy closureRequestedByText assignedTo assignedToText assignedStaff assignedStaffText closedAt poApprovalStatus'.split(' ').map(field => [field, `$$assignment.${field}`])),
       poYearRows: { $map: {
         input: { $cond: [{ $isArray: '$$assignment.poYearRows' }, '$$assignment.poYearRows', []] }, as: 'po',
         in: {
@@ -110,7 +115,11 @@ async function loadPurchaseOrders(models, leadFilter = {}, options = {}) {
         const services = (Array.isArray(row.services) ? row.services : [])
           .map(serviceObject).filter((service) => service.name);
         const firstService = services[0] || null;
-        const leadService = lead.serviceSelections?.[assignmentIndex] || {};
+        const selectionId = value => idText(value?.assignedServiceId || value?.serviceAssignmentId || value?.assignmentId);
+        const assignedId = selectionId(assignment);
+        const selections = Array.isArray(lead.serviceSelections) ? lead.serviceSelections : [];
+        const leadService = (assignedId ? selections.find(service => selectionId(service) === assignedId) : null)
+          || selections[assignmentIndex] || {};
         const poAmount = Number(row.poAmount);
         const fallbackAmount = Number(quotation?.grandTotal);
         const createdAt = asIso(row.createdAt || lead.createdAt);
@@ -128,7 +137,7 @@ async function loadPurchaseOrders(models, leadFilter = {}, options = {}) {
           currency: text(row.currency) || 'INR',
           financialYear: text(row.fy) || null,
           clientName: text(lead.company || lead.companyName) || 'Untitled client',
-          applicantType: text(leadService.applicantType || leadService.piboParent || lead.applicantType) || 'Not specified',
+          applicantType: text(leadService.applicantType || leadService.piboParent || lead.applicantType || lead.piboParent) || 'Not specified',
           subApplicantType: text(leadService.subApplicantType || leadService.piboCategory || lead.subApplicantType || lead.piboCategory) || 'Not specified',
           ownerId: idText(assignment.closedBy || assignment.closureRequestedBy || assignment.assignedTo || assignment.assignedStaff || lead.createdBy) || null,
           ownerName: text(assignment.closedByText || assignment.closureRequestedByText || assignment.assignedToText || assignment.assignedStaffText || lead.createdByName) || 'Unassigned',

@@ -13,7 +13,7 @@ test('monthly PO response retains role scope and excludes proof payloads', async
     Lead: {}, Client: {}, Quotation: {}, text: value => String(value || ''), visibleUsers: async () => [],
     loadPurchaseOrders: async (_, filter) => {
       assert.equal(filter.scoped, true);
-      return [{ id: 'one', ownerId: 'allowed', poAmount: 100, poProof: { url: 'data:large' } }, { id: 'two', ownerId: 'hidden', poAmount: 500 }];
+      return [{ id: 'one', ownerId: 'allowed', applicantType: 'PIBO', subApplicantType: 'Importer', poAmount: 100, poProof: { url: 'data:large' } }, { id: 'two', ownerId: 'hidden', poAmount: 500 }];
     }
   };
   vm.runInNewContext(handler, sandbox);
@@ -22,5 +22,7 @@ test('monthly PO response retains role scope and excludes proof payloads', async
   assert.equal(payload.scope, 'role-scoped');
   assert.equal(payload.records.length, 1);
   assert.equal(payload.records[0].id, 'one');
+  assert.equal(payload.records[0].applicantType, 'PIBO');
+  assert.equal(payload.records[0].subApplicantType, 'Importer');
   assert.equal('poProof' in payload.records[0], false);
 });
