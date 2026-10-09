@@ -36,10 +36,32 @@ function stablePoId(leadId, assignmentIndex, rowIndex) {
   return `po_${crypto.createHash('sha256').update(`${leadId}:${assignmentIndex}:${rowIndex}`).digest('hex').slice(0, 24)}`;
 }
 
-async function leanFind(Model, filter = {}) {
+async function leanFind(Model, filter = {}, projection) {
   const query = Model.find(filter);
+  if (projection && typeof query?.select === 'function') query.select(projection);
+  if (typeof query?.maxTimeMS === 'function') query.maxTimeMS(20000);
   return typeof query?.lean === 'function' ? query.lean() : query;
 }
+
+// Monthly reads must not pull embedded PO proofs, invoices or client uploads
+// into Node. Preserve proof-only entries with a boolean presence marker.
+const monthlyLeadProjection = {
+  _id: 1, leadCode: 1, company: 1, companyName: 1, createdBy: 1,
+  createdByName: 1, closedAt: 1, closedBy: 1, createdAt: 1, updatedAt: 1,
+  assignments: { $map: {
+    input: { $cond: [{ $isArray: '$assignments' }, '$assignments', []] }, as: 'assignment',
+    in: {
+      ...Object.fromEntries('closedBy closedByText closureRequestedBy closureRequestedByText assignedTo assignedToText assignedStaff assignedStaffText closedAt poApprovalStatus'.split(' ').map(field => [field, `$$assignment.${field}`])),
+      poYearRows: { $map: {
+        input: { $cond: [{ $isArray: '$$assignment.poYearRows' }, '$$assignment.poYearRows', []] }, as: 'po',
+        in: {
+          ...Object.fromEntries('poNumber poDate poAmount quotationId quotationNumber quotationNo createdAt updatedAt'.split(' ').map(field => [field, `$$po.${field}`])),
+          poFileUrl: { $cond: [{ $ne: [{ $ifNull: ['$$po.poFileUrl', ''] }, ''] }, 'proof-present', ''] }
+        }
+      } }
+    }
+  } }
+};
 
 function quotationMatchesLead(quotation, lead) {
   const candidates = [quotation.leadRef, quotation.leadId, quotation.leadCode, quotation.businessLeadCode].map(idText).filter(Boolean);
@@ -55,8 +77,11 @@ function resolveQuotation(row, lead, quotations) {
     || null;
 }
 
-async function loadPurchaseOrders(models, leadFilter = {}) {
-  const leads = await leanFind(models.Lead, leadFilter);
+async function loadPurchaseOrders(models, leadFilter = {}, options = {}) {
+  const compact = options.monthly === true;
+  const leads = compact && typeof models.Lead.aggregate === 'function'
+    ? await models.Lead.aggregate([{ $match: leadFilter }, { $project: monthlyLeadProjection }]).option({ maxTimeMS: 20000 })
+    : await leanFind(models.Lead, leadFilter);
   const leadIds = (leads || []).map(idText).filter(Boolean);
   const leadCodes = (leads || []).map((lead) => text(lead.leadCode)).filter(Boolean);
   if (!leadIds.length && !leadCodes.length) return [];
@@ -64,8 +89,8 @@ async function loadPurchaseOrders(models, leadFilter = {}) {
   if (leadIds.length) quotationLookup.push({ leadRef: { $in: leadIds } }, { leadId: { $in: leadIds } });
   if (leadCodes.length) quotationLookup.push({ leadCode: { $in: leadCodes } }, { businessLeadCode: { $in: leadCodes } });
   const [clients, quotations] = await Promise.all([
-    leanFind(models.Client, { selectedLead: { $in: leadIds } }),
-    leanFind(models.Quotation, { $or: quotationLookup })
+    leanFind(models.Client, { selectedLead: { $in: leadIds } }, compact ? '_id selectedLead' : undefined),
+    leanFind(models.Quotation, { $or: quotationLookup }, compact ? '_id leadRef leadId leadCode businessLeadCode quotationNumber grandTotal' : undefined)
   ]);
   const clientByLead = new Map();
   for (const client of clients || []) {
@@ -76,8 +101,10 @@ async function loadPurchaseOrders(models, leadFilter = {}) {
   const records = [];
   for (const lead of leads || []) {
     const leadId = idText(lead);
-    for (const [assignmentIndex, assignment] of (lead.assignments || []).entries()) {
-      for (const [rowIndex, row] of (assignment.poYearRows || []).entries()) {
+    for (const [assignmentIndex, assignment] of (Array.isArray(lead.assignments) ? lead.assignments : []).entries()) {
+      if (!assignment || typeof assignment !== 'object') continue;
+      for (const [rowIndex, row] of (Array.isArray(assignment.poYearRows) ? assignment.poYearRows : []).entries()) {
+        if (!row || typeof row !== 'object') continue;
         if (!text(row.poNumber) && !text(row.poFileUrl)) continue;
         const quotation = resolveQuotation(row, lead, quotations || []);
         const services = (Array.isArray(row.services) ? row.services : [])
@@ -175,5 +202,5 @@ function createPurchaseOrderController(models = { Lead, Client, Quotation }) {
 
 module.exports = {
   ...createPurchaseOrderController(), createPurchaseOrderController, loadPurchaseOrders,
-  inferMimeType, stablePoId
+  inferMimeType, stablePoId, monthlyLeadProjection
 };

@@ -11,6 +11,7 @@ const { loadOverallRecords } = require('../services/overallDashboardData');
 const { loadDashboardAssignments, createDashboardCache } = require('../services/dashboardReadModel');
 const cachedOverallRecords = createDashboardCache();
 const cachedAssignmentReviews = createDashboardCache();
+const cachedMonthlyPurchaseOrders = createDashboardCache();
 const { overallLeadFilter } = require('../services/overallDashboardVisibility');
 const { userHasAnyRole } = require('../utils/userRoles');
 const {
@@ -44,6 +45,8 @@ async function visibleUsers(scope, requester) {
 }
 
 exports.purchaseOrders = async (req, res) => {
+  try {
+  const monthly = req.query?.view === 'monthly';
   const scope = await getVisibleUserScope(req.user);
   const accessFilter = ownerFilter(scope, 'createdBy', 'assignedTo', [
     'createdByCrmUserId', 'createdByEmail', 'createdByName', 'assignedToText',
@@ -54,8 +57,10 @@ exports.purchaseOrders = async (req, res) => {
   const testLeadReferences = await getAdminCreatedLeadReferences();
   const leadFilter = combineFilters(accessFilter, dashboardLeadExclusionFilter(testLeadReferences));
   const [loadedRecords, users] = await Promise.all([
-    loadPurchaseOrders({ Lead, Client, Quotation }, leadFilter),
-    visibleUsers(scope, req.user)
+    monthly
+      ? cachedMonthlyPurchaseOrders(JSON.stringify(leadFilter), () => loadPurchaseOrders({ Lead, Client, Quotation }, leadFilter, { monthly: true }))
+      : loadPurchaseOrders({ Lead, Client, Quotation }, leadFilter),
+    monthly ? Promise.resolve([]) : visibleUsers(scope, req.user)
   ]);
   const allowedIds = new Set((scope?.ids || []).map(text));
   const allowedIdentities = new Set((scope?.identities || []).map((value) => String(value).trim().toLowerCase()));
@@ -99,6 +104,10 @@ exports.purchaseOrders = async (req, res) => {
     users: userRows.sort((a, b) => b.total - a.total || a.userName.localeCompare(b.userName)),
     records: records.sort((a, b) => new Date(b.poReceivedDate || 0) - new Date(a.poReceivedDate || 0))
   });
+  } catch (error) {
+    console.error('[purchase-order-dashboard] read failed', { name: error.name, code: error.code });
+    return res.status(503).json({ ok: false, error: 'Purchase order data is temporarily unavailable. Please refresh and retry.' });
+  }
 };
 
 exports.purchaseSales = async (req, res) => {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Download, RefreshCw, X } from 'lucide-react'
-import api from '../../services/api'
+import api, { readApiError } from '../../services/api'
 import { PO_MONTHS, poPeriod, monthlyPO, poAmount } from '../../utils/poMonthly.mjs'
 
 const money = value => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value)
@@ -28,8 +28,9 @@ export default function POMonthlyDashboard({ refreshToken }) {
       pending = true; setLoading(true)
       try {
         const response = await api.get('/dashboard-insights/purchase-orders', { params: { view: 'monthly' }, signal: controller.signal, timeout: 45000 })
+        if (!Array.isArray(response.data?.records)) throw new Error('Invalid PO dashboard response. Please refresh and retry.')
         if (!controller.signal.aborted) { setData(response.data); setError(''); setSelection(null) }
-      } catch (err) { if (!controller.signal.aborted) setError(err.response?.data?.error || 'PO dashboard could not load. Please retry.') }
+      } catch (err) { if (!controller.signal.aborted) setError(err.code === 'ECONNABORTED' ? 'PO data took too long to load. Please retry.' : readApiError(err, 'PO dashboard could not load. Please retry.')) }
       finally { pending = false; if (!controller.signal.aborted) setLoading(false) }
     }
     load()
@@ -48,6 +49,7 @@ export default function POMonthlyDashboard({ refreshToken }) {
     const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }))
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = `PO-dashboard-${year}.csv`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
+  if (!data) return <section id="po-monthly-panel" role="tabpanel" aria-labelledby="dashboard-tab-po" className="rounded-2xl border bg-white p-8"><h2 className="text-xl font-bold">PO Dashboard</h2>{error ? <div role="alert" className="mt-4 text-rose-700"><p>{error}</p><button type="button" disabled={loading} onClick={() => setReload(v => v + 1)} className="mt-4 rounded-xl bg-teal-700 px-5 py-3 text-white disabled:opacity-50">{loading ? 'Retrying…' : 'Retry loading PO data'}</button></div> : <p role="status" className="mt-4 text-teal-700">Loading PO data…</p>}</section>
   return <section id="po-monthly-panel" role="tabpanel" aria-labelledby="dashboard-tab-po" className="space-y-5">
     <div className="flex flex-wrap items-end justify-between gap-4"><div><h2 className="text-xl font-black text-slate-900">PO Dashboard</h2><p className="mt-1 text-sm text-slate-500">User-wise purchase orders · April to March · Based on PO date</p></div><div className="flex flex-wrap items-end gap-3"><label className="text-xs font-semibold text-slate-600">Financial year<select value={year} onChange={e => setYear(e.target.value)} className="mt-1 block rounded-xl border bg-white px-4 py-2.5">{years.map(y => <option key={y}>{y}</option>)}</select></label><label className="text-xs font-semibold text-slate-600">Search user<input value={search} onChange={e => setSearch(e.target.value)} placeholder="User name…" className="mt-1 block rounded-xl border px-4 py-2.5" /></label><button type="button" onClick={exportCSV} disabled={!matrix.records.length} className="flex items-center gap-2 rounded-xl border bg-white p-3 text-sm disabled:opacity-40"><Download size={16} />Export CSV</button><button type="button" aria-label="Refresh PO dashboard" disabled={loading} onClick={() => setReload(v => v + 1)} className="rounded-xl border bg-white p-3"><RefreshCw size={17} className={loading ? 'animate-spin' : ''} /></button></div></div>
     {error && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-700">{error}</p>}

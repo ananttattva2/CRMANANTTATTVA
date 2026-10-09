@@ -7,6 +7,7 @@ test('monthly PO response retains role scope and excludes proof payloads', async
   const handler = source.slice(source.indexOf('exports.purchaseOrders ='), source.indexOf('exports.purchaseSales ='));
   const sandbox = {
     exports: {}, getVisibleUserScope: async () => ({ ids: ['allowed'], identities: [] }),
+    cachedMonthlyPurchaseOrders: (_, load) => load(),
     ownerFilter: () => ({ scoped: true }), getAdminCreatedLeadReferences: async () => [],
     dashboardLeadExclusionFilter: () => ({}), combineFilters: () => ({ scoped: true }),
     Lead: {}, Client: {}, Quotation: {}, text: value => String(value || ''), visibleUsers: async () => [],
