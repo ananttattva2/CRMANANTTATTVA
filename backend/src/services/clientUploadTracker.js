@@ -3,6 +3,11 @@ const { allocatedOwnerKeyGroups } = require('./overallDashboardUsers');
 const { assignedCompanyKey } = require('./assignedCompanyIdentity');
 const STAGES = ['Data Explained', 'Data Format Sent', 'Received from client', 'Ready to upload', 'Client Approval on data', 'Upload Complete', 'Manager Review', 'Compliance Review'];
 const id = value => String(value?._id || value || '');
+const normalizeYear = value => {
+  const match = String(value || '').match(/(20\d{2})\s*[-/]\s*(\d{2,4})/);
+  return match ? `${match[1]}-${match[2].slice(-2)}` : '';
+};
+const yearsFrom = value => (Array.isArray(value) ? value : [value]).flatMap(item => String(item || '').split(/[,;\n]/)).map(normalizeYear).filter(Boolean);
 function matchesTrackedService(client, type) {
   const data = client.data || {}, lead = client.selectedLead || {};
   const selected = String(client.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId || '');
@@ -43,7 +48,17 @@ function applicationDescriptor(client) {
   const closed = Boolean(assignment.closedAt || assignment.closedBy || assignment.closedByText || assignment.permanentClosedAt || (selections.length === 1 && (lead.closedAt || lead.closedBy)) || String(lead.status || '').toLowerCase() === 'closed');
   const annualWorkflowReady = Boolean(assignment.assignedTo || assignment.assignedToText || assignment.assignedToEmail)
     && Boolean(assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail);
-  return { category: canonical, unit: String(service.plantUnit || basic.plantUnit || data.selectedLeadSnapshot?.plantUnit || '').trim(), serviceType, offered: primary, closed, annualWorkflowReady };
+  const poAnnualYears = [...(assignment.poYearRows || []), ...(assignment.originalPoDetails ? [assignment.originalPoDetails] : [])]
+    .flatMap(row => yearsFrom(row?.annualReturnYear));
+  const annualReturnYears = [...new Set(poAnnualYears.length ? poAnnualYears : [
+    service.firstAnnualReturnYearApplicable, service.annualReturnYear, service.servicesForYear,
+    assignment.firstAnnualReturnYearApplicable, assignment.annualReturnYear,
+    lead.firstAnnualReturnYearApplicable,
+    data.selectedLeadSnapshot?.firstAnnualReturnYearApplicable, data.selectedLeadSnapshot?.annualReturnYear,
+    basic.firstAnnualReturnYear, basic.firstAnnualReturnYearApplicable,
+    data.firstAnnualReturnYearApplicable, client.firstAnnualReturnYear
+  ].flatMap(yearsFrom))];
+  return { category: canonical, unit: String(service.plantUnit || basic.plantUnit || data.selectedLeadSnapshot?.plantUnit || '').trim(), serviceType, offered: primary, closed, annualWorkflowReady, annualReturnYears };
 }
 function buildUploadTracker(clients, users, purchases, sales, options = {}) {
   const identities = new Map();
@@ -88,7 +103,10 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
       // Match Service Summary: one representative closed service per company/category/unit.
       const representative = detail.sources.find(source => source.closed && source.offered);
       if (!representative || options.serviceType && representative.serviceType !== options.serviceType) return [];
-      const sources = detail.sources.filter(source => source.closed && source.serviceType === representative.serviceType && (representative.serviceType !== 'annual' || source.annualWorkflowReady));
+      const sources = detail.sources.filter(source => source.closed
+        && source.serviceType === representative.serviceType
+        && (representative.serviceType !== 'annual' || source.annualWorkflowReady)
+        && (representative.serviceType !== 'annual' || !options.financialYear || source.annualReturnYears.includes(options.financialYear)));
       if (!sources.length) return [];
       detail.clientId = representative.clientId;
       detail.category = representative.category;

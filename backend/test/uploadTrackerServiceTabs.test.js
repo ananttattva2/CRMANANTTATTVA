@@ -90,3 +90,18 @@ test('AR allocation requires manager and permanent staff assignment; rejected PO
     assert.equal(tracker.reduce((sum,g)=>sum+g.clients.length,0),missing===null?1:0);
   }
 });
+
+test('AR allocation is restricted to the selected Annual Return year', () => {
+  const ar2025 = client('ar-2025', 'Annual Return Filling');
+  ar2025.selectedLead.company = 'AR 2025 Client';
+  ar2025.selectedLead.serviceSelections[0].firstAnnualReturnYearApplicable = '2025-26';
+  const ar2026 = client('ar-2026', 'Annual Return Filling');
+  ar2026.selectedLead.company = 'AR 2026 Client';
+  ar2026.selectedLead.serviceSelections[0].firstAnnualReturnYearApplicable = '2026-27';
+  const poYear = client('po-year', 'Annual Return Filling');
+  poYear.selectedLead.company = 'PO Annual Year Client';
+  poYear.selectedLead.serviceSelections[0].firstAnnualReturnYearApplicable = '2024-25';
+  poYear.selectedLead.assignments[0].poYearRows = [{ poFinancialYear: '2026-27', annualReturnYear: '2025-26' }];
+  const tracker = buildUploadTracker([ar2025, ar2026, poYear], [user], [], [], { groupBy: 'application', serviceType: 'annual', financialYear: '2025-26' });
+  assert.deepEqual(tracker[0].clients.map(row => row.clientName).sort(), ['AR 2025 Client', 'PO Annual Year Client']);
+});
