@@ -5,6 +5,8 @@ export const STATUS_COLUMNS = [
   ['total', 'Total'],
   ['annual:2025-26', '2025-26'], ['annual:2026-27', '2026-27'], ['annual:2027-28', '2027-28'], ['annual:unrecorded', 'Not Recorded'],
   ['annualActionRequired', 'AR Action Required'],
+  ['registrationApproved', 'Approved'],
+  ['otherServicesApproved', 'Approved'],
   ['applied', 'Applied'], ['underReview', 'Under Review'],
   ['notStarted', 'Not Started'], ['rejected', 'Rejected']
 ]
@@ -58,9 +60,25 @@ export function matchesStatusSummary(record, key, date = new Date()) {
   if (key === 'total') return true
   const actionRequired = matchesServiceSummary(record, 'annualActionRequired', date)
   if (key === 'annualActionRequired') return actionRequired
+  if (key === 'registrationApproved') return !actionRequired
+    && record.bucket === 'approved'
+    && ((record.services || []).some(service => isRegistrationService(service.offeredServices))
+      || isRegistrationService(rawApplicationSummaryService(record)))
+  if (key === 'otherServicesApproved') return !actionRequired
+    && record.bucket === 'approved'
+    && (record.services || []).some(service => service.offeredServices?.some(offered => (
+      !isAnnualReturnService(offered) && !isRegistrationService(offered)
+    )))
   if (key.startsWith('annual:')) return !actionRequired && record.annual
     && (key === 'annual:unrecorded' ? !record.annualYears.length : record.annualYears.includes(key.slice(7)))
   return !actionRequired && record.bucket === key
+}
+
+export function isRegistrationService(value) {
+  return (Array.isArray(value) ? value : [value]).some((item) => {
+    const service = normalize(item)
+    return service === 'registration' || service === 'newregistration'
+  })
 }
 export function annualActionReasons(record) {
   const services = (record.services || []).filter(service => service.offeredServices?.includes('Annual Return Filling'))

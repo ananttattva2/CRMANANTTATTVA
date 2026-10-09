@@ -351,3 +351,22 @@ test('Annual Return PO service objects qualify for all users and applicant types
     assert.equal(rows[0].annualCurrentFyPo, true);
   }
 });
+
+test('approved Registration and New Registration have a dedicated status-summary column', async () => {
+  const { buildApplicationPortfolio, applicationServiceSummaryRecords, matchesStatusSummary } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const registration = client('registration', 'sonal', 'Producer', 'Approved');
+  registration.workflowStatus = 'submitted';
+  registration.data.basic.servicesOffered = 'Registration';
+  const newRegistration = client('new-registration', 'sonal', 'Importer', 'Approved');
+  newRegistration.workflowStatus = 'submitted';
+  newRegistration.selectedLead.company = 'New Registration Client';
+  newRegistration.data.basic.servicesOffered = 'New Registration';
+  const consulting = client('consulting', 'sonal', 'Brand Owner', 'Approved');
+  consulting.workflowStatus = 'submitted';
+  consulting.selectedLead.company = 'Consulting Client';
+  const rows = applicationServiceSummaryRecords(buildApplicationPortfolio([registration, newRegistration, consulting], users)[0]);
+  assert.deepEqual(rows.filter((row) => matchesStatusSummary(row, 'registrationApproved')).map((row) => row.name).sort(), ['20 MICRONS LIMITED', 'New Registration Client']);
+  assert.equal(rows.find((row) => row.name === 'Consulting Client' && matchesStatusSummary(row, 'registrationApproved')), undefined);
+  assert.deepEqual(rows.filter((row) => matchesStatusSummary(row, 'otherServicesApproved')).map((row) => row.name), ['Consulting Client']);
+  assert.equal(rows.filter((row) => matchesStatusSummary(row, 'otherServicesApproved')).some((row) => ['Registration', 'New Registration'].includes(row.summaryService)), false);
+});
