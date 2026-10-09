@@ -2376,37 +2376,10 @@ export default function LeadGeneration() {
                 navigate('/sales/quotations', { state: { quotationContext, leadAction: 'revise' } });
                 return;
               }
-                const currentUserTokens = [
-                  currentUser?._id, currentUser?.id, currentUser?.crmUserId, currentUser?.userId,
-                  currentUser?.name, currentUser?.email
-                ].map(normalizePersonName).filter(Boolean);
-                const leadCreatorTokens = [
-                  viewLead.createdBy?._id, viewLead.createdBy?.id, viewLead.createdBy?.name,
-                  viewLead.createdBy?.email, viewLead.createdByCrmUserId, viewLead.createdByName,
-                  viewLead.createdByEmail, viewLead.importedCreatedBy
-                ].map(normalizePersonName).filter(Boolean);
                 const allServices = Array.isArray(viewLead.serviceSelections) && viewLead.serviceSelections.length
                   ? viewLead.serviceSelections
                   : [createServiceSelection(viewLead)];
-                const leadParticipantTokens = [
-                  ...leadCreatorTokens,
-                  viewLead.generatedForUser?._id, viewLead.generatedForUser?.id,
-                  viewLead.generatedForUser?.name, viewLead.generatedForUser?.email,
-                  viewLead.generatedForName, viewLead.generatedForEmail
-                ].map(normalizePersonName).filter(Boolean);
-                const participantCanSeeAllServices = adminRoles.includes(String(currentUser?.role || '').toLowerCase())
-                  || leadParticipantTokens.some((token) => currentUserTokens.includes(token));
-                const ownedServices = allServices.map((service, sourceServiceIndex) => ({
-                  ...service,
-                  sourceServiceIndex
-                })).filter((service) => {
-                  if (participantCanSeeAllServices) return true;
-                  const explicitOwnerTokens = [
-                    service.createdByCrmUserId, service.createdByName, service.createdByEmail
-                  ].map(normalizePersonName).filter(Boolean);
-                  const ownerTokens = explicitOwnerTokens.length ? explicitOwnerTokens : leadCreatorTokens;
-                  return ownerTokens.some((token) => currentUserTokens.includes(token));
-                });
+                const ownedServices = allServices.map((service, sourceServiceIndex) => ({ ...service, sourceServiceIndex }));
                 const primaryOwnedService = ownedServices[0] || {};
                 const quotationContext = {
                   sourceType: 'lead',
