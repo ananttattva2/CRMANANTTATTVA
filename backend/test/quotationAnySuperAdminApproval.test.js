@@ -6,12 +6,50 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../src/controllers/quotationController.js'), 'utf8');
 
 function load(name, context) {
+  context.userHasAnyRole = require('../src/utils/userRoles').userHasAnyRole;
   const start = source.indexOf(`exports.${name} =`);
   const next = source.indexOf('\nexports.', start + 1);
   context.exports = {};
   vm.runInNewContext(source.slice(start, next < 0 ? undefined : next), context);
   return context.exports[name];
 }
+
+for (const primaryRole of ['admin', 'manager']) for (const adminStatus of ['PENDING', 'APPROVED']) {
+  test(`${primaryRole} with Super Admin permission directly finalizes while Admin is ${adminStatus}`, async () => {
+    const quotation = { _id: 'quote', status: 'submitted', managementApproval: { status: 'PENDING', adminApprovalStatus: adminStatus }, save: async () => {} };
+    let update, code = 200;
+    const handler = load('finalizeManagementApproval', {
+      console, mongoose: { Types: { ObjectId: { isValid: () => true } } },
+      Quotation: { findById: () => ({ populate: async () => quotation }) },
+      PendingApproval: { updateMany: async (_, changes) => { update = changes.$set; } },
+      sendQuotationLifecycleEmail: async () => ({})
+    });
+    await handler({ params: { id: 'quote' }, body: {}, user: { _id: 'super', role: primaryRole, roles: ['Super Admin'] } }, {
+      status(value) { code = value; return this; }, json() {}
+    });
+    assert.equal(code, 200);
+    assert.equal(quotation.status, 'approved');
+    assert.equal(quotation.approvalDecision.approvalKind, 'MANAGEMENT_FINAL');
+    assert.equal(update.approvalStatus, 'APPROVED');
+  });
+}
+
+test('regular approval gives secondary Super Admin permission precedence over primary Admin', async () => {
+  const quotation = { _id: 'quote', status: 'submitted', managementApproval: { status: 'PENDING' }, save: async () => {} };
+  const handler = load('updateQuotationApproval', {
+    console, normalizeApprovalStatus: value => value,
+    require: () => ({ Types: { ObjectId: { isValid: value => Boolean(value) } } }),
+    Quotation: { findById: () => ({ populate: async () => quotation }) },
+    PendingApproval: { updateMany: async () => {} }, sendQuotationLifecycleEmail: async () => ({})
+  });
+  await handler({ params: { id: 'quote' }, body: { status: 'APPROVED' }, user: { _id: 'super', role: 'admin', roles: ['superadmin'] } }, {
+    status(value) { assert.fail(`Unexpected HTTP ${value}`); }, json() {}
+  });
+  assert.equal(quotation.status, 'approved');
+  assert.equal(quotation.managementApproval.status, 'APPROVED');
+  assert.equal(quotation.approvalDecision.reviewerRole, 'superadmin');
+  assert.equal(quotation.approvalDecision.approvalKind, 'MANAGEMENT_FINAL');
+});
 
 for (const adminStatus of ['PENDING', 'APPROVED']) for (const role of ['superadmin', 'admin']) {
   test(`${role}: final approval with Admin ${adminStatus} by someone other than the price approver`, async () => {

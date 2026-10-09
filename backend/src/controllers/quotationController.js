@@ -873,9 +873,7 @@ exports.updateQuotationApproval = async (req, res) => {
 
   const reviewerRole = String(req.user?.role || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
   const isSuperAdminReviewer = reviewerRole === 'superadmin'
-    || (!reviewerRole && userHasAnyRole(req.user, ['superadmin']));
-  const isAdminReviewer = reviewerRole === 'admin'
-    || (!reviewerRole && userHasAnyRole(req.user, ['admin']) && !isSuperAdminReviewer);
+    || userHasAnyRole(req.user, ['superadmin']);
   const remarks = String(req.body.remarks || '').trim();
   const proofUrl = String(req.body.proofUrl || '').trim();
   const proofName = String(req.body.proofName || '').trim();
@@ -970,7 +968,7 @@ exports.updateQuotationApproval = async (req, res) => {
     remarks,
     proofUrl,
     proofName,
-    reviewerRole,
+    reviewerRole: isSuperAdminReviewer ? 'superadmin' : reviewerRole,
     actionBy: req.user?._id,
     actionAt: update.actionAt
   };
@@ -1125,8 +1123,8 @@ exports.submitManagementApproval = async (req, res) => {
 
 exports.finalizeManagementApproval = async (req, res) => {
   const finalReviewerRole = String(req.user?.role || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
-  if (finalReviewerRole !== 'superadmin') {
-    return res.status(403).json({ error: 'Only a primary Super Admin account can complete final approval.' });
+  if (finalReviewerRole !== 'superadmin' && !userHasAnyRole(req.user, ['superadmin'])) {
+    return res.status(403).json({ error: 'Only Super Admin can complete final approval.' });
   }
   const requestedId = String(req.params.id || '').trim();
   const quotation = mongoose.Types.ObjectId.isValid(requestedId)
@@ -1228,7 +1226,7 @@ exports.bulkCreateQuotations = async (req, res) => {
 
 exports.approveAllPendingQuotations = async (req, res) => {
   const reviewerRole = String(req.user?.role || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
-  if (reviewerRole !== 'superadmin') {
+  if (reviewerRole !== 'superadmin' && !userHasAnyRole(req.user, ['superadmin'])) {
     return res.status(403).json({ error: 'Only Super Admin can approve all quotations without individual proof.' });
   }
   const remarks = String(req.body.remarks || 'Bulk approved').trim();
@@ -1251,7 +1249,7 @@ exports.approveAllPendingQuotations = async (req, res) => {
         quotation.status = 'approved';
         const actionAt = new Date();
         quotation.managementApproval = { ...(quotation.managementApproval || {}), status: 'APPROVED', actionBy: req.user?._id, actionByName: req.user?.name || req.user?.email || 'Super Admin', actionAt };
-        quotation.approvalDecision = { status: 'APPROVED', approvalKind: 'MANAGEMENT_FINAL', remarks, proofUrl: '', proofName: '', reviewerRole, actionBy: req.user?._id, actionAt };
+        quotation.approvalDecision = { status: 'APPROVED', approvalKind: 'MANAGEMENT_FINAL', remarks, proofUrl: '', proofName: '', reviewerRole: 'superadmin', actionBy: req.user?._id, actionAt };
         await quotation.save();
         await quotation.populate('createdBy', 'name email');
       }

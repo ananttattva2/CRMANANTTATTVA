@@ -691,9 +691,8 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
   const normalizedRole = effectiveRoles.join('|');
   const canApprove = hasAnyRole(currentUser, adminRoles);
   const isSuperAdmin = hasAnyRole(currentUser, ['superadmin']);
-  const primaryRole = String(currentUser?.role || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
-  const isQuotationSuperAdmin = primaryRole === 'superadmin' || (!primaryRole && hasAnyRole(currentUser, ['superadmin']));
-  const canAdminApproveQuotation = primaryRole === 'admin' || (!primaryRole && hasAnyRole(currentUser, ['admin']) && !isQuotationSuperAdmin);
+  const isQuotationSuperAdmin = hasAnyRole(currentUser, ['superadmin']);
+  const canAdminApproveQuotation = !isQuotationSuperAdmin && hasAnyRole(currentUser, ['admin']);
   const canApproveTemporary = hasAnyRole(currentUser, ['admin', 'superadmin']);
   const isComplianceApprovalView = companyOnly || hasAnyRole(currentUser, ['compliance']) && !canApprove;
   const isServiceParticipantView = !canApprove && !isComplianceApprovalView;
@@ -2111,7 +2110,7 @@ function QuotationActionCell({ row, savingId, onView, onRevise, onUpdate, canApp
               type="button"
               disabled={Boolean(savingId)}
               onClick={() => onUpdate(row, 'APPROVED')}
-              title="Approve quotation"
+              title={isSuperAdmin ? 'Approve directly without Admin approval' : 'Approve quotation'}
               className="pending-action pending-action-approve"
             >
               {approving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
