@@ -62,6 +62,15 @@ exports.purchaseOrders = async (req, res) => {
   const records = scope === null ? loadedRecords : loadedRecords.filter((record) => (
     allowedIds.has(text(record.ownerId)) || allowedIdentities.has(String(record.ownerName || '').trim().toLowerCase())
   ));
+  if (req.query?.view === 'monthly') {
+    return res.json({
+      ok: true,
+      scope: scope === null ? 'all' : 'role-scoped',
+      records: records.map(({ id, leadId, clientId, clientName, ownerId, ownerName, poNumber, poDate, poAmount, approvalStatus }) => ({
+        id, leadId, clientId, clientName, ownerId, ownerName, poNumber, poDate, poAmount, approvalStatus
+      }))
+    });
+  }
   const userMap = new Map(users.map((user) => [text(user), user]));
   const grouped = new Map(users.map((user) => [text(user), { userId: text(user), userName: user.name || user.email, role: user.role || '', clientIds: new Set(), total: 0, open: 0, closed: 0, amount: 0 }]));
   records.forEach((record) => {
