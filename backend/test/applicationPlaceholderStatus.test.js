@@ -1,5 +1,19 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
+test('repeated unlinked annual assignments merge without losing years or distinct units and services',async()=>{
+ const {effectiveApplicationServices}=await import('../../frontend/src/utils/applicationPortfolio.mjs');
+ const first={id:'first',assignmentOnly:true,leadId:'khatri',category:'Producer',unit:'Unit 1',industry:'Manufacturing',eprCategory:'Plastic Waste',offeredServices:['Annual Return Filling'],bucket:'notStarted',closed:false,annualWorkflowReady:false,annualCurrentFyPo:false,annualYears:['2025-26']};
+ const second={...first,id:'second',closed:true,annualWorkflowReady:true,annualCurrentFyPo:true,annualYears:['2026-27']};
+ const result=effectiveApplicationServices([{...first},second]);
+ assert.equal(result.length,1);
+ assert.deepEqual(result[0].annualYears,['2025-26','2026-27']);
+ assert.equal(result[0].closed,true);assert.equal(result[0].annualWorkflowReady,true);assert.equal(result[0].annualCurrentFyPo,true);
+ for(const other of [{unit:'Unit 2'},{leadId:'another'},{category:'Importer'},{offeredServices:['New Registration']},{bucket:'approved'},{statusSourceClientId:'different-master'}]){
+ assert.equal(effectiveApplicationServices([{...first},{...second,...other}]).length,2);
+ }
+ const saved=effectiveApplicationServices([{...first},{...second,assignmentOnly:false}]);
+ assert.equal(saved.length,1);assert.equal(saved[0].id,'second');
+});
 test('service summaries keep registration in Not Started and only annual records in AR actions',async()=>{
  const {applicationServiceSummaryRecords,matchesStatusSummary,STATUS_COLUMNS}=await import('../../frontend/src/utils/applicationPortfolio.mjs');
  const registration={id:'registration',closed:true,offeredServices:['New Registration'],bucket:'notStarted',annual:false,clientStatus:'submitted'};

@@ -166,11 +166,13 @@ export function effectiveApplicationServices(services) {
   }
   const hydrated = new Map()
   services = services.filter(service => {
-    if (!service.assignmentOnly || !service.statusSourceClientId) return true
-    const key = `${service.statusSourceClientId}:${signature(service)}`
+    if (!service.assignmentOnly) return true
+    const key = `${service.statusSourceClientId || 'unlinked'}:${signature(service)}:${service.bucket}`
     const existing = hydrated.get(key)
     if (!existing) { hydrated.set(key, service); return true }
     existing.annualCurrentFyPo ||= service.annualCurrentFyPo
+    existing.closed ||= service.closed
+    existing.annualWorkflowReady ||= service.annualWorkflowReady
     existing.annualYears = [...new Set([...(existing.annualYears || []), ...(service.annualYears || [])])]
     return false
   })
