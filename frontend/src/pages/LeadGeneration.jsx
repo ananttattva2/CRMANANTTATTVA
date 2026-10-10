@@ -2665,7 +2665,8 @@ export default function LeadGeneration() {
                       // persisted. A newly added row must remain editable even when
                       // the lead is being generated on behalf of another user.
                       const isAdminUser = adminRoles.includes(String(currentUser?.role || '').trim().toLowerCase());
-                      const ownedByAnotherUser = !isAdminUser && index < frozenServiceRowCount && rowOwners.length > 0 && !rowOwners.some((value) => currentIds.includes(value));
+                      const isCreatorEditor = personIdentityTokens(lead.createdBy, lead.secondaryCreatedBy).some((value) => currentIds.includes(value));
+                      const ownedByAnotherUser = !isAdminUser && !isCreatorEditor && index < frozenServiceRowCount && rowOwners.length > 0 && !rowOwners.some((value) => currentIds.includes(value));
                       const rowFrozen = ownedByAnotherUser;
                       const directOptions = directApplicantOptions(row.eprCategory);
                       const direct = Boolean(directOptions);
@@ -5711,6 +5712,7 @@ function canUserEditLead(item = {}, currentUser = {}) {
   const userTokens = personIdentityTokens(currentUser);
   if (!userTokens.length) return false;
   const ownerTokens = personIdentityTokens(
+    item.secondaryCreatedBy,
     item.createdBy, item.createdByCrmUserId, item.createdByName, item.createdByEmail, item.importedCreatedBy,
     item.generatedForUser, item.generatedForName, item.generatedForEmail,
     item.createdOnBehalfOfUser, item.createdOnBehalfOfName, item.createdOnBehalfOfEmail,
@@ -5731,6 +5733,7 @@ function canUserEditLead(item = {}, currentUser = {}) {
 
 function leadStaffIdentityTokens(item = {}) {
   const creatorTokens = personIdentityTokens(
+    item.secondaryCreatedBy,
     item.createdBy, item.createdByCrmUserId, item.createdByName, item.createdByEmail, item.importedCreatedBy
   );
   if (creatorTokens.length) return creatorTokens;
