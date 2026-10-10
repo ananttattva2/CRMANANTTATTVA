@@ -1,5 +1,41 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+
+test('PO columns advance at month boundaries in India and keep historical years complete', async () => {
+  const { visiblePOMonths, PO_MONTHS } = await import('../../frontend/src/utils/poMonthly.mjs');
+  assert.deepEqual(visiblePOMonths('2026-27', new Date('2026-10-10T12:00:00+05:30')), PO_MONTHS.slice(0, 7));
+  assert.equal(visiblePOMonths('2026-27', new Date('2026-10-31T18:29:59Z')).at(-1), 'Oct');
+  assert.equal(visiblePOMonths('2026-27', new Date('2026-10-31T18:30:00Z')).at(-1), 'Nov');
+  assert.equal(visiblePOMonths('2026-27', new Date('2027-01-01T00:00:00+05:30')).at(-1), 'Jan');
+  assert.deepEqual(visiblePOMonths('2025-26', new Date('2026-10-10')), PO_MONTHS);
+  assert.deepEqual(visiblePOMonths('2027-28', new Date('2026-10-10')), []);
+  assert.deepEqual(visiblePOMonths('2027-28', new Date('2027-03-31T18:30:00Z')), ['Apr']);
+  assert.deepEqual(visiblePOMonths('2026-27', new Date('2027-03-31T18:30:00Z')), PO_MONTHS);
+});
+
+test('visible PO counts, amounts, category view and drill-downs use the same elapsed months', async () => {
+  const { dashboardPO, poAmount, poDetailExportRows } = await import('../../frontend/src/utils/poMonthly.mjs');
+  const records = [
+    { id: 'apr', ownerId: '1', ownerName: 'Himanshu Parashar', poDate: '2026-04-10', poAmount: 100, applicantType: 'Producer' },
+    { id: 'oct', ownerId: '1', ownerName: 'Himanshu Parashar', poDate: '2026-10-10', poAmount: 200, applicantType: 'Producer' },
+    { id: 'nov', ownerId: '1', ownerName: 'Himanshu Parashar', poDate: '2026-11-10', poAmount: 300, applicantType: 'Producer' },
+    { id: 'undated', ownerId: '1', ownerName: 'Himanshu Parashar', poDate: null, poAmount: 400 }
+  ];
+  const oct = new Date('2026-10-10T12:00:00+05:30');
+  for (const view of ['month', 'pibo']) {
+    const matrix = dashboardPO(records, '2026-27', 'himanshu', view, oct);
+    assert.equal(matrix.records.length, 2);
+    assert.equal(poAmount(matrix.records), 300);
+    assert.equal(matrix.rows[0].name, 'HIMANSHU PARASHAR');
+    assert.equal(matrix.rows[0].cells.flat().length, matrix.records.length);
+    assert.deepEqual(matrix.rows[0].records.map(row => row.id), ['apr', 'oct']);
+  }
+  const november = dashboardPO(records, '2026-27', '', 'month', new Date('2026-11-01T00:00:00+05:30'));
+  assert.equal(november.columns.length, 8);
+  assert.equal(november.records.length, 3);
+  assert.equal(november.rows[0].cells[7][0].id, 'nov');
+  assert.equal(poDetailExportRows(records)[0]['Lead Owner'], 'HIMANSHU PARASHAR');
+});
 test('PO months use Indian fiscal boundaries and reject missing dates', async () => {
   const { poPeriod, PO_MONTHS } = await import('../../frontend/src/utils/poMonthly.mjs');
   assert.equal(PO_MONTHS.length, 12);

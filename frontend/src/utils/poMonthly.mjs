@@ -1,4 +1,21 @@
 export const PO_MONTHS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar']
+export const poOwnerName = value => String(value || 'Unassigned').trim().toUpperCase()
+export function visiblePOMonths(year, date = new Date()) {
+  const current = poPeriod(date)
+  if (!current) return []
+  if (Number(year.slice(0, 4)) < Number(current.year.slice(0, 4))) return [...PO_MONTHS]
+  return year === current.year ? PO_MONTHS.slice(0, current.month + 1) : []
+}
+export function dashboardPO(records, year, search = '', view = 'month', date = new Date()) {
+  const months = visiblePOMonths(year, date)
+  const elapsed = records.filter(record => {
+    const period = poPeriod(record.poDate)
+    return period?.year === year && period.month < months.length
+  })
+  const result = view === 'pibo' ? piboPO(elapsed, year, search) : monthlyPO(elapsed, year, search)
+  return { ...result, columns: view === 'pibo' ? result.columns : months,
+    rows: result.rows.map(row => ({ ...row, name: poOwnerName(row.name), cells: view === 'pibo' ? row.cells : row.months.slice(0, months.length) })) }
+}
 export function poPeriod(value) {
   if (!value) return null
   const date = new Date(value)
@@ -28,7 +45,7 @@ export function filterPoApproval(records, status = 'ALL') {
 }
 export function poDetailExportRows(records) {
   return records.map(record => ({
-    'Lead Owner': record.ownerName || 'Unassigned',
+    'Lead Owner': poOwnerName(record.ownerName),
     Client: record.clientName || '',
     'PO number': record.poNumber || '',
     'PO date': poPeriod(record.poDate) ? new Date(record.poDate).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : '',
