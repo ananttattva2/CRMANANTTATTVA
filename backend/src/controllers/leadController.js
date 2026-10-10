@@ -304,7 +304,7 @@ function cleanBody(body) {
         return;
       }
       if (key === 'serviceSelections') {
-        data[key] = Array.isArray(value) ? value.slice(0, 25).map((row) => ({
+        data[key] = Array.isArray(value) ? value.map((row) => ({
           assignedServiceId: String(row?.assignedServiceId || row?.serviceAssignmentId || `service_assignment_${randomUUID()}`).trim(),
           industryType: String(row?.industryType || '').trim(),
           eprCategory: String(row?.eprCategory || '').trim(),
@@ -332,7 +332,7 @@ function cleanBody(body) {
         return;
       }
       if (key === 'addresses') {
-        data[key] = Array.isArray(value) ? value.slice(0, 25).map((row) => ({
+        data[key] = Array.isArray(value) ? value.map((row) => ({
           assignedServiceId: String(row?.assignedServiceId || '').trim(),
           plantUnit: String(row?.plantUnit || '').trim(),
           addressLine1: String(row?.addressLine1 || '').trim(),
@@ -348,7 +348,7 @@ function cleanBody(body) {
         return;
       }
       if (key === 'contacts') {
-        data[key] = Array.isArray(value) ? value.slice(0, 25).map((row) => ({
+        data[key] = Array.isArray(value) ? value.map((row) => ({
           assignedServiceId: String(row?.assignedServiceId || '').trim(),
           plantUnit: String(row?.plantUnit || '').trim(),
           salutation: String(row?.salutation || '').trim(),
@@ -366,7 +366,7 @@ function cleanBody(body) {
         return;
       }
       if (key === 'assignments') {
-        data[key] = Array.isArray(value) ? value.slice(0, 25).map((row) => ({
+        data[key] = Array.isArray(value) ? value.map((row) => ({
           assignedServiceId: String(row?.assignedServiceId || '').trim(),
           plantUnit: String(row?.plantUnit || '').trim(),
           assignedTo: String(row?.assignedTo || '').trim(),
