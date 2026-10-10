@@ -6,6 +6,8 @@ const PendingApprovalSchema = new mongoose.Schema({
   sourceClientId: { type: String, trim: true, index: true },
   uniqueId: { type: String, trim: true, index: true },
   clientName: { type: String, trim: true },
+  deletedAt: { type: Date, default: null, index: true },
+  deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   approvalStatus: { type: String, enum: ['PENDING', 'PARTIALLY_APPROVED', 'APPROVED', 'REJECTED', 'REVISION_REQUIRED'], default: 'PENDING', index: true },
   piboCategory: { type: String, trim: true },
   eprCategory: { type: String, trim: true },
@@ -64,4 +66,5 @@ PendingApprovalSchema.index(
 // Keeping this as one compound index avoids scanning large historical payloads.
 PendingApprovalSchema.index({ type: 1, approvalStatus: 1, createdAt: -1 });
 
+PendingApprovalSchema.plugin(require('../utils/leadDeletionVisibility'));
 module.exports = mongoose.model('PendingApproval', PendingApprovalSchema);
