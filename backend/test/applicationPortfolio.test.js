@@ -3,6 +3,40 @@ const assert = require('node:assert/strict');
 const users = [{ _id: 'sonal', name: 'Sonal', role: 'operation' }, { _id: 'krishna', name: 'Krishna', role: 'operation' }];
 const client = (id, owner, category, status = '') => ({ _id: id, selectedLead: { company: '20 MICRONS LIMITED', assignedStaff: owner, assignments: [{ poApprovalStatus:'APPROVED',assignedTo:'manager',assignedStaff:owner }] }, data: { basic: { piboCategory: category, servicesOffered: 'Consulting' }, cpcb: { status }, importMeta: { visibilityStatus: 'LIVE' } } });
 
+test('SPOC reports count all 43 services instead of collapsing them into 41 applicant records', async () => {
+  const { buildApplicationPortfolio, applicationReportGroups, PIBO_CATEGORIES, matchesStatusSummary, matchesServiceSummary } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const rows = Array.from({ length: 41 }, (_, index) => {
+    const row = client(`client-${index}`, 'sonal', 'Producer', 'Approved');
+    row.selectedLead.company = `Company ${index}`;
+    row.selectedLead.status = 'Closed';
+    return row;
+  });
+  for (const index of [0, 1]) {
+    const extra = client(`registration-${index}`, 'sonal', 'Producer', 'Approved');
+    extra.selectedLead.company = `Company ${index}`;
+    extra.selectedLead.status = 'Closed';
+    extra.data.basic.servicesOffered = 'New Registration';
+    rows.push(extra);
+  }
+  // Repeated masters for the same service still count only once.
+  rows.push({ ...rows[0], _id: 'duplicate-consulting' });
+  const groups = buildApplicationPortfolio(rows, users);
+  assert.equal(groups[0].records.length, 41);
+  const [report] = applicationReportGroups(groups);
+  assert.equal(report.records.length, 43);
+  assert.equal(report.records.filter(row => matchesStatusSummary(row, 'total')).length, 43);
+  assert.equal(report.records.filter(row => matchesServiceSummary(row, 'total')).length, 43);
+  assert.equal(PIBO_CATEGORIES.reduce((total, category) => total + report.records.filter(row => row.category === category).length, 0), 43);
+  assert.equal(report.records.filter(row => matchesStatusSummary(row, 'registrationApproved')).length, 2);
+  assert.equal(report.records.filter(row => matchesStatusSummary(row, 'otherServicesApproved')).length, 41);
+  assert.equal(new Set(report.records.map(row => row.id)).size, 43);
+  const other = client('other-user', 'krishna', 'Importer', 'Approved');
+  const reports = applicationReportGroups(buildApplicationPortfolio([...rows, other], users));
+  assert.equal(reports.flatMap(group => group.records).length, 44);
+  assert.equal(reports.find(group => group.id === 'sonal').records.length, 43);
+  assert.equal(reports.find(group => group.id === 'krishna').records.length, 1);
+});
+
 test('SPOC distribution deduplicates a company category, retains distinct categories and never merges staff', async () => {
   const { buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const groups = buildApplicationPortfolio([client('a', 'sonal', 'Importer'), client('b', 'sonal', 'Importer'), client('c', 'sonal', 'Producer'), client('d', 'krishna', 'Importer')], users);

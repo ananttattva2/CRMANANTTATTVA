@@ -43,6 +43,11 @@ export function applicationServiceSummaryRecords(group) {
   })
   return applicationSummaryRecords({ records })
 }
+export function applicationReportGroups(groups) {
+  // Every tab counts the same company/category/unit/service applications.
+  // Keep category-level grouping internal, then expand services for reporting.
+  return groups.map(group => ({ ...group, records: applicationServiceSummaryRecords(group) }))
+}
 export function matchesApplicationService(record, key) {
   if (key === 'total') return true
   return applicationSummaryService(record) === key
