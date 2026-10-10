@@ -8,7 +8,7 @@ export function visiblePOMonths(year, date = new Date()) {
 }
 export function dashboardPO(records, year, search = '', view = 'month', date = new Date()) {
   const months = visiblePOMonths(year, date)
-  const elapsed = records.filter(record => {
+  const elapsed = filterPoApproval(records, 'APPROVED').filter(record => {
     const period = poPeriod(record.poDate)
     return period?.year === year && period.month < months.length
   })

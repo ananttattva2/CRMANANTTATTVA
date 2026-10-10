@@ -16,9 +16,9 @@ test('PO columns advance at month boundaries in India and keep historical years 
 test('visible PO counts, amounts, category view and drill-downs use the same elapsed months', async () => {
   const { dashboardPO, poAmount, poDetailExportRows } = await import('../../frontend/src/utils/poMonthly.mjs');
   const records = [
-    { id: 'apr', ownerId: '1', ownerName: 'Himanshu Parashar', poDate: '2026-04-10', poAmount: 100, applicantType: 'Producer' },
-    { id: 'oct', ownerId: '1', ownerName: 'Himanshu Parashar', poDate: '2026-10-10', poAmount: 200, applicantType: 'Producer' },
-    { id: 'nov', ownerId: '1', ownerName: 'Himanshu Parashar', poDate: '2026-11-10', poAmount: 300, applicantType: 'Producer' },
+    { id: 'apr', ownerId: '1', ownerName: 'Himanshu Parashar', approvalStatus: 'APPROVED', poDate: '2026-04-10', poAmount: 100, applicantType: 'Producer' },
+    { id: 'oct', ownerId: '1', ownerName: 'Himanshu Parashar', approvalStatus: 'APPROVED', poDate: '2026-10-10', poAmount: 200, applicantType: 'Producer' },
+    { id: 'nov', ownerId: '1', ownerName: 'Himanshu Parashar', approvalStatus: 'APPROVED', poDate: '2026-11-10', poAmount: 300, applicantType: 'Producer' },
     { id: 'undated', ownerId: '1', ownerName: 'Himanshu Parashar', poDate: null, poAmount: 400 }
   ];
   const oct = new Date('2026-10-10T12:00:00+05:30');
@@ -35,6 +35,20 @@ test('visible PO counts, amounts, category view and drill-downs use the same ela
   assert.equal(november.records.length, 3);
   assert.equal(november.rows[0].cells[7][0].id, 'nov');
   assert.equal(poDetailExportRows(records)[0]['Lead Owner'], 'HIMANSHU PARASHAR');
+});
+
+test('dashboard excludes pending, rejected and missing approval from all counts and amounts', async () => {
+  const { dashboardPO, poAmount } = await import('../../frontend/src/utils/poMonthly.mjs');
+  const records = ['APPROVED', ' approved ', 'PENDING', 'REJECTED', null].map((approvalStatus, index) => ({
+    id: `po-${index}`, ownerId: 'owner', ownerName: 'Owner', poDate: '2026-10-01', poAmount: 100, applicantType: 'Producer', approvalStatus
+  }));
+  for (const view of ['month', 'pibo']) {
+    const matrix = dashboardPO(records, '2026-27', '', view, new Date('2026-10-10'));
+    assert.equal(matrix.records.length, 2);
+    assert.equal(poAmount(matrix.records), 200);
+    assert.deepEqual(matrix.rows[0].records.map(record => record.id), ['po-0', 'po-1']);
+    assert.equal(matrix.rows[0].cells.flat().length, 2);
+  }
 });
 test('PO months use Indian fiscal boundaries and reject missing dates', async () => {
   const { poPeriod, PO_MONTHS } = await import('../../frontend/src/utils/poMonthly.mjs');

@@ -1,13 +1,13 @@
 import './poMonthlyDashboard.css'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { BarChart3, CalendarDays, Coins, Download, RefreshCw, UserRound, X } from 'lucide-react'
+import { BarChart3, CalendarDays, Download, RefreshCw, UserRound, X } from 'lucide-react'
 import api, { readApiError } from '../../services/api'
 import { dashboardPO, visiblePOMonths, poOwnerName, poPeriod, poApplicantCategory, poAmount, poApproval, filterPoApproval, poDetailExportRows } from '../../utils/poMonthly.mjs'
 
 const money = value => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value)
 function Details({ selection, onClose }) {
   const dialog = useRef(null)
-  const [status, setStatus] = useState('ALL')
+  const status = 'APPROVED'
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
   const filtered = useMemo(() => filterPoApproval(selection.records, status), [selection.records, status])
@@ -28,7 +28,7 @@ function Details({ selection, onClose }) {
   }
   return <dialog ref={dialog} aria-labelledby="po-details-title" onCancel={onClose} className="w-[min(1100px,95vw)] rounded-2xl p-0 backdrop:bg-slate-900/50">
     <header className="flex items-center justify-between gap-4 border-b p-5"><div><h3 id="po-details-title" className="text-lg font-bold">{selection.title}</h3><p className="text-sm text-slate-500">{filtered.length} of {selection.records.length} POs · {money(poAmount(filtered))}</p></div><button type="button" aria-label="Close PO details" onClick={onClose} className="rounded-lg p-2 hover:bg-slate-100"><X size={20} /></button></header>
-    <div className="flex flex-wrap items-end justify-between gap-4 border-b bg-orange-50/50 px-5 py-4"><label className="text-xs font-bold text-slate-600">Approval status<select value={status} onChange={event => setStatus(event.target.value)} className="mt-1 block min-w-44 rounded-xl border border-orange-200 bg-white px-3 py-2.5 text-sm"><option value="ALL">All statuses</option><option value="APPROVED">APPROVED</option><option value="PENDING">PENDING</option></select></label><button type="button" onClick={exportDetails} disabled={!filtered.length || exporting} className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-bold text-white hover:bg-orange-600 disabled:opacity-50"><Download size={16} />{exporting ? 'Exporting…' : 'Export Excel'}</button></div>
+    <div className="flex flex-wrap items-end justify-between gap-4 border-b bg-orange-50/50 px-5 py-4"><span className="rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-bold text-emerald-800">Approved POs only</span><button type="button" onClick={exportDetails} disabled={!filtered.length || exporting} className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-bold text-white hover:bg-orange-600 disabled:opacity-50"><Download size={16} />{exporting ? 'Exporting…' : 'Export Excel'}</button></div>
     {exportError && <p role="alert" className="px-5 py-3 text-sm text-rose-700">{exportError}</p>}
     <div className="max-h-[60vh] overflow-auto"><table className="w-full text-left text-sm"><thead className="sticky top-0 bg-slate-100"><tr>{['Lead Owner', 'Client', 'PO number', 'PO date', 'Amount', 'Applicant category', 'Approval'].map(h => <th scope="col" key={h} className="p-4">{h}</th>)}</tr></thead><tbody>{filtered.map(r => <tr key={r.id} className="border-b"><td className="p-4">{poOwnerName(r.ownerName)}</td><td className="p-4">{r.clientName}</td><td className="p-4">{r.poNumber || 'Not recorded'}</td><td className="p-4">{poPeriod(r.poDate) ? new Date(r.poDate).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'Not recorded'}</td><td className="whitespace-nowrap p-4">{money(Number(r.poAmount) || 0)}</td><td className="p-4">{poApplicantCategory(r)}</td><td className="p-4"><span className={`rounded-full px-3 py-1 text-xs font-bold ${poApproval(r) === 'APPROVED' ? 'bg-emerald-50 text-emerald-700' : poApproval(r) === 'PENDING' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>{poApproval(r)}</span></td></tr>)}{!filtered.length && <tr><td colSpan={7} className="p-10 text-center text-slate-500">No POs match this approval status.</td></tr>}</tbody></table></div>
   </dialog>
@@ -60,7 +60,7 @@ export default function POMonthlyDashboard({ refreshToken }) {
     const timer = setInterval(() => { setAsOf(new Date()); if (document.visibilityState === 'visible') load() }, 60000)
     return () => { controller.abort(); clearInterval(timer) }
   }, [refreshToken, reload])
-  const records = useMemo(() => data?.records || [], [data])
+  const records = useMemo(() => filterPoApproval(data?.records || [], 'APPROVED'), [data])
   const years = useMemo(() => [...new Set([poPeriod(asOf).year, ...records.map(r => poPeriod(r.poDate)?.year).filter(Boolean)])].sort().reverse(), [records, asOf])
   const matrix = useMemo(() => dashboardPO(records, year, search, view, asOf), [records, year, search, view, asOf])
   const months = visiblePOMonths(year, asOf)
@@ -87,6 +87,7 @@ export default function POMonthlyDashboard({ refreshToken }) {
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{[['PO Count', matrix.records.length], ['PO value', money(poAmount(matrix.records))], ['Clients', new Set(matrix.records.map(r => r.clientId || r.leadId)).size], ['Approved PO Count', matrix.records.filter(r => r.approvalStatus === 'APPROVED').length]].map(([title, value]) => <div key={title} className="rounded-2xl border border-teal-100 bg-white p-5"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p><p className="mt-2 text-2xl font-black text-teal-800">{value}</p></div>)}</div>
     <p className="text-xs font-semibold text-slate-500">{months.length ? `Showing April through ${months[months.length - 1]} for FY ${year}. New months appear automatically.` : `FY ${year} has not started yet.`}</p>
     <div className="po-monthly-table-shell">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-orange-200 bg-orange-50 px-4 py-3"><h3 className="text-sm font-black text-orange-800">PO Amount (GST Excluded)</h3><span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">Approved POs only</span></div>
       <table className="po-monthly-table" style={view === 'pibo' ? { minWidth: Math.max(900, 320 + columns.length * 130) } : undefined}>
         <caption className="sr-only">{view === 'pibo' ? 'PIBO-wise' : 'Monthly'} PO count and amount by lead owner for {year}. Select a number or amount to view PO details.</caption>
         <thead>
@@ -109,8 +110,7 @@ export default function POMonthlyDashboard({ refreshToken }) {
         })}<td colSpan={2} className="po-fy-grand-total"><div>{cell(matrix.records, `All lead owners · ${year}`, 'count', true)}</div><div>{cell(matrix.records, `All lead owners · ${year}`, 'amount', true)}</div></td></tr></tfoot>
       </table>
     </div>
-    <div className="flex items-center gap-3 rounded-xl border border-orange-100 bg-white px-4 py-3"><span className="rounded-full bg-orange-50 p-2 text-orange-600"><Coins size={17} /></span><div><p className="text-sm font-bold text-orange-600">GST included where recorded</p><p className="text-xs text-slate-500">Saved PO amounts are shown as entered. GST is not added again.</p></div></div>
-    <p className="text-xs text-slate-500">Amounts follow saved POs; separate service or financial-year entries count separately. Your account’s existing access rules apply. Entries without a PO date are excluded from monthly totals. Current-year totals include only months through the current month.</p>
+    <p className="text-xs text-slate-500">Only approved POs contribute to counts and amounts; separate service or financial-year entries count separately. Your account’s existing access rules apply. Entries without a PO date are excluded from monthly totals. Current-year totals include only months through the current month.</p>
     {selection && <Details selection={selection} onClose={() => setSelection(null)} />}
   </section>
 }
