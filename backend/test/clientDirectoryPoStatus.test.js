@@ -11,6 +11,68 @@ const fixture = () => ({
     { assignedServiceId: 's2' }, { assignedServiceId: 's3' }
   ] }
 });
+
+test('client exports count each PO by its current approval and do not double-count duplicate client masters', async () => {
+  const { clientPoCounts, clientPoExportEntries, sumClientPoCounts } = await import('../../frontend/src/features/clientMaster/clientPoStatus.mjs');
+  const client = fixture();
+  client.selectedLead.assignments[0].poApprovalStatus = 'PENDING'; // stale assignment
+  client.poApprovals = [
+    { approvalStatus: 'APPROVED', payload: { assignedServiceId: 's1', poYearRows: [{ poNumber: 'PO-1' }, { poNumber: 'PO-2' }] } },
+    { approvalStatus: 'PENDING', payload: { assignedServiceId: 's2', poYearRows: [{ poNumber: 'PO-3' }] } },
+    { approvalStatus: 'REJECTED', payload: { assignedServiceId: 's3', poYearRows: [{ poNumber: 'PO-4' }] } }
+  ];
+  assert.deepEqual(clientPoCounts(client), { approved: 2, pending: 1, rejected: 1, revision: 0, unrecorded: 0, total: 4 });
+  const entries = clientPoExportEntries([client, { ...client, _id: 'client-2', assignedServiceId: 's2' }]);
+  assert.equal(entries.length, 3);
+  assert.deepEqual(sumClientPoCounts(entries.map(({ service }) => service.poCounts)), clientPoCounts(client));
+});
+
+test('legacy assignment decisions count PO rows and missing PO records do not become pending', async () => {
+  const { clientPoCounts } = await import('../../frontend/src/features/clientMaster/clientPoStatus.mjs');
+  const client = fixture();
+  client.selectedLead.assignments[0].poApprovalStatus = 'APPROVED';
+  client.selectedLead.assignments[1].poApprovalStatus = 'REJECTED';
+  client.selectedLead.assignments[1].poYearRows = [{ poNumber: 'REJECTED-PO' }];
+  assert.equal(clientPoCounts(client).approved, 1);
+  assert.equal(clientPoCounts(client).pending, 0);
+  assert.equal(clientPoCounts(client).rejected, 1);
+  assert.equal(clientPoCounts(client).total, 2);
+  client.poApprovals = [{ approvalStatus: 'REVISION_REQUIRED', payload: { assignmentIndex: 2, poYearRows: [{ poNumber: 'REVISION-PO' }] } }];
+  assert.equal(clientPoCounts(client).revision, 1);
+  assert.equal(clientPoCounts(client).pending, 0);
+});
+
+test('Excel includes numeric client/service PO counts and a deduplicated approval summary sheet', async () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const vm = require('node:vm');
+  const XLSX = require('../../frontend/node_modules/xlsx');
+  const helpers = await import('../../frontend/src/features/clientMaster/clientPoStatus.mjs');
+  const client = fixture();
+  client.selectedLead.assignments[0].poApprovalStatus = 'APPROVED';
+  client.selectedLead.assignments[1].poApprovalStatus = 'PENDING';
+  client.selectedLead.assignments[2].poApprovalStatus = 'REJECTED';
+  const page = fs.readFileSync(path.join(__dirname, '../../frontend/src/features/clientMaster/ClientDirectoryView.jsx'), 'utf8');
+  const start = page.indexOf('  async function exportExcel()');
+  const source = page.slice(start, page.indexOf('\n  return (', start));
+  let workbook;
+  await vm.runInNewContext(`${source}\nexportExcel();`, {
+    ...helpers, onExportAll: async () => [client, { ...client, _id: 'duplicate' }],
+    XLSX: { utils: XLSX.utils, writeFile: value => { workbook = value; } },
+    query: '', visibilityFilter: '', staffFilter: '', metricFilter: '', filteredClients: [], staff: [],
+    readClientData: item => item.data, getClientUniqueId: item => item._id,
+    getVisibilityStatus: () => 'LIVE', getAssignedName: () => '', clientLeadOwner: () => '',
+    getAssignedStaffNames: () => [], getMsmeRows: () => []
+  });
+  const clients = XLSX.utils.sheet_to_json(workbook.Sheets.Clients);
+  assert.equal(clients[0]['PO Approved Count'], 1);
+  assert.equal(clients[0]['PO Pending Count'], 1);
+  assert.equal(clients[0]['PO Rejected Count'], 1);
+  const services = XLSX.utils.sheet_to_json(workbook.Sheets['Service PO Status']);
+  assert.equal(services.length, 3);
+  const summary = XLSX.utils.sheet_to_json(workbook.Sheets['PO Approval Summary']);
+  assert.equal(summary.find(row => row['PO Status'] === 'Total')['PO Count'], 3);
+});
 test('one closed service makes company Yes while export shows Yes, No, No', async () => {
   const { companyPoClosed, clientPoServices, clientPoExportEntries } = await import('../../frontend/src/features/clientMaster/clientPoStatus.mjs');
   const client = fixture();

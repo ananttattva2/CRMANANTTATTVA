@@ -1265,6 +1265,18 @@ exports.listClients = async (req, res) => {
       } }
     ])
   ]);
+  if (req.query.export === 'true' && clients.length) {
+    const leadIds = clients.map(client => client.selectedLead?._id).filter(Boolean);
+    const poApprovals = await PendingApproval.find({ type: 'purchase_order', 'payload.leadId': { $in: leadIds.flatMap(id => [id, String(id)]) } })
+      .select('approvalStatus payload.leadId payload.assignedServiceId payload.assignmentIndex payload.poYearRows.poNumber').lean();
+    const byLead = new Map();
+    poApprovals.forEach(approval => {
+      const key = String(approval.payload.leadId);
+      if (!byLead.has(key)) byLead.set(key, []);
+      byLead.get(key).push(approval);
+    });
+    clients.forEach(client => { client.poApprovals = byLead.get(String(client.selectedLead?._id || '')) || []; });
+  }
   if (req.query.dashboard === 'true' && clients.length) {
     const [approvals, complianceReviews] = await Promise.all([
       PendingApproval.find({

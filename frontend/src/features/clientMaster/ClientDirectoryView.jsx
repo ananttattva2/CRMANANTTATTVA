@@ -4,7 +4,7 @@ import { Building2, CheckCircle2, ChevronDown, Download, Edit3, Eye, FileCheck2,
 import { DeactivationButton } from './ClientDeactivation';
 import api from '../../services/api';
 import ToastMessage from '../../components/ToastMessage';
-import { companyPoClosed, clientPoExportEntries } from './clientPoStatus.mjs';
+import { companyPoClosed, clientPoExportEntries, clientPoCounts, sumClientPoCounts } from './clientPoStatus.mjs';
 import { clientLeadOwner } from './clientLeadOwner.mjs';
 import {
   getAssignedName,
@@ -203,7 +203,11 @@ function ClientDirectoryView({ clients, pagination, summary, staff, loading, err
     }).catch(() => filteredClients);
     const rows = exportClients.map((item) => {
       const data = readClientData(item);
+      const poCounts = clientPoCounts(item);
       return {
+        'PO Approved Count': poCounts.approved,
+        'PO Pending Count': poCounts.pending,
+        'PO Rejected Count': poCounts.rejected,
         'Unique ID': getClientUniqueId(item).replace(/^-$/, ''),
         'Trade Name': data.basic?.tradeName || '',
         'Lead Note': data.importMeta?.leadNote || '',
@@ -279,7 +283,8 @@ function ClientDirectoryView({ clients, pagination, summary, staff, loading, err
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Clients');
-    const serviceRows = clientPoExportEntries(exportClients).map(({ item, service }) => {
+    const poEntries = clientPoExportEntries(exportClients);
+    const serviceRows = poEntries.map(({ item, service }) => {
       const data = readClientData(item);
       return {
         'Unique ID': getClientUniqueId(item).replace(/^-$/, ''),
@@ -288,6 +293,9 @@ function ClientDirectoryView({ clients, pagination, summary, staff, loading, err
         'Company PO Close': companyPoClosed(item) ? 'Yes' : 'No',
         'Company Lead Close': companyPoClosed(item) ? 'Yes' : 'No',
         'Lead Owner': clientLeadOwner(item, staff).replace(/^-$/, ''),
+        'PO Approved Count': service.poCounts.approved,
+        'PO Pending Count': service.poCounts.pending,
+        'PO Rejected Count': service.poCounts.rejected,
         'Service No': service.index,
         'Service ID': service.id,
         'Applicant Type': service.applicantType,
@@ -300,6 +308,9 @@ function ClientDirectoryView({ clients, pagination, summary, staff, loading, err
       };
     });
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(serviceRows), 'Service PO Status');
+    const totals = sumClientPoCounts(poEntries.map(({ service }) => service.poCounts));
+    const summaryRows = [['Approved', totals.approved], ['Pending', totals.pending], ['Rejected', totals.rejected], ['Revision Required', totals.revision], ['Status Not Recorded', totals.unrecorded], ['Total', totals.total]].map(([status, count]) => ({ 'PO Status': status, 'PO Count': count }));
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'PO Approval Summary');
     XLSX.writeFile(workbook, 'clients.xlsx');
   }
 
