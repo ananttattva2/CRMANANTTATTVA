@@ -696,7 +696,9 @@ function preserveExistingClosureEvidence(beforeData = {}, nextData = {}) {
       ...row,
       poStatus: row.poStatus || previous.poStatus,
       poYearRows: mergedPoRows,
-      poApprovalStatus: row.poApprovalStatus || previous.poApprovalStatus,
+      // An older open form must not overwrite a newer Admin PO decision.
+      // Changed PO submissions are reset to Pending by the approval workflow.
+      poApprovalStatus: previous.poApprovalStatus || '',
       closureApprovalProofUrl: row.closureApprovalProofUrl || previous.closureApprovalProofUrl,
       closureApprovalProofName: row.closureApprovalProofName || previous.closureApprovalProofName,
       quotationSent: row.quotationSent || previous.quotationSent,
@@ -2531,6 +2533,7 @@ exports.updateDuplicateLeadApproval = async (req, res) => {
 };
 
 exports._test = {
+  preserveExistingClosureEvidence,
   usesDirectApplicantType,
   primaryServiceCategory,
   shouldValidatePiboSelection,
