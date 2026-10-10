@@ -55,7 +55,9 @@ exports.purchaseOrders = async (req, res) => {
     'serviceSelections.createdByEmail', 'serviceSelections.createdByName',
     ...(monthly ? ['generatedForName', 'generatedForEmail', 'createdOnBehalfOfName', 'createdOnBehalfOfEmail'] : [])
   ], ['assignedStaff', 'assignments.assignedTo', 'assignments.assignedStaff', ...(monthly ? ['generatedForUser', 'createdOnBehalfOfUser'] : [])]);
-  const testLeadReferences = await getAdminCreatedLeadReferences();
+  const testLeadReferences = monthly
+    ? await getAssignmentDashboardLeadReferences()
+    : await getAdminCreatedLeadReferences();
   const leadFilter = combineFilters(accessFilter, dashboardLeadExclusionFilter(testLeadReferences));
   const [loadedRecords, users] = await Promise.all([
     monthly
