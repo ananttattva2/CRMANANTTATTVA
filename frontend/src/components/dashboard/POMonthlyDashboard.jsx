@@ -66,7 +66,7 @@ export default function POMonthlyDashboard({ refreshToken }) {
   const months = visiblePOMonths(year, asOf)
   const columns = matrix.columns
   const periodLabel = year
-  const totalLabel = 'FY Total'
+  const totalLabel = matrix.undated.length ? 'FY + Undated Total' : 'FY Total'
   const undated = records.filter(r => !poPeriod(r.poDate) && String(r.ownerName || 'Unassigned').toLowerCase().includes(search.trim().toLowerCase()))
   function open(title, rows) { if (rows.length) setSelection({ title, records: rows }) }
   function cell(rows, title, metric, total = false) {
@@ -112,7 +112,7 @@ export default function POMonthlyDashboard({ refreshToken }) {
         })}<td colSpan={2} className="po-fy-grand-total"><div>{cell(matrix.records, `All lead owners · ${periodLabel}`, 'count', true)}</div><div>{cell(matrix.records, `All lead owners · ${periodLabel}`, 'amount', true)}</div></td></tr></tfoot>
       </table>
     </div>
-    <p className="text-xs text-slate-500">Only approved POs contribute to counts and amounts; separate service or financial-year entries count separately. Your account’s existing access rules apply. The selected financial year uses PO dates; current-year totals include only months through the current month.</p>
+    <p className="text-xs text-slate-500">Only approved POs contribute to counts and amounts; separate service or financial-year entries count separately. Your account’s existing access rules apply. Dated POs use the selected financial year and elapsed months. Approved POs without a valid date appear separately and are included in the displayed total; their financial year is not confirmed.</p>
     {selection && <Details selection={selection} onClose={() => setSelection(null)} />}
   </section>
 }

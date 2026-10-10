@@ -11,11 +11,12 @@ export function dashboardPO(records, year = undefined, search = '', view = 'mont
   const months = visiblePOMonths(year, date)
   const elapsed = filterPoApproval(records, 'APPROVED').filter(record => {
     const period = poPeriod(record.poDate)
-    return period?.year === year && period.month < months.length
+    return !period || (period.year === year && period.month < months.length)
   })
-  const result = view === 'pibo' ? piboPO(elapsed, year, search) : monthlyPO(elapsed, year, search)
-  return { ...result, columns: view === 'pibo' ? result.columns : months,
-    rows: result.rows.map(row => ({ ...row, name: poOwnerName(row.name), cells: view === 'pibo' ? row.cells : row.months.slice(0, months.length) })) }
+  const result = view === 'pibo' ? piboPO(elapsed, year, search, true) : monthlyPO(elapsed, year, search, true)
+  const undated = result.records.filter(record => !poPeriod(record.poDate))
+  return { ...result, undated, columns: view === 'pibo' ? result.columns : [...months, ...(undated.length ? ['PO Date Not Recorded'] : [])],
+    rows: result.rows.map(row => ({ ...row, name: poOwnerName(row.name), cells: view === 'pibo' ? row.cells : [...row.months.slice(0, months.length), ...(undated.length ? [row.records.filter(record => !poPeriod(record.poDate))] : [])] })) }
 }
 export function poPeriod(value) {
   if (!value) return null
@@ -27,8 +28,8 @@ export function poPeriod(value) {
   const start = month >= 4 ? year : year - 1
   return { year: `${start}-${String(start + 1).slice(-2)}`, month: (month + 8) % 12 }
 }
-export function monthlyPO(records, year, search = '') {
-  const selected = records.filter(r => (poPeriod(r.poDate)?.year === year) && String(r.ownerName || 'Unassigned').toLowerCase().includes(search.trim().toLowerCase()))
+export function monthlyPO(records, year, search = '', includeUndated = false) {
+  const selected = records.filter(r => (poPeriod(r.poDate)?.year === year || (includeUndated && !poPeriod(r.poDate))) && String(r.ownerName || 'Unassigned').toLowerCase().includes(search.trim().toLowerCase()))
   const groups = new Map()
   for (const record of selected) {
     const key = record.ownerId || record.ownerName || 'unassigned'
@@ -69,8 +70,8 @@ export function poApplicantCategory(record) {
     ? `${parent.toUpperCase()} · ${canonical}` : canonical
   return missing(parent) ? 'Not specified' : known.find(label => label.toLowerCase() === parent.toLowerCase()) || parent.toUpperCase()
 }
-export function piboPO(records, year, search = '') {
-  const matrix = monthlyPO(records, year, search)
+export function piboPO(records, year, search = '', includeUndated = false) {
+  const matrix = monthlyPO(records, year, search, includeUndated)
   const standard = ['Brand Owner', 'Producer', 'Importer', 'Producer (Small & Micro)']
   const extra = [...new Set(matrix.records.map(poApplicantCategory))].filter(label => !standard.includes(label)).sort()
   const columns = [...standard, ...extra]

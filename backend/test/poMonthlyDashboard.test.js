@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-test('PO dashboard defaults to the current financial year and excludes other years and undated entries', async () => {
+test('PO dashboard defaults to the current financial year and shows approved undated entries separately', async () => {
   const { dashboardPO } = await import('../../frontend/src/utils/poMonthly.mjs');
   const records = [
     { id: 'past', poDate: '2025-04-10', approvalStatus: 'APPROVED' },
@@ -11,10 +11,26 @@ test('PO dashboard defaults to the current financial year and excludes other yea
   ];
   for (const view of ['month', 'pibo']) {
     const matrix = dashboardPO(records, undefined, '', view, new Date('2026-10-10'));
-    assert.deepEqual(matrix.records.map(row => row.id), ['current']);
-    assert.equal(matrix.rows[0].cells.flat().length, 1);
-    assert.deepEqual(dashboardPO(records, '2025-26', '', view, new Date('2026-10-10')).records.map(row => row.id), ['past']);
-    assert.equal(dashboardPO(records, 'ALL', '', view, new Date('2026-10-10')).records.length, 0);
+    assert.deepEqual(matrix.records.map(row => row.id), ['current', 'undated']);
+    assert.equal(matrix.undated.length, 1);
+    if (view === 'month') assert.equal(matrix.columns.at(-1), 'PO Date Not Recorded');
+    assert.equal(matrix.rows[0].cells.flat().length, 2);
+    assert.deepEqual(dashboardPO(records, '2025-26', '', view, new Date('2026-10-10')).records.map(row => row.id), ['past', 'undated']);
+
+  }
+});
+
+test('six approved missing-date POs remain visible in totals, owner details and category cells', async () => {
+  const { dashboardPO, poAmount } = await import('../../frontend/src/utils/poMonthly.mjs');
+  const dated = Array.from({ length: 164 }, (_, i) => ({ id: `dated-${i}`, poDate: '2026-04-10', approvalStatus: 'APPROVED', poAmount: 100 }));
+  const undated = Array.from({ length: 6 }, (_, i) => ({ id: `undated-${i}`, poDate: i % 2 ? 'invalid' : null, approvalStatus: 'APPROVED', poAmount: 200 }));
+  for (const view of ['month', 'pibo']) {
+    const matrix = dashboardPO([...dated, ...undated], '2026-27', '', view, new Date('2026-10-10'));
+    assert.equal(matrix.records.length, 170);
+    assert.equal(matrix.undated.length, 6);
+    assert.equal(matrix.rows.flatMap(row => row.cells.flat()).length, 170);
+    assert.equal(poAmount(matrix.records), 17600);
+    if (view === 'month') assert.equal(matrix.rows[0].cells.at(-1).length, 6);
   }
 });
 
