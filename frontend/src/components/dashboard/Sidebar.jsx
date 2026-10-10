@@ -10,10 +10,10 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
   const [openGroups, setOpenGroups] = useState({ Home: true, Sales: true })
   const [activeFlyout, setActiveFlyout] = useState(null)
   const [activeItem, setActiveItem] = useState('User Management')
-  const [dashboardChoicesOpen, setDashboardChoicesOpen] = useState(() => ['/dashboard', '/overall-dashboard'].includes(location.pathname))
+  const isDashboardRoute = ['/dashboard', '/overall-dashboard', '/superadmin-dashboard', '/mis', '/mis/complete', '/mis/client-daily'].includes(location.pathname)
+  const [dashboardChoicesOpen, setDashboardChoicesOpen] = useState(() => isDashboardRoute)
   const [openNestedGroups, setOpenNestedGroups] = useState(() => ({
     'Pending Leads': location.pathname.startsWith('/pending-leads'),
-    'Complete MIS': location.pathname.startsWith('/mis/'),
     Tickets: location.pathname.includes('tickets')
   }))
 
@@ -55,6 +55,16 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
     setActiveItem(mode === 'sales' ? 'Sales Dashboard' : 'Operations Dashboard')
     navigate('/dashboard')
     onClose?.()
+  }
+
+  function renderDashboardReports(child, flyout = false) {
+    return child.children.filter(canShowItem).map((entry) => {
+      const EntryIcon = entry.icon
+      const active = pathMatches(entry.path)
+      return <button key={entry.path} type="button" onClick={() => { setActiveItem(entry.label); navigate(entry.path); setActiveFlyout(null); onClose?.() }} aria-current={active ? 'page' : undefined} className={flyout
+        ? `flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-black transition ${active ? 'bg-[#f45b0b] text-white' : 'text-slate-700 hover:bg-emerald-50 hover:text-[#0f5d46]'}`
+        : `sidebar-dashboard-choice flex min-h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-black transition ${active ? 'sidebar-dashboard-choice-active bg-[#f45b0b] text-white' : 'text-emerald-50/75 hover:bg-white/10 hover:text-white'}`}><EntryIcon className={flyout ? 'h-4 w-4 shrink-0' : 'h-3.5 w-3.5 shrink-0'} /><span>{entry.label}</span></button>
+    })
   }
 
   return (
@@ -126,7 +136,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
                               const ChildIcon = child.icon
                               const isDashboardChild = child.label === 'Dashboard'
                               const isChildActive = child.path ? pathMatches(child.path) : activeItem === child.label
-                              if (child.children?.length) {
+                              if (child.children?.length && !isDashboardChild) {
                                 const nestedActive = child.children.some((entry) => pathMatches(entry.path))
                                 return (
                                   <div key={child.label}>
@@ -145,7 +155,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
                                       type="button"
                                       onClick={() => setDashboardChoicesOpen((value) => !value)}
                                       className={`sidebar-child-button flex min-h-10 w-full items-center justify-between gap-3 rounded-xl px-3 text-left text-sm font-black transition ${
-                                        ['/dashboard', '/overall-dashboard'].includes(location.pathname)
+                                        isDashboardRoute
                                           ? 'sidebar-child-button-current bg-white/14 text-white'
                                           : 'text-emerald-50/78 hover:bg-white/10 hover:text-white'
                                       }`}
@@ -186,6 +196,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
                                           Sales Dashboard
                                         </button>
                                         </>}
+                                        {renderDashboardReports(child)}
                                       </div>
                                     )}
                                   </div>
@@ -225,7 +236,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
                           const ChildIcon = child.icon
                           const isDashboardChild = child.label === 'Dashboard'
                           const isChildActive = child.path ? pathMatches(child.path) : activeItem === child.label
-                          if (child.children?.length) {
+                          if (child.children?.length && !isDashboardChild) {
                             return (
                               <div key={child.label} className="rounded-lg bg-slate-50 p-1">
                                 <div className="px-2 py-1 text-xs font-black uppercase tracking-[0.12em] text-slate-400">{child.label}</div>
@@ -290,6 +301,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
                                   Sales Dashboard
                                 </button>
                                 </>}
+                                {renderDashboardReports(child, true)}
                               </div>
                             )
                           }

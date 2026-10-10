@@ -66,16 +66,15 @@ export const navSections = [
         label: 'Home',
         icon: Home,
         children: [
-          { label: 'Dashboard', icon: Gauge, path: '/dashboard' },
-          { label: 'Super Admin Dashboard', icon: Gauge, path: '/superadmin-dashboard', roles: adminRoles },
-          { label: 'Sales Management MIS', icon: TrendingUp, path: '/mis', roles: [...adminRoles, 'manager', 'operation head', 'operations head'] },
           {
-            label: 'Complete MIS',
-            icon: BarChart3,
-            roles: [...adminRoles, 'manager', 'operation head', 'operations head'],
+            label: 'Dashboard',
+            icon: Gauge,
+            path: '/dashboard',
             children: [
-              { label: 'Complete MIS', icon: BarChart3, path: '/mis/complete' },
-              { label: 'Client Daily MIS', icon: ClipboardList, path: '/mis/client-daily' }
+              { label: 'Super Admin Dashboard', icon: Gauge, path: '/superadmin-dashboard', roles: adminRoles },
+              { label: 'Sales Management MIS', icon: TrendingUp, path: '/mis', roles: [...adminRoles, 'manager', 'operation head', 'operations head'] },
+              { label: 'Complete MIS', icon: BarChart3, path: '/mis/complete', roles: [...adminRoles, 'manager', 'operation head', 'operations head'] },
+              { label: 'Client Daily MIS', icon: ClipboardList, path: '/mis/client-daily', roles: [...adminRoles, 'manager', 'operation head', 'operations head'] }
             ]
           },
           { label: 'Pending Approval', icon: Clock3, path: '/pending-approval', complianceFamily: true },
