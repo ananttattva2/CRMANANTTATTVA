@@ -3,6 +3,21 @@ const assert = require('node:assert/strict');
 const users = [{ _id: 'sonal', name: 'Sonal', role: 'operation' }, { _id: 'krishna', name: 'Krishna', role: 'operation' }];
 const client = (id, owner, category, status = '') => ({ _id: id, selectedLead: { company: '20 MICRONS LIMITED', assignedStaff: owner, assignments: [{ poApprovalStatus:'APPROVED',assignedTo:'manager',assignedStaff:owner }] }, data: { basic: { piboCategory: category, servicesOffered: 'Consulting' }, cpcb: { status }, importMeta: { visibilityStatus: 'LIVE' } } });
 
+test('popup details collapse duplicate snapshots while retaining distinct lead, unit, service and status rows', async () => {
+  const { uniquePortfolioServiceDetails } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const original = { id: 'master', leadId: 'lead-323', leadCode: 'ATPL-LEAD-0323', name: 'SHREE MATANGI WOVEN SACK PRIVATE LIMITED', category: 'Producer', offered: 'Annual Return Filling', unit: 'Unit 1', cpcb: 'Approved' };
+  const snapshots = [original, { ...original, id: 'assignment', name: ' shree matangi woven sack private limited ' }];
+  assert.deepEqual(uniquePortfolioServiceDetails(snapshots), [original]);
+  const distinct = [
+    { ...original, id: 'registration', offered: 'New Registration' },
+    { ...original, id: 'unit-two', unit: 'Unit 2' },
+    { ...original, id: 'pending', cpcb: 'Under Review' },
+    { ...original, id: 'other-lead', leadId: 'lead-324', leadCode: 'ATPL-LEAD-0324' }
+  ];
+  assert.equal(uniquePortfolioServiceDetails([...snapshots, ...distinct]).length, 5);
+  assert.equal(snapshots.length, 2);
+});
+
 test('SPOC reports count all 43 services instead of collapsing them into 41 applicant records', async () => {
   const { buildApplicationPortfolio, applicationReportGroups, PIBO_CATEGORIES, matchesStatusSummary, matchesServiceSummary } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const rows = Array.from({ length: 41 }, (_, index) => {

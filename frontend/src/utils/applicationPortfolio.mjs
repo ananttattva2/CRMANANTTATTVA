@@ -282,6 +282,23 @@ export function matchesPortfolioSearch(row, query) {
   return !needle || [row, ...(row.services || [])].some(service => [service.name, service.code, service.leadCode, service.category, service.cpcb, service.state, service.industry, service.eprCategory, service.offered].some(value => normalizeSearch(value).includes(needle)))
 }
 
+// Client Master and assignment snapshots can describe the same displayed
+// service. Collapse identical detail rows without changing application counts.
+export function uniquePortfolioServiceDetails(services = []) {
+  const seen = new Set()
+  return services.filter(service => {
+    const key = JSON.stringify([
+      service.leadId || service.leadCode || service.code,
+      service.leadCode || service.code, service.name, service.category,
+      service.industry, service.eprCategory, service.offered,
+      service.unit, service.cpcb, service.clientStatus, service.visibility
+    ].map(value => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase()))
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 
 export function isAnnualReturnService(value) {
   return (Array.isArray(value) ? value : [value]).some(service => {
