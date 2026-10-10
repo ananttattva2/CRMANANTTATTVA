@@ -7,6 +7,38 @@ const Quotation = require('../src/models/Quotation');
 const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
 const controller = fs.readFileSync(path.resolve(__dirname, '../src/controllers/quotationController.js'), 'utf8');
 
+function pricingRows(quotation, items) {
+  const vm = require('node:vm');
+  const source = page.slice(page.indexOf('function quotationItemKey('), page.indexOf('function scopePresetKeyForAmount('));
+  return vm.runInNewContext(`${source}\ncombinedPricingRows(quotation, items);`, { quotation, items });
+}
+
+test('interleaved group members render together with exactly one amount per saved group', () => {
+  const items = Array.from({ length: 15 }, (_, index) => ({ assignedServiceId: `service-${index + 1}` }));
+  const quotation = { pricingMode: 'combined', combinedPricingGroups: [
+    { id: 'g1', itemKeys: [1, 2, 3, 4, 5].map(n => `service-${n}`), basicAmount: 125000 },
+    { id: 'g2', itemKeys: [6, 7, 8, 10, 11].map(n => `service-${n}`), basicAmount: 125000 },
+    { id: 'g3', itemKeys: [9, 12, 13, 14, 15].map(n => `service-${n}`), basicAmount: 125000 }
+  ] };
+  const result = pricingRows(quotation, items);
+  assert.deepEqual(Array.from(result, row => row.index + 1), [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 9, 12, 13, 14, 15]);
+  const amountRows = result.filter(row => row.firstInGroup);
+  assert.equal(amountRows.length, 3);
+  assert.deepEqual(Array.from(amountRows, row => row.groupSize), [5, 5, 5]);
+  assert.equal(amountRows.reduce((sum, row) => sum + row.group.basicAmount, 0), 375000);
+  assert.deepEqual(items.map(item => item.assignedServiceId), Array.from({ length: 15 }, (_, index) => `service-${index + 1}`));
+});
+
+test('legacy combined pricing and unassigned services remain visible without duplicating rows', () => {
+  const items = [{ assignedServiceId: 'one', basicAmount: 100 }, { assignedServiceId: 'two', basicAmount: 200 }];
+  const legacy = pricingRows({ pricingMode: 'combined', combinedBasicAmount: 300 }, items);
+  assert.equal(legacy[0].groupSize, 2);
+  assert.equal(legacy.filter(row => row.firstInGroup).length, 1);
+  const partial = pricingRows({ combinedPricingGroups: [{ id: 'group', itemKeys: ['two'], basicAmount: 200 }] }, items);
+  assert.deepEqual(Array.from(partial, row => row.item.assignedServiceId), ['two', 'one']);
+  assert.equal(partial[1].group.basicAmount, 100);
+});
+
 test('Quotation persists combined pricing groups with service membership and amount', () => {
   const groupPath = Quotation.schema.path('combinedPricingGroups');
   assert.ok(groupPath);
@@ -44,7 +76,7 @@ test('Quotation preview, PDF view, and download merge amount cells per pricing g
   assert.match(page, /combined \? group\.basicAmount : item\.basicAmount/);
 });
 
-test('Quotation PDF tables share selection order and generate continuous serial numbers', () => {
+test('Quotation PDF tables share grouped display order and generate continuous serial numbers', () => {
   assert.match(page, /displayRows\.map\(\(\{ item, index, group, groupSize, firstInGroup \}, rowIndex\)/);
   assert.match(page, /\{rowIndex \+ 1\}/);
   assert.match(page, /<tbody>\{displayRows\.map\(\(\{ item \}, index\)/);

@@ -669,6 +669,11 @@ function combinedPricingRows(quotation = {}, items = []) {
       basicAmount: item.basicAmount ?? 0
     }
   }));
+  // HTML rowSpan can only merge contiguous rows. Keep each saved pricing
+  // group together so an interleaved service cannot repeat its group amount.
+  const groupOrder = new Map(groups.map((group, index) => [group.id, index]));
+  rows.sort((left, right) => (groupOrder.get(left.group.id) ?? groups.length)
+    - (groupOrder.get(right.group.id) ?? groups.length) || left.index - right.index);
   rows.forEach((row, rowIndex) => {
     const previousGroupId = rows[rowIndex - 1]?.group?.id;
     row.firstInGroup = rowIndex === 0 || previousGroupId !== row.group.id;
