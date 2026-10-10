@@ -301,7 +301,7 @@ test('submitted applicant replaces a matching draft whose unit was not recorded'
   assert.deepEqual(group.records.map(record => record.id).sort(), ['submitted-importer', 'submitted-producer']);
 });
 
-test('current-FY approved annual applications count once in their earliest annual return year', async () => {
+test('approved annual applications accept matching Annual Return years across PO financial years', async () => {
   const {buildApplicationPortfolio, applicationSummaryRecords, financialYearForDate, annualReturnYearForDate, matchesServiceSummary, matchesStatusSummary, STATUS_COLUMNS} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   assert.equal(financialYearForDate(new Date('2026-10-08T12:00:00+05:30')), '2026-27');
   assert.equal(annualReturnYearForDate(new Date('2026-10-08T12:00:00+05:30')), '2025-26');
@@ -330,8 +330,14 @@ test('current-FY approved annual applications count once in their earliest annua
     assert.equal(matchesStatusSummary(result,'annualActionRequired',new Date('2026-10-08T12:00:00+05:30')),true);
     assert.equal(matchesStatusSummary(result,result.bucket,new Date('2026-10-08T12:00:00+05:30')),false);
   }
-  result=applicationSummaryRecords(buildApplicationPortfolio([make('wrong-fy','Approved',[{poFinancialYear:'2025-26',annualReturnYear:'2025-26'}])],users)[0])[0];
-  assert.equal(result.annual,false);assert.deepEqual(result.annualYears,[]);
+  result=applicationSummaryRecords(buildApplicationPortfolio([make('earlier-po-fy','Approved',[{poFinancialYear:'2025-26',annualReturnYear:'2025-26'}])],users)[0])[0];
+  assert.equal(result.annual,true);assert.deepEqual(result.annualYears,['2025-26']);
+  assert.equal(matchesStatusSummary(result,'annual:2025-26'),true);
+  assert.equal(matchesStatusSummary(result,'annualActionRequired'),false);
+  assert.equal(matchesServiceSummary(result,'Annual Return Filling'),true);
+  result=applicationSummaryRecords(buildApplicationPortfolio([make('unrelated-year','Approved',[{poFinancialYear:'2025-26',annualReturnYear:'2024-25'}])],users)[0])[0];
+  assert.equal(result.annual,false);
+  assert.equal(matchesStatusSummary(result,'annualActionRequired'),true);
 });
 
 test('portfolio excludes every draft and every service-not-recorded row', async () => {
@@ -382,7 +388,7 @@ test('Annual Return PO service objects qualify for all users and applicant types
     const rows = applicationSummaryRecords(group);
     assert.equal(rows.filter(row => matchesApplicationService(row, 'Annual Return Filling')).length, 1);
     assert.equal(rows.filter(row => matchesApplicationService(row, 'New Registration')).length, 0);
-    assert.equal(rows[0].annualCurrentFyPo, true);
+    assert.equal(rows[0].annualEligiblePo, true);
   }
 });
 
@@ -440,6 +446,6 @@ test('legacy multi-service assignment rows preserve PO qualification by service 
     const rows = applicationServiceSummaryRecords(group).filter((row) => row.annualYears.includes('2025-26'));
     assert.equal(rows.length, 2);
     assert.deepEqual(rows.map((row) => row.category).sort(), ['Brand Owner', 'Importer']);
-    assert(rows.every((row) => row.annualCurrentFyPo));
+    assert(rows.every((row) => row.annualEligiblePo));
   }
 });
