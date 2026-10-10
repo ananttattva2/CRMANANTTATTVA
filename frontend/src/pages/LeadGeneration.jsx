@@ -23,6 +23,7 @@ import PoProofView from '../components/PoProofView';
 import LeadDeleteDialog from '../components/LeadDeleteDialog';
 import { poCommercialError, poYearLabel, hasSavedPoDetails } from '../utils/poCommercialDetails.mjs';
 import { formatDisplayDate } from '../utils/dateFormat';
+import { leadServiceExportRecords } from '../utils/leadServiceExport.mjs';
 
 const emptyLead = {
   sourceLeadId: '',
@@ -3757,7 +3758,7 @@ function LeadDirectoryView({ leads, pagination, summary, staff, currentUser, loa
     const exportLeads = await onExportAll({
       search: query.trim(), status: statusFilter, staff: staffFilter, metric: metricFilter, workspace: workspaceTab
     }).catch(() => filteredLeads);
-    const rows = exportLeads.map((item) => {
+    const rows = exportLeads.flatMap(leadServiceExportRecords).map((item) => {
       const closure = leadClosureDetails(item);
       return ({
       'Lead ID': displayLeadId(item),
@@ -3766,10 +3767,17 @@ function LeadDirectoryView({ leads, pagination, summary, staff, currentUser, loa
       Industry: item.industryType || '',
       Status: closure.status,
       'Lead Pipeline Status': closure.pipelineStatus,
-      'Applicant Type': item.piboParent || item.piboCategoryParent || inferPiboParent(item.piboCategory),
+      'Service No.': item.exportServiceNumber,
+      'Lead Closed': item.exportLeadClosed,
+      'PO Closed': item.exportPoClosed,
+      'PO Received': item.exportPoReceived,
+      'PO Approval Status': item.exportPoApprovalStatus,
+      'Applicant Type': item.applicantType || item.piboParent || item.piboCategoryParent || inferPiboParent(item.piboCategory),
       'Sub Applicant Type': item.subApplicantType || item.piboCategory || '',
       'Service Category': item.eprCategory || '',
-      'Services Offered': item.servicesOffered || '',
+      'Services Offered': item.servicesOffered || item.applicableService || '',
+      'Plant Unit': item.plantUnit || '',
+      'Financial Year': item.firstAnnualReturnYearApplicable || '',
       'Contact Person': item.contactPerson || '',
       Designation: item.designation || '',
       'Mobile 1': item.mobileNo1 || '',

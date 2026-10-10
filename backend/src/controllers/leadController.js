@@ -1356,6 +1356,7 @@ exports.listLeads = async (req, res) => {
     ] : []),
     ...(req.query.export === 'true' ? [
       'industryType', 'piboParent', 'piboCategoryParent', 'subApplicantType', 'servicesOffered',
+      'contacts', 'applicantType', 'applicableService', 'plantUnit', 'firstAnnualReturnYearApplicable',
       'designation', 'mobileNo2', 'website', 'emailsSentCount', 'lastEmailSent', 'referredBy',
       'source', 'notes', 'leadDate', 'nextFollowUpDate', 'nextFollowUpTime', 'followUpRemarks',
       'importedCreatedAt', 'importedUpdatedAt', 'businessCardUrl'
