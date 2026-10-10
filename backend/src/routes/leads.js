@@ -37,7 +37,7 @@ router.patch('/:id/assignments/:rowIndex/staff', requireAuth, leadCtrl.assignLea
 router.post('/:id/permanent-closure', requireAuth, leadCtrl.permanentlyCloseProvisionalLead);
 router.patch('/temporary-assignments/:approvalId', requireAuth, temporaryAssignmentCtrl.decideTemporaryAssignment);
 router.get('/purchase-order-approvals/:id', requireAuth, requireRoles(ADMIN_ROLES), leadCtrl.getPurchaseOrderApproval);
-router.delete('/purchase-order-approvals/:id', requireAuth, requireRoles(ADMIN_ROLES), require('../controllers/leadDeletionController').deleteApprovalLead);
+router.delete('/purchase-order-approvals/:id', requireAuth, requireRoles(ADMIN_ROLES), require('../controllers/leadDeletionController').removePoApproval);
 router.patch('/purchase-order-approvals/:id', requireAuth, requireRoles(ADMIN_ROLES), leadCtrl.decidePurchaseOrderApproval);
 router.patch('/purchase-order-approvals/:id/proof', requireAuth, requireRoles(ADMIN_ROLES), leadCtrl.uploadPurchaseOrderProof);
 router.get('/:leadId/quotations', requireAuth, quotationCtrl.listLeadQuotations);

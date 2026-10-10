@@ -66,5 +66,5 @@ PendingApprovalSchema.index(
 // Keeping this as one compound index avoids scanning large historical payloads.
 PendingApprovalSchema.index({ type: 1, approvalStatus: 1, createdAt: -1 });
 
-PendingApprovalSchema.plugin(require('../utils/leadDeletionVisibility'));
+PendingApprovalSchema.plugin(require('../utils/approvalDeletionVisibility'));
 module.exports = mongoose.model('PendingApproval', PendingApprovalSchema);
