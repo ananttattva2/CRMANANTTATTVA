@@ -49,6 +49,9 @@ test('Excel includes numeric client/service PO counts and a deduplicated approva
   const XLSX = require('../../frontend/node_modules/xlsx');
   const helpers = await import('../../frontend/src/features/clientMaster/clientPoStatus.mjs');
   const client = fixture();
+  client.selectedLead.serviceSelections[0].firstAnnualReturnYearApplicable = '2025-26';
+  client.selectedLead.assignments[0].poYearRows[0].poFinancialYear = '2026-27';
+  client.selectedLead.assignments[0].poYearRows[0].annualReturnYear = '2025-26';
   client.selectedLead.assignments[0].poApprovalStatus = 'APPROVED';
   client.selectedLead.assignments[1].poApprovalStatus = 'PENDING';
   client.selectedLead.assignments[2].poApprovalStatus = 'REJECTED';
@@ -68,10 +71,30 @@ test('Excel includes numeric client/service PO counts and a deduplicated approva
   assert.equal(clients[0]['PO Approved Count'], 1);
   assert.equal(clients[0]['PO Pending Count'], 1);
   assert.equal(clients[0]['PO Rejected Count'], 1);
+  assert.equal(clients[0]['Financial Year'], '2025-26, 2026-27');
   const services = XLSX.utils.sheet_to_json(workbook.Sheets['Service PO Status']);
   assert.equal(services.length, 3);
+  assert.equal(services[0]['Financial Year'], '2025-26, 2026-27');
+  assert.equal(services[0]['PO Financial Year'], '2026-27');
+  assert.equal(services[0]['Annual Return Year'], '2025-26');
+  assert.equal(services[1]['Financial Year'], 'Not Recorded');
   const summary = XLSX.utils.sheet_to_json(workbook.Sheets['PO Approval Summary']);
   assert.equal(summary.find(row => row['PO Status'] === 'Total')['PO Count'], 3);
+});
+
+test('all saved financial years are normalized, sorted and kept within their own service', async () => {
+  const { financialYearLabels, clientFinancialYears, clientPoServices } = await import('../../frontend/src/features/clientMaster/clientPoStatus.mjs');
+  assert.deepEqual(financialYearLabels(['FY 2026-2027', ['2025/26', '2025-26'], '2028–29', '2026-25', 'Not Recorded']), ['2025-26', '2026-27', '2028-29']);
+  const client = fixture();
+  client.selectedLead.serviceSelections[0].firstAnnualReturnYearApplicable = '2025-26';
+  client.selectedLead.serviceSelections[1].financialYear = '2027-28';
+  client.poApprovals = [{ payload: { assignedServiceId: 's1', poYearRows: [{ poFinancialYear: '2026-27', annualReturnYear: '2025-26' }, { poFinancialYear: '2028-29', annualReturnYear: '2027-28' }] } }];
+  const services = clientPoServices(client);
+  assert.deepEqual(services[0].poFinancialYears, ['2026-27', '2028-29']);
+  assert.deepEqual(services[0].annualReturnYears, ['2025-26', '2027-28']);
+  assert.deepEqual(services[1].financialYears, ['2027-28']);
+  assert.deepEqual(services[2].financialYears, []);
+  assert.deepEqual(clientFinancialYears(client), ['2025-26', '2026-27', '2027-28', '2028-29']);
 });
 test('one closed service makes company Yes while export shows Yes, No, No', async () => {
   const { companyPoClosed, clientPoServices, clientPoExportEntries } = await import('../../frontend/src/features/clientMaster/clientPoStatus.mjs');

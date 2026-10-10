@@ -5,6 +5,28 @@ const closed = value => Boolean(value?.closedAt || value?.closedBy || text(value
 const received = value => closed(value) || String(value?.poStatus || '').toLowerCase() === 'received'
   || [...rows(value?.poYearRows), ...(value?.originalPoDetails ? [value.originalPoDetails] : [])].some(po => po && Boolean(text(po.poNumber || po.poNo || po.poFileUrl || po.poFileName || po.poReceivedDate)))
 
+export function financialYearLabels(values = []) {
+  return [...new Set(values.flat(Infinity).filter(Boolean).flatMap(value => {
+    if (typeof value !== 'string' && typeof value !== 'number') return []
+    return [...String(value).matchAll(/\b(20\d{2})(?:\s*[-/–]\s*(\d{4}|\d{2}))?\b/g)].flatMap(match => {
+      const start = Number(match[1])
+      if (match[2] && Number(match[2]) !== (match[2].length === 4 ? start + 1 : (start + 1) % 100)) return []
+      return [`${start}-${String(start + 1).slice(-2)}`]
+    })
+  }))].sort()
+}
+
+const savedYears = value => [value?.financialYear, value?.financialYears, value?.fy, value?.fyYear, value?.servicesForYear, value?.firstAnnualReturnYearApplicable, value?.firstAnnualReturnYear, value?.annualReturnYear, value?.annualReturnYears, value?.registrationYear]
+
+export function clientFinancialYears(client = {}) {
+  const data = client.data || {}
+  return financialYearLabels([
+    ...clientPoServices(client).map(service => service.financialYears),
+    ...savedYears(client), ...savedYears(data), ...savedYears(data.basic), ...savedYears(data.financials),
+    ...rows(client.services).flatMap(savedYears), ...rows(data.financials).flatMap(savedYears)
+  ])
+}
+
 export function sumClientPoCounts(counts = []) {
   return counts.reduce((total, count) => {
     for (const key of Object.keys(total)) total[key] += count?.[key] || 0
@@ -51,6 +73,10 @@ export function clientPoServices(client = {}) {
       const approvedServiceId = text(approval.payload?.assignedServiceId)
       return approvedServiceId ? approvedServiceId === id : Number(approval.payload?.assignmentIndex) === index
     })
+    const poRows = [...assignment.flatMap(row => [...rows(row.poYearRows), ...(row.originalPoDetails ? [row.originalPoDetails] : [])]), ...approvals.flatMap(approval => rows(approval.payload?.poYearRows))]
+    const poFinancialYears = financialYearLabels(poRows.map(po => po.poFinancialYear))
+    const annualReturnYears = financialYearLabels([service.firstAnnualReturnYearApplicable, service.firstAnnualReturnYear, service.annualReturnYear, service.annualReturnYears, ...poRows.map(po => po.annualReturnYear)])
+    const financialYears = financialYearLabels([...savedYears(service), ...poRows.flatMap(po => [...savedYears(po), po.poFinancialYear]), ...(services.length === 1 ? savedYears(lead) : [])])
     const isClosed = closed(service) || assignment.some(closed) || (services.length === 1 && closed(lead))
     return {
       id: id || serviceId(indexed) || `service-${index + 1}`, index: index + 1,
@@ -58,6 +84,7 @@ export function clientPoServices(client = {}) {
       subApplicantType: service.subApplicantType || service.piboCategory || data.basic?.piboCategory || '',
       category: service.eprCategory || data.basic?.eprCategory || '',
       name: service.servicesOffered || service.applicableService || data.basic?.servicesOffered || '',
+      financialYears, poFinancialYears, annualReturnYears,
       poCounts: approvalCounts(approvals, assignment.length ? assignment : services.length === 1 ? [lead] : []),
       closed: isClosed,
       received: isClosed || received(service) || assignment.some(received) || (services.length === 1 && received(lead))

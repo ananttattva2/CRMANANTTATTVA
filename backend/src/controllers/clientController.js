@@ -1225,6 +1225,11 @@ exports.listClients = async (req, res) => {
       'data.coordinating.mobile', 'data.coordinating.email', 'data.financials', 'data.validation'
     ] : []),
     ...(req.query.export === 'true' ? [
+      'services', 'data.basic.financialYear', 'data.basic.servicesForYear', 'data.basic.registrationYear',
+      'data.basic.financialYears', 'data.basic.annualReturnYear', 'data.basic.annualReturnYears',
+      'data.basic.firstAnnualReturnYearApplicable', 'data.financialYear', 'data.financialYears',
+      'data.servicesForYear', 'data.annualReturnYear', 'data.annualReturnYears',
+      'data.firstAnnualReturnYearApplicable', 'data.financials',
       'data.basic.servicesOffered', 'data.basic.companyIndustry', 'data.basic.website',
       'data.registeredAddress', 'data.communicationAddress', 'data.otp',
       'data.authorised.name', 'data.authorised.designation', 'data.authorised.mobile', 'data.authorised.email',
@@ -1240,7 +1245,7 @@ exports.listClients = async (req, res) => {
     Client.find(filter).select(projection)
       .populate({
         path: 'selectedLead',
-        select: 'leadCode company status eprCategory applicantType subApplicantType piboParent serviceSelections assignedTo assignedToText assignedStaff assignedStaffText assignedStaffEmail assignments createdBy createdByName createdByEmail createdByCrmUserId importedCreatedBy generatedForUser generatedForName generatedForEmail createdOnBehalfOfUser createdOnBehalfOfName createdOnBehalfOfEmail',
+        select: 'leadCode company status eprCategory applicantType subApplicantType piboParent firstAnnualReturnYearApplicable serviceSelections assignedTo assignedToText assignedStaff assignedStaffText assignedStaffEmail assignments createdBy createdByName createdByEmail createdByCrmUserId importedCreatedBy generatedForUser generatedForName generatedForEmail createdOnBehalfOfUser createdOnBehalfOfName createdOnBehalfOfEmail',
         populate: ['createdBy', 'generatedForUser', 'createdOnBehalfOfUser'].map(path => ({ path, select: 'name email' }))
       })
       .populate('createdBy', 'name email role avatarUrl')
@@ -1268,7 +1273,7 @@ exports.listClients = async (req, res) => {
   if (req.query.export === 'true' && clients.length) {
     const leadIds = clients.map(client => client.selectedLead?._id).filter(Boolean);
     const poApprovals = await PendingApproval.find({ type: 'purchase_order', 'payload.leadId': { $in: leadIds.flatMap(id => [id, String(id)]) } })
-      .select('approvalStatus payload.leadId payload.assignedServiceId payload.assignmentIndex payload.poYearRows.poNumber').lean();
+      .select('approvalStatus payload.leadId payload.assignedServiceId payload.assignmentIndex payload.poYearRows.poNumber payload.poYearRows.poFinancialYear payload.poYearRows.annualReturnYear payload.poYearRows.fy payload.poYearRows.registrationYear').lean();
     const byLead = new Map();
     poApprovals.forEach(approval => {
       const key = String(approval.payload.leadId);
