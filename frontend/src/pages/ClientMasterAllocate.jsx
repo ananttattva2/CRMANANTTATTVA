@@ -374,6 +374,7 @@ export default function ClientMasterAllocate() {
   const [modalClient, setModalClient] = useState(null);
   const [allocationsByKey, setAllocationsByKey] = useState({});
   const [segment, setSegment] = useState('all');
+  const [selectedUserId, setSelectedUserId] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const handleLogout = async () => {
@@ -397,7 +398,7 @@ export default function ClientMasterAllocate() {
   }, []);
 
   // Reset pagination to page 1 whenever search / segment / total results change
-  useEffect(() => { setPage(1); }, [search, segment, clients.length]);
+  useEffect(() => { setPage(1); }, [search, segment, selectedUserId, clients.length]);
 
   async function fetchUsers() {
     const endpoints = [API_ENDPOINTS.auth.users, API_ENDPOINTS.auth.adminUsers].filter(Boolean);
@@ -428,14 +429,30 @@ export default function ClientMasterAllocate() {
 
   const uniqueClients = useMemo(() => deduplicateClientMastersForAllocation(clients), [clients]);
   const enrichedRows = useMemo(() => uniqueClients.map((c) => ({ client: c, alloc: allocationsForClient(c), overview: readClientOverview(c) })), [uniqueClients]);
+  const userFilterOptions = useMemo(() => {
+    const options = new Map(users.map((u) => [String(u._id || u.id), userDisplay(u)]));
+    clients.forEach((client) => {
+      allocationOverviewWithAssignees(client, users).assignees.forEach(({ uid, name }) => {
+        if (!options.has(uid)) options.set(uid, name || uid);
+      });
+    });
+    return Array.from(options, ([id, label]) => ({ id, label })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [clients, users]);
+  const userMatched = useMemo(() => {
+    if (!selectedUserId) return enrichedRows;
+    const matchingGroups = new Set(clients
+      .filter((client) => allocationOverviewWithAssignees(client, users).assignees.some(({ uid }) => uid === selectedUserId))
+      .map(clientAllocationGroupIdentity));
+    return enrichedRows.filter(({ client }) => matchingGroups.has(clientAllocationGroupIdentity(client)));
+  }, [enrichedRows, clients, users, selectedUserId]);
   const searchMatched = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return enrichedRows;
-    return enrichedRows.filter((row) => {
+    if (!q) return userMatched;
+    return userMatched.filter((row) => {
       const o = row.overview;
       return [o.companyName, o.contactPerson, o.mobile, o.email, o.gstin, o.state, o.city, o.leadCode].some((v) => String(v || '').toLowerCase().includes(q));
     });
-  }, [enrichedRows, search]);
+  }, [userMatched, search]);
   const segmented = useMemo(() => {
     if (segment === 'all') return searchMatched;
     if (segment === 'assigned') return searchMatched.filter((r) => r.alloc.assigned > 0 && r.alloc.assigned === r.alloc.total);
@@ -698,6 +715,15 @@ export default function ClientMasterAllocate() {
                 );
               })}
             </div>
+            <div className="relative w-full sm:w-72">
+              <UserCheck className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <select aria-label="Filter by allocated user" value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} className="w-full appearance-none rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-9 text-sm font-semibold text-slate-800 shadow-sm focus:border-emerald-300 focus:outline-none focus:ring-4 focus:ring-emerald-100">
+                <option value="">All users</option>
+                {userFilterOptions.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            </div>
+            {selectedUserId && <button type="button" onClick={() => setSelectedUserId('')} className="inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100"><X className="h-3.5 w-3.5" /> Clear user filter</button>}
             <div className="ml-auto relative w-full sm:w-96">
               <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input value={search} onChange={(e) => setSearch(e.target.value)} type="search" placeholder="Search company, contact, GST, mobile, lead code, location..." className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold text-slate-800 placeholder:text-slate-400 shadow-sm focus:border-emerald-300 focus:outline-none focus:ring-4 focus:ring-emerald-100" />
@@ -774,8 +800,8 @@ export default function ClientMasterAllocate() {
                 {!loading && visibleRows.length === 0 && <tr><td colSpan="7" className="px-5 py-16">
                   <div className="mx-auto flex max-w-lg flex-col items-center gap-3 text-center">
                     <div className="grid h-16 w-16 place-items-center rounded-3xl bg-slate-50 text-slate-400 ring-1 ring-slate-200"><Search className="h-7 w-7" /></div>
-                    <h3 className="text-xl font-black text-slate-900">No clients{search ? ' matching filters' : ''}</h3>
-                    <p className="text-sm font-semibold text-slate-500">Try clearing search, switching the segment tab above or press Refresh.</p>
+                    <h3 className="text-xl font-black text-slate-900">No clients{search || selectedUserId || segment !== 'all' ? ' matching filters' : ''}</h3>
+                    <p className="text-sm font-semibold text-slate-500">Try clearing the user filter or search, switching the segment tab above or press Refresh.</p>
                   </div>
                 </td></tr>}
                 {!loading && pagedRows.map((row, rowIdx) => {
