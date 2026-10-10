@@ -1,22 +1,21 @@
 export const PO_MONTHS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar']
 export const poOwnerName = value => String(value || 'Unassigned').trim().toUpperCase()
 export function visiblePOMonths(year, date = new Date()) {
-  if (year === 'ALL') return [...PO_MONTHS]
   const current = poPeriod(date)
   if (!current) return []
   if (Number(year.slice(0, 4)) < Number(current.year.slice(0, 4))) return [...PO_MONTHS]
   return year === current.year ? PO_MONTHS.slice(0, current.month + 1) : []
 }
-export function dashboardPO(records, year = 'ALL', search = '', view = 'month', date = new Date()) {
+export function dashboardPO(records, year = undefined, search = '', view = 'month', date = new Date()) {
+  year = year || poPeriod(date).year
   const months = visiblePOMonths(year, date)
   const elapsed = filterPoApproval(records, 'APPROVED').filter(record => {
     const period = poPeriod(record.poDate)
-    return year === 'ALL' || (period?.year === year && period.month < months.length)
+    return period?.year === year && period.month < months.length
   })
   const result = view === 'pibo' ? piboPO(elapsed, year, search) : monthlyPO(elapsed, year, search)
-  const includeUndated = year === 'ALL' && result.records.some(record => !poPeriod(record.poDate))
-  return { ...result, columns: view === 'pibo' ? result.columns : [...months, ...(includeUndated ? ['PO Date Not Recorded'] : [])],
-    rows: result.rows.map(row => ({ ...row, name: poOwnerName(row.name), cells: view === 'pibo' ? row.cells : [...row.months.slice(0, months.length), ...(includeUndated ? [row.records.filter(record => !poPeriod(record.poDate))] : [])] })) }
+  return { ...result, columns: view === 'pibo' ? result.columns : months,
+    rows: result.rows.map(row => ({ ...row, name: poOwnerName(row.name), cells: view === 'pibo' ? row.cells : row.months.slice(0, months.length) })) }
 }
 export function poPeriod(value) {
   if (!value) return null
@@ -29,7 +28,7 @@ export function poPeriod(value) {
   return { year: `${start}-${String(start + 1).slice(-2)}`, month: (month + 8) % 12 }
 }
 export function monthlyPO(records, year, search = '') {
-  const selected = records.filter(r => (year === 'ALL' || poPeriod(r.poDate)?.year === year) && String(r.ownerName || 'Unassigned').toLowerCase().includes(search.trim().toLowerCase()))
+  const selected = records.filter(r => (poPeriod(r.poDate)?.year === year) && String(r.ownerName || 'Unassigned').toLowerCase().includes(search.trim().toLowerCase()))
   const groups = new Map()
   for (const record of selected) {
     const key = record.ownerId || record.ownerName || 'unassigned'

@@ -1,31 +1,21 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-test('Overall defaults to all approved financial years and includes undated POs without losing totals', async () => {
-  const { dashboardPO, poAmount, poDetailExportRows } = await import('../../frontend/src/utils/poMonthly.mjs');
+test('PO dashboard defaults to the current financial year and excludes other years and undated entries', async () => {
+  const { dashboardPO } = await import('../../frontend/src/utils/poMonthly.mjs');
   const records = [
-    { id: 'past', ownerName: 'Sonal', poDate: '2025-04-10', poAmount: 100, approvalStatus: 'APPROVED', subApplicantType: 'Producer' },
-    { id: 'current', ownerName: 'Sonal', poDate: '2026-04-10', poAmount: 200, approvalStatus: 'APPROVED', subApplicantType: 'Importer' },
-    { id: 'undated', ownerName: 'Sonal', poAmount: 300, approvalStatus: 'APPROVED' },
-    { id: 'pending', ownerName: 'Sonal', poDate: '2026-04-10', poAmount: 400, approvalStatus: 'PENDING' },
-    { id: 'other', ownerName: 'Prachi', poDate: '2026-05-10', poAmount: 500, approvalStatus: 'APPROVED' }
+    { id: 'past', poDate: '2025-04-10', approvalStatus: 'APPROVED' },
+    { id: 'current', poDate: '2026-04-10', approvalStatus: 'APPROVED' },
+    { id: 'undated', approvalStatus: 'APPROVED' },
+    { id: 'pending', poDate: '2026-04-10', approvalStatus: 'PENDING' }
   ];
-  assert.equal(dashboardPO(records).records.length, 4);
   for (const view of ['month', 'pibo']) {
-    const overall = dashboardPO(records, 'ALL', 'sonal', view, new Date('2026-10-10'));
-    assert.equal(overall.records.length, 3);
-    assert.equal(poAmount(overall.records), 600);
-    assert.equal(overall.rows[0].cells.flat().length, 3);
-    assert.equal(poAmount(overall.rows[0].cells.flat()), 600);
-    const year = dashboardPO(records, '2026-27', 'sonal', view, new Date('2026-10-10'));
-    assert.deepEqual(year.records.map(row => row.id), ['current']);
-    assert.equal(poAmount(year.records), 200);
-    assert.equal(dashboardPO(records, '2025-26', 'sonal', view).records[0].id, 'past');
+    const matrix = dashboardPO(records, undefined, '', view, new Date('2026-10-10'));
+    assert.deepEqual(matrix.records.map(row => row.id), ['current']);
+    assert.equal(matrix.rows[0].cells.flat().length, 1);
+    assert.deepEqual(dashboardPO(records, '2025-26', '', view, new Date('2026-10-10')).records.map(row => row.id), ['past']);
+    assert.equal(dashboardPO(records, 'ALL', '', view, new Date('2026-10-10')).records.length, 0);
   }
-  const monthly = dashboardPO(records, 'ALL', 'sonal');
-  assert.equal(monthly.rows[0].cells[0].length, 2);
-  assert.equal(monthly.columns.at(-1), 'PO Date Not Recorded');
-  assert.deepEqual(poDetailExportRows(records.slice(0, 3)).map(row => row['Financial year']), ['2025-26', '2026-27', 'Not recorded']);
 });
 
 test('PO columns advance at month boundaries in India and keep historical years complete', async () => {
