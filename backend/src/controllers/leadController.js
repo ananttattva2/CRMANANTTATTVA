@@ -1955,6 +1955,12 @@ exports.decidePurchaseOrderApproval = async (req, res) => {
   }
   lead.markModified('assignments');
   await lead.save();
+  if (approval.approvalStatus !== 'PENDING' && approval.approvalStatus !== status) {
+    approval.payload = { ...(approval.payload || {}), decisionCorrections: [
+      ...(approval.payload?.decisionCorrections || []),
+      { previousStatus: approval.approvalStatus, previousRemarks: approval.remarks || '', previousActionBy: approval.actionBy, previousActionAt: approval.actionAt, status, correctedAt: new Date(), correctedBy: req.user?._id, reason: remarks }
+    ] };
+  }
   approval.approvalStatus = status;
   approval.remarks = remarks;
   approval.actionBy = req.user?._id;
