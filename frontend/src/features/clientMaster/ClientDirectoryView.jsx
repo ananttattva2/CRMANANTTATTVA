@@ -4,7 +4,7 @@ import { Building2, CheckCircle2, ChevronDown, Download, Edit3, Eye, FileCheck2,
 import { DeactivationButton } from './ClientDeactivation';
 import api from '../../services/api';
 import ToastMessage from '../../components/ToastMessage';
-import { companyPoClosed, clientPoExportEntries, clientPoCounts, sumClientPoCounts, clientFinancialYears } from './clientPoStatus.mjs';
+import { companyPoClosed, clientPoExportEntries, clientPoCounts, sumClientPoCounts, clientFinancialYears, clientPoDates, poDatesLabel, poDateFinancialYears } from './clientPoStatus.mjs';
 import { clientLeadOwner } from './clientLeadOwner.mjs';
 import {
   getAssignedName,
@@ -205,7 +205,9 @@ function ClientDirectoryView({ clients, pagination, summary, staff, loading, err
       const data = readClientData(item);
       const poCounts = clientPoCounts(item);
       return {
-        'Financial Year': clientFinancialYears(item).join(', ') || 'Not Recorded',
+        'PO Date': poDatesLabel(clientPoDates(item)),
+        'Financial Year': poDateFinancialYears(clientPoDates(item)).join(', ') || 'Not Recorded',
+        'Service Financial Year': clientFinancialYears(item).join(', ') || 'Not Recorded',
         'PO Approved Count': poCounts.approved,
         'PO Pending Count': poCounts.pending,
         'PO Rejected Count': poCounts.rejected,
@@ -297,7 +299,9 @@ function ClientDirectoryView({ clients, pagination, summary, staff, loading, err
         'PO Approved Count': service.poCounts.approved,
         'PO Pending Count': service.poCounts.pending,
         'PO Rejected Count': service.poCounts.rejected,
-        'Financial Year': service.financialYears.join(', ') || 'Not Recorded',
+        'PO Date': poDatesLabel(service.poDates),
+        'Financial Year': service.poDateFinancialYears.join(', ') || 'Not Recorded',
+        'Service Financial Year': service.financialYears.join(', ') || 'Not Recorded',
         'PO Financial Year': service.poFinancialYears.join(', ') || 'Not Recorded',
         'Annual Return Year': service.annualReturnYears.join(', ') || 'Not Recorded',
         'Service No': service.index,

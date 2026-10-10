@@ -1273,7 +1273,7 @@ exports.listClients = async (req, res) => {
   if (req.query.export === 'true' && clients.length) {
     const leadIds = clients.map(client => client.selectedLead?._id).filter(Boolean);
     const poApprovals = await PendingApproval.find({ type: 'purchase_order', 'payload.leadId': { $in: leadIds.flatMap(id => [id, String(id)]) } })
-      .select('approvalStatus payload.leadId payload.assignedServiceId payload.assignmentIndex payload.poYearRows.poNumber payload.poYearRows.poFinancialYear payload.poYearRows.annualReturnYear payload.poYearRows.fy payload.poYearRows.registrationYear').lean();
+      .select('approvalStatus payload.leadId payload.assignedServiceId payload.assignmentIndex payload.poYearRows.poNumber payload.poYearRows.poDate payload.poYearRows.poFinancialYear payload.poYearRows.annualReturnYear payload.poYearRows.fy payload.poYearRows.registrationYear').lean();
     const byLead = new Map();
     poApprovals.forEach(approval => {
       const key = String(approval.payload.leadId);

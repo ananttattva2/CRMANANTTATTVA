@@ -18,6 +18,29 @@ export function financialYearLabels(values = []) {
 
 const savedYears = value => [value?.financialYear, value?.financialYears, value?.fy, value?.fyYear, value?.servicesForYear, value?.firstAnnualReturnYearApplicable, value?.firstAnnualReturnYear, value?.annualReturnYear, value?.annualReturnYears, value?.registrationYear]
 
+export function normalizedPoDates(values = []) {
+  return [...new Set(values.flat(Infinity).filter(Boolean).flatMap(value => {
+    const source = String(value).trim()
+    const iso = source.match(/^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/)
+    const display = source.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/)
+    const date = iso ? `${iso[1]}-${iso[2]}-${iso[3]}` : display ? `${display[3]}-${display[2]}-${display[1]}` : ''
+    if (!date) return []
+    const parsed = new Date(`${date}T00:00:00Z`)
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date ? [date] : []
+  }))].sort()
+}
+
+export const poDatesLabel = dates => dates.map(date => date.split('-').reverse().join('-')).join(', ') || 'Not Recorded'
+export function poDateFinancialYears(dates = []) {
+  return financialYearLabels(dates.map(date => {
+    const start = Number(date.slice(0, 4)) - (Number(date.slice(5, 7)) < 4 ? 1 : 0)
+    return `${start}-${String(start + 1).slice(-2)}`
+  }))
+}
+export function clientPoDates(client) {
+  return normalizedPoDates(clientPoServices(client).map(service => service.poDates))
+}
+
 export function clientFinancialYears(client = {}) {
   const data = client.data || {}
   return financialYearLabels([
@@ -74,6 +97,7 @@ export function clientPoServices(client = {}) {
       return approvedServiceId ? approvedServiceId === id : Number(approval.payload?.assignmentIndex) === index
     })
     const poRows = [...assignment.flatMap(row => [...rows(row.poYearRows), ...(row.originalPoDetails ? [row.originalPoDetails] : [])]), ...approvals.flatMap(approval => rows(approval.payload?.poYearRows))]
+    const poDates = normalizedPoDates(poRows.map(po => po.poDate))
     const poFinancialYears = financialYearLabels(poRows.map(po => po.poFinancialYear))
     const annualReturnYears = financialYearLabels([service.firstAnnualReturnYearApplicable, service.firstAnnualReturnYear, service.annualReturnYear, service.annualReturnYears, ...poRows.map(po => po.annualReturnYear)])
     const financialYears = financialYearLabels([...savedYears(service), ...poRows.flatMap(po => [...savedYears(po), po.poFinancialYear]), ...(services.length === 1 ? savedYears(lead) : [])])
@@ -84,7 +108,7 @@ export function clientPoServices(client = {}) {
       subApplicantType: service.subApplicantType || service.piboCategory || data.basic?.piboCategory || '',
       category: service.eprCategory || data.basic?.eprCategory || '',
       name: service.servicesOffered || service.applicableService || data.basic?.servicesOffered || '',
-      financialYears, poFinancialYears, annualReturnYears,
+      financialYears, poFinancialYears, annualReturnYears, poDates, poDateFinancialYears: poDateFinancialYears(poDates),
       poCounts: approvalCounts(approvals, assignment.length ? assignment : services.length === 1 ? [lead] : []),
       closed: isClosed,
       received: isClosed || received(service) || assignment.some(received) || (services.length === 1 && received(lead))

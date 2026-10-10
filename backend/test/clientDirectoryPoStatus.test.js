@@ -50,6 +50,7 @@ test('Excel includes numeric client/service PO counts and a deduplicated approva
   const helpers = await import('../../frontend/src/features/clientMaster/clientPoStatus.mjs');
   const client = fixture();
   client.selectedLead.serviceSelections[0].firstAnnualReturnYearApplicable = '2025-26';
+  client.selectedLead.assignments[0].poYearRows[0].poDate = '2026-07-22';
   client.selectedLead.assignments[0].poYearRows[0].poFinancialYear = '2026-27';
   client.selectedLead.assignments[0].poYearRows[0].annualReturnYear = '2025-26';
   client.selectedLead.assignments[0].poApprovalStatus = 'APPROVED';
@@ -71,10 +72,14 @@ test('Excel includes numeric client/service PO counts and a deduplicated approva
   assert.equal(clients[0]['PO Approved Count'], 1);
   assert.equal(clients[0]['PO Pending Count'], 1);
   assert.equal(clients[0]['PO Rejected Count'], 1);
-  assert.equal(clients[0]['Financial Year'], '2025-26, 2026-27');
+  assert.equal(clients[0]['PO Date'], '22-07-2026');
+  assert.equal(clients[0]['Financial Year'], '2026-27');
+  assert.equal(clients[0]['Service Financial Year'], '2025-26, 2026-27');
   const services = XLSX.utils.sheet_to_json(workbook.Sheets['Service PO Status']);
   assert.equal(services.length, 3);
-  assert.equal(services[0]['Financial Year'], '2025-26, 2026-27');
+  assert.equal(services[0]['PO Date'], '22-07-2026');
+  assert.equal(services[0]['Financial Year'], '2026-27');
+  assert.equal(services[0]['Service Financial Year'], '2025-26, 2026-27');
   assert.equal(services[0]['PO Financial Year'], '2026-27');
   assert.equal(services[0]['Annual Return Year'], '2025-26');
   assert.equal(services[1]['Financial Year'], 'Not Recorded');
@@ -95,6 +100,22 @@ test('all saved financial years are normalized, sorted and kept within their own
   assert.deepEqual(services[1].financialYears, ['2027-28']);
   assert.deepEqual(services[2].financialYears, []);
   assert.deepEqual(clientFinancialYears(client), ['2025-26', '2026-27', '2027-28', '2028-29']);
+});
+
+test('PO dates define financial years at April boundaries without copying sibling dates or inventing dates', async () => {
+  const { normalizedPoDates, poDatesLabel, poDateFinancialYears, clientPoServices, clientPoDates } = await import('../../frontend/src/features/clientMaster/clientPoStatus.mjs');
+  const dates = normalizedPoDates(['2026-07-22', '22-07-2026', '2026-03-31', '2026-04-01', '', '2026-02-30']);
+  assert.deepEqual(dates, ['2026-03-31', '2026-04-01', '2026-07-22']);
+  assert.equal(poDatesLabel(dates), '31-03-2026, 01-04-2026, 22-07-2026');
+  assert.deepEqual(poDateFinancialYears(dates), ['2025-26', '2026-27']);
+  assert.equal(poDatesLabel([]), 'Not Recorded');
+  const client = fixture();
+  client.selectedLead.assignments[0].poYearRows[0].poDate = '2026-07-22';
+  client.poApprovals = [{ payload: { assignedServiceId: 's1', poYearRows: [{ poDate: '2026-07-22' }, { poDate: '2025-08-10' }] } }];
+  const services = clientPoServices(client);
+  assert.deepEqual(services[0].poDateFinancialYears, ['2025-26', '2026-27']);
+  assert.deepEqual(services[1].poDates, []);
+  assert.deepEqual(clientPoDates(client), ['2025-08-10', '2026-07-22']);
 });
 test('one closed service makes company Yes while export shows Yes, No, No', async () => {
   const { companyPoClosed, clientPoServices, clientPoExportEntries } = await import('../../frontend/src/features/clientMaster/clientPoStatus.mjs');
