@@ -1,20 +1,22 @@
 export const PO_MONTHS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar']
 export const poOwnerName = value => String(value || 'Unassigned').trim().toUpperCase()
 export function visiblePOMonths(year, date = new Date()) {
+  if (year === 'ALL') return [...PO_MONTHS]
   const current = poPeriod(date)
   if (!current) return []
   if (Number(year.slice(0, 4)) < Number(current.year.slice(0, 4))) return [...PO_MONTHS]
   return year === current.year ? PO_MONTHS.slice(0, current.month + 1) : []
 }
-export function dashboardPO(records, year, search = '', view = 'month', date = new Date()) {
+export function dashboardPO(records, year = 'ALL', search = '', view = 'month', date = new Date()) {
   const months = visiblePOMonths(year, date)
   const elapsed = filterPoApproval(records, 'APPROVED').filter(record => {
     const period = poPeriod(record.poDate)
-    return period?.year === year && period.month < months.length
+    return year === 'ALL' || (period?.year === year && period.month < months.length)
   })
   const result = view === 'pibo' ? piboPO(elapsed, year, search) : monthlyPO(elapsed, year, search)
-  return { ...result, columns: view === 'pibo' ? result.columns : months,
-    rows: result.rows.map(row => ({ ...row, name: poOwnerName(row.name), cells: view === 'pibo' ? row.cells : row.months.slice(0, months.length) })) }
+  const includeUndated = year === 'ALL' && result.records.some(record => !poPeriod(record.poDate))
+  return { ...result, columns: view === 'pibo' ? result.columns : [...months, ...(includeUndated ? ['PO Date Not Recorded'] : [])],
+    rows: result.rows.map(row => ({ ...row, name: poOwnerName(row.name), cells: view === 'pibo' ? row.cells : [...row.months.slice(0, months.length), ...(includeUndated ? [row.records.filter(record => !poPeriod(record.poDate))] : [])] })) }
 }
 export function poPeriod(value) {
   if (!value) return null
@@ -27,13 +29,14 @@ export function poPeriod(value) {
   return { year: `${start}-${String(start + 1).slice(-2)}`, month: (month + 8) % 12 }
 }
 export function monthlyPO(records, year, search = '') {
-  const selected = records.filter(r => poPeriod(r.poDate)?.year === year && String(r.ownerName || 'Unassigned').toLowerCase().includes(search.trim().toLowerCase()))
+  const selected = records.filter(r => (year === 'ALL' || poPeriod(r.poDate)?.year === year) && String(r.ownerName || 'Unassigned').toLowerCase().includes(search.trim().toLowerCase()))
   const groups = new Map()
   for (const record of selected) {
     const key = record.ownerId || record.ownerName || 'unassigned'
     if (!groups.has(key)) groups.set(key, { key, name: record.ownerName || 'Unassigned', months: Array.from({ length: 12 }, () => []), records: [] })
     const row = groups.get(key)
-    row.months[poPeriod(record.poDate).month].push(record)
+    const period = poPeriod(record.poDate)
+    if (period) row.months[period.month].push(record)
     row.records.push(record)
   }
   return { records: selected, rows: [...groups.values()].sort((a, b) => b.records.length - a.records.length || a.name.localeCompare(b.name)) }
@@ -49,6 +52,7 @@ export function poDetailExportRows(records) {
     Client: record.clientName || '',
     'PO number': record.poNumber || '',
     'PO date': poPeriod(record.poDate) ? new Date(record.poDate).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : '',
+    'Financial year': poPeriod(record.poDate)?.year || 'Not recorded',
     'Amount (INR)': Number.isFinite(Number(record.poAmount)) ? Number(record.poAmount) : 0,
     'Applicant category': poApplicantCategory(record),
     Approval: poApproval(record)
