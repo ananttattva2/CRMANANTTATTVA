@@ -13,9 +13,18 @@ console.log(JSON.stringify({ check: 'storage-configuration', configured: Object.
   'STORAGE_PUBLIC_API_ORIGIN', 'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'
 ].map(name => [name, Boolean(process.env[name])])), migrationInstalled: fs.existsSync(path.join(backend, 'src/scripts/migrateCloudinaryToSpaces.js')) }));
 const storageState = path.join(root, '.storage-migration/state/crm-full/state.json');
+let inventoryCollection;
 if (fs.existsSync(storageState)) {
   const state = JSON.parse(fs.readFileSync(storageState, 'utf8'));
+  inventoryCollection = state.collections?.find(name => !(state.referenceCollectionsComplete || []).includes(name));
   console.log(JSON.stringify({ check: 'storage-progress', discovered: state.assets?.length || 0, discoveryComplete: !!state.discoveryComplete, discoveryPageComplete: !!state.discovery?.complete, collectionsScanned: state.referenceCollectionsComplete?.length || 0, collectionsTotal: state.collections?.length || 0, verified: state.assets?.filter(a => a.status === 'verified').length || 0, failed: state.assets?.filter(a => a.status === 'failed').length || 0, missing: state.assets?.filter(a => a.status === 'missing').length || 0, databaseUpdates: state.patches?.filter(p => p.status === 'applied').length || 0 }));
+}
+const originalsState = path.join(root, '.storage-migration/state/crm-originals/state.json');
+if (fs.existsSync(originalsState)) {
+  const state = JSON.parse(fs.readFileSync(originalsState, 'utf8'));
+  const errors = {};
+  for (const asset of state.assets || []) if (asset.error) errors[asset.error] = (errors[asset.error] || 0) + 1;
+  console.log(JSON.stringify({ check: 'originals-copy-progress', total: state.assets?.length || 0, verified: state.assets?.filter(a => a.status === 'verified').length || 0, failed: state.assets?.filter(a => a.status === 'failed').length || 0, missing: state.assets?.filter(a => a.status === 'missing').length || 0, errorCategories: errors }));
 }
 const storageLock = path.join(root, '.storage-migration/state/crm-full/run.lock');
 if (fs.existsSync(storageLock)) {
@@ -81,6 +90,7 @@ async function measure(name, run) {
       }
     }
     await mongoose.connect(appRequire('./src/config/db').__test.buildMongoUri(), { dbName: process.env.DB_NAME || 'registerd_types', autoIndex: false, autoCreate: false, serverSelectionTimeoutMS: 10000 });
+    if (inventoryCollection) await measure('inventory-current-collection', async () => ({ collection: inventoryCollection, estimatedDocuments: await mongoose.connection.db.collection(inventoryCollection).estimatedDocumentCount({ maxTimeMS: 10000 }) }));
     await measure('authentication-user-query', async () => ({ found: Boolean(await appRequire('./src/models/User').findOne({ isActive: { $ne: false } }).select('_id').maxTimeMS(10000).lean()) }));
     await measure('reminder-scan', async () => {
       const rows = await appRequire('./src/services/leadWorkflowReminders').__test.getCcpLeads();
