@@ -15,7 +15,7 @@ console.log(JSON.stringify({ check: 'storage-configuration', configured: Object.
 const storageState = path.join(root, '.storage-migration/state/crm-full/state.json');
 if (fs.existsSync(storageState)) {
   const state = JSON.parse(fs.readFileSync(storageState, 'utf8'));
-  console.log(JSON.stringify({ check: 'storage-progress', discovered: state.assets?.length || 0, discoveryComplete: !!state.discoveryComplete, discoveryPageComplete: !!state.discovery?.complete, verified: state.assets?.filter(a => a.status === 'verified').length || 0, failed: state.assets?.filter(a => a.status === 'failed').length || 0, missing: state.assets?.filter(a => a.status === 'missing').length || 0, databaseUpdates: state.patches?.filter(p => p.status === 'applied').length || 0 }));
+  console.log(JSON.stringify({ check: 'storage-progress', discovered: state.assets?.length || 0, discoveryComplete: !!state.discoveryComplete, discoveryPageComplete: !!state.discovery?.complete, collectionsScanned: state.referenceCollectionsComplete?.length || 0, collectionsTotal: state.collections?.length || 0, verified: state.assets?.filter(a => a.status === 'verified').length || 0, failed: state.assets?.filter(a => a.status === 'failed').length || 0, missing: state.assets?.filter(a => a.status === 'missing').length || 0, databaseUpdates: state.patches?.filter(p => p.status === 'applied').length || 0 }));
 }
 const storageLock = path.join(root, '.storage-migration/state/crm-full/run.lock');
 if (fs.existsSync(storageLock)) {
@@ -37,6 +37,15 @@ async function measure(name, run) {
 }
 (async () => {
   try {
+    await measure('spaces-bucket-access', async () => {
+      const directory = path.join(root, '.storage-migration/code');
+      const staged = fs.readdirSync(directory).sort((a, b) => fs.statSync(path.join(directory, b)).mtimeMs - fs.statSync(path.join(directory, a)).mtimeMs)[0];
+      const stagingRequire = createRequire(path.join(directory, staged, 'backend/package.json'));
+      const { S3Client, HeadBucketCommand } = stagingRequire('@aws-sdk/client-s3');
+      const client = new S3Client({ endpoint: process.env.SPACES_ENDPOINT, region: process.env.SPACES_REGION, credentials: { accessKeyId: process.env.SPACES_ACCESS_KEY_ID, secretAccessKey: process.env.SPACES_SECRET_ACCESS_KEY } });
+      await client.send(new HeadBucketCommand({ Bucket: process.env.SPACES_BUCKET }));
+      return { accessible: true };
+    });
     for (const logPath of ['/var/log/nginx/access.log', '/var/log/nginx/error.log']) {
       if (!fs.existsSync(logPath)) continue;
       const fd = fs.openSync(logPath, 'r'); const length = fs.fstatSync(fd).size;
