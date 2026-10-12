@@ -206,6 +206,7 @@ export function buildOperationsWorkbookData(groups = [], financialYear = 'all') 
       'Operations User': excelText(group.name, 'Unassigned'),
       'Financial Year Filter': excelText(financialYear, 'All'),
       'Assigned Clients': group.total,
+      'Assigned Applications': Number(group.applicationTotal ?? group.total),
       'Compliance Approved': group.complianceDone,
       'PO Received': group.poDone,
       'Compliance Tabs With Remarks': group.rows.reduce((count, row) => count + getOperationsTabRemarks(row).filter(tab => tab.remarks).length, 0),

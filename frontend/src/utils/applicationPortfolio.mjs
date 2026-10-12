@@ -46,7 +46,19 @@ export function applicationServiceSummaryRecords(group) {
 export function applicationReportGroups(groups) {
   // Every tab counts the same company/category/unit/service applications.
   // Keep category-level grouping internal, then expand services for reporting.
-  return groups.map(group => ({ ...group, records: applicationServiceSummaryRecords(group) }))
+  return groups.map(group => ({
+    ...group,
+    records: applicationServiceSummaryRecords(group).map(record => ({
+      ...record,
+      spocId: group.id,
+      spocName: group.name,
+      services: (record.services || []).map(service => ({
+        ...service,
+        spocId: group.id,
+        spocName: group.name
+      }))
+    }))
+  }))
 }
 export function matchesApplicationService(record, key) {
   if (key === 'total') return true
@@ -161,9 +173,17 @@ export function applicationRecord(client) {
   // A matched lead service is authoritative, including when its service name
   // is blank. Falling back to Client Master in that case can copy a sibling
   // service (for example New Registration) into an Annual Return assignment.
+  const selectedServiceOffering = service.servicesOffered ?? service.applicableService
+  // Some legacy closed leads saved the service label on the matching
+  // assignment, while leaving the service-selection label blank. This is a
+  // same-service fallback; Client Master remains excluded because it can
+  // contain a sibling service.
+  const assignmentOffering = assignment.servicesOffered ?? assignment.applicableService
+  const legacyOffering = [lead.servicesOffered, lead.applicableService, basic.servicesOffered, basic.applicableService, data.selectedLeadSnapshot?.servicesOffered, data.selectedLeadSnapshot?.applicableService]
+    .find(value => canonicalOfferedServices(value).length) ?? []
   const offered = hasMatchedLeadService
-    ? (service.servicesOffered ?? service.applicableService ?? [])
-    : (basic.servicesOffered ?? basic.applicableService ?? data.selectedLeadSnapshot?.servicesOffered ?? data.selectedLeadSnapshot?.applicableService ?? [])
+    ? (canonicalOfferedServices(selectedServiceOffering).length ? selectedServiceOffering : assignmentOffering ?? [])
+    : legacyOffering
   const annual = isAnnualReturnService(offered)
   const annualWorkflowReady = Boolean(assignment.assignedTo || assignment.assignedToText || assignment.assignedToEmail)
     && Boolean(assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail)
@@ -180,7 +200,7 @@ export function applicationRecord(client) {
     : []
   const annualEligiblePo = eligiblePoRows.length > 0
   const annualYears = [...new Set(eligiblePoRows.map(po => po.annualReturnYear).filter(Boolean))]
-  const category = applicantCategory(text(service.subApplicantType, service.piboCategory, basic.piboCategory, basic.subApplicantType, service.applicantType, basic.applicantType))
+  const category = applicantCategory(text(service.subApplicantType, service.piboCategory, lead.subApplicantType, lead.piboCategory, basic.piboCategory, basic.subApplicantType, service.applicantType, lead.applicantType, basic.applicantType))
   const cpcb = text(data.cpcb?.status, data.cpcb?.approvalStatus, data.cpcb?.applicationStatus, basic.cpcbStatus, meta.cpcbStatus)
   const state = text(data.registeredAddress?.state, data.address?.state, data.addresses?.state, basic.state, meta.state)
   const clientStatus = text(meta.clientStatus, client.adminControls?.clientStatus, client.workflowStatus)
@@ -188,7 +208,7 @@ export function applicationRecord(client) {
   const status = normalize(cpcb)
   const inactive = /suspend|discontinu|inactive/.test(normalize(`${clientStatus} ${visibility} ${cpcb}`))
   const bucket = cpcbStatusBucket(cpcb)
-  return { id: String(client._id), assignmentOnly: Boolean(client.assignmentOnly), statusSourceClientId: client.statusSourceClientId || '', leadId: String(lead._id || ''), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), offeredServices: canonicalOfferedServices(offered), closed, bucket, live: !inactive, annual, annualEligiblePo, annualWorkflowReady, annualYears, sourceIds: [String(client._id)] }
+  return { id: String(client._id), assignmentOnly: Boolean(client.assignmentOnly), statusSourceClientId: client.statusSourceClientId || '', leadId: String(lead._id || ''), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, lead.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, lead.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, lead.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), offeredServices: canonicalOfferedServices(offered), closed, bucket, live: !inactive, annual, annualEligiblePo, annualWorkflowReady, annualYears, sourceIds: [String(client._id)] }
 }
 // Placeholders and blank drafts do not represent another application when
 // this lead already has a submitted master for the same applicant/unit/service.

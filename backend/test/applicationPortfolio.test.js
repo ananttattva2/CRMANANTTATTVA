@@ -50,6 +50,8 @@ test('SPOC reports count all 43 services instead of collapsing them into 41 appl
   assert.equal(reports.flatMap(group => group.records).length, 44);
   assert.equal(reports.find(group => group.id === 'sonal').records.length, 43);
   assert.equal(reports.find(group => group.id === 'krishna').records.length, 1);
+  assert(reports.find(group => group.id === 'sonal').records.every(row => row.spocName === 'Sonal'));
+  assert(reports.find(group => group.id === 'krishna').records.every(row => row.spocName === 'Krishna'));
 });
 
 test('SPOC distribution deduplicates a company category, retains distinct categories and never merges staff', async () => {
@@ -244,6 +246,8 @@ test('service breakdown counts each application once and agrees with the Clients
   const loaded = new ExcelJS.Workbook(); await loaded.xlsx.load(buffer);
   assert.equal(loaded.getWorksheet('Clients').getCell('L4').value, 'Annual Return Filling');
   assert.equal(loaded.getWorksheet('Clients').getCell('L5').value, 'Annual Return Filling');
+  assert.equal(loaded.getWorksheet('Clients').getCell('N4').value, 'Sonal');
+  assert.equal(loaded.getWorksheet('Service Statuses').getCell('N4').value, 'Sonal');
   assert.equal(loaded.getWorksheet('Service Statuses').rowCount, 6);
   assert.equal(rows[0].services.length, 2);
 });
@@ -381,6 +385,41 @@ test('matched blank service never inherits stale New Registration from Client Ma
   row.selectedLead.assignments = [{ assignedServiceId: 'annual', assignedTo: 'manager', assignedStaff: 'sonal', closedAt: '2026-10-01' }];
   assert.deepEqual(applicationRecord(row).offeredServices, []);
   assert.equal(buildApplicationPortfolio([row], users).length, 0);
+});
+
+test('legacy closed assignments supply their own service label without inheriting a sibling Client Master service', async () => {
+  const { applicationRecord, buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  for (const company of ['20 MICRONS NANO MINERALS LIMITED', 'Thrishul Packaging Industries']) {
+    const row = client(company, 'sonal', 'Producer', 'Approved');
+    row.workflowStatus = 'submitted';
+    row.assignedServiceId = `${company}-annual`;
+    row.data.basic.servicesOffered = 'New Registration';
+    row.selectedLead.company = company;
+    row.selectedLead.serviceSelections = [{ assignedServiceId: row.assignedServiceId, subApplicantType: 'Producer', plantUnit: 'Unit 1', servicesOffered: '' }];
+    row.selectedLead.assignments = [{ assignedServiceId: row.assignedServiceId, assignedTo: 'manager', assignedStaff: 'sonal', closedAt: '2026-10-01', servicesOffered: 'Annual Return Filling' }];
+    assert.deepEqual(applicationRecord(row).offeredServices, ['Annual Return Filling']);
+    assert.equal(buildApplicationPortfolio([row], users)[0].records.length, 1);
+  }
+});
+
+test('legacy single-service closed leads remain visible when their service is stored at lead level', async () => {
+  const { applicationRecord, buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  for (const company of ['20 MICRONS NANO MINERALS LIMITED', 'Thrishul Packaging Industries']) {
+    const row = client(company, 'sonal', '', 'Approved');
+    row.workflowStatus = 'submitted';
+    row.assignedServiceId = '';
+    row.data.basic.servicesOffered = undefined;
+    row.data.basic.piboCategory = undefined;
+    row.selectedLead = {
+      _id: `${company}-lead`, company, status: 'Closed', servicesOffered: 'Annual Return Filling',
+      subApplicantType: 'Producer', eprCategory: 'EPR - Plastic Waste', plantUnit: 'Unit 1',
+      serviceSelections: [], assignments: [{ assignedTo: 'manager', assignedStaff: 'sonal', closedAt: '2026-10-01' }]
+    };
+    const record = applicationRecord(row);
+    assert.deepEqual(record.offeredServices, ['Annual Return Filling']);
+    assert.equal(record.category, 'Producer');
+    assert.equal(buildApplicationPortfolio([row], users)[0].records.length, 1);
+  }
 });
 
 test('Annual Return PO service objects qualify for all users and applicant types without creating New Registration', async () => {

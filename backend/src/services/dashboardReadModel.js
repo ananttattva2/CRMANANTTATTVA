@@ -22,7 +22,7 @@ function assignmentProjection(prefix) {
   };
 }
 const leadProjection = {
-  ...Object.fromEntries('_id company companyName clientName companyIdentity leadCode sourceLeadId status closedAt closedBy assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail firstAnnualReturnYearApplicable'.split(' ').map(field => [field, 1])),
+  ...Object.fromEntries('_id company companyName clientName companyIdentity leadCode sourceLeadId status closedAt closedBy assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail firstAnnualReturnYearApplicable servicesOffered applicableService applicantType subApplicantType piboCategory industryType eprCategory plantUnit'.split(' ').map(field => [field, 1])),
   assignments: { $map: { input: { $ifNull: ['$assignments', []] }, as: 'assignment', in: assignmentProjection('$$assignment') } },
   serviceSelections: { $map: { input: { $ifNull: ['$serviceSelections', []] }, as: 'service', in: compactFields('$$service', 'assignedServiceId serviceAssignmentId subApplicantType piboCategory applicantType piboParent firstAnnualReturnYearApplicable financialYear servicesForYear servicesOffered applicableService industryType eprCategory plantUnit') } }
 };

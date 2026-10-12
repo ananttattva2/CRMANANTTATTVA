@@ -59,6 +59,7 @@ test('operations Excel export keeps one client row and puts every PO in a separa
     }] }];
   const workbook = buildOperationsWorkbookData(groups, '2026-27');
   assert.equal(workbook.summary[0]['Assigned Clients'], 1);
+  assert.equal(workbook.summary[0]['Assigned Applications'], 1);
   assert.equal(workbook.summary[0]['PO Received'], 1);
   assert.equal(workbook.clients.length, 1);
   assert.equal(workbook.clients[0]['Client Name'], "'=CLIENT");

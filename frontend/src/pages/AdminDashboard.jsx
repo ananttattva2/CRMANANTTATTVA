@@ -71,6 +71,7 @@ import { API_ENDPOINTS } from '../services/apiEndpoints'
 import { downloadOperationMisPdf } from '../utils/productivityReportExports'
 import { formatDisplayDate, formatDisplayDateTime } from '../utils/dateFormat'
 import { allocationOwnerKeys, buildOperationsProgressGroups, buildOperationsWorkbookData, getOperationsStatusDates, getOperationsFinalFlag, getPoFinancialYear, permanentStaffOwnerKeys, selectRowsForPoFinancialYear } from '../utils/operationsUserProgress.mjs'
+import { applicationReportGroups, buildApplicationPortfolio } from '../utils/applicationPortfolio.mjs'
 import { downloadOperationsReportPdf } from '../utils/operationsReportPdf.mjs'
 
 const CALENDAR_TODO_STORAGE_KEY = 'crm.calendar.todos.v1'
@@ -4049,32 +4050,38 @@ const OperationsUserProgressTable = React.memo(function OperationsUserProgressTa
       .catch((error) => setExportError(error.message || 'PDF download failed. Please try again.'))
       .finally(() => setExporting(false))
   }, [exporting])
-  const groups = useMemo(() => buildOperationsProgressGroups(reportRows, users, getAssignedUserKeysFromClient, now), [reportRows, users, now])
+  const groups = useMemo(() => {
+    const portfolioClients = assignedClients || reportRows.map(row => row.client).filter(Boolean)
+    const applicationTotals = new Map(applicationReportGroups(buildApplicationPortfolio(portfolioClients, users)).map(group => [group.id, group.records.length]))
+    return buildOperationsProgressGroups(reportRows, users, getAssignedUserKeysFromClient, now)
+      .map(group => ({ ...group, applicationTotal: applicationTotals.get(group.id) || 0 }))
+  }, [reportRows, assignedClients, users, now])
   const visibleGroups = groups.filter((group) => [group.name, ...group.rows.flatMap((row) => [row.companyName, row.atplCode])].some((value) => normalizeKey(value).includes(normalizeKey(search))))
   const totals = useMemo(() => groups.reduce((result, group) => ({
     clients: result.clients + group.total,
+    applications: result.applications + group.applicationTotal,
     compliance: result.compliance + group.complianceDone,
     po: result.po + group.poDone,
     48: result[48] + group.milestones[48],
     72: result[72] + group.milestones[72],
     96: result[96] + group.milestones[96]
-  }), { clients: 0, compliance: 0, po: 0, 48: 0, 72: 0, 96: 0 }), [groups])
+  }), { clients: 0, applications: 0, compliance: 0, po: 0, 48: 0, 72: 0, 96: 0 }), [groups])
   const tones = ['orange', 'red', 'violet', 'blue', 'green']
 
   return <section className="operations-user-status-card" aria-label="User-wise operations status">
     <header className="operations-user-status-heading">
-      <div><span>Operations performance</span><h2>Client Ownership &amp; Red Flags</h2><p>Assigned clients, approved compliance and overdue correction deadlines. Red flags are cumulative: 96h also counts in 72h and 48h.</p></div>
+      <div><span>Operations performance</span><h2>Client Ownership &amp; Red Flags</h2><p>Clients are unique companies; applications use the Overall Dashboard's company + PIBO category + unit rule. Red flags are cumulative: 96h also counts in 72h and 48h.</p></div>
       <div className="operations-report-actions">{pdfMode ? <b><Users aria-hidden="true" />{groups.length} Operations users</b> : <div role="tablist" aria-label="Operations reports" className="flex flex-wrap gap-2"><button type="button" role="tab" aria-selected={activeTab === 'ownership'} className="operations-report-download" onClick={() => setActiveTab('ownership')}><Users aria-hidden="true" />{groups.length} Operations users</button><button type="button" role="tab" aria-selected={activeTab === 'data'} className="operations-report-download" onClick={() => setActiveTab('data')}>Purchase &amp; Sales</button></div>}{!pdfMode && activeTab === 'ownership' && <><button type="button" className="operations-report-download" disabled={!groups.length} onClick={() => downloadOperationsExcel(groups, financialYear)}><Download aria-hidden="true" />Export Excel</button><button type="button" className="operations-report-download" disabled={exporting || !groups.length} onClick={() => { setExportError(''); setPdfProgress('Preparing PDF…'); setExporting(true) }}><Download aria-hidden="true" />{exporting ? pdfProgress : 'Download full PDF'}</button></>}</div>
     </header>
     <div className="operations-report-meta"><span><CalendarDays aria-hidden="true" />Updated {formatDisplayDateTime(now)} IST</span><span>{pdfMode ? 'PDF contains aggregate user metrics only; client names are excluded.' : 'PDF includes every Operations user as an aggregate table without client names.'}</span></div>
     {assignmentError && <p role="alert" className="operations-export-error">{assignmentError} <button type="button" onClick={() => { setAssignmentError(''); setAssignmentRefresh(value => value + 1) }} className="ml-2 font-bold underline">Retry</button></p>}
     {!pdfMode && !assignedClients && !assignmentError && <p role="status" className="p-5 text-sm text-slate-500">Loading all manager-to-staff assignments…</p>}
     {exportError && <p className="operations-export-error" role="alert">{exportError}</p>}
-    {!pdfMode && <div className="operations-user-toolbar"><label><Search aria-hidden="true" /><input aria-label="Search Operations users or clients" placeholder="Search user, client or ATPL code" value={search} onChange={(event) => setSearch(event.target.value)} /></label><span>{new Set(groups.flatMap((group) => group.rows.map((row) => row.id))).size} assigned clients · {totals[48]} overdue assignments</span></div>}
+    {!pdfMode && <div className="operations-user-toolbar"><label><Search aria-hidden="true" /><input aria-label="Search Operations users or clients" placeholder="Search user, client or ATPL code" value={search} onChange={(event) => setSearch(event.target.value)} /></label><span>{totals.clients} unique clients · {totals.applications} assigned applications · {totals[48]} overdue assignments</span></div>}
     {activeTab === 'data' ? <PurchaseSalesProgress groups={visibleGroups} financialYear={financialYear} /> : <>
     <div className="operations-user-status-scroll">
       <table className="operations-user-status-table">
-        <thead><tr><th>Operations User</th><th>Assigned Clients</th><th>Compliance<small>Approved / Assigned</small></th><th>Purchase Order<small>Received / Assigned</small></th>{OPERATIONS_PROGRESS_MILESTONES.map((milestone) => <th key={milestone}>{milestone}h+ Red Flags<small>Overdue / Assigned</small></th>)}<th>Final Flag<small>All three red = Red</small></th><th aria-label="Action">View</th></tr></thead>
+        <thead><tr><th>Operations User</th><th>Assigned Clients<small>Unique companies</small></th><th>Assigned Applications<small>Matches Overall Dashboard</small></th><th>Compliance<small>Approved / Assigned</small></th><th>Purchase Order<small>Received / Assigned</small></th>{OPERATIONS_PROGRESS_MILESTONES.map((milestone) => <th key={milestone}>{milestone}h+ Red Flags<small>Overdue / Assigned</small></th>)}<th>Final Flag<small>All three red = Red</small></th><th aria-label="Action">View</th></tr></thead>
         <tbody>
           {visibleGroups.map((group, groupIndex) => {
             const open = !pdfMode && expandedUser === group.id
@@ -4083,17 +4090,18 @@ const OperationsUserProgressTable = React.memo(function OperationsUserProgressTa
               <tr className={`operations-user-summary-row ${open ? 'is-open' : ''}`}>
                 <td><button type="button" className="operations-user-toggle" aria-expanded={open} onClick={() => setExpandedUser(open ? '' : group.id)}><ChevronRight aria-hidden="true" /><i className={`avatar-${tones[groupIndex % tones.length]}`}>{initials}</i><strong>{group.name}</strong></button></td>
                 <td><b>{group.total}</b></td>
+                <td><b>{group.applicationTotal}</b></td>
                 <td><OperationsProgressValue done={group.complianceDone} total={group.total} tone={group.complianceDone === group.total ? 'green' : 'red'} /></td>
                 <td><OperationsProgressValue done={group.poDone} total={group.total} tone="green" /></td>
                 {OPERATIONS_PROGRESS_MILESTONES.map((hours) => <td key={hours}><OperationsProgressValue done={group.milestones[hours]} total={group.total} tone={group.milestones[hours] ? 'red' : 'green'} /></td>)}
                 <td><OperationsFinalFlag rows={group.rows} /></td>
                 <td><button type="button" className="operations-user-view" aria-label={`${open ? 'Hide' : 'View'} ${group.name} clients`} onClick={() => setExpandedUser(open ? '' : group.id)}><Eye aria-hidden="true" /></button></td>
               </tr>
-              {open && <tr className="operations-user-detail-row"><td colSpan={9}><OperationsClientDetails key={group.id} group={group} /></td></tr>}
+              {open && <tr className="operations-user-detail-row"><td colSpan={10}><OperationsClientDetails key={group.id} group={group} /></td></tr>}
             </React.Fragment>
           })}
         </tbody>
-        <tfoot><tr><td><span><BarChart3 aria-hidden="true" />Total (Operations assignments)</span></td><td><b>{totals.clients}</b></td><td><OperationsProgressValue done={totals.compliance} total={totals.clients} tone="green" /></td><td><OperationsProgressValue done={totals.po} total={totals.clients} tone="green" /></td><td><OperationsProgressValue done={totals[48]} total={totals.clients} tone="red" /></td><td><OperationsProgressValue done={totals[72]} total={totals.clients} tone="red" /></td><td><OperationsProgressValue done={totals[96]} total={totals.clients} tone="red" /></td><td><OperationsFinalFlag rows={groups.flatMap((group) => group.rows)} /></td><td /></tr></tfoot>
+        <tfoot><tr><td><span><BarChart3 aria-hidden="true" />Total (Operations assignments)</span></td><td><b>{totals.clients}</b></td><td><b>{totals.applications}</b></td><td><OperationsProgressValue done={totals.compliance} total={totals.clients} tone="green" /></td><td><OperationsProgressValue done={totals.po} total={totals.clients} tone="green" /></td><td><OperationsProgressValue done={totals[48]} total={totals.clients} tone="red" /></td><td><OperationsProgressValue done={totals[72]} total={totals.clients} tone="red" /></td><td><OperationsProgressValue done={totals[96]} total={totals.clients} tone="red" /></td><td><OperationsFinalFlag rows={groups.flatMap((group) => group.rows)} /></td><td /></tr></tfoot>
       </table>
     </div>
     </>}
