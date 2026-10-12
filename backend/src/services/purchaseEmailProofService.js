@@ -77,22 +77,13 @@ function enforceAttachmentLimits(attachments) {
 
 async function decodeEmail(file, format) { const parsed = format === 'eml' ? await parseEml(file.buffer) : await parseMsg(file.buffer); enforceAttachmentLimits(parsed.attachments); return validateDecoded(parsed); }
 
-function cloudinaryConfig() { const config = { cloudName: String(process.env.CLOUDINARY_CLOUD_NAME || ''), apiKey: String(process.env.CLOUDINARY_API_KEY || ''), apiSecret: String(process.env.CLOUDINARY_API_SECRET || '') }; if (!config.cloudName || !config.apiKey || !config.apiSecret) { const error = new Error('Secure email storage is not configured.'); error.code = 'STORAGE_NOT_CONFIGURED'; throw error; } return config; }
 async function uploadBuffer(buffer, name, mimeType, folder) {
-  const config = cloudinaryConfig(); const timestamp = Math.floor(Date.now() / 1000); const safeFolder = folder.replace(/[^a-zA-Z0-9/_-]+/g, '-').slice(0, 120);
-  const signature = crypto.createHash('sha1').update(`folder=${safeFolder}&timestamp=${timestamp}${config.apiSecret}`).digest('hex');
-  const body = new FormData(); body.append('file', new Blob([buffer], { type: mimeType || 'application/octet-stream' }), safeName(name)); body.append('api_key', config.apiKey); body.append('timestamp', String(timestamp)); body.append('signature', signature); body.append('folder', safeFolder);
-  const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(config.cloudName)}/raw/upload`, { method: 'POST', body }); const result = await response.json();
-  if (!response.ok) { const error = new Error(result?.error?.message || 'Secure storage upload failed.'); error.code = 'STORAGE_UPLOAD_FAILED'; throw error; }
-  return { storageKey: result.public_id, storageUrl: result.secure_url, size: result.bytes || buffer.length };
+  return require('./spacesStorage').uploadBuffer(buffer, safeName(name), mimeType, folder);
 }
 async function deleteStored(storageKey) {
   if (!storageKey) return;
-  const config = cloudinaryConfig(); const timestamp = Math.floor(Date.now() / 1000);
-  const signature = crypto.createHash('sha1').update(`public_id=${storageKey}&timestamp=${timestamp}${config.apiSecret}`).digest('hex');
-  const body = new URLSearchParams({ public_id: storageKey, timestamp: String(timestamp), api_key: config.apiKey, signature });
-  const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(config.cloudName)}/raw/destroy`, { method: 'POST', body });
-  if (!response.ok) throw new Error('Stored email cleanup failed.');
+  // Never delete legacy Cloudinary data: retirement requires separate explicit approval.
+  if (storageKey.startsWith('spaces:') || storageKey.startsWith('spaces/crm/')) return require('./spacesStorage').deleteObject(storageKey);
 }
 
 function publicEmailData(data, attachments) { return { ...data, attachments: attachments.map(({ content, storageUrl, ...item }) => item) }; }

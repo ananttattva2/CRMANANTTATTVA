@@ -93,7 +93,7 @@ function _isUsableProofValue(value) {
 // Last-resort deep recursive scan: finds any https://res.cloudinary / drive / s3 / blob
 // proof URL buried in arbitrary nested object trees (legacy YES-path records stored
 // Cloudinary response objects directly without flattening URL fields).
-const _DEEP_URL_PROOF_RE = /^https?:\/\/(?:res\.cloudinary\.com|storage\.googleapis\.com|[\w-]+\.s3[\w.-]*\.amazonaws\.com|[\w.-]*s3[\w.-]*\.amazonaws\.com|cdn[\w-]*\.digitaloceanspaces\.com|commondatastorage\.googleapis\.com|lh\d*\.googleusercontent\.com|firebasestorage\.googleapis\.com|drive\.google\.com|pdf\.s3)\/\S/i;
+const _DEEP_URL_PROOF_RE = /^https?:\/\/(?:[^\s/]+\/api\/assets\/file\?|(?:res\.cloudinary\.com|[\w.-]+\.digitaloceanspaces\.com|storage\.googleapis\.com|[\w.-]+\.amazonaws\.com|commondatastorage\.googleapis\.com|lh\d*\.googleusercontent\.com|firebasestorage\.googleapis\.com|drive\.google\.com|pdf\.s3)\/)\S/i;
 const _DEEP_NAME_PROOF_RE = /\.(?:pdf|png|jpe?g|webp|gif|heic|tiff?|bmp)(?:[?#].*)?$/i;
 function _deepFindProofField(root, want = 'url', _seen = new WeakSet(), _depth = 0) {
   if (_depth > 8 || root == null) return '';

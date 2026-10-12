@@ -77,14 +77,14 @@ exports.downloadAttachment = async (req, res) => {
   } catch {
     return res.status(400).json({ error: 'Attachment URL is invalid.' });
   }
-  if (sourceUrl.protocol !== 'https:' || sourceUrl.hostname.toLowerCase() !== 'res.cloudinary.com') {
+  if (sourceUrl.protocol !== 'https:' || (sourceUrl.hostname.toLowerCase() !== 'res.cloudinary.com' && !require('../services/spacesStorage').managedUrl(requestedUrl))) {
     return res.status(400).json({ error: 'Only CRM-managed attachments can be downloaded.' });
   }
 
   const abortController = new AbortController();
   const timeout = setTimeout(() => abortController.abort(), 30000);
   try {
-    const response = await fetch(sourceUrl, { signal: abortController.signal });
+    const response = await fetch(require('../services/spacesStorage').managedUrl(requestedUrl) ? await require('../services/spacesStorage').downloadUrl(new URL(requestedUrl).searchParams.get('key')) : sourceUrl, { signal: abortController.signal });
     if (!response.ok || !response.body) return res.status(502).json({ error: 'Attachment is temporarily unavailable.' });
     const name = safeDownloadName(attachment.name);
     const headers = {
