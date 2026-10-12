@@ -146,7 +146,13 @@ async function main(argv = process.argv.slice(2)) {
   let lock;
   try { lock = fs.openSync(lockFile, 'wx', 0o600); fs.writeSync(lock, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() })); }
   catch { throw new Error('Run directory is locked. Confirm no migration process is running before removing a stale local run.lock.'); }
-  let state; const save = () => migration.atomicWrite(stateFile, state);
+  let state; let lastCheckpoint = 0;
+  const save = (force = false) => {
+    // Copy checkpoints may replay a few files after a crash; existing targets are re-hashed.
+    // MongoDB write-ahead checkpoints are never throttled.
+    if (opts.command === 'copy' && !force && Date.now() - lastCheckpoint < 1000) return;
+    migration.atomicWrite(stateFile, state); lastCheckpoint = Date.now();
+  };
   try {
     const exists = fs.existsSync(stateFile);
     if (opts.command !== 'inventory' && !exists) throw new Error('Create and review an inventory first.');
@@ -184,10 +190,11 @@ async function main(argv = process.argv.slice(2)) {
       const db = await connectMongo();
       await runner.updateReferences(state, db, spaces.fileUrl, verifyTarget, save, { rollback: opts.command === 'rollback', retry: opts.retry });
     }
+    await save(true);
     const result = writeReport(directory, state);
     if (result.failed || result.missing || result.database.conflicts || !result.discoveryComplete) process.exitCode = 2;
   } catch (error) {
-    if (state) { state.discoveryErrors ||= []; state.discoveryErrors.push(error.message); await save(); writeReport(directory, state); }
+    if (state) { state.discoveryErrors ||= []; state.discoveryErrors.push(error.message); await save(true); writeReport(directory, state); }
     throw error;
   } finally {
     await mongoose.disconnect(); fs.closeSync(lock); fs.unlinkSync(lockFile);

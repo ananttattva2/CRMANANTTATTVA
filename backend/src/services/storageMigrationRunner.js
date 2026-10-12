@@ -28,8 +28,12 @@ async function discoverLibrary(state, fetchPage, save) {
 }
 async function transferAll(state, transfer, save, { retry = false } = {}) {
   if (!state.discoveryComplete) throw new Error('Complete discovery is required before copying.');
-  for (const asset of state.assets) {
-    if (asset.status === 'verified' || (!retry && ['failed', 'missing'].includes(asset.status))) continue;
+  const queue = state.assets.filter(asset => asset.status !== 'verified' && (retry || !['failed', 'missing'].includes(asset.status)));
+  let cursor = 0; let completed = 0;
+  const concurrency = Math.max(1, Math.min(8, Number(process.env.STORAGE_MIGRATION_CONCURRENCY) || 4));
+  async function worker() {
+   while (cursor < queue.length) {
+    const asset = queue[cursor++];
     try {
       asset.attempts = (asset.attempts || 0) + 1;
       asset.status = 'pending'; await save();
@@ -41,7 +45,11 @@ async function transferAll(state, transfer, save, { retry = false } = {}) {
       asset.error = error.safeMessage || 'Transfer failed; inspect credentials/access and retry.';
     }
     await save();
+    completed++;
+    if (completed % 25 === 0 || completed === queue.length) console.log(JSON.stringify({ progress: 'copy', completed, queued: queue.length, verified: state.assets.filter(a => a.status === 'verified').length, failed: state.assets.filter(a => a.status === 'failed').length, missing: state.assets.filter(a => a.status === 'missing').length }));
+   }
   }
+  await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, worker));
 }
 async function updateReferences(state, database, fileUrl, verifyAsset, save, { rollback = false, retry = false } = {}) {
   if (!state.discoveryComplete && !rollback) throw new Error('Complete discovery is required before updating references.');

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { createRequire } = require('node:module');
-const { spawnSync } = require('node:child_process');
+const { spawn } = require('node:child_process');
 const [appArgument, operation, codeArgument] = process.argv.slice(2);
 const app = fs.realpathSync(appArgument);
 const code = fs.realpathSync(codeArgument);
@@ -64,7 +64,19 @@ async function main() {
   if (operation === 'copy') args.push('--retry', '--resume');
   if (operation === 'apply') args.push('--backup-confirmed', '--retry');
   console.log(JSON.stringify({ operation, bucket: additions.SPACES_BUCKET, region: additions.SPACES_REGION, secretsConfigured: true }));
-  const result = spawnSync(process.execPath, args, { cwd: backend, env: process.env, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 32 * 1024 * 1024 });
+  const result = await new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, args, { cwd: backend, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let pending = '';
+    child.stdout.on('data', chunk => {
+      pending += chunk.toString(); let index;
+      while ((index = pending.indexOf('\n')) >= 0) {
+        const line = pending.slice(0, index); pending = pending.slice(index + 1);
+        try { const value = JSON.parse(line); if (value.progress === 'copy') console.log(JSON.stringify({ progress: value.progress, completed: value.completed, queued: value.queued, verified: value.verified, failed: value.failed, missing: value.missing })); } catch {}
+      }
+    });
+    child.stderr.on('data', () => {});
+    child.once('error', reject); child.once('close', status => resolve({ status }));
+  });
   // Emit aggregate report only; attachment URLs, identifiers and paths remain on the server.
   const reportFile = path.join(stateDirectory, 'report.json');
   if (fs.existsSync(reportFile)) {
