@@ -16,6 +16,7 @@ const storageState = path.join(root, '.storage-migration/state/crm-full/state.js
 let inventoryCollection;
 if (fs.existsSync(storageState)) {
   const state = JSON.parse(fs.readFileSync(storageState, 'utf8'));
+  console.log(JSON.stringify({ check: 'storage-phase', phase: state.phase || 'inventory', checkpointBytes: fs.statSync(storageState).size, patchJournalBytes: fs.existsSync(path.join(path.dirname(storageState), 'patch-journal.jsonl')) ? fs.statSync(path.join(path.dirname(storageState), 'patch-journal.jsonl')).size : 0 }));
   inventoryCollection = state.collections?.find(name => !(state.referenceCollectionsComplete || []).includes(name));
   console.log(JSON.stringify({ check: 'storage-progress', discovered: state.assets?.length || 0, discoveryComplete: !!state.discoveryComplete, discoveryPageComplete: !!state.discovery?.complete, collectionsScanned: state.referenceCollectionsComplete?.length || 0, collectionsTotal: state.collections?.length || 0, verified: state.assets?.filter(a => a.status === 'verified').length || 0, failed: state.assets?.filter(a => a.status === 'failed').length || 0, missing: state.assets?.filter(a => a.status === 'missing').length || 0, databaseUpdates: state.patches?.filter(p => p.status === 'applied').length || 0 }));
 }
