@@ -65,14 +65,14 @@ async function main() {
     delete source.mongoReferences; delete source.referenceCollectionsComplete;
     migration.atomicWrite(path.join(stateDirectory, 'state.json'), source);
   }
-  if (!delta && (operation === 'copy' || operation === 'apply')) {
+  if (operation === 'copy' || operation === 'apply') {
     const migration = appRequire('./src/services/storageMigration');
-    const originalsFile = path.join(app, '.storage-migration/state/crm-originals/state.json');
+    const originalsFile = path.join(app, '.storage-migration/state', delta ? 'crm-full' : 'crm-originals', 'state.json');
     const fullFile = path.join(stateDirectory, 'state.json');
     if (fs.existsSync(originalsFile) && fs.existsSync(fullFile) && !fs.existsSync(path.join(stateDirectory, 'run.lock'))) {
       const originals = migration.loadState(originalsFile); const full = migration.loadState(fullFile);
       for (const asset of full.assets) {
-        const copied = originals.assets.find(other => other.id === asset.id && other.key === asset.key && other.bytes === asset.bytes && other.status === 'verified');
+        const copied = originals.assets.find(other => other.id === asset.id && other.key === asset.key && other.bytes === asset.bytes && other.version === asset.version && other.status === 'verified');
         if (copied) { asset.status = 'verified'; asset.verification = copied.verification; asset.attempts = copied.attempts; }
       }
       migration.atomicWrite(fullFile, full);
