@@ -1,4 +1,5 @@
 import { formatDisplayDate, formatDisplayDateTime } from './dateFormat'
+import { downloadSalesMisInfographicPdf } from './salesMisPdf.mjs'
 
 const REPORT_TITLE = 'User Activity & Productivity Report'
 
@@ -197,8 +198,8 @@ function leadOwnershipPdfHead(includeStatus = false) {
     ['Temp Lead', 'Lead']]
 }
 
-export async function downloadSalesMisPdf({ rows, period }) {
-  const { pdf, autoTable } = await createMisPdf('Sales & Operations Lead Ownership MIS', 'Management report · permanent Lead Owner based performance', period)
+async function downloadSalesMisPdfLegacy({ rows, period }) {
+  const { pdf, autoTable } = await createMisPdf('Sales MIS', 'Permanent Lead Owner Performance', period)
   const grouped = managementSalesPdfGroups(rows)
   const pdfRows = grouped.flatMap((group) => group.members)
   const totals = pdfRows.reduce((sum, row) => ({ total: sum.total + Number(row.totalLeads || 0), open: sum.open + Number(row.openLeads || 0), closed: sum.closed + Number(row.closedLeads || 0), temporary: sum.temporary + Number(row.temporaryLeads || 0) }), { total: 0, open: 0, closed: 0, temporary: 0 })
@@ -206,6 +207,10 @@ export async function downloadSalesMisPdf({ rows, period }) {
   const body = grouped.flatMap((group) => [[group.name, 'TEAM TOTAL', `${group.members.length} users`, group.temporary, group.total, group.open, group.closed, `${group.total ? Math.round(group.closed / group.total * 100) : 0}%`], ...group.members.map((row) => ['', row.name, `${row.roleLabel || row.role || '-'} · ${row.team || '-'}`, Number(row.temporaryLeads || 0), row.totalLeads, row.openLeads, row.closedLeads, `${row.totalLeads ? Math.round(row.closedLeads / row.totalLeads * 100) : 0}%`])])
   autoTable(pdf, { startY: 55, margin: { left: 9, right: 9 }, head: leadOwnershipPdfHead(), body, theme: 'grid', headStyles: { fillColor: [7, 88, 72], fontStyle: 'bold' }, alternateRowStyles: { fillColor: [248, 250, 252] }, styles: { fontSize: 8, cellPadding: 2.5, lineColor: [203, 213, 225], lineWidth: 0.15 }, columnStyles: { 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' } }, didParseCell: (data) => { if (data.section === 'body' && data.row.raw?.[1] === 'TEAM TOTAL') { data.cell.styles.fillColor = [236, 253, 245]; data.cell.styles.fontStyle = 'bold' } } })
   pdf.save(`Sales_MIS_Report_${period.to}.pdf`)
+}
+
+export async function downloadSalesMisPdf(options) {
+  return downloadSalesMisInfographicPdf(options)
 }
 
 export async function downloadOperationMisPdf({ groups, period }) {
@@ -261,7 +266,7 @@ export async function downloadCompleteMisPdf({ salesRows = [], operationGroups =
   const completeSalesGroups = managementSalesPdfGroups(salesRows)
   const completeSalesRows = completeSalesGroups.flatMap((group) => group.members)
   const salesTotals = completeSalesRows.reduce((sum, row) => ({ total: sum.total + Number(row.totalLeads || 0), open: sum.open + Number(row.openLeads || 0), closed: sum.closed + Number(row.closedLeads || 0), temporary: sum.temporary + Number(row.temporaryLeads || 0) }), { total: 0, open: 0, closed: 0, temporary: 0 })
-  header('Sales & Operations Lead Ownership MIS', 'Management report · permanent Lead Owner based performance', [15, 118, 110])
+  header('Sales MIS', 'Permanent Lead Owner Performance', [15, 118, 110])
   drawKpiCards(pdf, [{ label: 'Total Leads', value: salesTotals.total }, { label: 'Open Leads', value: salesTotals.open }, { label: 'Closed Leads', value: salesTotals.closed }, { label: 'Close Rate', value: `${salesTotals.total ? Math.round(salesTotals.closed / salesTotals.total * 100) : 0}%` }], 36)
   const completeSalesBody = completeSalesGroups.flatMap((group) => [[group.name, 'TEAM TOTAL', `${group.members.length} users`, group.temporary, group.total, group.open, group.closed, `${group.total ? Math.round(group.closed / group.total * 100) : 0}%`, ''], ...group.members.map((row) => ['', row.name, `${row.roleLabel || row.role || '-'} · ${row.team || '-'}`, Number(row.temporaryLeads || 0), Number(row.totalLeads || 0), Number(row.openLeads || 0), Number(row.closedLeads || 0), `${row.totalLeads ? Math.round(Number(row.closedLeads || 0) / Number(row.totalLeads) * 100) : 0}%`, row.presence || (row.active === false ? 'Inactive' : 'Active')])])
   autoTable(pdf, { ...tableOptions(leadOwnershipPdfHead(true), completeSalesBody, 55, [15, 118, 110]), didParseCell: (data) => { if (data.section === 'body' && data.row.raw?.[1] === 'TEAM TOTAL') { data.cell.styles.fillColor = [236, 253, 245]; data.cell.styles.fontStyle = 'bold' } } })

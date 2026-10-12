@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { ArrowUpRight, FileSpreadsheet, Loader2, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react'
 import api from '../../services/api'
@@ -32,7 +32,7 @@ function ClientRecordsPopup({ selection, onClose }) {
   </dialog>
 }
 
-export default function ApplicationPortfolio({ mode, refreshToken = 0 }) {
+const ApplicationPortfolio = forwardRef(function ApplicationPortfolio({ mode, refreshToken = 0, onPdfAvailabilityChange }, ref) {
   const [payload, setPayload] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -60,7 +60,7 @@ export default function ApplicationPortfolio({ mode, refreshToken = 0 }) {
   const columns = distribution ? [['total', 'Total'], ...categories.map(category => [category, category])] : serviceSummary ? [['total', 'Total'], ...serviceColumns.flatMap(service => service === 'Annual Return Filling' ? [[service, `Annual Return Filling (${annualReturnYear})`], ['annualActionRequired', 'AR Action Required']] : [[service, service]]), ...(groups.some(group => group.records.some(row => matchesApplicationService(row, 'unclassified'))) ? [['unclassified', 'Not Closed / Service Not Recorded']] : [])] : [...STATUS_COLUMNS.slice(0, 6), ...[...new Set(groups.flatMap(group => applicationSummaryRecords(group).flatMap(row => row.annualYears)))].filter(year => !['2025-26', '2026-27', '2027-28'].includes(year)).sort().map(year => [`annual:${year}`, year]), ...STATUS_COLUMNS.slice(6)]
   const matches = (row, key) => distribution ? key === 'total' || row.category === key : serviceSummary ? matchesServiceSummary(row, key) : matchesStatusSummary(row, key)
   const open = (name, records, label = 'All categories', key = '') => setSelection({ name, records, label, key })
-  const title = distribution ? 'Application Distribution by SPOC & PIBo' : serviceSummary ? 'Application servise Summary' : 'Application Status Summary'
+  const title = distribution ? 'Application Distribution by SPOC & PIBo' : serviceSummary ? 'Application Service Summary' : 'Application Status Summary'
   const annualStatusColumns = columns.filter(([key]) => key.startsWith('annual:'))
   const registrationStatusColumns = columns.filter(([key]) => key === 'registrationApproved')
   const otherServicesStatusColumns = columns.filter(([key]) => key === 'otherServicesApproved')
@@ -71,6 +71,17 @@ export default function ApplicationPortfolio({ mode, refreshToken = 0 }) {
   const otherServicesColumnIndex = columns.findIndex(([key]) => key === 'otherServicesApproved')
   const trailingStatusColumns = otherStatusColumns.filter(([key]) => columns.findIndex(([columnKey]) => columnKey === key) > otherServicesColumnIndex)
   const popupLabel = (key, label) => key === 'registrationApproved' ? 'Registration Approved' : key === 'otherServicesApproved' ? 'Other Services Approved' : label
+  useEffect(() => {
+    onPdfAvailabilityChange?.(!loading && !error && shown.length > 0)
+    return () => onPdfAvailabilityChange?.(false)
+  }, [error, loading, onPdfAvailabilityChange, shown.length])
+  useImperativeHandle(ref, () => ({
+    async downloadPdf() {
+      if (loading || !payload) throw new Error('Dashboard data is still loading. Please retry in a moment.')
+      const { downloadApplicationPortfolioPdf } = await import('../../utils/applicationPortfolioPdf.mjs')
+      await downloadApplicationPortfolioPdf({ title, columns, groups: shown, matches, query })
+    }
+  }), [columns, loading, matches, payload, query, shown, title])
   return <motion.section role="tabpanel" id={`portfolio-${mode}`} aria-labelledby={`dashboard-tab-${mode}`} initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .2 }} className="application-portfolio">
     <h2 className="sr-only">{title}</h2>
     <div className="portfolio-toolbar"><label className="portfolio-search"><Search size={17} /><input aria-label="Search SPOC or client" placeholder="Search SPOC or client" value={query} onChange={event => setQuery(event.target.value)} /></label><span>Click a SPOC or count to explore clients <ArrowUpRight size={14} /><button type="button" className="portfolio-icon-button" aria-label="Refresh applications" disabled={loading} onClick={() => setRefresh(value => value + 1)}><RefreshCw size={18} className={loading ? 'animate-spin' : ''} /></button></span></div>
@@ -79,4 +90,6 @@ export default function ApplicationPortfolio({ mode, refreshToken = 0 }) {
     <footer>{distribution ? 'Each company + PIBo category + unit + service counts once per assigned SPOC, using the same applications as the Status and Service summaries.' : serviceSummary ? `Annual Return Filling shows ${annualReturnYear} applications only: CPCB Approved, received PO for the saved Annual Return year (including POs from an earlier financial year), closed service, manager assignment and permanent staff assignment. Annual Return and Annual Filing/Filling are grouped together.` : 'Annual Return year columns include only qualifying CPCB Approved Annual Return/Filling applications. Registration > Approved shows approved Registration services; Other Services > Approved shows every other approved recorded service. AR Action Required highlights excluded Annual Return records. Other CPCB statuses remain in Applied, Under Review, Not Started or Rejected.'}</footer>
     {selection && <ClientRecordsPopup selection={selection} onClose={() => setSelection(null)} />}
   </motion.section>
-}
+})
+
+export default ApplicationPortfolio

@@ -11,17 +11,18 @@ test('Lead Allocate shows stable owner and editable creator in separate columns'
   assert.match(source, /creatorName/);
 });
 
-test('management Sales MIS groups lead owners by Sales and Operations teams in UI and PDF', () => {
+test('management Sales MIS uses the compact infographic and dedicated one-page PDF', () => {
   const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/SuperAdminDashboard.jsx'), 'utf8');
   const exportsSource = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/productivityReportExports.js'), 'utf8');
-  assert.match(page, /Sales & Operations Team Performance/);
-  assert.match(page, /buildSalesDepartmentGroups/);
-  assert.match(page, /Permanent Lead Owner based counts/);
+  assert.match(page, /SalesMisInfographic/);
+  assert.match(page, /Team Comparison/);
+  assert.match(page, /Closed Leads by Owner/);
+  assert.match(page, /Temporary leads/);
   assert.match(exportsSource, /managementSalesGroups/);
-  assert.match(exportsSource, /Sales & Operations Lead Ownership MIS/);
+  assert.match(exportsSource, /downloadSalesMisInfographicPdf/);
   assert.match(exportsSource, /TEAM TOTAL/);
-  assert.match(page, /Management Lead Ownership/);
-  assert.match(page, /group\.name === 'Management'/);
+  assert.match(page, /buildSalesMisReport/);
+  assert.match(page, /Management focus:/);
   assert.match(exportsSource, /'Sales Team', 'Operations Team', 'Management', 'Other Departments'/);
   assert.match(exportsSource, /managementSalesPdfGroups/);
   assert.match(exportsSource, /\['Sales Team', 'Management'\]\.includes\(group\.name\)/);
