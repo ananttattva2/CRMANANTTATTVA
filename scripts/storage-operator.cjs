@@ -59,6 +59,13 @@ async function main() {
     }
   }
   const args = [path.join(backend, 'src/scripts/migrateCloudinaryToSpaces.js'), operation, '--run-dir', stateDirectory];
+  const lockFile = path.join(stateDirectory, 'run.lock');
+  if (fs.existsSync(lockFile)) {
+    const lock = JSON.parse(fs.readFileSync(lockFile, 'utf8'));
+    let active = true; try { process.kill(lock.pid, 0); } catch (error) { if (error.code === 'ESRCH') active = false; else throw error; }
+    if (!active) fs.unlinkSync(lockFile);
+    else throw new Error('A previous migration process is still running; do not start a second operator.');
+  }
   if (operation === 'inventory' && fs.existsSync(path.join(stateDirectory, 'state.json'))) args.push('--resume');
   if (operation !== 'inventory') args.push('--approve-production');
   if (operation === 'copy') args.push('--retry', '--resume');

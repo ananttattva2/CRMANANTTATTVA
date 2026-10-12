@@ -50,7 +50,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           printf -v remote_command 'node - %q' "${APP_DIR:-/var/www/CRMANANTTATTVA}"
-          ssh -i "$HOME/.ssh/digitalocean_deploy" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" "$remote_command" < scripts/diagnose-production.cjs
+          ssh -i "$HOME/.ssh/digitalocean_deploy" -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" "$remote_command" < scripts/diagnose-production.cjs
       - name: Prepare isolated migration code
         if: inputs.operation != 'diagnostics'
         shell: bash
@@ -61,10 +61,10 @@ jobs:
           fi
           archive="/tmp/crm-storage-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tgz"
           tar -czf migration-code.tgz backend/package.json backend/package-lock.json backend/src scripts/storage-operator.cjs scripts/storage-backup.cjs
-          scp -q -i "$HOME/.ssh/digitalocean_deploy" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -P "${DO_PORT:-22}" migration-code.tgz "$DO_USER@$DO_HOST:$archive"
+          scp -q -i "$HOME/.ssh/digitalocean_deploy" -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -P "${DO_PORT:-22}" migration-code.tgz "$DO_USER@$DO_HOST:$archive"
           code_dir="${APP_DIR:-/var/www/CRMANANTTATTVA}/.storage-migration/code/$GITHUB_SHA"
           printf -v command 'mkdir -p %q && tar -xzf %q -C %q && cd %q && npm ci --omit=dev --silent' "$code_dir" "$archive" "$code_dir" "$code_dir/backend"
-          ssh -i "$HOME/.ssh/digitalocean_deploy" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" "$command"
+          ssh -i "$HOME/.ssh/digitalocean_deploy" -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" "$command"
           echo "STORAGE_CODE_DIR=$code_dir" >> "$GITHUB_ENV"
       - name: Run approved storage operation
         if: inputs.operation != 'diagnostics'
@@ -72,4 +72,4 @@ jobs:
         run: |
           set -Eeuo pipefail
           printf -v command 'node %q %q %q %q' "$STORAGE_CODE_DIR/scripts/storage-operator.cjs" "${APP_DIR:-/var/www/CRMANANTTATTVA}" "$OPERATION" "$STORAGE_CODE_DIR"
-          node -e 'process.stdout.write(JSON.stringify({SPACES_ACCESS_KEY_ID:process.env.SPACES_ACCESS_KEY_ID,SPACES_SECRET_ACCESS_KEY:process.env.SPACES_SECRET_ACCESS_KEY,confirmation:process.env.CONFIRMATION,backupConfirmed:process.env.BACKUP_CONFIRMED==="true",publicOrigin:process.env.PUBLIC_ORIGIN||"https://crmananttattva.com"}))' | ssh -i "$HOME/.ssh/digitalocean_deploy" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" "$command"
+          node -e 'process.stdout.write(JSON.stringify({SPACES_ACCESS_KEY_ID:process.env.SPACES_ACCESS_KEY_ID,SPACES_SECRET_ACCESS_KEY:process.env.SPACES_SECRET_ACCESS_KEY,confirmation:process.env.CONFIRMATION,backupConfirmed:process.env.BACKUP_CONFIRMED==="true",publicOrigin:process.env.PUBLIC_ORIGIN||"https://crmananttattva.com"}))' | ssh -i "$HOME/.ssh/digitalocean_deploy" -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" "$command"

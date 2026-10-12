@@ -17,6 +17,12 @@ if (fs.existsSync(storageState)) {
   const state = JSON.parse(fs.readFileSync(storageState, 'utf8'));
   console.log(JSON.stringify({ check: 'storage-progress', discovered: state.assets?.length || 0, discoveryComplete: !!state.discoveryComplete, discoveryPageComplete: !!state.discovery?.complete, verified: state.assets?.filter(a => a.status === 'verified').length || 0, failed: state.assets?.filter(a => a.status === 'failed').length || 0, missing: state.assets?.filter(a => a.status === 'missing').length || 0, databaseUpdates: state.patches?.filter(p => p.status === 'applied').length || 0 }));
 }
+const storageLock = path.join(root, '.storage-migration/state/crm-full/run.lock');
+if (fs.existsSync(storageLock)) {
+  const lock = JSON.parse(fs.readFileSync(storageLock, 'utf8')); let active = true;
+  try { process.kill(lock.pid, 0); } catch (error) { if (error.code === 'ESRCH') active = false; }
+  console.log(JSON.stringify({ check: 'storage-lock', active }));
+}
 const mongoose = appRequire('mongoose');
 const report = (value) => console.log(JSON.stringify(value));
 async function measure(name, run) {
