@@ -15,9 +15,25 @@ const backend = path.join(code, 'backend');
 const appRequire = createRequire(path.join(backend, 'package.json'));
 const dotenv = appRequire('dotenv');
 async function main() {
-  if (!['inventory', 'restart-inventory', 'copy', 'copy-originals', 'backup', 'apply', 'restart-apply', 'rollback'].includes(operation)) throw new Error('Invalid operation.');
+  if (!['inventory', 'restart-inventory', 'stop-inventory', 'copy', 'copy-originals', 'backup', 'apply', 'restart-apply', 'rollback'].includes(operation)) throw new Error('Invalid operation.');
   const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
   if (operation !== 'inventory' && payload.confirmation !== 'COPY_AND_UPDATE_APPROVED') throw new Error('Explicit migration approval is required.');
+  if (operation === 'stop-inventory') {
+    if (!delta) throw new Error('Stop is restricted to the redundant delta inventory.');
+    const directory = path.join(app, '.storage-migration/state/crm-delta'); const lockFile = path.join(directory, 'run.lock');
+    if (!fs.existsSync(lockFile)) { console.log(JSON.stringify({ inventoryStopped: true, alreadyFinished: true })); return; }
+    const lock = JSON.parse(fs.readFileSync(lockFile, 'utf8'));
+    let command;
+    try { command = fs.readFileSync(`/proc/${lock.pid}/cmdline`, 'utf8').split('\0'); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; fs.unlinkSync(lockFile); console.log(JSON.stringify({ inventoryStopped: true, staleLock: true })); return; }
+    if (!command.includes('inventory') || !command.includes(directory) || !command.some(arg => arg.endsWith('/migrateCloudinaryToSpaces.js'))) throw new Error('Refusing to stop an unrelated process.');
+    process.kill(lock.pid, 'SIGTERM');
+    for (let attempt = 0; attempt < 30; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+      try { process.kill(lock.pid, 0); } catch (error) { if (error.code === 'ESRCH') { if (fs.existsSync(lockFile)) fs.unlinkSync(lockFile); console.log(JSON.stringify({ inventoryStopped: true })); return; } throw error; }
+    }
+    throw new Error('Inventory has not stopped; lock preserved.');
+  }
   const envFile = path.join(app, 'backend/.env');
   const original = fs.readFileSync(envFile, 'utf8'); const parsed = dotenv.parse(original);
   if (!payload.SPACES_ACCESS_KEY_ID || !payload.SPACES_SECRET_ACCESS_KEY) throw new Error('Missing Spaces GitHub secrets.');
