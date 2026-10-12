@@ -1,18 +1,27 @@
 # Storage migration validation
 
-Base: `ananttattva2/CRMANANTTATTVA` main at `a3e510a` (`Update CRM`). Latest main was fetched and pulled into a clean worktree before implementing the storage changes. The original `CRM_1` checkout has an unrelated unfinished rebase and was preserved.
+Latest main was pulled into a clean worktree before implementing the storage changes. Friend updates through `f24d6d8` were subsequently merged and the frontend rebuilt successfully. The original checkout's unrelated unfinished rebase was preserved.
 
-- Frontend `npm ci` and `npm run build`: passed.
-- Migration/storage plus existing email proof, annual-return PO resolver and support ticket tests: **56 passed, 0 failed**.
-- Local HTTP integration: actual frontend helper → authenticated CRM routes → S3-compatible HTTP fixture → HEAD confirmation → signed file redirect → PDF bytes. Passed. Streamed migration copy, destination full-read verification, identical-target reuse, repair of this run's corrupted target, and rejection of an unrelated target overwrite also passed.
-- Full backend suite: compared with a clean checkout of the same main commit. Both had the same **37 failure names**, with no new failure names introduced. These existing client-master/dashboard/quotation/lead/role UI and workflow failures were not modified as part of storage migration.
-- Real Mongoose BSON ObjectId serialization and exact 64-bit journal identifiers were checked. Migration BSON dependency matches Mongoose's BSON major version.
-- `git diff --check`: passed.
+## Automated checks
 
-No production migration, source deletion, Cloudinary inventory request, Spaces write, Atlas reference update or deployment was executed. Cloud credentials and bucket CORS have not been verified. Production browser previews and real MSG/EML attachments still require the approval/configuration/acceptance steps in [spaces-storage.md](spaces-storage.md).
+- Focused migration, backup, storage, email proof, annual-return resolver and support ticket checks: **60 passed, 0 failed**.
+- Frontend locked install and production build: passed, including after merging friend changes.
+- Local HTTP integration: actual frontend helper → authenticated CRM routes → S3-compatible fixture → confirmation → same-origin PDF preview/download bytes. Streamed copy, full-read checksum verification, identical-target reuse, repair of this run's target, and refusal to overwrite an unrelated target passed.
+- BSON ObjectId and exact 64-bit identifiers survive journal serialization. Append-only journal recovery includes pending/applied updates and incomplete-tail handling.
+- Full backend suite compared against clean main: the same **37 baseline failure names**, with no new failure names. The general CI backend job still has those existing failures; do not treat this report as a green full-suite result.
+- `git diff --check` and backend syntax checks passed.
 
-Run the focused checks from backend:
+## Approved production execution
 
-```powershell
-node --test test/storageMigration.test.js test/spacesStorage.test.js test/spacesStorageFlow.test.js test/purchaseEmailProof.test.js test/annualReturnPoResolver.test.js test/supportTicket.test.js
-```
+The user separately approved file copying, verified MongoDB updates, and live deployment. Cloudinary deletion was not approved and was not executed.
+
+- Initial library: **5,633 originals plus 9 referenced variants**, **5,642 successful**, zero failed/missing/pending; **2,513,273,802 bytes** verified by size and full SHA-256 destination reads.
+- Final main apply: **1,861 applied journal operations**, zero conflicts. A document may have more than one journal operation because verification and updates were resumed in multiple passes.
+- A verified targeted BSON/EJSON backup covered **1,802 planned-reference documents in 11 collections**, including index metadata. It is not a full database snapshot. Rollback journals remain private on the server.
+- Live deployment at `3eb71cc` succeeded. Actual private PDF, PNG and JPG links returned HTTP 200 with matching SHA-256. Live authenticated upload endpoints returned HTTP 200 and save files in Spaces.
+- The bucket-scoped key cannot configure CORS. Browser uploads use the authenticated same-origin fallback when necessary, still writing only to Spaces. Fallback size limit is 25 MiB, subject to ingress limits.
+- Post-cutover reconciliation is running separately in `crm-delta` for originals added after the initial inventory. Its final results must be checked before claiming the latest live Cloudinary count is reconciled.
+
+Private URLs use the stable CRM `/api/assets/file` capability route; MongoDB stores Spaces identifiers and those CRM links rather than publicly exposing objects. Holding a signed link grants access; these are shareable capability URLs, not record-scoped authorization.
+
+Full per-file JSON/CSV reports, inventories, backups and rollback values remain under the production app's private `.storage-migration` directory and are not public GitHub artifacts.
