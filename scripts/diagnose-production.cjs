@@ -14,6 +14,18 @@ console.log(JSON.stringify({ check: 'storage-configuration', configured: Object.
 ].map(name => [name, Boolean(process.env[name])])), migrationInstalled: fs.existsSync(path.join(backend, 'src/scripts/migrateCloudinaryToSpaces.js')) }));
 const storageState = path.join(root, '.storage-migration/state/crm-full/state.json');
 const deltaState = path.join(root, '.storage-migration/state/crm-delta/state.json');
+const deltaOriginalsState = path.join(root, '.storage-migration/state/crm-delta-originals/state.json');
+if (fs.existsSync(deltaOriginalsState) && fs.existsSync(storageState)) {
+  const parse = file => JSON.parse(fs.readFileSync(file, 'utf8'));
+  const full = parse(storageState); const delta = parse(deltaOriginalsState); const known = new Set(full.assets.map(a => a.id));
+  const namespaceCounts = {};
+  for (const asset of delta.assets.filter(a => !known.has(a.id))) {
+    const namespace = String(asset.asset_folder || asset.public_id || '').split('/')[0] || '(root)';
+    namespaceCounts[namespace] = (namespaceCounts[namespace] || 0) + 1;
+  }
+  const unique = new Map(full.assets.map(a => [a.id, a])); for (const asset of delta.assets) unique.set(asset.id, asset);
+  console.log(JSON.stringify({ check: 'combined-migration', total: unique.size, verified: [...unique.values()].filter(a => a.status === 'verified').length, failed: [...unique.values()].filter(a => a.status === 'failed').length, missing: [...unique.values()].filter(a => a.status === 'missing').length, addedOriginalNamespaces: namespaceCounts }));
+}
 if (fs.existsSync(deltaState)) {
   const state = JSON.parse(fs.readFileSync(deltaState, 'utf8'));
   const reportDelta = { check: 'delta-progress', total: state.assets?.length || 0, expectedOriginals: state.discovery?.expectedTotal, discoveryComplete: !!state.discoveryComplete, collectionsScanned: state.referenceCollectionsComplete?.length || 0, verified: state.assets?.filter(a => a.status === 'verified').length || 0, failed: state.assets?.filter(a => a.status === 'failed').length || 0, missing: state.assets?.filter(a => a.status === 'missing').length || 0 };
