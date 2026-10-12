@@ -34,7 +34,13 @@ jobs:
           cache-dependency-path: backend/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          npm ci
+          # Backend export tests import the frontend's Excel/PDF utilities.
+          npm ci --prefix ../frontend
+
+      - name: Verify storage migration and upload/download flows
+        run: node --test test/storageMigration.test.js test/spacesStorage.test.js test/spacesStorageFlow.test.js test/purchaseEmailProof.test.js test/annualReturnPoResolver.test.js test/supportTicket.test.js
 
       - name: Syntax check
         run: |
