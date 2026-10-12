@@ -5,7 +5,7 @@ on:
       operation:
         type: choice
         default: diagnostics
-        options: [diagnostics, inventory, restart-inventory, copy-originals, copy, backup, apply, rollback]
+        options: [diagnostics, inventory, restart-inventory, copy-originals, copy, backup, apply, restart-apply, rollback]
       confirmation:
         description: 'For writes enter COPY_AND_UPDATE_APPROVED'
         type: string

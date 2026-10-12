@@ -62,11 +62,19 @@ async function updateReferences(state, database, fileUrl, verifyAsset, save, { r
     return;
   }
   // Re-verify every target before touching MongoDB, including resumed transfers.
-  for (const asset of state.assets.filter(a => a.status === 'verified' && (!Array.isArray(a.references) || a.references.length))) {
+  const verificationQueue = state.assets.filter(a => a.status === 'verified' && (!Array.isArray(a.references) || a.references.length));
+  let verificationCursor = 0; let verificationComplete = 0;
+  state.phase = 'verifying-references';
+  async function verifyWorker() { while (verificationCursor < verificationQueue.length) {
+    const asset = verificationQueue[verificationCursor++];
     try { await verifyAsset(asset); }
     catch { asset.status = 'failed'; asset.error = 'Destination re-verification failed; references left untouched.'; }
     await save();
-  }
+    verificationComplete++;
+    if (verificationComplete % 25 === 0 || verificationComplete === verificationQueue.length) console.log(JSON.stringify({ progress: 'reference-verification', completed: verificationComplete, queued: verificationQueue.length }));
+  } }
+  await Promise.all(Array.from({ length: Math.min(4, verificationQueue.length) }, verifyWorker));
+  state.phase = 'updating-references'; await save(true);
   // Recover write-ahead entries after a process died between MongoDB update and checkpoint.
   for (const patch of state.patches.filter(p => p.status === 'pending' || (retry && p.status === 'conflict'))) {
     if (!patch.assetIds.every(id => state.assets.find(a => a.id === id)?.status === 'verified')) continue;

@@ -12,7 +12,7 @@ const backend = path.join(code, 'backend');
 const appRequire = createRequire(path.join(backend, 'package.json'));
 const dotenv = appRequire('dotenv');
 async function main() {
-  if (!['inventory', 'restart-inventory', 'copy', 'copy-originals', 'backup', 'apply', 'rollback'].includes(operation)) throw new Error('Invalid operation.');
+  if (!['inventory', 'restart-inventory', 'copy', 'copy-originals', 'backup', 'apply', 'restart-apply', 'rollback'].includes(operation)) throw new Error('Invalid operation.');
   const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
   if (operation !== 'inventory' && payload.confirmation !== 'COPY_AND_UPDATE_APPROVED') throw new Error('Explicit migration approval is required.');
   const envFile = path.join(app, 'backend/.env');
@@ -90,7 +90,7 @@ async function main() {
     console.log(JSON.stringify({ corsConfigured: true }));
   } catch { console.log(JSON.stringify({ corsConfigured: false, sameOriginUploadFallback: true })); }
   // Apply cannot introduce file links before the actual deployed CRM can serve them.
-  if (operation === 'apply') {
+  if (operation === 'apply' || operation === 'restart-apply') {
     const response = await fetch(`${additions.STORAGE_PUBLIC_API_ORIGIN}/api/assets/file?key=invalid&signature=invalid`, { redirect: 'manual', signal: AbortSignal.timeout(15000) });
     if (response.status !== 403 || !(await response.text()).includes('Invalid file link')) throw new Error('Deploy Spaces preview/download routes before applying MongoDB references.');
     if (payload.backupConfirmed !== true) {
@@ -99,14 +99,16 @@ async function main() {
       else console.log(JSON.stringify({ backupVerified: true, existingSnapshotReused: true }));
     }
   }
-  const args = [path.join(backend, 'src/scripts/migrateCloudinaryToSpaces.js'), operation === 'copy-originals' ? 'copy' : operation === 'restart-inventory' ? 'inventory' : operation, '--run-dir', stateDirectory];
+  const args = [path.join(backend, 'src/scripts/migrateCloudinaryToSpaces.js'), operation === 'copy-originals' ? 'copy' : operation === 'restart-inventory' ? 'inventory' : operation === 'restart-apply' ? 'apply' : operation, '--run-dir', stateDirectory];
   const lockFile = path.join(stateDirectory, 'run.lock');
   if (fs.existsSync(lockFile)) {
     const lock = JSON.parse(fs.readFileSync(lockFile, 'utf8'));
     let active = true; try { process.kill(lock.pid, 0); } catch (error) { if (error.code === 'ESRCH') active = false; else throw error; }
-    if (active && operation === 'restart-inventory') {
+    if (active && (operation === 'restart-inventory' || operation === 'restart-apply')) {
       const command = fs.readFileSync(`/proc/${lock.pid}/cmdline`, 'utf8').split('\0');
-      if (!command.includes('inventory') || !command.includes(stateDirectory) || !command.some(arg => arg.endsWith('/migrateCloudinaryToSpaces.js'))) throw new Error('Refusing to stop a non-inventory process.');
+      const expectedOperation = operation === 'restart-apply' ? 'apply' : 'inventory';
+      if (operation === 'restart-apply' && appRequire('./src/services/storageMigration').loadState(path.join(stateDirectory, 'state.json')).patches.length) throw new Error('Reference updates have started; allow the current writer to finish.');
+      if (!command.includes(expectedOperation) || !command.includes(stateDirectory) || !command.some(arg => arg.endsWith('/migrateCloudinaryToSpaces.js'))) throw new Error('Refusing to stop a non-inventory process.');
       process.kill(lock.pid, 'SIGTERM');
       for (let attempt = 0; attempt < 30; attempt++) {
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -119,7 +121,7 @@ async function main() {
   if ((operation === 'inventory' || operation === 'restart-inventory') && fs.existsSync(path.join(stateDirectory, 'state.json'))) args.push('--resume');
   if (operation !== 'inventory') args.push('--approve-production');
   if (operation === 'copy' || operation === 'copy-originals') args.push('--retry', '--resume');
-  if (operation === 'apply') args.push('--backup-confirmed', '--retry');
+  if (operation === 'apply' || operation === 'restart-apply') args.push('--backup-confirmed', '--retry');
   console.log(JSON.stringify({ operation, bucket: additions.SPACES_BUCKET, region: additions.SPACES_REGION, secretsConfigured: true }));
   const result = await new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, { cwd: backend, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -128,7 +130,7 @@ async function main() {
       pending += chunk.toString(); let index;
       while ((index = pending.indexOf('\n')) >= 0) {
         const line = pending.slice(0, index); pending = pending.slice(index + 1);
-        try { const value = JSON.parse(line); if (value.progress === 'copy') console.log(JSON.stringify({ progress: value.progress, completed: value.completed, queued: value.queued, verified: value.verified, failed: value.failed, missing: value.missing })); else if (value.progress === 'inventory') console.log(JSON.stringify({ progress: value.progress, collectionsComplete: value.collectionsComplete, collectionsTotal: value.collectionsTotal })); } catch {}
+        try { const value = JSON.parse(line); if (value.progress === 'copy') console.log(JSON.stringify({ progress: value.progress, completed: value.completed, queued: value.queued, verified: value.verified, failed: value.failed, missing: value.missing })); else if (value.progress === 'reference-verification') console.log(JSON.stringify({ progress: value.progress, completed: value.completed, queued: value.queued })); else if (value.progress === 'inventory') console.log(JSON.stringify({ progress: value.progress, collectionsComplete: value.collectionsComplete, collectionsTotal: value.collectionsTotal })); } catch {}
       }
     });
     child.stderr.on('data', () => {});

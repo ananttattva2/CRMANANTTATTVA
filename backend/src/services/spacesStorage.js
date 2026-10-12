@@ -1,16 +1,23 @@
 const crypto = require('node:crypto');
 const { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+let cachedClient;
+let cachedCredentials;
 
 function config() {
   const secret = process.env.SPACES_LINK_SECRET;
   const origin = String(process.env.STORAGE_PUBLIC_API_ORIGIN || '').replace(/\/+$/, '');
   if (!process.env.SPACES_ACCESS_KEY_ID || !process.env.SPACES_SECRET_ACCESS_KEY || !secret || secret.length < 32 || !origin) throw new Error('Spaces storage is not configured.');
-  return { secret, origin, bucket: process.env.SPACES_BUCKET || 'ananttattva-crm-files', client: new S3Client({
+  const identity = JSON.stringify([process.env.SPACES_ENDPOINT, process.env.SPACES_REGION, process.env.SPACES_ACCESS_KEY_ID, process.env.SPACES_SECRET_ACCESS_KEY]);
+  if (!cachedClient || identity !== cachedCredentials) {
+    if (cachedClient) cachedClient.destroy();
+    cachedClient = new S3Client({
     endpoint: process.env.SPACES_ENDPOINT || 'https://sgp1.digitaloceanspaces.com', region: process.env.SPACES_REGION || 'sgp1',
     requestChecksumCalculation: 'WHEN_REQUIRED', responseChecksumValidation: 'WHEN_REQUIRED',
     credentials: { accessKeyId: process.env.SPACES_ACCESS_KEY_ID, secretAccessKey: process.env.SPACES_SECRET_ACCESS_KEY }
-  }) };
+    }); cachedCredentials = identity;
+  }
+  return { secret, origin, bucket: process.env.SPACES_BUCKET || 'ananttattva-crm-files', client: cachedClient };
 }
 function sign(value) { return crypto.createHmac('sha256', config().secret).update(value).digest('hex'); }
 function equalSignature(value, supplied) { return /^[a-f0-9]{64}$/.test(supplied || '') && crypto.timingSafeEqual(Buffer.from(sign(value)), Buffer.from(supplied)); }

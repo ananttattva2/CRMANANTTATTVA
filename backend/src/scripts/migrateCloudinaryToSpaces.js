@@ -157,6 +157,7 @@ async function main(argv = process.argv.slice(2)) {
     // Copy checkpoints may replay a few files after a crash; existing targets are re-hashed.
     // MongoDB write-ahead checkpoints are never throttled.
     if (opts.command === 'copy' && !force && Date.now() - lastCheckpoint < 1000) return;
+    if (opts.command === 'apply' && state.phase === 'verifying-references' && !force && Date.now() - lastCheckpoint < 10000) return;
     migration.atomicWrite(stateFile, state); lastCheckpoint = Date.now();
   };
   try {
