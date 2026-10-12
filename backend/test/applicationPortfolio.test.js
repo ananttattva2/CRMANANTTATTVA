@@ -422,6 +422,30 @@ test('legacy single-service closed leads remain visible when their service is st
   }
 });
 
+test('legacy closed-by Operations users own missing permanent-staff applications for Sonal and Tushar', async () => {
+  const { buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const operationsUsers = [{ _id: 'sonal', name: 'Sonal More', role: 'operation' }, { _id: 'tushar', name: 'Tushar Gawas', role: 'operation' }];
+  const makeLegacyClosed = (id, company, ownerId, ownerName) => {
+    const row = client(id, '', 'Producer', 'Approved');
+    row.workflowStatus = 'submitted';
+    row.assignedServiceId = `${id}-service`;
+    row.selectedLead = {
+      _id: `${id}-lead`, company, status: 'Closed',
+      serviceSelections: [{ assignedServiceId: row.assignedServiceId, subApplicantType: 'Producer', plantUnit: 'Unit 1', servicesOffered: 'Annual Return Filling' }],
+      assignments: [{ assignedServiceId: row.assignedServiceId, assignedTo: 'manager', closedBy: ownerId, closedByText: ownerName, closedAt: '2026-10-01' }]
+    };
+    return row;
+  };
+  const groups = buildApplicationPortfolio([
+    makeLegacyClosed('nano', '20 MICRONS NANO MINERALS LIMITED', 'sonal', 'Sonal More'),
+    makeLegacyClosed('thrishul', 'Thrishul Packaging Industries', 'tushar', 'Tushar Gawas')
+  ], operationsUsers);
+  assert.deepEqual(groups.map(group => [group.name, group.records.map(record => record.name)]), [
+    ['Sonal More', ['20 MICRONS NANO MINERALS LIMITED']],
+    ['Tushar Gawas', ['Thrishul Packaging Industries']]
+  ]);
+});
+
 test('Annual Return PO service objects qualify for all users and applicant types without creating New Registration', async () => {
   const { buildApplicationPortfolio, applicationSummaryRecords, matchesApplicationService } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const makeAnnual = (id, owner, category) => {

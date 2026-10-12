@@ -53,6 +53,12 @@ function allocatedOwnerKeyGroups(client = {}) {
     client.assignedStaff, client.assignedStaffText, client.assignedStaffEmail,
     lead.assignedStaff, lead.assignedStaffText, lead.assignedStaffEmail
   ].flatMap(identity))];
+  const legacyClosedOwner = permanent.length ? [] : [...new Set([
+    ...assignments.filter((assignment) => assignment?.closedAt || assignment?.closedBy || assignment?.closedByText || assignment?.permanentClosedAt)
+      .flatMap((assignment) => [assignment?.closedBy, assignment?.closedByText, assignment?.closedByEmail]),
+    ...(allAssignments.length <= 1 && (lead.closedAt || lead.closedBy || lead.closedByText)
+      ? [lead.closedBy, lead.closedByText, lead.closedByEmail] : [])
+  ].flatMap(identity))];
   const fallback = [...new Set([
     admin.assignedTo, admin.assignedUser, admin.user, admin.userId, admin.managerId,
     importMeta.assignedTo, importMeta.user, importMeta.userName,
@@ -60,7 +66,7 @@ function allocatedOwnerKeyGroups(client = {}) {
     ...[lead, ...assignments].flatMap((owner) => [owner?.assignedTo, owner?.assignedToText, owner?.assignedToEmail]),
     ...allocationValues
   ].flatMap(identity))];
-  return [permanent, fallback];
+  return [permanent.length ? permanent : legacyClosedOwner, fallback];
 }
 
 function allocatedFinancialYears(client = {}) {

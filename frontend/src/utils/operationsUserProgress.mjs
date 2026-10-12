@@ -77,10 +77,17 @@ export function permanentStaffOwnerKeys(client = {}) {
     if (serviceIndex >= 0 && allAssignments[serviceIndex] && !allAssignments[serviceIndex].assignedServiceId && !allAssignments[serviceIndex].serviceAssignmentId) assignments = [allAssignments[serviceIndex]]
     else if (owners.size === 1) assignments = legacy
   }
-  return [...new Set([
+  const permanent = [...new Set([
     ...assignments.flatMap((assignment) => [assignment?.assignedStaff, assignment?.assignedStaffText, assignment?.assignedStaffEmail]),
     client.assignedStaff, client.assignedStaffText, client.assignedStaffEmail,
     lead.assignedStaff, lead.assignedStaffText, lead.assignedStaffEmail
+  ].flatMap(identity))]
+  if (permanent.length) return permanent
+  return [...new Set([
+    ...assignments.filter(assignment => assignment?.closedAt || assignment?.closedBy || assignment?.closedByText || assignment?.permanentClosedAt)
+      .flatMap(assignment => [assignment?.closedBy, assignment?.closedByText, assignment?.closedByEmail]),
+    ...(allAssignments.length <= 1 && (lead.closedAt || lead.closedBy || lead.closedByText)
+      ? [lead.closedBy, lead.closedByText, lead.closedByEmail] : [])
   ].flatMap(identity))]
 }
 

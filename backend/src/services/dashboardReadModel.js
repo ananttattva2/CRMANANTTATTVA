@@ -16,13 +16,13 @@ function compactPo(prefix) {
 }
 function assignmentProjection(prefix) {
   return {
-    ...compactFields(prefix, 'assignedServiceId serviceAssignmentId assignedTo assignedToText assignedToEmail assignedStaff assignedStaffText assignedStaffEmail closedAt closedBy closedByText permanentClosedAt servicesOffered poStatus'),
+    ...compactFields(prefix, 'assignedServiceId serviceAssignmentId assignedTo assignedToText assignedToEmail assignedStaff assignedStaffText assignedStaffEmail closedAt closedBy closedByText closedByEmail permanentClosedAt servicesOffered poStatus'),
     poYearRows: { $map: { input: { $ifNull: [`${prefix}.poYearRows`, []] }, as: 'po', in: compactPo('$$po') } },
     originalPoDetails: compactPo(`${prefix}.originalPoDetails`)
   };
 }
 const leadProjection = {
-  ...Object.fromEntries('_id company companyName clientName companyIdentity leadCode sourceLeadId status closedAt closedBy assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail firstAnnualReturnYearApplicable servicesOffered applicableService applicantType subApplicantType piboCategory industryType eprCategory plantUnit'.split(' ').map(field => [field, 1])),
+  ...Object.fromEntries('_id company companyName clientName companyIdentity leadCode sourceLeadId status closedAt closedBy closedByText closedByEmail assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail firstAnnualReturnYearApplicable servicesOffered applicableService applicantType subApplicantType piboCategory industryType eprCategory plantUnit'.split(' ').map(field => [field, 1])),
   assignments: { $map: { input: { $ifNull: ['$assignments', []] }, as: 'assignment', in: assignmentProjection('$$assignment') } },
   serviceSelections: { $map: { input: { $ifNull: ['$serviceSelections', []] }, as: 'service', in: compactFields('$$service', 'assignedServiceId serviceAssignmentId subApplicantType piboCategory applicantType piboParent firstAnnualReturnYearApplicable financialYear servicesForYear servicesOffered applicableService industryType eprCategory plantUnit') } }
 };
@@ -64,9 +64,18 @@ function createDashboardCache(options = {}) {
 function invalidateDashboardReads() { for (const invalidate of caches) invalidate(); }
 const cachedAssignments = createDashboardCache({ maxEntries: 2 });
 const staffFields = ['assignedStaff', 'assignedStaffText', 'assignedStaffEmail'];
+const legacyClosedOwnerFields = ['closedBy', 'closedByText', 'closedByEmail'];
 const present = field => ({ [field]: { $exists: true, $nin: [null, ''] } });
 const permanentStaffFilter = {
-  $or: [...staffFields.map(present), { assignments: { $elemMatch: { $or: staffFields.map(present) } } }]
+  $or: [
+    ...staffFields.map(present),
+    { assignments: { $elemMatch: { $or: staffFields.map(present) } } },
+    // Legacy closed services sometimes saved only the Operations closer. The
+    // user-role check still happens after loading, so sales/admin closers do
+    // not become Operations owners.
+    ...legacyClosedOwnerFields.map(present),
+    { assignments: { $elemMatch: { $or: legacyClosedOwnerFields.map(present) } } }
+  ]
 };
 async function loadDashboardAssignments({ Client, Lead }, clientFilter, leadFilter) {
   // The same compact snapshot serves all users; role filtering still happens

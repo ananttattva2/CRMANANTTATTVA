@@ -46,3 +46,10 @@ test('staff placeholders carry current-FY PO rows from the same applicant, unit 
  assert.equal(placeholder.selectedLead.assignments[0].poStatus,'received');
  assert.deepEqual(placeholder.selectedLead.assignments[0].poYearRows.map(row=>row.annualReturnYear),['2025-26','2026-27']);
 });
+
+test('legacy closed assignments without permanent staff still create dashboard placeholders',()=>{
+ const lead={_id:'legacy',company:'Thrishul Packaging Industries',serviceSelections:[{assignedServiceId:'service',subApplicantType:'Producer',servicesOffered:'Annual Return Filling'}],assignments:[{assignedServiceId:'service',closedBy:'tushar',closedByText:'Tushar Gawas',closedAt:'2026-10-01'}]};
+ const [placeholder]=mergeManagerStaffAllocations([], [lead]);
+ assert.equal(placeholder.assignmentOnly,true);
+ assert.equal(placeholder.selectedLead.assignments[0].closedBy,'tushar');
+});

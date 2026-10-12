@@ -23,7 +23,10 @@ function mergeManagerStaffAllocations(clients = [], leads = []) {
   for (const lead of leads) {
     const services = lead.serviceSelections || [];
     (lead.assignments || []).forEach((assignment, index) => {
-      if (!assignment.assignedStaff && !assignment.assignedStaffText && !assignment.assignedStaffEmail) return;
+      const permanentOwner = assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail;
+      const legacyClosedOwner = (assignment.closedAt || assignment.closedBy || assignment.closedByText || assignment.permanentClosedAt)
+        && (assignment.closedBy || assignment.closedByText || assignment.closedByEmail);
+      if (!permanentOwner && !legacyClosedOwner) return;
       const serviceId = value(assignment.assignedServiceId || assignment.serviceAssignmentId || services[index]?.assignedServiceId || services[index]?.serviceAssignmentId || `assignment-${index}`);
       const key = `${value(lead._id)}:${serviceId}`;
       if (linked.has(key)) return;
