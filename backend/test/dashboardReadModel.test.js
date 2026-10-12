@@ -4,7 +4,21 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { createRequire } = require('node:module');
-const { createDashboardCache, invalidateDashboardReads } = require('../src/services/dashboardReadModel');
+const { createDashboardCache, invalidateDashboardReads, loadDashboardAssignments } = require('../src/services/dashboardReadModel');
+
+test('assignment loader includes every legacy closed-owner snapshot, not only named examples', async () => {
+  invalidateDashboardReads();
+  let clientPipeline;
+  const aggregate = (rows, capture) => (pipeline) => ({ option: async () => { capture?.(pipeline); return rows; } });
+  await loadDashboardAssignments({
+    Client: { aggregate: aggregate([], pipeline => { clientPipeline = pipeline; }) },
+    Lead: { aggregate: aggregate([]), collection: { name: 'leads' } }
+  }, {}, {});
+  const pipeline = JSON.stringify(clientPipeline);
+  for (const field of ['closedBy', 'closedByText', 'closedByEmail']) {
+    assert.match(pipeline, new RegExp(`data\\.selectedLeadSnapshot\\.${field}`));
+  }
+});
 
 test('dashboard reads coalesce concurrent loads and expire without sharing scope keys', async () => {
   let now = 0, reads = 0;

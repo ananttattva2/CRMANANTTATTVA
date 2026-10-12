@@ -18,7 +18,13 @@ function mergeManagerStaffAllocations(clients = [], leads = []) {
     const serviceId = client.assignedServiceId || client.data?.selectedLeadSnapshot?.assignedServiceId || '';
     const key = leadId && serviceId ? `${leadId}:${serviceId}` : `client:${value(client._id)}`;
     if (linked.has(key)) continue;
-    linked.add(key); result.push(client);
+    // A draft Client Master is not a dashboard application and must not hide
+    // the closed/permanently assigned lead-service placeholder created below.
+    // Keep the draft available for editing, but only a non-draft master can
+    // satisfy the lead/service link.
+    const clientStatus = normalize(client.workflowStatus || client.data?.importMeta?.clientStatus);
+    if (clientStatus !== 'draft') linked.add(key);
+    result.push(client);
   }
   for (const lead of leads) {
     const services = lead.serviceSelections || [];
@@ -51,6 +57,7 @@ function mergeManagerStaffAllocations(clients = [], leads = []) {
         ...(matchingAssignments.some(candidate => normalize(candidate.poStatus) === 'received') ? { poStatus: 'received' } : {})
       };
       const master = clients.find(client => {
+        if (normalize(client.workflowStatus || client.data?.importMeta?.clientStatus) === 'draft') return false;
         if (value(client.selectedLead || client.data?.selectedLeadSnapshot?.id) !== value(lead._id)) return false;
         const selectedId = client.assignedServiceId || client.data?.selectedLeadSnapshot?.assignedServiceId;
         const selected = services.find(s => value(s.assignedServiceId || s.serviceAssignmentId) === value(selectedId));

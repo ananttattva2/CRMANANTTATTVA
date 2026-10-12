@@ -39,7 +39,7 @@ const clientProjection = Object.fromEntries([
   ...'clientLegalName tradeName piboCategory subApplicantType applicantType servicesOffered applicableService cpcbStatus plantUnit companyIndustry industryType eprCategory state firstAnnualReturnYear servicesForYear'.split(' ').map(field => `data.basic.${field}`),
   ...'companyName assignedTo user userName leadNumber clientCode uniqueId clientStatus visibilityStatus cpcbStatus state approvalOverride'.split(' ').map(field => `data.importMeta.${field}`),
   'data.cpcb.status', 'data.cpcb.approvalStatus', 'data.cpcb.applicationStatus', 'data.assignedServiceId',
-  ...'id sourceLeadId leadCode assignedServiceId company plantUnit servicesOffered applicableService piboCategory subApplicantType applicantType industryType eprCategory assignedStaff assignedStaffText assignedStaffEmail'.split(' ').map(field => `data.selectedLeadSnapshot.${field}`),
+  ...'id sourceLeadId leadCode assignedServiceId company plantUnit servicesOffered applicableService piboCategory subApplicantType applicantType industryType eprCategory assignedStaff assignedStaffText assignedStaffEmail closedAt closedBy closedByText closedByEmail permanentClosedAt'.split(' ').map(field => `data.selectedLeadSnapshot.${field}`),
   'data.address.state', 'data.addresses.state', 'data.registeredAddress.state', 'data.serviceAllocations', 'data.firstAnnualReturnYearApplicable',
   ...'compliancePoNo poNo poNumber compliancePoDate poDate compliancePoFileName poFileName poFinancialYear'.split(' ').map(field => `data.financials.${field}`),
   ...'poNumber poNo poDate poFileName poFinancialYear'.split(' ').map(field => `data.validation.${field}`),
@@ -92,7 +92,8 @@ async function loadDashboardAssignments({ Client, Lead }, clientFilter, leadFilt
         } },
         { $match: { $or: [...staffFields.map(present), { 'dashboardAssignedLead.0': { $exists: true } },
           ...staffFields.map(field => present(`data.selectedLeadSnapshot.${field}`)),
-          { 'data.selectedLeadSnapshot.assignments': { $elemMatch: { $or: staffFields.map(present) } } }] } },
+          ...legacyClosedOwnerFields.map(field => present(`data.selectedLeadSnapshot.${field}`)),
+          { 'data.selectedLeadSnapshot.assignments': { $elemMatch: { $or: [...staffFields, ...legacyClosedOwnerFields].map(present) } } }] } },
         { $project: clientProjection }
       ]).option({ maxTimeMS: 12000 }),
       Lead.aggregate([{ $match: { $and: [leadFilter, permanentStaffFilter] } }, { $project: leadProjection }]).option({ maxTimeMS: 12000 })

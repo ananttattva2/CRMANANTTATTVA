@@ -53,3 +53,27 @@ test('legacy closed assignments without permanent staff still create dashboard p
  assert.equal(placeholder.assignmentOnly,true);
  assert.equal(placeholder.selectedLead.assignments[0].closedBy,'tushar');
 });
+
+test('draft Client Masters cannot suppress closed permanent staff assignments',async()=>{
+ const {buildApplicationPortfolio}=await import('../../frontend/src/utils/applicationPortfolio.mjs');
+ const users=[{_id:'sonal',name:'Sonal More',role:'operation'},{_id:'tushar',name:'Tushar Gawas',role:'operation'}];
+ const cases=[
+  ['nano','20 MICRONS NANO MINERALS LIMITED','sonal','Annual Return Filling','Importer'],
+  ['thrishul','Thrishul Packaging Industries','tushar','New Registration','Producer (Small & Micro)']
+ ];
+ const dashboardRows=[];
+ for(const [id,company,owner,offered,category] of cases){
+  const serviceId=`${id}-service`;
+  const lead={_id:`${id}-lead`,company,status:'Closed',serviceSelections:[{assignedServiceId:serviceId,subApplicantType:category,plantUnit:'Unit 1',servicesOffered:offered}],assignments:[{assignedServiceId:serviceId,assignedTo:'manager',assignedStaff:owner,closedBy:owner,closedAt:'2026-10-01'}]};
+  const draft={_id:`${id}-draft`,selectedLead:lead,assignedServiceId:serviceId,workflowStatus:'draft',data:{basic:{piboCategory:category,servicesOffered:offered},cpcb:{status:'Approved'},importMeta:{clientStatus:'draft'}}};
+  const merged=mergeManagerStaffAllocations([draft],[lead]);
+  assert.equal(merged.length,2);
+  assert.equal(merged.filter(row=>row.assignmentOnly).length,1);
+  dashboardRows.push(...merged);
+ }
+ const groups=buildApplicationPortfolio(dashboardRows,users);
+ assert.deepEqual(groups.map(group=>[group.name,group.records.map(record=>record.name)]),[
+  ['Sonal More',['20 MICRONS NANO MINERALS LIMITED']],
+  ['Tushar Gawas',['Thrishul Packaging Industries']]
+ ]);
+});
