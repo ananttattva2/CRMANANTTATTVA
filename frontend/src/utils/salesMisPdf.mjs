@@ -79,19 +79,25 @@ export async function downloadSalesMisInfographicPdf({ rows = [], period = {} })
 
   autoTable(pdf, {
     startY: 116, margin: { left: 9, right: 9, bottom: 13 },
-    head: [['Lead Owner', 'Total Leads', 'Open', 'Closed', 'Close Rate', 'Temporary Leads']],
-    body: [...owners.map((row) => [row.name, row.totalLeads, row.openLeads, row.closedLeads, `${row.closeRate}%`, row.temporaryLeads]), ['TOTAL', totals.total, totals.open, totals.closed, `${totals.closeRate}%`, totals.temporary]],
+    head: [[
+      { content: 'Lead Owner', rowSpan: 2, styles: { valign: 'middle' } },
+      { content: 'Total Leads', colSpan: 2, styles: { halign: 'center' } },
+      { content: 'Open', rowSpan: 2, styles: { valign: 'middle' } },
+      { content: 'Closed', rowSpan: 2, styles: { valign: 'middle' } },
+      { content: 'Close Rate', rowSpan: 2, styles: { valign: 'middle' } }
+    ], ['Temp Lead', 'Lead']],
+    body: [...owners.map((row) => [row.name, row.temporaryLeads, row.totalLeads, row.openLeads, row.closedLeads, `${row.closeRate}%`]), ['TOTAL', totals.temporary, totals.total, totals.open, totals.closed, `${totals.closeRate}%`]],
     theme: 'plain', pageBreak: 'avoid', rowPageBreak: 'avoid',
     headStyles: { fillColor: green, textColor: 255, fontStyle: 'bold', fontSize: 6.8, cellPadding: 1.6 },
     bodyStyles: { textColor: slate, fontSize: owners.length > 12 ? 5.5 : 6.5, cellPadding: owners.length > 12 ? .9 : 1.4, lineColor: [226, 232, 240], lineWidth: .1 },
     alternateRowStyles: { fillColor: [248, 250, 252] },
-    columnStyles: { 0: { cellWidth: 84, fontStyle: 'bold' }, 1: { halign: 'right' }, 2: { halign: 'right', textColor: [234, 88, 12] }, 3: { halign: 'right', textColor: [5, 150, 105] }, 4: { halign: 'right' }, 5: { halign: 'right' } },
+    columnStyles: { 0: { cellWidth: 84, fontStyle: 'bold' }, 1: { halign: 'right', textColor: [109, 40, 217] }, 2: { halign: 'right' }, 3: { halign: 'right', textColor: [234, 88, 12] }, 4: { halign: 'right', textColor: [5, 150, 105] }, 5: { halign: 'right' } },
     didParseCell: (data) => { if (data.section === 'body' && data.row.index === owners.length) { data.cell.styles.fillColor = [236, 253, 245]; data.cell.styles.textColor = green; data.cell.styles.fontStyle = 'bold' } }
   })
 
   pdf.setDrawColor(226, 232, 240); pdf.line(9, 199, 288, 199)
   pdf.setFont('helvetica', 'normal'); pdf.setFontSize(5.8); pdf.setTextColor(100, 116, 139)
-  pdf.text(`Temporary leads (${totals.temporary}) are separate from Total Leads. | AnantTattva CRM`, 9, 204)
+  pdf.text(`Temp Lead is shown beside Lead under Total Leads and is not included in the permanent Lead count. | AnantTattva CRM`, 9, 204)
   pdf.text('1 / 1', 288, 204, { align: 'right' })
   pdf.save(`Sales_MIS_${period.from}_to_${period.to}.pdf`)
 }

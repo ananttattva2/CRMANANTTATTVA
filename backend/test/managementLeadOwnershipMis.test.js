@@ -23,6 +23,12 @@ test('management Sales MIS uses the compact infographic and dedicated one-page P
   assert.match(exportsSource, /TEAM TOTAL/);
   assert.match(page, /buildSalesMisReport/);
   assert.match(page, /Management focus:/);
+  assert.match(page, /colSpan=\{2\}[^>]*>Total Leads/);
+  assert.match(page, />Temp Lead</);
+  assert.match(page, />Lead</);
+  const pdfSource = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/salesMisPdf.mjs'), 'utf8');
+  assert.match(pdfSource, /content: 'Total Leads', colSpan: 2/);
+  assert.match(pdfSource, /\['Temp Lead', 'Lead'\]/);
   assert.match(exportsSource, /'Sales Team', 'Operations Team', 'Management', 'Other Departments'/);
   assert.match(exportsSource, /managementSalesPdfGroups/);
   assert.match(exportsSource, /\['Sales Team', 'Management'\]\.includes\(group\.name\)/);
