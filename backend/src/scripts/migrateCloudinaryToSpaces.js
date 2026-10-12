@@ -22,6 +22,7 @@ function options(argv) {
     else if (arg === '--run-dir') { if (!argv[i + 1] || argv[i + 1].startsWith('--')) throw new Error('--run-dir requires a value.'); result.directory = argv[++i]; }
     else if (arg === '--retry') result.retry = true;
     else if (arg === '--resume') result.resume = true;
+    else if (arg === '--originals-only') result.originalsOnly = true;
     else if (arg === '--dry-run') result.dryRun = true;
     else if (arg === '--approve-production') result.approved = true;
     else if (arg === '--backup-confirmed') result.backup = true;
@@ -176,6 +177,10 @@ async function main(argv = process.argv.slice(2)) {
     if (EJSON.stringify(state.identity) !== EJSON.stringify(identity())) throw new Error('Run cloud/bucket/database/origin configuration changed. Restore the original configuration or create a new inventory.');
     if (opts.command === 'inventory') {
       await runner.discoverLibrary(state, fetchPage, save);
+      if (opts.originalsOnly) {
+        if (state.patches.length || state.assets.some(a => a.kind !== 'original')) throw new Error('Originals-only inventory requires a separate run directory.');
+        migration.assignKeys(state.assets); state.discoveryComplete = true; state.originalsOnly = true; await save();
+      }
       if (!state.discoveryComplete) {
         migration.assignKeys(state.assets);
         const db = await connectMongo();

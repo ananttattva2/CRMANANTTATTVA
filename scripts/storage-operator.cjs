@@ -7,7 +7,8 @@ const { createRequire } = require('node:module');
 const { spawn } = require('node:child_process');
 const [appArgument, requestedOperation, codeArgument] = process.argv.slice(2);
 const delta = requestedOperation.startsWith('delta-');
-const operation = delta ? requestedOperation.slice(6) : requestedOperation;
+const originalInventory = requestedOperation === 'delta-inventory-originals';
+const operation = originalInventory ? 'inventory' : delta ? requestedOperation.slice(6) : requestedOperation;
 const app = fs.realpathSync(appArgument);
 const code = fs.realpathSync(codeArgument);
 const backend = path.join(code, 'backend');
@@ -26,7 +27,7 @@ async function main() {
     SPACES_LINK_SECRET: parsed.SPACES_LINK_SECRET || crypto.randomBytes(32).toString('hex'),
     STORAGE_PUBLIC_API_ORIGIN: parsed.STORAGE_PUBLIC_API_ORIGIN || payload.publicOrigin || 'https://crmananttattva.com'
   };
-  const stateDirectory = path.join(app, '.storage-migration/state', delta ? 'crm-delta' : operation === 'copy-originals' ? 'crm-originals' : 'crm-full');
+  const stateDirectory = path.join(app, '.storage-migration/state', delta ? originalInventory || operation === 'copy-originals' ? 'crm-delta-originals' : 'crm-delta' : operation === 'copy-originals' ? 'crm-originals' : 'crm-full');
   fs.mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });
   const backup = path.join(stateDirectory, 'backend-env.before-storage');
   if (!fs.existsSync(backup)) fs.writeFileSync(backup, original, { mode: 0o600, flag: 'wx' });
@@ -65,7 +66,7 @@ async function main() {
     delete source.mongoReferences; delete source.referenceCollectionsComplete;
     migration.atomicWrite(path.join(stateDirectory, 'state.json'), source);
   }
-  if (operation === 'copy' || operation === 'apply') {
+  if (operation === 'copy' || operation === 'apply' || delta && operation === 'copy-originals') {
     const migration = appRequire('./src/services/storageMigration');
     const originalsFile = path.join(app, '.storage-migration/state', delta ? 'crm-full' : 'crm-originals', 'state.json');
     const fullFile = path.join(stateDirectory, 'state.json');
@@ -102,6 +103,7 @@ async function main() {
     }
   }
   const args = [path.join(backend, 'src/scripts/migrateCloudinaryToSpaces.js'), operation === 'copy-originals' ? 'copy' : operation === 'restart-inventory' ? 'inventory' : operation === 'restart-apply' ? 'apply' : operation, '--run-dir', stateDirectory];
+  if (originalInventory) args.push('--originals-only');
   const lockFile = path.join(stateDirectory, 'run.lock');
   if (fs.existsSync(lockFile)) {
     const lock = JSON.parse(fs.readFileSync(lockFile, 'utf8'));

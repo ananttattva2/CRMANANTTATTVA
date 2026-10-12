@@ -5,7 +5,7 @@ on:
       operation:
         type: choice
         default: diagnostics
-        options: [diagnostics, quick-diagnostics, inventory, restart-inventory, copy-originals, copy, backup, apply, restart-apply, rollback, delta-inventory, delta-copy, delta-backup, delta-apply, delta-rollback]
+        options: [diagnostics, quick-diagnostics, inventory, restart-inventory, copy-originals, copy, backup, apply, restart-apply, rollback, delta-inventory, delta-inventory-originals, delta-copy-originals, delta-copy, delta-backup, delta-apply, delta-rollback]
       confirmation:
         description: 'For writes enter COPY_AND_UPDATE_APPROVED'
         type: string
