@@ -12,7 +12,7 @@ const backend = path.join(code, 'backend');
 const appRequire = createRequire(path.join(backend, 'package.json'));
 const dotenv = appRequire('dotenv');
 async function main() {
-  if (!['inventory', 'copy', 'apply', 'rollback'].includes(operation)) throw new Error('Invalid operation.');
+  if (!['inventory', 'copy', 'copy-originals', 'apply', 'rollback'].includes(operation)) throw new Error('Invalid operation.');
   const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
   if (operation !== 'inventory' && payload.confirmation !== 'COPY_AND_UPDATE_APPROVED') throw new Error('Explicit migration approval is required.');
   const envFile = path.join(app, 'backend/.env');
@@ -24,7 +24,7 @@ async function main() {
     SPACES_LINK_SECRET: parsed.SPACES_LINK_SECRET || crypto.randomBytes(32).toString('hex'),
     STORAGE_PUBLIC_API_ORIGIN: parsed.STORAGE_PUBLIC_API_ORIGIN || payload.publicOrigin || 'https://crmananttattva.com'
   };
-  const stateDirectory = path.join(app, '.storage-migration/state/crm-full');
+  const stateDirectory = path.join(app, '.storage-migration/state', operation === 'copy-originals' ? 'crm-originals' : 'crm-full');
   fs.mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });
   const backup = path.join(stateDirectory, 'backend-env.before-storage');
   if (!fs.existsSync(backup)) fs.writeFileSync(backup, original, { mode: 0o600, flag: 'wx' });
@@ -36,6 +36,30 @@ async function main() {
   }
   fs.writeFileSync(`${envFile}.storage-tmp`, updated, { mode: 0o600 }); fs.renameSync(`${envFile}.storage-tmp`, envFile);
   Object.assign(process.env, dotenv.parse(updated));
+  if (operation === 'copy-originals' && !fs.existsSync(path.join(stateDirectory, 'state.json'))) {
+    const migration = appRequire('./src/services/storageMigration');
+    const source = migration.loadState(path.join(app, '.storage-migration/state/crm-full/state.json'));
+    if (!source.discovery?.complete || source.assets.filter(a => a.kind === 'original').length !== source.discovery.expectedTotal) throw new Error('Complete Cloudinary library discovery is required.');
+    source.assets = source.assets.filter(a => a.kind === 'original');
+    for (const asset of source.assets) asset.references = [];
+    migration.assignKeys(source.assets);
+    source.collections = []; source.patches = []; source.discoveryComplete = true; source.originalsOnly = true;
+    delete source.mongoReferences; delete source.referenceCollectionsComplete;
+    migration.atomicWrite(path.join(stateDirectory, 'state.json'), source);
+  }
+  if (operation === 'copy') {
+    const migration = appRequire('./src/services/storageMigration');
+    const originalsFile = path.join(app, '.storage-migration/state/crm-originals/state.json');
+    const fullFile = path.join(stateDirectory, 'state.json');
+    if (fs.existsSync(originalsFile) && fs.existsSync(fullFile) && !fs.existsSync(path.join(stateDirectory, 'run.lock'))) {
+      const originals = migration.loadState(originalsFile); const full = migration.loadState(fullFile);
+      for (const asset of full.assets) {
+        const copied = originals.assets.find(other => other.id === asset.id && other.key === asset.key && other.bytes === asset.bytes && other.status === 'verified');
+        if (copied) { asset.status = 'verified'; asset.verification = copied.verification; asset.attempts = copied.attempts; }
+      }
+      migration.atomicWrite(fullFile, full);
+    }
+  }
   // Preserve other CORS rules; failure does not send new uploads back to Cloudinary.
   try {
     const { S3Client, GetBucketCorsCommand, PutBucketCorsCommand } = appRequire('@aws-sdk/client-s3');
@@ -58,7 +82,7 @@ async function main() {
       console.log(JSON.stringify(await require('./storage-backup.cjs')(appRequire, directory)));
     }
   }
-  const args = [path.join(backend, 'src/scripts/migrateCloudinaryToSpaces.js'), operation, '--run-dir', stateDirectory];
+  const args = [path.join(backend, 'src/scripts/migrateCloudinaryToSpaces.js'), operation === 'copy-originals' ? 'copy' : operation, '--run-dir', stateDirectory];
   const lockFile = path.join(stateDirectory, 'run.lock');
   if (fs.existsSync(lockFile)) {
     const lock = JSON.parse(fs.readFileSync(lockFile, 'utf8'));
@@ -68,7 +92,7 @@ async function main() {
   }
   if (operation === 'inventory' && fs.existsSync(path.join(stateDirectory, 'state.json'))) args.push('--resume');
   if (operation !== 'inventory') args.push('--approve-production');
-  if (operation === 'copy') args.push('--retry', '--resume');
+  if (operation === 'copy' || operation === 'copy-originals') args.push('--retry', '--resume');
   if (operation === 'apply') args.push('--backup-confirmed', '--retry');
   console.log(JSON.stringify({ operation, bucket: additions.SPACES_BUCKET, region: additions.SPACES_REGION, secretsConfigured: true }));
   const result = await new Promise((resolve, reject) => {

@@ -2,6 +2,14 @@
 
 Target: `ananttattva-crm-files`, region `sgp1`, endpoint `https://sgp1.digitaloceanspaces.com`.
 
+### Remote operations through GitHub Actions
+
+The existing **Production Diagnostics** workflow now supports `inventory`, `copy`, `apply` and `rollback` on the migration branch. It uses the existing DigitalOcean SSH secrets plus `SPACES_ACCESS_KEY_ID` and `SPACES_SECRET_ACCESS_KEY`; no secret values are printed. Migration code/dependencies are staged separately from the live application. Backend storage environment values are installed securely, preserving a stable signing secret. Persistent state/reports live under the server app directory's `.storage-migration/state/crm-full`; full reports are not published to public Actions artifacts.
+
+Mutating operations require confirmation `COPY_AND_UPDATE_APPROVED`. Apply checks the live `/api/assets/file` route before introducing new links. Unless an existing Atlas backup is explicitly confirmed, it first creates a snapshot-session BSON/EJSON backup, records index metadata, and verifies every backup file's count/checksum on the server. This snapshot complements the per-record rollback journal. SSH keep-alives prevent idle disconnects, and stale local locks are removed only after verifying that the recorded process is no longer running.
+
+Future uploads prefer direct browser-to-Spaces PUTs. If browser CORS/network access is unavailable, the authenticated same-origin upload endpoint verifies the file SHA-256 and uploads server-to-Spaces, never Cloudinary. The fallback limit is 25 MiB and still depends on the deployed ingress's body limit. Migration copy uses at most four workers by default (configurable to eight) and publishes aggregate progress only. Copy checkpoints are batched; a crash may replay a few transfers, which re-hash existing targets before reuse. Mongo write-ahead checkpoints remain synchronous for every update.
+
 **This implementation does not run migration on deploy/startup. No Cloudinary deletion command exists. Production copy, MongoDB updates and rollback are separate, explicitly approved operator actions.**
 
 ## What is migrated

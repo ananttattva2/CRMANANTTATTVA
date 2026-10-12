@@ -42,7 +42,7 @@ async function transferAll(state, transfer, save, { retry = false } = {}) {
     } catch (error) {
       asset.status = error.sourceMissing ? 'missing' : 'failed';
       // Never persist signed Cloudinary/S3 download URLs from HTTP error messages.
-      asset.error = error.safeMessage || 'Transfer failed; inspect credentials/access and retry.';
+      asset.error = error.safeMessage || `Transfer failed (${error.name || 'Error'}${error.$metadata?.httpStatusCode ? ` HTTP ${error.$metadata.httpStatusCode}` : ''}); inspect credentials/access and retry.`;
     }
     await save();
     completed++;
