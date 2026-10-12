@@ -78,7 +78,7 @@ async function main() {
       pending += chunk.toString(); let index;
       while ((index = pending.indexOf('\n')) >= 0) {
         const line = pending.slice(0, index); pending = pending.slice(index + 1);
-        try { const value = JSON.parse(line); if (value.progress === 'copy') console.log(JSON.stringify({ progress: value.progress, completed: value.completed, queued: value.queued, verified: value.verified, failed: value.failed, missing: value.missing })); } catch {}
+        try { const value = JSON.parse(line); if (value.progress === 'copy') console.log(JSON.stringify({ progress: value.progress, completed: value.completed, queued: value.queued, verified: value.verified, failed: value.failed, missing: value.missing })); else if (value.progress === 'inventory') console.log(JSON.stringify({ progress: value.progress, collectionsComplete: value.collectionsComplete, collectionsTotal: value.collectionsTotal })); } catch {}
       }
     });
     child.stderr.on('data', () => {});

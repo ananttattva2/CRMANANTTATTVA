@@ -170,11 +170,21 @@ async function main(argv = process.argv.slice(2)) {
         const requested = (process.env.STORAGE_MIGRATION_COLLECTIONS || '').split(',').map(x => x.trim()).filter(Boolean);
         state.collections = list.filter(c => c.type !== 'view' && !c.name.startsWith('system.') && (!requested.length || requested.includes(c.name))).map(c => c.name).sort();
         if (requested.some(name => !state.collections.includes(name))) throw new Error('A requested MongoDB collection does not exist.');
-        const references = [];
-        for (const name of state.collections) for await (const doc of db.collection(name).find({})) migration.walkReferences(doc, (url, trail) => references.push({ collection: name, documentId: doc._id, path: trail.join('.'), url }));
+        state.mongoReferences ||= [];
+        state.referenceCollectionsComplete ||= [];
+        for (const name of state.collections) {
+          if (state.referenceCollectionsComplete.includes(name)) continue;
+          console.log(JSON.stringify({ progress: 'inventory', collectionsComplete: state.referenceCollectionsComplete.length, collectionsTotal: state.collections.length }));
+          // GridFS binary chunks cannot contain string URL metadata; file metadata is still scanned.
+          const projection = name.endsWith('.chunks') ? { data: 0 } : undefined;
+          const references = [];
+          for await (const doc of db.collection(name).find({}, projection ? { projection } : {})) migration.walkReferences(doc, (url, trail) => references.push({ collection: name, documentId: doc._id, path: trail.join('.'), url }));
+          state.mongoReferences.push(...references); state.referenceCollectionsComplete.push(name); await save();
+        }
         // Rebuild references after interrupted discovery without duplicating records.
         for (const asset of state.assets) asset.references = [];
-        migration.connectReferences(state.assets, references);
+        migration.connectReferences(state.assets, state.mongoReferences);
+        delete state.mongoReferences;
         const uniqueKeys = new Set();
         for (const asset of state.assets) if (asset.key) { if (uniqueKeys.has(asset.key)) throw new Error('Destination key collision.'); uniqueKeys.add(asset.key); }
         state.discoveryComplete = true; state.discoveryErrors = []; await save();
