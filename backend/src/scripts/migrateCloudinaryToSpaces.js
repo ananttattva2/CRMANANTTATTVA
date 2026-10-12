@@ -129,7 +129,7 @@ async function transfer(asset, state, directory) {
 async function connectMongo() {
   const uri = require('../config/db').__test.buildMongoUri();
   if (!uri) throw new Error('MongoDB connection is required for complete reference discovery.');
-  await mongoose.connect(uri, { dbName: process.env.DB_NAME || 'registerd_types', serverSelectionTimeoutMS: 15000 });
+  await mongoose.connect(uri, { dbName: process.env.DB_NAME || 'registerd_types', serverSelectionTimeoutMS: 15000, socketTimeoutMS: 120000, autoIndex: false, autoCreate: false, compressors: ['zlib'], zlibCompressionLevel: 1 });
   return mongoose.connection.db;
 }
 function identity() {

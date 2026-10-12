@@ -12,7 +12,7 @@ const backend = path.join(code, 'backend');
 const appRequire = createRequire(path.join(backend, 'package.json'));
 const dotenv = appRequire('dotenv');
 async function main() {
-  if (!['inventory', 'restart-inventory', 'copy', 'copy-originals', 'apply', 'rollback'].includes(operation)) throw new Error('Invalid operation.');
+  if (!['inventory', 'restart-inventory', 'copy', 'copy-originals', 'backup', 'apply', 'rollback'].includes(operation)) throw new Error('Invalid operation.');
   const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
   if (operation !== 'inventory' && payload.confirmation !== 'COPY_AND_UPDATE_APPROVED') throw new Error('Explicit migration approval is required.');
   const envFile = path.join(app, 'backend/.env');
@@ -36,6 +36,15 @@ async function main() {
   }
   fs.writeFileSync(`${envFile}.storage-${process.pid}-tmp`, updated, { mode: 0o600 }); fs.renameSync(`${envFile}.storage-${process.pid}-tmp`, envFile);
   Object.assign(process.env, dotenv.parse(updated));
+  const backupPointer = path.join(app, '.storage-migration/state/crm-full/verified-backup.json');
+  const databaseFingerprint = crypto.createHash('sha256').update(`${appRequire('./src/config/db').__test.buildMongoUri()}|${process.env.DB_NAME || 'registerd_types'}`).digest('hex');
+  async function takeBackup() {
+    const directory = path.join(app, '.storage-migration/backups', new Date().toISOString().replace(/[:.]/g, '-'));
+    const summary = await require('./storage-backup.cjs')(appRequire, directory);
+    fs.writeFileSync(backupPointer, JSON.stringify({ directory, databaseFingerprint, completedAt: new Date().toISOString(), ...summary }), { mode: 0o600 });
+    console.log(JSON.stringify(summary));
+  }
+  if (operation === 'backup') { await takeBackup(); return; }
   if (operation === 'copy-originals' && !fs.existsSync(path.join(stateDirectory, 'state.json'))) {
     const migration = appRequire('./src/services/storageMigration');
     const source = migration.loadState(path.join(app, '.storage-migration/state/crm-full/state.json'));
@@ -78,8 +87,9 @@ async function main() {
     const response = await fetch(`${additions.STORAGE_PUBLIC_API_ORIGIN}/api/assets/file?key=invalid&signature=invalid`, { redirect: 'manual', signal: AbortSignal.timeout(15000) });
     if (response.status !== 403 || !(await response.text()).includes('Invalid file link')) throw new Error('Deploy Spaces preview/download routes before applying MongoDB references.');
     if (payload.backupConfirmed !== true) {
-      const directory = path.join(app, '.storage-migration/backups', new Date().toISOString().replace(/[:.]/g, '-'));
-      console.log(JSON.stringify(await require('./storage-backup.cjs')(appRequire, directory)));
+      const existing = fs.existsSync(backupPointer) ? JSON.parse(fs.readFileSync(backupPointer, 'utf8')) : null;
+      if (!existing?.backupVerified || existing.databaseFingerprint !== databaseFingerprint || Date.now() - new Date(existing.completedAt).getTime() > 12 * 60 * 60 * 1000) await takeBackup();
+      else console.log(JSON.stringify({ backupVerified: true, existingSnapshotReused: true }));
     }
   }
   const args = [path.join(backend, 'src/scripts/migrateCloudinaryToSpaces.js'), operation === 'copy-originals' ? 'copy' : operation === 'restart-inventory' ? 'inventory' : operation, '--run-dir', stateDirectory];

@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 module.exports = async function backup(appRequire, directory) {
   const mongoose = appRequire('mongoose'); const { EJSON } = appRequire('bson');
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-  await mongoose.connect(appRequire('./src/config/db').__test.buildMongoUri(), { dbName: process.env.DB_NAME || 'registerd_types', autoIndex: false, autoCreate: false });
+  await mongoose.connect(appRequire('./src/config/db').__test.buildMongoUri(), { dbName: process.env.DB_NAME || 'registerd_types', autoIndex: false, autoCreate: false, socketTimeoutMS: 120000, compressors: ['zlib'], zlibCompressionLevel: 1 });
   const db = mongoose.connection.db; const session = mongoose.connection.getClient().startSession({ snapshot: true });
   const manifest = { createdAt: new Date().toISOString(), collections: [], verified: false };
   try {
