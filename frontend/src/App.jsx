@@ -45,7 +45,7 @@ function ActiveCrmTracker() {
     let loggingOut = false
     let heartbeatInFlight = false
     let heartbeatDelay = 60000
-    const IDLE_LOGOUT_MS = 30 * 60 * 1000
+    const IDLE_LOGOUT_MS = 2 * 60 * 60 * 1000
     const MAX_HEARTBEAT_DELAY_MS = 5 * 60 * 1000
     const isActive = () => hasStoredAuthToken() && document.visibilityState === 'visible' && document.hasFocus()
     const scheduleHeartbeat = () => {

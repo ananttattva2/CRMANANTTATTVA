@@ -49,12 +49,12 @@ test('internal ticket email is claimed once per ticket, sender, and recipient', 
   assert.match(service, /This notification is sent only for the first message/);
 });
 
-test('CRM automatically logs out and audits users after thirty idle minutes', () => {
+test('CRM automatically logs out and audits users after two idle hours', () => {
   const app = read('../../frontend/src/App.jsx');
   const auth = read('../src/controllers/authController.js');
-  assert.match(app, /30 \* 60 \* 1000/);
+  assert.match(app, /2 \* 60 \* 60 \* 1000/);
   assert.match(app, /reason: 'inactivity'/);
-  assert.match(auth, /Automatically logged out after 30 minutes of inactivity/);
+  assert.match(auth, /Automatically logged out after 2 hours of inactivity/);
 });
 
 test('document progress and frozen fields follow Producer and Importer applicability', () => {

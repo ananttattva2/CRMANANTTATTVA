@@ -646,7 +646,7 @@ exports.logout = async (req, res) => {
   await AuditLog.create({
     userId: req.user._id, sessionId: req.authSessionId, action: 'LOGOUT', module: 'Authentication',
     method: 'POST', path: '/api/auth/logout', statusCode: 200,
-    description: inactivityLogout ? 'Automatically logged out after 30 minutes of inactivity' : 'Logged out of CRM', ipAddress: clientIp(req),
+    description: inactivityLogout ? 'Automatically logged out after 2 hours of inactivity' : 'Logged out of CRM', ipAddress: clientIp(req),
     userName: req.user.name || req.user.email, userEmail: req.user.email, role: req.user.role, department: req.user.team
   });
   res.json({ ok: true });
