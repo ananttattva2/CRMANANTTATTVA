@@ -2,6 +2,7 @@ const express = require('express');
 const spaces = require('../services/spacesStorage');
 const multer = require('multer');
 const crypto = require('node:crypto');
+const { pipeline } = require('node:stream/promises');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
@@ -36,8 +37,11 @@ router.get('/file', async (req, res) => {
     const key = String(req.query.key || '');
     if (!spaces.validLink(key, String(req.query.signature || ''))) return res.status(403).json({ error: 'Invalid file link.' });
     res.set({ 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer' });
-    return res.redirect(await spaces.downloadUrl(key));
-  } catch { return res.status(503).json({ error: 'File storage is unavailable.' }); }
+    const object = await spaces.get(key);
+    res.set({ 'Content-Type': object.ContentType || 'application/octet-stream', 'Content-Disposition': object.ContentDisposition || 'attachment', 'X-Content-Type-Options': 'nosniff' });
+    if (Number.isFinite(object.ContentLength)) res.set('Content-Length', String(object.ContentLength));
+    await pipeline(object.Body, res);
+  } catch { if (res.headersSent) return res.destroy(); return res.status(503).json({ error: 'File storage is unavailable.' }); }
 });
 
 router.get('/brand-logo', async (req, res) => {

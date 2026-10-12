@@ -40,7 +40,14 @@ async function main() {
   const databaseFingerprint = crypto.createHash('sha256').update(`${appRequire('./src/config/db').__test.buildMongoUri()}|${process.env.DB_NAME || 'registerd_types'}`).digest('hex');
   async function takeBackup() {
     const directory = path.join(app, '.storage-migration/backups', new Date().toISOString().replace(/[:.]/g, '-'));
-    const summary = await require('./storage-backup.cjs')(appRequire, directory);
+    const inventory = appRequire('./src/services/storageMigration').loadState(path.join(app, '.storage-migration/state/crm-full/state.json'));
+    if (!inventory.discoveryComplete) throw new Error('Complete reference inventory is required before backup.');
+    const grouped = {};
+    for (const asset of inventory.assets) for (const ref of asset.references || []) {
+      grouped[ref.collection] ||= new Map(); grouped[ref.collection].set(appRequire('bson').EJSON.stringify(ref.documentId), ref.documentId);
+    }
+    const targets = Object.fromEntries(Object.entries(grouped).map(([name, rows]) => [name, [...rows.values()]]));
+    const summary = await require('./storage-backup.cjs')(appRequire, directory, targets);
     fs.writeFileSync(backupPointer, JSON.stringify({ directory, databaseFingerprint, completedAt: new Date().toISOString(), ...summary }), { mode: 0o600 });
     console.log(JSON.stringify(summary));
   }

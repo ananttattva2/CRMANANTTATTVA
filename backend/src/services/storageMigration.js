@@ -91,9 +91,13 @@ function verified(source, destination, expectedBytes) {
   if (source.size !== destination.size || source.sha256 !== destination.sha256 || (Number.isFinite(expectedBytes) && source.size !== expectedBytes)) throw new Error('File size or SHA-256 verification failed.');
   return true;
 }
-function referencePatches(doc, assets, fileUrl) {
+function verifiedAliasIndex(assets) {
   const byUrl = new Map();
   for (const asset of assets) if (asset.status === 'verified') for (const url of asset.aliases || []) byUrl.set(normalizeUrl(url), asset);
+  return byUrl;
+}
+function referencePatches(doc, assets, fileUrl, cachedIndex) {
+  const byUrl = cachedIndex || verifiedAliasIndex(assets);
   const before = {}; const after = {}; const assetIds = new Set();
   walkReferences(doc, (url, trail, value) => {
     const asset = byUrl.get(normalizeUrl(url)); if (!asset) return;
@@ -153,4 +157,4 @@ function report(state) {
     files: assets.map(a => ({ id: a.id, kind: a.kind, publicId: a.public_id, folder: a.asset_folder, key: a.key, status: a.status, attempts: a.attempts || 0, size: a.verification?.size, sha256: a.verification?.sha256, referenceCount: a.references?.length || 0, collisionRenamed: !!a.collisionRenamed, error: a.error || '' }))
   };
 }
-module.exports = { sha256, cloudUrl, normalizeUrl, walkReferences, serverReferences, assignKeys, originalKey, connectReferences, digestStream, verified, referencePatches, valuesMatch, applyPatch, atomicWrite, loadState, report };
+module.exports = { sha256, cloudUrl, normalizeUrl, walkReferences, serverReferences, assignKeys, originalKey, connectReferences, digestStream, verified, verifiedAliasIndex, referencePatches, valuesMatch, applyPatch, atomicWrite, loadState, report };

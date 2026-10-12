@@ -62,7 +62,7 @@ async function updateReferences(state, database, fileUrl, verifyAsset, save, { r
     return;
   }
   // Re-verify every target before touching MongoDB, including resumed transfers.
-  for (const asset of state.assets.filter(a => a.status === 'verified')) {
+  for (const asset of state.assets.filter(a => a.status === 'verified' && (!Array.isArray(a.references) || a.references.length))) {
     try { await verifyAsset(asset); }
     catch { asset.status = 'failed'; asset.error = 'Destination re-verification failed; references left untouched.'; }
     await save();
@@ -73,10 +73,19 @@ async function updateReferences(state, database, fileUrl, verifyAsset, save, { r
     const result = await migration.applyPatch(database.collection(patch.collection), patch);
     patch.status = result === 'conflict' ? 'conflict' : 'applied'; await save();
   }
+  const aliasIndex = migration.verifiedAliasIndex(state.assets);
   for (const name of state.collections) {
     const collection = database.collection(name);
-    for await (const doc of collection.find({})) {
-      const changes = migration.referencePatches(doc, state.assets, fileUrl);
+    const ids = new Map();
+    for (const asset of state.assets.filter(a => a.status === 'verified')) for (const ref of asset.references || []) if (ref.collection === name) ids.set(require('bson').EJSON.stringify(ref.documentId), ref.documentId);
+    if (!ids.size && state.assets.every(a => Array.isArray(a.references))) continue;
+    async function* documents() {
+      const values = [...ids.values()];
+      if (!values.length) { for await (const doc of collection.find({})) yield doc; return; }
+      for (let index = 0; index < values.length; index += 500) for await (const doc of collection.find({ _id: { $in: values.slice(index, index + 500) } })) yield doc;
+    }
+    for await (const doc of documents()) {
+      const changes = migration.referencePatches(doc, state.assets, fileUrl, aliasIndex);
       if (!Object.keys(changes.after).length) continue;
       const existing = state.patches.find(p => p.collection === name && migration.sha256(require('bson').EJSON.stringify(p.documentId)) === migration.sha256(require('bson').EJSON.stringify(doc._id)) && p.status !== 'rolled-back' && Object.keys(p.after).some(field => field in changes.after));
       if (existing) continue;
