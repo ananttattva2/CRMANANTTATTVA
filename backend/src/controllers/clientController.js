@@ -1512,6 +1512,32 @@ exports.listClientReviewApplicants = async (req, res) => {
   return exports.listClientMasterServices({ ...req, query: { identity: `client:${req.params.id}` } }, res, { clientReview: true });
 };
 
+function clientMasterReviewServiceIdentity(item = {}) {
+  const normalize = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const normalizeOffering = (value) => {
+    const normalized = normalize(value);
+    return /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalized) ? 'annualreturn' : normalized;
+  };
+  const identity = [
+    item.eprCategory,
+    item.applicantType,
+    item.piboCategory,
+    normalizeOffering(item.servicesOffered),
+    item.plantUnit
+  ].map(normalize).join(':');
+  return identity.replace(/:/g, '') ? identity : `record:${item.clientMasterId}`;
+}
+
+function uniqueClientMasterReviewServices(records = [], preferredClientMasterId = '') {
+  const byService = new Map();
+  records.forEach((item) => {
+    const key = clientMasterReviewServiceIdentity(item);
+    const existing = byService.get(key);
+    if (!existing || String(item.clientMasterId) === String(preferredClientMasterId)) byService.set(key, item);
+  });
+  return [...byService.values()];
+}
+
 exports.listClientMasterServices = async (req, res, options = {}) => {
   const identity = String(req.query.identity || req.query.leadId || req.query.clientMasterId || '').trim();
   if (!identity) return res.status(400).json({ error: 'Client or Lead identity is required' });
@@ -1574,7 +1600,10 @@ exports.listClientMasterServices = async (req, res, options = {}) => {
         industryType: 1, applicantType: 1
       } }).sort({ workflowStatus: -1, updatedAt: -1 }).toArray()
     : [];
-  const services = records.map(normalizeClientMaster).filter((item) => item.clientMasterId);
+  const services = uniqueClientMasterReviewServices(
+    records.map(normalizeClientMaster).filter((item) => item.clientMasterId),
+    explicitClientId
+  );
   if (lead && !isLeadEligibleForClientMaster(lead) && !services.length) {
     return res.status(409).json({ error: CLIENT_MASTER_CLOSED_LEAD_ERROR, code: 'LEAD_NOT_CLOSED' });
   }

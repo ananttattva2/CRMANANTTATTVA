@@ -14,6 +14,17 @@ test('service picker retains registration and annual return for the same applica
   assert.deepEqual(Array.from(context.uniqueClientMasterServices(rows), row => row.assignedServiceId), ['registration','annual','unit2']);
 });
 
+test('service picker collapses identical assigned services even when the plant unit is missing', () => {
+  const context = vm.createContext({ readAssignedServiceId: row => row.assignedServiceId, clientMasterServiceFingerprint: row => ['Manufacturing', '', row.eprCategory, row.applicantType, row.subApplicantType, row.servicesOffered, '', row.plantUnit || ''].join(':') });
+  vm.runInContext(source.slice(source.indexOf('function clientMasterGroupingIdentity'), source.indexOf('function legacyServiceFingerprintCompatible')), context);
+  vm.runInContext(source.slice(source.indexOf('function uniqueClientMasterServices'), source.indexOf('function activateAssignedService')), context);
+  const rows = [
+    { assignedServiceId:'producer-original', applicantType:'PIBO', subApplicantType:'Producer', eprCategory:'EPR - Plastic Waste', servicesOffered:'Annual Return Filling' },
+    { assignedServiceId:'producer-duplicate', applicantType:'PIBO', subApplicantType:'Producer', eprCategory:'EPR - Plastic Waste', servicesOffered:'Annual Return Filling' }
+  ];
+  assert.deepEqual(Array.from(context.uniqueClientMasterServices(rows), row => row.assignedServiceId), ['producer-original']);
+});
+
 test('selecting a company opens service selection for one or multiple services without onboarding automatically', async () => {
   const start = source.indexOf('async function handleLeadSelect(');
   const end = source.indexOf('    const service = selectedService || visibleServices[0]', start);

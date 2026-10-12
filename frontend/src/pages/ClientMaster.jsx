@@ -1035,6 +1035,26 @@ function clientMasterGroupingIdentity(service = {}) {
   return `${applicantType}:${subApplicantType}:${plantUnit}`;
 }
 
+function clientMasterLogicalServiceIdentity(service = {}) {
+  const normalize = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const normalizeOffering = (value) => {
+    const normalized = normalize(value);
+    return /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalized) ? 'annualreturn' : normalized;
+  };
+  const offerings = (Array.isArray(service.servicesOffered) ? service.servicesOffered : [service.servicesOffered])
+    .map(normalizeOffering).filter(Boolean).sort().join('|');
+  return [
+    service.industryType,
+    service.businessCategory,
+    service.eprCategory || service.serviceCategory,
+    service.applicantType || service.piboParent || service.piboCategoryParent,
+    service.subApplicantType || service.piboCategory,
+    offerings,
+    service.applicableService,
+    service.plantUnit
+  ].map(normalize).join(':');
+}
+
 function legacyServiceFingerprintCompatible(lhsRaw, rhsRaw) {
   const normalize = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   const build = (svc = {}) => [
@@ -1066,7 +1086,6 @@ function legacyServiceFingerprintCompatible(lhsRaw, rhsRaw) {
 function uniqueClientMasterServices(services = []) {
   const seen = new Set();
   return services.filter((service, index) => {
-    const fingerprint = clientMasterServiceFingerprint(service);
     const groupingIdentity = clientMasterGroupingIdentity(service);
     const normalizeOffering = (value) => {
       const normalized = String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -1075,11 +1094,12 @@ function uniqueClientMasterServices(services = []) {
     const offeringIdentity = (Array.isArray(service.servicesOffered) ? service.servicesOffered : [service.servicesOffered])
       .map(normalizeOffering).filter(Boolean).sort().join('|');
     const categoryIdentity = String(service.eprCategory || service.serviceCategory || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const logicalIdentity = clientMasterLogicalServiceIdentity(service);
     const key = groupingIdentity
       ? `client-master-group:${groupingIdentity}:${categoryIdentity}:${offeringIdentity}`
-      : (service.clientMasterId
-          ? `client-master:${service.clientMasterId}:${categoryIdentity}:${offeringIdentity}`
-          : (readAssignedServiceId(service) || (fingerprint.replace(/:/g, '') ? fingerprint : `service-${index}`)));
+      : (logicalIdentity.replace(/[:|]/g, '')
+          ? `client-master-logical:${logicalIdentity}`
+          : (service.clientMasterId || readAssignedServiceId(service) || `service-${index}`));
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -1622,14 +1642,19 @@ export default function ClientMaster() {
       rows = groupedLeadServices.map((currentService) => {
         const assignedServiceId = readAssignedServiceId(currentService);
         const groupingIdentity = clientMasterGroupingIdentity(currentService);
-        let storedIndex = groupedLeadServices.length === 1
-          ? storedServices.findIndex((stored) => String(stored.workflowStatus || '').toLowerCase() === 'submitted')
-          : -1;
-        if (storedIndex < 0 && groupingIdentity) {
-          storedIndex = storedServices.findIndex((stored, index) => !usedStoredIndexes.has(index) && clientMasterGroupingIdentity(stored) === groupingIdentity);
-        }
+        const logicalIdentity = clientMasterLogicalServiceIdentity(currentService);
+        let storedIndex = -1;
         if (storedIndex < 0 && assignedServiceId) {
           storedIndex = storedServices.findIndex((stored, index) => !usedStoredIndexes.has(index) && readAssignedServiceId(stored) === assignedServiceId);
+        }
+        if (storedIndex < 0 && logicalIdentity.replace(/[:|]/g, '')) {
+          storedIndex = storedServices.findIndex((stored, index) => !usedStoredIndexes.has(index) && clientMasterLogicalServiceIdentity(stored) === logicalIdentity);
+        }
+        if (storedIndex < 0 && groupedLeadServices.length === 1) {
+          storedIndex = storedServices.findIndex((stored, index) => !usedStoredIndexes.has(index) && String(stored.workflowStatus || '').toLowerCase() === 'submitted' && legacyServiceFingerprintCompatible(stored, currentService));
+        }
+        if (storedIndex < 0 && groupingIdentity) {
+          storedIndex = storedServices.findIndex((stored, index) => !usedStoredIndexes.has(index) && clientMasterGroupingIdentity(stored) === groupingIdentity);
         }
         if (storedIndex < 0) {
           storedIndex = storedServices.findIndex((stored, index) => (
@@ -1648,7 +1673,10 @@ export default function ClientMaster() {
           workflowStatus: stored.workflowStatus,
           cpcbPortalRegistered: stored.cpcbPortalRegistered,
           cpcbApplicationStatus: stored.cpcbApplicationStatus,
-          assignedServiceId: assignedServiceId || readAssignedServiceId(stored),
+          // Once an existing Client Master is selected, its saved assignment
+          // identity is authoritative. A duplicate lead-service row may have a
+          // newer ID even though it represents this exact same logical service.
+          assignedServiceId: readAssignedServiceId(stored) || assignedServiceId,
           _existingClientMaster: true
         };
       });
