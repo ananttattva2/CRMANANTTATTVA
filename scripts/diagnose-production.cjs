@@ -50,6 +50,12 @@ async function measure(name, run) {
 }
 (async () => {
   try {
+    await measure('cloudinary-current-library-count', async () => {
+      const prefix = process.env.CLOUDINARY_API_PREFIX || 'https://api.cloudinary.com';
+      const response = await fetch(`${prefix}/v1_1/${encodeURIComponent(process.env.CLOUDINARY_CLOUD_NAME)}/resources/search`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Basic ${Buffer.from(`${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`).toString('base64')}` }, body: JSON.stringify({ max_results: 1 }), signal: AbortSignal.timeout(15000) });
+      if (!response.ok) throw new Error('Cloudinary count check failed.');
+      return { total: (await response.json()).total_count };
+    });
     await measure('spaces-bucket-access', async () => {
       const directory = path.join(root, '.storage-migration/code');
       const staged = fs.readdirSync(directory).sort((a, b) => fs.statSync(path.join(directory, b)).mtimeMs - fs.statSync(path.join(directory, a)).mtimeMs)[0];
