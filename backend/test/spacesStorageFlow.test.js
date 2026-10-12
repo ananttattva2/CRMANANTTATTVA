@@ -54,6 +54,9 @@ test('actual frontend → CRM upload routes → local S3 HTTP → preview/downlo
     assert.equal(objects.size, 1); assert.ok(storageRequests.some(r => r.method === 'PUT')); assert.ok(storageRequests.some(r => r.method === 'HEAD'));
     const preview = await fetch(saved.secureUrl); assert.equal(preview.status, 200); assert.equal(preview.headers.get('content-type'), 'application/pdf'); assert.equal(preview.headers.get('content-disposition'), 'inline');
     assert.deepEqual(Buffer.from(await preview.arrayBuffer()), bytes);
+    const fallbackBody = new FormData(); fallbackBody.append('file', file); fallbackBody.append('folder', 'crm/invoices'); fallbackBody.append('checksum', crypto.createHash('sha256').update(bytes).digest('base64'));
+    const fallback = await fetch(`${origin}/api/assets/upload`, { method: 'POST', headers: { Authorization: 'Bearer fixture-user' }, body: fallbackBody });
+    assert.equal(fallback.status, 200); assert.ok((await fallback.json()).storageKey.startsWith('spaces:crm/invoices/'));
     const badLink = await fetch(saved.secureUrl.replace('signature=', 'signature=0')); assert.equal(badLink.status, 403);
     const anonymous = await fetch(`${origin}/api/assets/upload-url`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); assert.equal(anonymous.status, 401);
     const invalid = await fetch(`${origin}/api/assets/upload-confirm`, { method: 'POST', headers: { Authorization: 'Bearer fixture-user', 'Content-Type': 'application/json' }, body: JSON.stringify({ token: 'forged' }) }); assert.equal(invalid.status, 400);

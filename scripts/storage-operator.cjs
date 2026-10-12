@@ -36,11 +36,27 @@ async function main() {
   }
   fs.writeFileSync(`${envFile}.storage-tmp`, updated, { mode: 0o600 }); fs.renameSync(`${envFile}.storage-tmp`, envFile);
   Object.assign(process.env, dotenv.parse(updated));
+  // Preserve other CORS rules; failure does not send new uploads back to Cloudinary.
+  try {
+    const { S3Client, GetBucketCorsCommand, PutBucketCorsCommand } = appRequire('@aws-sdk/client-s3');
+    const client = new S3Client({ endpoint: additions.SPACES_ENDPOINT, region: additions.SPACES_REGION, credentials: { accessKeyId: additions.SPACES_ACCESS_KEY_ID, secretAccessKey: additions.SPACES_SECRET_ACCESS_KEY } });
+    let rules = [];
+    try { rules = (await client.send(new GetBucketCorsCommand({ Bucket: additions.SPACES_BUCKET }))).CORSRules || []; }
+    catch (error) { if (error.name !== 'NoSuchCORSConfiguration' && error.$metadata?.httpStatusCode !== 404) throw error; }
+    if (!rules.some(rule => rule.ID === 'crm-direct-uploads')) {
+      rules.push({ ID: 'crm-direct-uploads', AllowedOrigins: [new URL(additions.STORAGE_PUBLIC_API_ORIGIN).origin], AllowedMethods: ['PUT', 'GET', 'HEAD'], AllowedHeaders: ['*'], ExposeHeaders: ['ETag'], MaxAgeSeconds: 600 });
+      await client.send(new PutBucketCorsCommand({ Bucket: additions.SPACES_BUCKET, CORSConfiguration: { CORSRules: rules } }));
+    }
+    console.log(JSON.stringify({ corsConfigured: true }));
+  } catch { console.log(JSON.stringify({ corsConfigured: false, sameOriginUploadFallback: true })); }
   // Apply cannot introduce file links before the actual deployed CRM can serve them.
   if (operation === 'apply') {
     const response = await fetch(`${additions.STORAGE_PUBLIC_API_ORIGIN}/api/assets/file?key=invalid&signature=invalid`, { redirect: 'manual', signal: AbortSignal.timeout(15000) });
     if (response.status !== 403 || !(await response.text()).includes('Invalid file link')) throw new Error('Deploy Spaces preview/download routes before applying MongoDB references.');
-    if (payload.backupConfirmed !== true) throw new Error('Atlas backup confirmation is required.');
+    if (payload.backupConfirmed !== true) {
+      const directory = path.join(app, '.storage-migration/backups', new Date().toISOString().replace(/[:.]/g, '-'));
+      console.log(JSON.stringify(await require('./storage-backup.cjs')(appRequire, directory)));
+    }
   }
   const args = [path.join(backend, 'src/scripts/migrateCloudinaryToSpaces.js'), operation, '--run-dir', stateDirectory];
   if (operation === 'inventory' && fs.existsSync(path.join(stateDirectory, 'state.json'))) args.push('--resume');
@@ -54,7 +70,12 @@ async function main() {
   if (fs.existsSync(reportFile)) {
     const report = appRequire('bson').EJSON.parse(fs.readFileSync(reportFile, 'utf8'));
     const { files, discoveryErrors, ...summary } = report; console.log(JSON.stringify(summary));
-    if (discoveryErrors?.length) console.log(JSON.stringify({ errorCount: discoveryErrors.length }));
+    if (discoveryErrors?.length) {
+      let message = String(discoveryErrors.at(-1));
+      for (const [name, value] of Object.entries(process.env)) if (/secret|password|key|token/i.test(name) && value.length >= 8) message = message.split(value).join('[redacted]');
+      message = message.replace(/https?:\/\/\S+|mongodb(?:\+srv)?:\/\/\S+/g, '[redacted URL]');
+      console.log(JSON.stringify({ errorCount: discoveryErrors.length, lastError: message.slice(0, 300) }));
+    }
   }
   if (result.status !== 0) throw new Error(`Migration stopped (exit ${result.status}); inspect the protected report on the server.`);
 }

@@ -12,6 +12,11 @@ console.log(JSON.stringify({ check: 'storage-configuration', configured: Object.
   'SPACES_ACCESS_KEY_ID', 'SPACES_SECRET_ACCESS_KEY', 'SPACES_LINK_SECRET',
   'STORAGE_PUBLIC_API_ORIGIN', 'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'
 ].map(name => [name, Boolean(process.env[name])])), migrationInstalled: fs.existsSync(path.join(backend, 'src/scripts/migrateCloudinaryToSpaces.js')) }));
+const storageState = path.join(root, '.storage-migration/state/crm-full/state.json');
+if (fs.existsSync(storageState)) {
+  const state = JSON.parse(fs.readFileSync(storageState, 'utf8'));
+  console.log(JSON.stringify({ check: 'storage-progress', discovered: state.assets?.length || 0, discoveryComplete: !!state.discoveryComplete, discoveryPageComplete: !!state.discovery?.complete, verified: state.assets?.filter(a => a.status === 'verified').length || 0, failed: state.assets?.filter(a => a.status === 'failed').length || 0, missing: state.assets?.filter(a => a.status === 'missing').length || 0, databaseUpdates: state.patches?.filter(p => p.status === 'applied').length || 0 }));
+}
 const mongoose = appRequire('mongoose');
 const report = (value) => console.log(JSON.stringify(value));
 async function measure(name, run) {

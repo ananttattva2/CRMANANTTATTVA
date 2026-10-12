@@ -1,11 +1,26 @@
 const express = require('express');
 const spaces = require('../services/spacesStorage');
+const multer = require('multer');
+const crypto = require('node:crypto');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 const DEFAULT_LOGO_URL = 'https://crm.ananttattva.com/assets/at-logo-CTH78yrR.svg';
 let cachedLogo = null;
 let cachedContentType = 'image/svg+xml';
+
+// Same-origin fallback when browser-to-Spaces CORS/network access is unavailable.
+const receiveFile = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 1, fields: 2 } }).single('file');
+router.post('/upload', requireAuth, (req, res) => {
+  receiveFile(req, res, async error => {
+    if (error || !req.file) return res.status(400).json({ error: 'Invalid upload or file exceeds 25 MB.' });
+    if (crypto.createHash('sha256').update(req.file.buffer).digest('base64') !== req.body.checksum) return res.status(400).json({ error: 'Upload checksum mismatch.' });
+    try {
+      const stored = await spaces.uploadBuffer(req.file.buffer, req.file.originalname, req.file.mimetype, req.body.folder || 'crm/uploads');
+      return res.json({ ...stored, name: req.file.originalname, type: req.file.mimetype, uploadedAt: new Date().toISOString() });
+    } catch { return res.status(503).json({ error: 'Spaces storage upload failed.' }); }
+  });
+});
 
 router.post('/upload-url', requireAuth, async (req, res) => {
   try { return res.json(await spaces.authorizeUpload(req.body || {}, req.user._id)); }
