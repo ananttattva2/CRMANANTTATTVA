@@ -34,7 +34,7 @@ async function main() {
     const pattern = new RegExp(`^${key}=.*$`, 'm');
     updated = pattern.test(updated) ? updated.replace(pattern, () => line) : `${updated.trimEnd()}\n${line}\n`;
   }
-  fs.writeFileSync(`${envFile}.storage-tmp`, updated, { mode: 0o600 }); fs.renameSync(`${envFile}.storage-tmp`, envFile);
+  fs.writeFileSync(`${envFile}.storage-${process.pid}-tmp`, updated, { mode: 0o600 }); fs.renameSync(`${envFile}.storage-${process.pid}-tmp`, envFile);
   Object.assign(process.env, dotenv.parse(updated));
   if (operation === 'copy-originals' && !fs.existsSync(path.join(stateDirectory, 'state.json'))) {
     const migration = appRequire('./src/services/storageMigration');

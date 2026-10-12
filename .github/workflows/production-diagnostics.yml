@@ -62,7 +62,7 @@ jobs:
           archive="/tmp/crm-storage-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tgz"
           tar -czf migration-code.tgz backend/package.json backend/package-lock.json backend/src scripts/storage-operator.cjs scripts/storage-backup.cjs
           scp -q -i "$HOME/.ssh/digitalocean_deploy" -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -P "${DO_PORT:-22}" migration-code.tgz "$DO_USER@$DO_HOST:$archive"
-          code_dir="${APP_DIR:-/var/www/CRMANANTTATTVA}/.storage-migration/code/$GITHUB_SHA"
+          code_dir="${APP_DIR:-/var/www/CRMANANTTATTVA}/.storage-migration/code/${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           printf -v command 'mkdir -p %q && tar -xzf %q -C %q && cd %q && npm ci --omit=dev --silent' "$code_dir" "$archive" "$code_dir" "$code_dir/backend"
           ssh -i "$HOME/.ssh/digitalocean_deploy" -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" "$command"
           echo "STORAGE_CODE_DIR=$code_dir" >> "$GITHUB_ENV"
