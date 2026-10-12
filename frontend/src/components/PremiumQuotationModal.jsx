@@ -43,6 +43,7 @@ function AnimatedInteger({ value, duration = 1.5, className = '' }) {
 export default function PremiumQuotationModal({
   open = true,
   onClose,
+  overlayClassName = 'z-[220]',
   companyName = 'Quotation Details',
   quotationNumber = 'Quotation',
   totalAmount = 0,
@@ -57,7 +58,7 @@ export default function PremiumQuotationModal({
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-[220] grid place-items-center bg-slate-950/55 p-5 backdrop-blur-[9px]"
+          className={`fixed inset-0 ${overlayClassName} grid place-items-center bg-slate-950/55 p-5 backdrop-blur-[9px]`}
           role="presentation"
           onClick={onClose}
           initial={{ opacity: 0 }}

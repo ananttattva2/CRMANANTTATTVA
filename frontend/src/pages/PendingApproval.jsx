@@ -10,6 +10,7 @@ import ApprovalTabs from '../components/dashboard/ApprovalTabs';
 import BrandLoader from '../components/BrandLoader';
 import ToastMessage from '../components/ToastMessage';
 import PoProofView from '../components/PoProofView';
+import PremiumQuotationModal from '../components/PremiumQuotationModal';
 import { adminRoles, getUserRoles, hasAnyRole } from '../constants/dashboard';
 import api, { storeSessionUser } from '../services/api';
 import { API_ENDPOINTS } from '../services/apiEndpoints';
@@ -715,6 +716,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
   const [temporaryDecision, setTemporaryDecision] = useState(null);
   const [poApprovals, setPoApprovals] = useState([]);
   const [poDecision, setPoDecision] = useState(null);
+  const [poQuotationPreview, setPoQuotationPreview] = useState(null);
   const [quotationDecision, setQuotationDecision] = useState(null);
   const [approvalInputs, setApprovalInputs] = useState({});
   const [loading, setLoading] = useState(() => !cachedApprovalData);
@@ -1352,15 +1354,34 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
     });
   }
 
-  function openPoQuotation(row) {
-    const quotationId = row?.quotationId || row?.quotationNumber;
-    if (!quotationId) return;
-    navigate('/sales/quotations', {
-      state: {
-        previewQuotationId: quotationId,
-        fromPendingApproval: true
+  async function openPoQuotation(row) {
+    const quotationId = String(row?.quotationId || '').trim();
+    const quotationNumber = String(row?.quotationNumber || '').trim();
+    if (!quotationId && !quotationNumber) return;
+    setPoQuotationPreview({ loading: true, error: '', quotation: null, sourceRow: row });
+    try {
+      let quotation = null;
+      if (/^[a-f\d]{24}$/i.test(quotationId)) {
+        const response = await api.get(API_ENDPOINTS.quotations.detail(quotationId));
+        quotation = response.data?.quotation || null;
       }
-    });
+      if (!quotation) {
+        const lookup = quotationNumber || quotationId;
+        const response = await api.get(API_ENDPOINTS.quotations.list, { params: { search: lookup, limit: 100 } });
+        const quotations = Array.isArray(response.data?.quotations) ? response.data.quotations : [];
+        quotation = quotations.find((item) => [item?._id, item?.id, item?.quotationId, item?.quotationNumber]
+          .some((value) => String(value || '').trim().toLowerCase() === lookup.toLowerCase())) || null;
+      }
+      if (!quotation) throw new Error('The linked quotation could not be found.');
+      setPoQuotationPreview({ loading: false, error: '', quotation, sourceRow: row });
+    } catch (err) {
+      setPoQuotationPreview({
+        loading: false,
+        error: err?.response?.data?.error || err?.message || 'Unable to load this quotation.',
+        quotation: null,
+        sourceRow: row
+      });
+    }
   }
 
   function reviseQuotation(row) {
@@ -1923,6 +1944,10 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
       })()}
       {removePoRow && <div className="pending-decision-backdrop"><div role="dialog" aria-modal="true" aria-labelledby="delete-po-client-title" className="pending-decision-modal is-rejected"><div className="pending-decision-icon"><Trash2 className="h-7 w-7" /></div><h2 id="delete-po-client-title">Remove PO approval?</h2><p className="pending-decision-help">Are you sure you want to remove the PO approval for <strong>{removePoRow.clientName || 'this client'}</strong>?</p><p className="pending-decision-help">Only this approval row will be removed from this list. The lead, client and saved PO details will remain unchanged.</p><div className="pending-decision-actions"><button type="button" autoFocus disabled={Boolean(savingId)} onClick={() => setRemovePoRow(null)}>Cancel</button><button type="button" disabled={Boolean(savingId)} onClick={removePoApproval}>{savingId ? 'Removing…' : 'Yes, remove approval'}</button></div></div></div>}
       {poDecision && <div className="pending-decision-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingId) setPoDecision(null); }}><form onSubmit={submitPoDecision} role="dialog" aria-modal="true" aria-label="Review submitted Purchase Order" className={`pending-decision-modal pending-po-review-modal ${poDecision.status === 'APPROVED' ? 'is-approved' : 'is-rejected'}`}><div className="pending-decision-icon">{poDecision.status === 'APPROVED' ? <CheckCircle2 className="h-7 w-7" /> : <XCircle className="h-7 w-7" />}</div><button type="button" disabled={Boolean(savingId)} onClick={() => setPoDecision(null)} className="pending-decision-close" aria-label="Close PO decision"><X className="h-5 w-5" /></button><p className="pending-decision-eyebrow">Purchase Order Approval</p><h2>{poDecision.status === 'APPROVED' ? 'Approve Purchase Order' : poDecision.status === 'REJECTED' ? 'Reject Purchase Order' : 'Request quotation and PO revision'}</h2><strong className="pending-decision-client">{poDecision.row.clientName}</strong>{poDecision.loadingDetails ? <p role="status" className="pending-po-review-loading">Loading latest submitted PO details…</p> : poDecision.loadError ? <div role="alert" className="pending-po-review-error">{poDecision.loadError}<button type="button" onClick={() => openPoDecision(poDecision.row, poDecision.status)}>Retry</button></div> : <SubmittedPoReview approval={poDecision.row} onViewQuotation={openPoQuotation} />}<p className="pending-decision-help">No image or document is required. Add clear remarks and submit. The dialog will close immediately while the decision email is sent to the responsible users.</p><label className="pending-decision-field"><span>Decision remarks <b>*</b></span><textarea autoFocus required rows={6} value={poDecision.remarks} onChange={(event) => setPoDecision((current) => ({ ...current, remarks: event.target.value }))} placeholder="Clearly explain this PO decision..." /></label><div className="pending-decision-actions"><button type="button" disabled={Boolean(savingId)} onClick={() => setPoDecision(null)}>Cancel</button><button type="submit" disabled={Boolean(savingId) || poDecision.loadingDetails || Boolean(poDecision.loadError) || !poDecision.remarks.trim()}>{savingId ? <RefreshCw className="h-4 w-4 animate-spin" /> : poDecision.status === 'APPROVED' ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}Submit {poDecision.status === 'APPROVED' ? 'Approval' : poDecision.status === 'REJECTED' ? 'Rejection' : 'Revision'}</button></div></form></div>}
+
+      {poQuotationPreview?.loading && <div className="fixed inset-0 z-[10030] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm" role="status" aria-live="polite"><div className="flex items-center gap-3 rounded-xl bg-white px-6 py-5 font-black text-slate-800 shadow-2xl"><RefreshCw className="h-5 w-5 animate-spin text-teal-700" />Loading quotation…</div></div>}
+      {poQuotationPreview?.error && <div className="fixed inset-0 z-[10030] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setPoQuotationPreview(null); }}><div role="alert" className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"><button type="button" onClick={() => setPoQuotationPreview(null)} className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-600" aria-label="Close quotation error"><X className="h-5 w-5" /></button><p className="text-xs font-black uppercase tracking-widest text-red-600">Quotation unavailable</p><h2 className="mt-2 pr-10 text-xl font-black text-slate-950">Unable to open quotation</h2><p className="mt-3 text-sm font-semibold text-slate-600">{poQuotationPreview.error}</p><div className="mt-6 flex justify-end gap-3"><button type="button" onClick={() => setPoQuotationPreview(null)} className="min-h-10 rounded-lg border border-slate-300 px-4 font-black text-slate-700">Close</button><button type="button" onClick={() => openPoQuotation(poQuotationPreview.sourceRow)} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-teal-700 px-4 font-black text-white"><RefreshCw className="h-4 w-4" />Retry</button></div></div></div>}
+      {poQuotationPreview?.quotation && (() => { const quotation = poQuotationPreview.quotation; const items = Array.isArray(quotation.items) ? quotation.items : []; const latestItem = items.filter(Boolean).at(-1) || {}; const details = quotation.leadDetails || {}; return <PremiumQuotationModal open onClose={() => setPoQuotationPreview(null)} overlayClassName="z-[10030]" companyName={details.companyName || quotation.companyName || poDecision?.row?.clientName || 'Quotation Details'} quotationNumber={quotation.quotationNumber || poQuotationPreview.sourceRow?.quotationNumber || 'Quotation'} totalAmount={Number(quotation.grandTotal) || Number(quotation.subtotal) || items.reduce((total, item) => total + ((Number(item?.unit) || 1) * (Number(item?.basicAmount) || 0)), 0)} revisionCount={Math.max(1, Number(quotation.revisionCount) || 0)} userName={quotation.createdBy?.name || quotation.createdBy?.email || quotation.preparedByName || quotation.createdByName || '-'} piboCategory={latestItem.piboCategory || latestItem.subApplicantType || latestItem.applicantType || '-'} businessCategory={latestItem.businessCategory || '-'} serviceCategory={latestItem.serviceCategory || latestItem.eprCategory || '-'} items={items} />; })()}
 
       {quotationDecision && <div className="pending-decision-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingId) setQuotationDecision(null); }}><form onSubmit={submitQuotationDecision} style={{ maxHeight: "90vh", overflowY: "auto" }} className={`pending-decision-modal quotation-decision-modal ${quotationDecision.status === 'APPROVED' ? 'is-approved' : 'is-rejected'}`}><button type="button" disabled={Boolean(savingId)} onClick={() => setQuotationDecision(null)} className="pending-decision-close" aria-label="Close quotation decision"><X className="h-5 w-5" /></button><p className="pending-decision-eyebrow">Quotation Decision</p><h2>{quotationDecision.status === 'APPROVED' ? (quotationDecision.finalApproval ? 'Final Management Approval' : 'Management Approval') : 'Reject quotation'}</h2><strong className="pending-decision-client">{quotationDecision.row.companyName || '-'}</strong>{quotationDecision.status === 'APPROVED' ? <><ManagementApprovalDetails row={quotationDecision.row} /><p className="pending-decision-help">{quotationDecision.finalApproval ? "Review the Management Approval details before confirming final approval." : "Approval proof is optional. Admin approval unlocks the quotation PDF; final Super Admin approval follows."}</p>{!quotationDecision.finalApproval && <><label className="mt-4 flex min-h-16 cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50 px-4 font-black text-emerald-700"><FileCheck2 className="mr-2 h-5 w-5" />{quotationDecision.proofName || 'Upload approval proof (optional)'}<input type="file" accept="image/*,.pdf" className="sr-only" onChange={uploadQuotationDecisionProof} /></label><label className="pending-decision-field mt-4"><span>Approval note</span><textarea rows={4} value={quotationDecision.remarks} onChange={(event) => setQuotationDecision((current) => ({ ...current, remarks: event.target.value }))} placeholder="Add an optional approval note..." /></label></>}</> : <label className="pending-decision-field"><span>Rejection reason <b>*</b></span><textarea autoFocus required rows={7} value={quotationDecision.remarks} onChange={(event) => setQuotationDecision((current) => ({ ...current, remarks: event.target.value }))} placeholder="Please explain why this quotation is being rejected..." /></label>}<div className="pending-decision-actions"><button type="button" disabled={Boolean(savingId)} onClick={() => setQuotationDecision(null)}>Cancel</button><button type="submit" disabled={Boolean(savingId) || (quotationDecision.status === 'REJECTED' && !quotationDecision.remarks.trim())}>{savingId ? <RefreshCw className="h-4 w-4 animate-spin" /> : quotationDecision.status === 'APPROVED' ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}Confirm {quotationDecision.status === 'APPROVED' ? 'Approval' : 'Rejection'}</button></div></form></div>}
 
