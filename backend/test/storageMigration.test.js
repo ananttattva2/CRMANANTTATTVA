@@ -141,3 +141,17 @@ test('server-side reference projection matches local discovery without returning
   const local = []; migration.walkReferences(doc, (url, path) => local.push({ url, path: path.join('.') }));
   assert.deepEqual(migration.serverReferences(doc), local);
 });
+test('append-only write-ahead journal recovers pending/applied patches and exact IDs without a full checkpoint', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'crm-journal-test-')); const file = path.join(directory, 'state.json'); const journal = path.join(directory, 'patch-journal.jsonl');
+  try {
+    migration.atomicWrite(file, { schemaVersion: 1, patches: [] });
+    const patch = { documentId: new ObjectId(), collection: 'clients', before: { url: oldUrl }, after: { url: newUrl }, status: 'pending' }; const known = new WeakMap();
+    migration.journalChanges(journal, [patch], known);
+    assert.equal(migration.loadState(file).patches[0].status, 'pending');
+    patch.status = 'applied'; migration.journalChanges(journal, [patch], known);
+    fs.appendFileSync(journal, '{incomplete uncommitted tail');
+    const recovered = migration.loadState(file); assert.equal(recovered.patches[0].status, 'applied'); assert.equal(recovered.patches[0].documentId.toHexString(), patch.documentId.toHexString());
+    patch.status = 'rolled-back'; migration.journalChanges(journal, [patch], known);
+    assert.equal(migration.loadState(file).patches[0].status, 'rolled-back', 'Uncommitted partial tail is removed before new durable entries');
+  } finally { for (const name of fs.readdirSync(directory)) fs.unlinkSync(path.join(directory, name)); fs.rmdirSync(directory); }
+});

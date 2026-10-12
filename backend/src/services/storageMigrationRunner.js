@@ -101,7 +101,7 @@ async function updateReferences(state, database, fileUrl, verifyAsset, save, { r
       state.patches.push(patch);
       // Durable journal is saved before the database write, not after it.
       await save();
-      const result = await migration.applyPatch(collection, patch);
+      const result = await migration.applyPatch(collection, patch, 'forward', doc);
       patch.status = result === 'conflict' ? 'conflict' : 'applied'; await save();
     }
   }

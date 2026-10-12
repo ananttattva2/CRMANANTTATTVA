@@ -118,10 +118,10 @@ function referencePatches(doc, assets, fileUrl, cachedIndex) {
 function valuesMatch(doc, values) {
   return doc && Object.entries(values).every(([field, value]) => { let actual = doc; for (const part of field.split('.')) actual = actual?.[part]; return EJSON.stringify(actual) === EJSON.stringify(value); });
 }
-async function applyPatch(collection, patch, direction = 'forward') {
+async function applyPatch(collection, patch, direction = 'forward', currentDocument) {
   const before = direction === 'forward' ? patch.before : patch.after;
   const after = direction === 'forward' ? patch.after : patch.before;
-  const current = await collection.findOne({ _id: patch.documentId });
+  const current = currentDocument || await collection.findOne({ _id: patch.documentId });
   if (valuesMatch(current, after)) return 'already-applied';
   if (!valuesMatch(current, before)) return 'conflict';
   const result = await collection.updateOne({ _id: patch.documentId, ...before }, { $set: after });
@@ -132,8 +132,7 @@ function atomicWrite(file, data) {
   try { fs.writeFileSync(fd, EJSON.stringify(data, { relaxed: false })); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
   fs.renameSync(temporary, file);
 }
-function loadState(file) {
-  const text = fs.readFileSync(file, 'utf8');
+function parseState(text) {
   const raw = JSON.parse(text); const state = EJSON.parse(text, { relaxed: true });
   // Runtime counters stay JS numbers; MongoDB identifiers retain exact BSON types/precision.
   function identifiers(source, target) {
@@ -144,6 +143,39 @@ function loadState(file) {
     }
   }
   identifiers(raw, state); return state;
+}
+function loadState(file) {
+  const state = parseState(fs.readFileSync(file, 'utf8'));
+  const journal = path.join(path.dirname(file), 'patch-journal.jsonl');
+  if (path.basename(file) === 'state.json' && fs.existsSync(journal)) {
+    const lines = fs.readFileSync(journal, 'utf8').split('\n'); lines.pop();
+    for (const line of lines) {
+      if (!line) continue;
+      const entry = parseState(line);
+      if (!Number.isSafeInteger(entry.index) || entry.index < 0 || entry.index > state.patches.length || entry.patch?.documentId === undefined || entry.patch.documentId === null) throw new Error('Corrupt patch journal; refusing database changes.');
+      state.patches[entry.index] = entry.patch;
+    }
+  }
+  return state;
+}
+function journalChanges(file, patches, knownStatuses) {
+  if (fs.existsSync(file)) {
+    const fd = fs.openSync(file, 'r+');
+    try {
+      const size = fs.fstatSync(fd).size;
+      if (size) {
+        const last = Buffer.alloc(1); fs.readSync(fd, last, 0, 1, size - 1);
+        if (last[0] !== 10) { const data = fs.readFileSync(file); fs.ftruncateSync(fd, data.lastIndexOf(10) + 1); fs.fsyncSync(fd); }
+      }
+    } finally { fs.closeSync(fd); }
+  }
+  for (let index = 0; index < patches.length; index++) {
+    const patch = patches[index]; if (knownStatuses.get(patch) === patch.status) continue;
+    const fd = fs.openSync(file, 'a', 0o600);
+    try { fs.writeSync(fd, EJSON.stringify({ index, patch }, { relaxed: false }) + '\n'); fs.fsyncSync(fd); }
+    finally { fs.closeSync(fd); }
+    knownStatuses.set(patch, patch.status);
+  }
 }
 function report(state) {
   const assets = state.assets || []; const count = status => assets.filter(a => a.status === status).length;
@@ -157,4 +189,4 @@ function report(state) {
     files: assets.map(a => ({ id: a.id, kind: a.kind, publicId: a.public_id, folder: a.asset_folder, key: a.key, status: a.status, attempts: a.attempts || 0, size: a.verification?.size, sha256: a.verification?.sha256, referenceCount: a.references?.length || 0, collisionRenamed: !!a.collisionRenamed, error: a.error || '' }))
   };
 }
-module.exports = { sha256, cloudUrl, normalizeUrl, walkReferences, serverReferences, assignKeys, originalKey, connectReferences, digestStream, verified, verifiedAliasIndex, referencePatches, valuesMatch, applyPatch, atomicWrite, loadState, report };
+module.exports = { sha256, cloudUrl, normalizeUrl, walkReferences, serverReferences, assignKeys, originalKey, connectReferences, digestStream, verified, verifiedAliasIndex, referencePatches, valuesMatch, applyPatch, atomicWrite, loadState, journalChanges, report };

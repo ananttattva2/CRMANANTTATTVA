@@ -153,7 +153,12 @@ async function main(argv = process.argv.slice(2)) {
   try { lock = fs.openSync(lockFile, 'wx', 0o600); fs.writeSync(lock, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() })); }
   catch { throw new Error('Run directory is locked. Confirm no migration process is running before removing a stale local run.lock.'); }
   let state; let lastCheckpoint = 0;
+  const knownStatuses = new WeakMap();
   const save = (force = false) => {
+    if (['apply', 'rollback'].includes(opts.command)) {
+      migration.journalChanges(path.join(directory, 'patch-journal.jsonl'), state.patches, knownStatuses);
+      if (!force && Date.now() - lastCheckpoint < 30000) return;
+    }
     // Copy checkpoints may replay a few files after a crash; existing targets are re-hashed.
     // MongoDB write-ahead checkpoints are never throttled.
     if (opts.command === 'copy' && !force && Date.now() - lastCheckpoint < 1000) return;
@@ -165,6 +170,7 @@ async function main(argv = process.argv.slice(2)) {
     if (opts.command !== 'inventory' && !exists) throw new Error('Create and review an inventory first.');
     if (exists && opts.command === 'inventory' && !opts.resume) throw new Error('Inventory exists. Use --resume or choose a new --run-dir.');
     state = exists ? migration.loadState(stateFile) : { schemaVersion: 1, runId: crypto.randomUUID(), identity: identity(), assets: [], patches: [], collections: [], discoveryErrors: [], discoveryComplete: false };
+    for (const patch of state.patches) knownStatuses.set(patch, patch.status);
     if (state.schemaVersion !== 1) throw new Error('Unsupported migration state version.');
     if (opts.command === 'report') { writeReport(directory, state); return; }
     if (EJSON.stringify(state.identity) !== EJSON.stringify(identity())) throw new Error('Run cloud/bucket/database/origin configuration changed. Restore the original configuration or create a new inventory.');

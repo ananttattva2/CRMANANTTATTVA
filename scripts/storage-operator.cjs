@@ -107,7 +107,10 @@ async function main() {
     if (active && (operation === 'restart-inventory' || operation === 'restart-apply')) {
       const command = fs.readFileSync(`/proc/${lock.pid}/cmdline`, 'utf8').split('\0');
       const expectedOperation = operation === 'restart-apply' ? 'apply' : 'inventory';
-      if (operation === 'restart-apply' && appRequire('./src/services/storageMigration').loadState(path.join(stateDirectory, 'state.json')).patches.length) throw new Error('Reference updates have started; allow the current writer to finish.');
+      if (operation === 'restart-apply') {
+        const checkpoint = appRequire('./src/services/storageMigration').loadState(path.join(stateDirectory, 'state.json'));
+        if (!fs.existsSync(backupPointer) || !checkpoint.patches.every(patch => patch.documentId && patch.before && patch.after && ['pending', 'applied', 'conflict', 'rolled-back'].includes(patch.status))) throw new Error('Verified backup and valid write-ahead state are required for resume.');
+      }
       if (!command.includes(expectedOperation) || !command.includes(stateDirectory) || !command.some(arg => arg.endsWith('/migrateCloudinaryToSpaces.js'))) throw new Error('Refusing to stop a non-inventory process.');
       process.kill(lock.pid, 'SIGTERM');
       for (let attempt = 0; attempt < 30; attempt++) {
