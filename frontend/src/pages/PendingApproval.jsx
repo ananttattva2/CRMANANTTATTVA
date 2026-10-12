@@ -633,6 +633,49 @@ function getApprovalStatus(row) {
   return String(row?.approvalStatus || row?.status || 'PENDING').toUpperCase();
 }
 
+function pendingClientCompanyKey(row = {}) {
+  const company = String(row.clientName || row.companyName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (company) return `company:${company}`;
+  const selectedLead = row.selectedLeadId || row.payload?.selectedLeadId || row.payload?.selectedLead;
+  const leadId = typeof selectedLead === 'object' ? (selectedLead?._id || selectedLead?.id) : selectedLead;
+  return `lead:${String(leadId || row.id || row._id || '').trim().toLowerCase()}`;
+}
+
+function groupedClientApprovalStatus(rows = []) {
+  const statuses = [...new Set(rows.map(getApprovalStatus))];
+  if (statuses.length === 1) return statuses[0];
+  if (statuses.some((status) => ['APPROVED', 'REJECTED', 'PARTIALLY_APPROVED'].includes(status))) return 'PARTIALLY_APPROVED';
+  return 'PENDING';
+}
+
+function groupPendingClientsByCompany(rows = []) {
+  const groups = new Map();
+  rows.forEach((row) => {
+    const key = pendingClientCompanyKey(row);
+    const current = groups.get(key) || [];
+    current.push(row);
+    groups.set(key, current);
+  });
+  return [...groups.values()].map((companyRows) => {
+    const representative = companyRows[0];
+    const uniqueValues = (selector) => [...new Set(companyRows.map(selector).map((value) => String(value || '').trim()).filter((value) => value && value !== '-'))];
+    const applicantTypes = uniqueValues((row) => row.piboCategory);
+    const serviceCategories = uniqueValues((row) => row.eprCategory);
+    const createdByUsers = uniqueValues((row) => row.createdBy);
+    return {
+      ...representative,
+      approvalStatus: groupedClientApprovalStatus(companyRows),
+      piboCategory: applicantTypes.join(', ') || '-',
+      eprCategory: serviceCategories.join(', ') || '-',
+      createdBy: createdByUsers.join(', ') || '-',
+      applicantCount: applicantTypes.length || companyRows.length,
+      _applicantTypes: applicantTypes,
+      _createdByUsers: createdByUsers,
+      _clientApprovalRows: companyRows
+    };
+  });
+}
+
 function rowMatchesSearch(row, query) {
   if (!query.trim()) return true;
   const needle = query.trim().toLowerCase();
@@ -699,33 +742,36 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
   const isComplianceApprovalView = companyOnly || hasAnyRole(currentUser, ['compliance']) && !canApprove;
   const isServiceParticipantView = !canApprove && !isComplianceApprovalView;
   const canApproveClients = canApprove || isComplianceApprovalView;
+  const companyClients = useMemo(() => groupPendingClientsByCompany(pendingClients), [pendingClients]);
 
   useEffect(() => {
     if (location.state?.approvalNotice) setNotice(location.state.approvalNotice);
   }, [location.state?.approvalNotice]);
 
   const allApprovalRows = useMemo(() => isComplianceApprovalView
-    ? pendingClients
+    ? companyClients
     : isServiceParticipantView
       ? serviceApprovals
-      : [...pendingClients, ...pendingQuotations, ...duplicateLeadApprovals, ...serviceApprovals, ...royaltyApprovals, ...temporaryApprovals, ...poApprovals], [isComplianceApprovalView, isServiceParticipantView, pendingClients, pendingQuotations, duplicateLeadApprovals, serviceApprovals, royaltyApprovals, temporaryApprovals, poApprovals]);
+      : [...companyClients, ...pendingQuotations, ...duplicateLeadApprovals, ...serviceApprovals, ...royaltyApprovals, ...temporaryApprovals, ...poApprovals], [isComplianceApprovalView, isServiceParticipantView, companyClients, pendingQuotations, duplicateLeadApprovals, serviceApprovals, royaltyApprovals, temporaryApprovals, poApprovals]);
   const piboOptions = useMemo(() => {
     const values = allApprovalRows
-      .map((row) => formatApprovalValue(row?.piboCategory))
+      .flatMap((row) => row?._applicantTypes?.length ? row._applicantTypes : [formatApprovalValue(row?.piboCategory)])
       .filter((value) => value && value !== '-');
     return [...new Set(values)].sort((a, b) => a.localeCompare(b));
   }, [allApprovalRows]);
   const approvalUserName = (row) => formatApprovalValue(row?.createdBy || row?.submittedBy || row?.createdByName || row?.userName || row?.claimedBy || row?.leadGeneratedBy);
-  const userOptions = useMemo(() => [...new Set(allApprovalRows.map(approvalUserName).filter((value) => value && value !== '-'))].sort((a, b) => a.localeCompare(b)), [allApprovalRows]);
+  const userOptions = useMemo(() => [...new Set(allApprovalRows
+    .flatMap((row) => row?._createdByUsers?.length ? row._createdByUsers : [approvalUserName(row)])
+    .filter((value) => value && value !== '-'))].sort((a, b) => a.localeCompare(b)), [allApprovalRows]);
   const filterRow = (row) => {
     const statusMatches = statusFilter === 'all' || getApprovalStatus(row) === statusFilter;
-    const piboMatches = piboFilter === 'all' || formatApprovalValue(row?.piboCategory) === piboFilter;
-    const userMatches = userFilter === 'all' || approvalUserName(row) === userFilter;
+    const piboMatches = piboFilter === 'all' || (row?._applicantTypes?.length ? row._applicantTypes.includes(piboFilter) : formatApprovalValue(row?.piboCategory) === piboFilter);
+    const userMatches = userFilter === 'all' || (row?._createdByUsers?.length ? row._createdByUsers.includes(userFilter) : approvalUserName(row) === userFilter);
     return statusMatches && piboMatches && userMatches && rowMatchesSearch(row, searchTerm);
   };
   const filteredClients = useMemo(() => (
-    !['all', 'clients'].includes(typeFilter) ? [] : pendingClients.filter(filterRow)
-  ), [pendingClients, searchTerm, statusFilter, piboFilter, userFilter, typeFilter]);
+    !['all', 'clients'].includes(typeFilter) ? [] : companyClients.filter(filterRow)
+  ), [companyClients, searchTerm, statusFilter, piboFilter, userFilter, typeFilter]);
   const filteredQuotations = useMemo(() => (
     !['all', 'quotations'].includes(typeFilter) ? [] : pendingQuotations.filter(filterRow)
   ), [pendingQuotations, searchTerm, statusFilter, piboFilter, userFilter, typeFilter]);
@@ -1431,7 +1477,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
           {loading && <div className="page-inline-loader">Refreshing approval data...</div>}
 
           {!embedded && <div className="pending-metrics">
-            {canApproveClients && <Metric icon={Users} label="Pending Clients" value={pendingClients.filter((client) => getApprovalStatus(client) === 'PENDING').length} hint="Needs your review" tone="mint" onClick={() => openMetric('clients')} />}
+            {canApproveClients && <Metric icon={Users} label="Pending Clients" value={companyClients.filter((client) => getApprovalStatus(client) === 'PENDING').length} hint="Needs your review" tone="mint" onClick={() => openMetric('clients')} />}
             {!isComplianceApprovalView && <Metric icon={FileText} label="Pending Quotations" value={pendingQuotations.filter((row) => getApprovalStatus(row) === 'PENDING').length} hint="Needs your review" tone="blue" onClick={() => openMetric('quotations')} />}
             {!isComplianceApprovalView && <Metric icon={Users} label="Special Approvals" value={duplicateLeadApprovals.filter((row) => getApprovalStatus(row) === 'PENDING').length} hint="Lead review" tone="mint" onClick={() => openMetric('duplicates')} />}
             {!isComplianceApprovalView && <Metric icon={Users} label="Royalty Claims" value={royaltyApprovals.filter((row) => getApprovalStatus(row) === 'PENDING').length} hint="Ratio review" tone="blue" onClick={() => openMetric('royalty')} />}
@@ -1625,7 +1671,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                   ['PARTIALLY_APPROVED', 'Partially Approved'],
                   ['APPROVED', 'Approved'],
                   ['REJECTED', 'Rejected']
-                ].map(([status, label]) => { const count = pendingClients.filter((client) => getApprovalStatus(client) === status).length; return <button type="button" key={status} onClick={() => setStatusFilter(status)} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-black transition ${statusFilter === status ? status === 'APPROVED' ? 'border-emerald-600 bg-emerald-600 text-white' : status === 'PARTIALLY_APPROVED' ? 'border-amber-500 bg-amber-500 text-white' : 'border-rose-200 bg-rose-100 text-rose-700' : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-300'}`}><span className="client-status-tab-label">{label}</span><b className={`rounded-full px-2 py-0.5 ${statusFilter === status ? status === 'PENDING' ? 'bg-rose-200 text-rose-800' : 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'}`}>{count}</b></button> })}</div>}
+                ].map(([status, label]) => { const count = companyClients.filter((client) => getApprovalStatus(client) === status).length; return <button type="button" key={status} onClick={() => setStatusFilter(status)} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-black transition ${statusFilter === status ? status === 'APPROVED' ? 'border-emerald-600 bg-emerald-600 text-white' : status === 'PARTIALLY_APPROVED' ? 'border-amber-500 bg-amber-500 text-white' : 'border-rose-200 bg-rose-100 text-rose-700' : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-300'}`}><span className="client-status-tab-label">{label}</span><b className={`rounded-full px-2 py-0.5 ${statusFilter === status ? status === 'PENDING' ? 'bg-rose-200 text-rose-800' : 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'}`}>{count}</b></button> })}</div>}
               >
                 {visibleClients.map((client) => {
                   const approvalState = getApprovalStatus(client);
@@ -1635,7 +1681,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                     <Cell strong><span className="flex items-center gap-2">{complianceApproved ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-label="Compliance approved" /> : partiallyApproved ? <AlertTriangle className="h-4 w-4 shrink-0 fill-amber-100 text-amber-500" aria-label="Compliance partially approved" /> : <AlertTriangle className="h-4 w-4 shrink-0 fill-rose-100 text-rose-600" aria-label="Compliance approval pending" />}<button type="button" onClick={() => openClientMaster(client)} className="font-black text-emerald-700 underline decoration-emerald-300 underline-offset-4 hover:text-emerald-900">{client.clientName}</button></span></Cell>
                     <Cell><div className="flex flex-col items-start gap-1">{statusBadge(client.approvalStatus)}{['RED', 'PERMANENT_RED'].includes(client.reminderFlag) && <><span className="rounded-full bg-red-100 px-2 py-1 text-[9px] font-black text-red-700">{client.reminderFlag === 'PERMANENT_RED' ? 'PERMANENT RED FLAG' : 'RED FLAG - 24H RECOVERY'}</span>{client.reminderFlag === 'RED' && client.greenFlagDeadline && <small className="font-bold text-red-600">Recover by {formatDisplayDateTime(client.greenFlagDeadline)}</small>}</>}</div></Cell>
                     <Cell>{approvalState === 'PENDING' ? '-' : <span className="font-black text-slate-700">{formatApprovalValue(client.decisionBy)}{client.decisionAt && <small className="mt-1 block font-semibold text-slate-400">{new Date(client.decisionAt).toLocaleString('en-IN')}</small>}</span>}</Cell>
-                    <Cell>{client.piboCategory}</Cell>
+                    <Cell><span>{client.piboCategory}</span>{client.applicantCount > 1 && <small className="mt-1 block font-semibold text-slate-400">{client.applicantCount} applicants — open Review to select</small>}</Cell>
                     <Cell>{client.eprCategory}</Cell>
                     <Cell>{formatApprovalValue(client.createdBy)}</Cell>
                     <Cell>{[formatApprovalValue(client.requestDate), formatApprovalValue(client.requestTime)].filter((item) => item !== '-').join(' ')}</Cell>
