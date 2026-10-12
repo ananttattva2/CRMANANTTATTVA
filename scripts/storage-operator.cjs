@@ -5,7 +5,9 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { createRequire } = require('node:module');
 const { spawn } = require('node:child_process');
-const [appArgument, operation, codeArgument] = process.argv.slice(2);
+const [appArgument, requestedOperation, codeArgument] = process.argv.slice(2);
+const delta = requestedOperation.startsWith('delta-');
+const operation = delta ? requestedOperation.slice(6) : requestedOperation;
 const app = fs.realpathSync(appArgument);
 const code = fs.realpathSync(codeArgument);
 const backend = path.join(code, 'backend');
@@ -24,7 +26,7 @@ async function main() {
     SPACES_LINK_SECRET: parsed.SPACES_LINK_SECRET || crypto.randomBytes(32).toString('hex'),
     STORAGE_PUBLIC_API_ORIGIN: parsed.STORAGE_PUBLIC_API_ORIGIN || payload.publicOrigin || 'https://crmananttattva.com'
   };
-  const stateDirectory = path.join(app, '.storage-migration/state', operation === 'copy-originals' ? 'crm-originals' : 'crm-full');
+  const stateDirectory = path.join(app, '.storage-migration/state', delta ? 'crm-delta' : operation === 'copy-originals' ? 'crm-originals' : 'crm-full');
   fs.mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });
   const backup = path.join(stateDirectory, 'backend-env.before-storage');
   if (!fs.existsSync(backup)) fs.writeFileSync(backup, original, { mode: 0o600, flag: 'wx' });
@@ -36,11 +38,11 @@ async function main() {
   }
   fs.writeFileSync(`${envFile}.storage-${process.pid}-tmp`, updated, { mode: 0o600 }); fs.renameSync(`${envFile}.storage-${process.pid}-tmp`, envFile);
   Object.assign(process.env, dotenv.parse(updated));
-  const backupPointer = path.join(app, '.storage-migration/state/crm-full/verified-backup.json');
+  const backupPointer = path.join(stateDirectory, 'verified-backup.json');
   const databaseFingerprint = crypto.createHash('sha256').update(`${appRequire('./src/config/db').__test.buildMongoUri()}|${process.env.DB_NAME || 'registerd_types'}`).digest('hex');
   async function takeBackup() {
     const directory = path.join(app, '.storage-migration/backups', new Date().toISOString().replace(/[:.]/g, '-'));
-    const inventory = appRequire('./src/services/storageMigration').loadState(path.join(app, '.storage-migration/state/crm-full/state.json'));
+    const inventory = appRequire('./src/services/storageMigration').loadState(path.join(stateDirectory, 'state.json'));
     if (!inventory.discoveryComplete) throw new Error('Complete reference inventory is required before backup.');
     const grouped = {};
     for (const asset of inventory.assets) for (const ref of asset.references || []) {
@@ -63,7 +65,7 @@ async function main() {
     delete source.mongoReferences; delete source.referenceCollectionsComplete;
     migration.atomicWrite(path.join(stateDirectory, 'state.json'), source);
   }
-  if (operation === 'copy' || operation === 'apply') {
+  if (!delta && (operation === 'copy' || operation === 'apply')) {
     const migration = appRequire('./src/services/storageMigration');
     const originalsFile = path.join(app, '.storage-migration/state/crm-originals/state.json');
     const fullFile = path.join(stateDirectory, 'state.json');
