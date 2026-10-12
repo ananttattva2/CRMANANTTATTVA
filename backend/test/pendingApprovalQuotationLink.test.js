@@ -10,6 +10,8 @@ test('PO approval review opens the linked CRM quotation inside the current dialo
   assert.match(source, /api\.get\(API_ENDPOINTS\.quotations\.detail\(quotationId\)\)/)
   assert.match(source, /setPoQuotationPreview\(\{ loading: true/)
   assert.match(source, /<PremiumQuotationModal open/)
+  assert.match(source, /pricingMode=\{quotation\.pricingMode \|\| 'individual'\}/)
+  assert.match(source, /combinedPricingGroups=\{quotation\.combinedPricingGroups\}/)
   assert.doesNotMatch(source.match(/async function openPoQuotation[\s\S]*?\n  \}/)?.[0] || '', /navigate\(/)
   assert.match(source, /onViewQuotation=\{openPoQuotation\}/)
 })
