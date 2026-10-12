@@ -7,6 +7,11 @@ const root = path.resolve(process.argv[2] || '.');
 const backend = path.join(root, 'backend');
 const appRequire = createRequire(path.join(backend, 'package.json'));
 appRequire('dotenv').config({ path: path.join(backend, '.env'), quiet: true });
+// Presence checks only: never reveal secret values or attachment URLs in Actions logs.
+console.log(JSON.stringify({ check: 'storage-configuration', configured: Object.fromEntries([
+  'SPACES_ACCESS_KEY_ID', 'SPACES_SECRET_ACCESS_KEY', 'SPACES_LINK_SECRET',
+  'STORAGE_PUBLIC_API_ORIGIN', 'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'
+].map(name => [name, Boolean(process.env[name])])), migrationInstalled: fs.existsSync(path.join(backend, 'src/scripts/migrateCloudinaryToSpaces.js')) }));
 const mongoose = appRequire('mongoose');
 const report = (value) => console.log(JSON.stringify(value));
 async function measure(name, run) {

@@ -18,3 +18,5 @@ frontend/.env.local
 
 # Migration state/reports contain private URLs and rollback values.
 backend/storage-migration-output/
+
+/.storage-migration/
