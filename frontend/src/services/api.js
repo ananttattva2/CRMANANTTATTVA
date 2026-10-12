@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { API_ENDPOINTS } from './apiEndpoints'
 
-// Keep browser requests on the current origin. Vercel proxies /api to Render,
+// Keep browser requests on the current origin. Vercel proxies /api to DigitalOcean,
 // which avoids cross-origin preflights and keeps one production API entrypoint.
 const defaultBaseURL = '/api'
 const configuredBaseURL = import.meta.env.DEV
