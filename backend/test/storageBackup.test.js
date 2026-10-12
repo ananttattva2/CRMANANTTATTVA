@@ -20,3 +20,19 @@ test('snapshot backup verifies BSON documents and captures index metadata withou
     assert.ok(manifest.verified); assert.equal(manifest.collections[0].indexes[0].name, '_id_');
   } finally { for (const name of fs.readdirSync(directory)) fs.unlinkSync(path.join(directory, name)); fs.rmdirSync(directory); }
 });
+test('planned-record backup uses fresh bounded snapshot sessions and never reads unrelated records', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'crm-target-backup-test-'));
+  const rows = Array.from({ length: 201 }, (_, index) => ({ _id: new ObjectId(), value: String(index) }));
+  let sessions = 0; let ended = 0;
+  const mongoose = { connect: async () => {}, disconnect: async () => {}, connection: {
+    getClient: () => ({ startSession: options => { assert.ok(options.snapshot); sessions++; return { endSession: async () => { ended++; } }; } }),
+    db: { listCollections: () => ({ toArray: async () => [{ name: 'clients', type: 'collection' }, { name: 'unrelated', type: 'collection' }] }), collection: name => {
+      assert.equal(name, 'clients'); return { find: query => { assert.ok(query._id.$in.length <= 100); return rows.filter(row => query._id.$in.some(id => String(id) === String(row._id))); }, indexes: async () => [{ name: '_id_', key: { _id: 1 } }] };
+    } }
+  } };
+  const appRequire = name => name === 'mongoose' ? mongoose : name === 'bson' ? { EJSON } : { __test: { buildMongoUri: () => 'fixture' } };
+  try {
+    const result = await backup(appRequire, directory, { clients: rows.map(row => row._id) });
+    assert.equal(result.documents, 201); assert.equal(result.scope, 'planned-reference-documents'); assert.equal(sessions, 3); assert.equal(ended, 3);
+  } finally { for (const name of fs.readdirSync(directory)) fs.unlinkSync(path.join(directory, name)); fs.rmdirSync(directory); }
+});

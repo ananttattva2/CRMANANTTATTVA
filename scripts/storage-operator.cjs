@@ -63,7 +63,7 @@ async function main() {
     delete source.mongoReferences; delete source.referenceCollectionsComplete;
     migration.atomicWrite(path.join(stateDirectory, 'state.json'), source);
   }
-  if (operation === 'copy') {
+  if (operation === 'copy' || operation === 'apply') {
     const migration = appRequire('./src/services/storageMigration');
     const originalsFile = path.join(app, '.storage-migration/state/crm-originals/state.json');
     const fullFile = path.join(stateDirectory, 'state.json');

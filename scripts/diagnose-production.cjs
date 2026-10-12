@@ -23,7 +23,10 @@ const originalsState = path.join(root, '.storage-migration/state/crm-originals/s
 if (fs.existsSync(originalsState)) {
   const state = JSON.parse(fs.readFileSync(originalsState, 'utf8'));
   const errors = {};
-  for (const asset of state.assets || []) if (asset.error) errors[asset.error] = (errors[asset.error] || 0) + 1;
+  for (const asset of state.assets || []) if (asset.error) {
+    const category = asset.error.match(/^Cloudinary download HTTP \d+/)?.[0] || asset.error.match(/^Transfer failed \([A-Za-z0-9]+(?: HTTP \d+)?\)/)?.[0] || 'File verification/transfer failed';
+    errors[category] = (errors[category] || 0) + 1;
+  }
   console.log(JSON.stringify({ check: 'originals-copy-progress', total: state.assets?.length || 0, verified: state.assets?.filter(a => a.status === 'verified').length || 0, failed: state.assets?.filter(a => a.status === 'failed').length || 0, missing: state.assets?.filter(a => a.status === 'missing').length || 0, errorCategories: errors }));
 }
 const storageLock = path.join(root, '.storage-migration/state/crm-full/run.lock');
@@ -54,6 +57,20 @@ async function measure(name, run) {
       const client = new S3Client({ endpoint: process.env.SPACES_ENDPOINT, region: process.env.SPACES_REGION, credentials: { accessKeyId: process.env.SPACES_ACCESS_KEY_ID, secretAccessKey: process.env.SPACES_SECRET_ACCESS_KEY } });
       await client.send(new HeadBucketCommand({ Bucket: process.env.SPACES_BUCKET }));
       return { accessible: true };
+    });
+    if (fs.existsSync(originalsState) && fs.existsSync(path.join(backend, 'src/services/spacesStorage.js'))) await measure('spaces-live-preview-download', async () => {
+      const migration = appRequire('./src/services/storageMigration'); const storage = appRequire('./src/services/spacesStorage');
+      const state = migration.loadState(originalsState); const verified = state.assets.filter(asset => asset.status === 'verified');
+      const samples = ['pdf', 'png', 'jpg'].map(format => verified.find(asset => asset.format === format)).filter(Boolean);
+      const checks = [];
+      for (const asset of samples) {
+        const response = await fetch(storage.fileUrl(asset.key), { signal: AbortSignal.timeout(45000) });
+        if (!response.ok) throw new Error('Live preview/download request failed.');
+        const digest = await migration.digestStream(require('node:stream').Readable.fromWeb(response.body));
+        migration.verified(asset.verification, digest);
+        checks.push({ format: asset.format, status: response.status, checksumVerified: true });
+      }
+      return { samples: checks };
     });
     for (const logPath of ['/var/log/nginx/access.log', '/var/log/nginx/error.log']) {
       if (!fs.existsSync(logPath)) continue;
