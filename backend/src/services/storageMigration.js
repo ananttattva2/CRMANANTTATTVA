@@ -16,6 +16,20 @@ function walkReferences(value, visit, trail = []) {
     if (!key.includes('.') && !key.startsWith('$') && key !== '_id') walkReferences(item, visit, [...trail, key]);
   });
 }
+// Self-contained function for read-only MongoDB projection. No external captures.
+function serverReferences(document) {
+  var references = [];
+  function walk(value, trail) {
+    if (typeof value === 'string') {
+      if (value.indexOf('res.cloudinary.com/') < 0) return;
+      var matches = value.match(/https?:\/\/res\.cloudinary\.com\/[^\s<>"'\\]+/g) || [];
+      var seen = {};
+      matches.forEach(function(url) { url = url.replace(/&amp;/g, '&'); if (!seen[url]) { references.push({ url: url, path: trail.join('.') }); seen[url] = true; } });
+    } else if (Array.isArray(value)) value.forEach(function(item, index) { walk(item, trail.concat(String(index))); });
+    else if (value && typeof value === 'object') Object.keys(value).forEach(function(key) { if (key !== '_id' && key.indexOf('.') < 0 && key.charAt(0) !== '$') walk(value[key], trail.concat(key)); });
+  }
+  walk(document, []); return references;
+}
 function safePath(value) {
   if (!value || value.startsWith('/') || value.split('/').some(x => x === '..' || x === '.') || /[\x00-\x1f\x7f]/.test(value) || Buffer.byteLength(value) > 900) throw new Error('Unsafe or oversized Cloudinary folder/object path.');
   return value;
@@ -139,4 +153,4 @@ function report(state) {
     files: assets.map(a => ({ id: a.id, kind: a.kind, publicId: a.public_id, folder: a.asset_folder, key: a.key, status: a.status, attempts: a.attempts || 0, size: a.verification?.size, sha256: a.verification?.sha256, referenceCount: a.references?.length || 0, collisionRenamed: !!a.collisionRenamed, error: a.error || '' }))
   };
 }
-module.exports = { sha256, cloudUrl, normalizeUrl, walkReferences, assignKeys, originalKey, connectReferences, digestStream, verified, referencePatches, valuesMatch, applyPatch, atomicWrite, loadState, report };
+module.exports = { sha256, cloudUrl, normalizeUrl, walkReferences, serverReferences, assignKeys, originalKey, connectReferences, digestStream, verified, referencePatches, valuesMatch, applyPatch, atomicWrite, loadState, report };

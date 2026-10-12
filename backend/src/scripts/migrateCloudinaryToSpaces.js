@@ -65,7 +65,7 @@ function sourceUrl(asset) {
     if (!migration.cloudUrl(asset.sourceUrl)) throw new Error('Unsafe source URL.');
     return asset.sourceUrl;
   }
-  const c = cloudConfig(); const params = { asset_id: asset.id, expires_at: Math.floor(Date.now() / 1000) + 3600 };
+  const c = cloudConfig(); const params = { asset_id: asset.id, timestamp: Math.floor(Date.now() / 1000), expires_at: Math.floor(Date.now() / 1000) + 3600 };
   const signable = Object.entries(params).sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `${key}=${value}`).join('&');
   const signature = crypto.createHash('sha1').update(signable + c.apiSecret).digest('hex');
   // No format or transformation: retrieves original bytes, including private/authenticated assets.
@@ -85,7 +85,13 @@ async function transfer(asset, state, directory) {
   try {
     response = await retryRequest(async () => {
       const res = await fetch(sourceUrl(asset), { redirect: 'error', headers: { 'Accept-Encoding': 'identity' }, signal: AbortSignal.timeout(30 * 60 * 1000) });
-      if (!res.ok) { const error = new Error(); error.status = res.status; error.sourceMissing = res.status === 404 || res.status === 410; error.safeMessage = `Cloudinary download HTTP ${res.status}.`; throw error; }
+      if (!res.ok) {
+        const error = new Error(); error.status = res.status; error.sourceMissing = res.status === 404 || res.status === 410;
+        let detail = ''; try { detail = String((await res.json()).error?.message || ''); } catch {}
+        for (const value of [asset.id, process.env.CLOUDINARY_API_KEY, process.env.CLOUDINARY_API_SECRET]) if (value) detail = detail.split(value).join('[redacted]');
+        detail = detail.replace(/https?:\/\/\S+|signature=\S+/g, '[redacted]');
+        error.safeMessage = `Cloudinary download HTTP ${res.status}.${detail ? ` ${detail.slice(0, 180)}` : ''}`; throw error;
+      }
       return res;
     });
     const hash = crypto.createHash('sha256'); let size = 0;
@@ -178,7 +184,14 @@ async function main(argv = process.argv.slice(2)) {
           // GridFS binary chunks cannot contain string URL metadata; file metadata is still scanned.
           const projection = name.endsWith('.chunks') ? { data: 0 } : undefined;
           const references = [];
-          for await (const doc of db.collection(name).find({}, projection ? { projection } : {})) migration.walkReferences(doc, (url, trail) => references.push({ collection: name, documentId: doc._id, path: trail.join('.'), url }));
+          try {
+            const pipeline = [{ $project: { _id: 1, references: { $function: { body: migration.serverReferences.toString(), args: ['$$ROOT'], lang: 'js' } } } }, { $match: { 'references.0': { $exists: true } } }];
+            for await (const doc of db.collection(name).aggregate(pipeline, { maxTimeMS: 120000, batchSize: 100 })) for (const ref of doc.references) references.push({ ...ref, collection: name, documentId: doc._id });
+          } catch (error) {
+            if (!/\$function|javascript|scripting|not supported|not allowed/i.test(error.message || '')) throw error;
+            references.length = 0;
+            for await (const doc of db.collection(name).find({}, projection ? { projection } : {})) migration.walkReferences(doc, (url, trail) => references.push({ collection: name, documentId: doc._id, path: trail.join('.'), url }));
+          }
           state.mongoReferences.push(...references); state.referenceCollectionsComplete.push(name); await save();
         }
         // Rebuild references after interrupted discovery without duplicating records.

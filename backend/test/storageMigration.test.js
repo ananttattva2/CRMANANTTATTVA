@@ -133,6 +133,11 @@ test('mutating commands require approval; apply also requires a backup; dry-run 
 test('original source requests use signed asset IDs without transformations or format conversions', () => {
   const keys = ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET']; const previous = keys.map(key => process.env[key]);
   Object.assign(process.env, { CLOUDINARY_CLOUD_NAME: 'demo', CLOUDINARY_API_KEY: 'key', CLOUDINARY_API_SECRET: 'secret' });
-  try { const url = new URL(sourceUrl(asset({ type: 'authenticated' }))); assert.equal(url.pathname, '/v1_1/demo/asset/download'); assert.equal(url.searchParams.get('asset_id'), 'a'); assert.ok(url.searchParams.get('signature')); assert.equal(url.searchParams.get('transformation'), null); assert.equal(url.searchParams.get('format'), null); }
+  try { const url = new URL(sourceUrl(asset({ type: 'authenticated' }))); assert.equal(url.pathname, '/v1_1/demo/asset/download'); assert.equal(url.searchParams.get('asset_id'), 'a'); assert.ok(url.searchParams.get('signature')); assert.ok(Number(url.searchParams.get('timestamp')) > 0); assert.equal(url.searchParams.get('transformation'), null); assert.equal(url.searchParams.get('format'), null); }
   finally { keys.forEach((key, i) => previous[i] === undefined ? delete process.env[key] : process.env[key] = previous[i]); }
+});
+test('server-side reference projection matches local discovery without returning document payloads', () => {
+  const doc = { _id: new ObjectId(), bigUnrelated: 'a'.repeat(100000), rows: [{ file: oldUrl }], email: `<a href="${oldUrl}">proof</a>` };
+  const local = []; migration.walkReferences(doc, (url, path) => local.push({ url, path: path.join('.') }));
+  assert.deepEqual(migration.serverReferences(doc), local);
 });

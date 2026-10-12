@@ -12,7 +12,7 @@ const backend = path.join(code, 'backend');
 const appRequire = createRequire(path.join(backend, 'package.json'));
 const dotenv = appRequire('dotenv');
 async function main() {
-  if (!['inventory', 'copy', 'copy-originals', 'apply', 'rollback'].includes(operation)) throw new Error('Invalid operation.');
+  if (!['inventory', 'restart-inventory', 'copy', 'copy-originals', 'apply', 'rollback'].includes(operation)) throw new Error('Invalid operation.');
   const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
   if (operation !== 'inventory' && payload.confirmation !== 'COPY_AND_UPDATE_APPROVED') throw new Error('Explicit migration approval is required.');
   const envFile = path.join(app, 'backend/.env');
@@ -82,15 +82,24 @@ async function main() {
       console.log(JSON.stringify(await require('./storage-backup.cjs')(appRequire, directory)));
     }
   }
-  const args = [path.join(backend, 'src/scripts/migrateCloudinaryToSpaces.js'), operation === 'copy-originals' ? 'copy' : operation, '--run-dir', stateDirectory];
+  const args = [path.join(backend, 'src/scripts/migrateCloudinaryToSpaces.js'), operation === 'copy-originals' ? 'copy' : operation === 'restart-inventory' ? 'inventory' : operation, '--run-dir', stateDirectory];
   const lockFile = path.join(stateDirectory, 'run.lock');
   if (fs.existsSync(lockFile)) {
     const lock = JSON.parse(fs.readFileSync(lockFile, 'utf8'));
     let active = true; try { process.kill(lock.pid, 0); } catch (error) { if (error.code === 'ESRCH') active = false; else throw error; }
+    if (active && operation === 'restart-inventory') {
+      const command = fs.readFileSync(`/proc/${lock.pid}/cmdline`, 'utf8').split('\0');
+      if (!command.includes('inventory') || !command.includes(stateDirectory) || !command.some(arg => arg.endsWith('/migrateCloudinaryToSpaces.js'))) throw new Error('Refusing to stop a non-inventory process.');
+      process.kill(lock.pid, 'SIGTERM');
+      for (let attempt = 0; attempt < 30; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        try { process.kill(lock.pid, 0); } catch (error) { if (error.code === 'ESRCH') { active = false; break; } throw error; }
+      }
+    }
     if (!active) fs.unlinkSync(lockFile);
     else throw new Error('A previous migration process is still running; do not start a second operator.');
   }
-  if (operation === 'inventory' && fs.existsSync(path.join(stateDirectory, 'state.json'))) args.push('--resume');
+  if ((operation === 'inventory' || operation === 'restart-inventory') && fs.existsSync(path.join(stateDirectory, 'state.json'))) args.push('--resume');
   if (operation !== 'inventory') args.push('--approve-production');
   if (operation === 'copy' || operation === 'copy-originals') args.push('--retry', '--resume');
   if (operation === 'apply') args.push('--backup-confirmed', '--retry');
