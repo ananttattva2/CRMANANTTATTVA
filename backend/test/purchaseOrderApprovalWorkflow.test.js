@@ -127,6 +127,9 @@ test('Pending Approval exposes review details before approve reject and revision
   assert.match(page, /api\.get\(API_ENDPOINTS\.leads\.purchaseOrderApprovalDecision/);
   assert.match(page, /loadingDetails/);
   assert.match(page, /loadError/);
+  assert.match(page, /openPoDetails\(row\)/);
+  assert.match(page, /View Details/);
+  assert.match(page, /Decision remarks/);
   assert.match(page, /target="_blank"/);
   assert.match(page, /payload\.poProofManifest/);
   assert.match(page, /payload\.poRows/);
