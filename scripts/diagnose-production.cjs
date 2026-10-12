@@ -25,13 +25,7 @@ if (fs.existsSync(storageLock)) {
   if (active) {
     const processInfo = spawnSync('ps', ['-o', 'etime=,pcpu=,rss=', '-p', String(lock.pid)], { encoding: 'utf8' });
     console.log(JSON.stringify({ check: 'storage-process', usage: processInfo.stdout.trim() }));
-    // Stop only an inventory left behind by the already disconnected SSH session.
-    const command = fs.readFileSync(`/proc/${lock.pid}/cmdline`, 'utf8').split('\0');
-    if (command.some(arg => arg.endsWith('/migrateCloudinaryToSpaces.js')) && command.includes('inventory') && fs.existsSync(storageState)) {
-      const state = JSON.parse(fs.readFileSync(storageState, 'utf8'));
-      const ageMinutes = (Date.now() - new Date(lock.startedAt).getTime()) / 60000;
-      if (!state.discoveryComplete && ageMinutes > 8) { process.kill(lock.pid, 'SIGTERM'); console.log(JSON.stringify({ check: 'storage-inventory-recovery', stoppedReadOnlyStaleInventory: true })); }
-    }
+
   }
 }
 const mongoose = appRequire('mongoose');
