@@ -23,6 +23,7 @@ function options(argv) {
     else if (arg === '--retry') result.retry = true;
     else if (arg === '--resume') result.resume = true;
     else if (arg === '--originals-only') result.originalsOnly = true;
+    else if (arg === '--references-since') { const value = argv[++i]; if (!value || !Number.isFinite(Date.parse(value))) throw new Error('Invalid reference cutoff.'); result.referencesSince = new Date(value).toISOString(); }
     else if (arg === '--dry-run') result.dryRun = true;
     else if (arg === '--approve-production') result.approved = true;
     else if (arg === '--backup-confirmed') result.backup = true;
@@ -190,6 +191,8 @@ async function main(argv = process.argv.slice(2)) {
         if (requested.some(name => !state.collections.includes(name))) throw new Error('A requested MongoDB collection does not exist.');
         state.mongoReferences ||= [];
         state.referenceCollectionsComplete ||= [];
+        if (opts.referencesSince) state.referenceScanSince ||= opts.referencesSince;
+        const filter = state.referenceScanSince ? { $or: [{ createdAt: { $gte: new Date(state.referenceScanSince) } }, { updatedAt: { $gte: new Date(state.referenceScanSince) } }, { createdAt: { $exists: false }, updatedAt: { $exists: false } }] } : {};
         for (const name of state.collections) {
           if (state.referenceCollectionsComplete.includes(name)) continue;
           console.log(JSON.stringify({ progress: 'inventory', collectionsComplete: state.referenceCollectionsComplete.length, collectionsTotal: state.collections.length }));
@@ -197,12 +200,12 @@ async function main(argv = process.argv.slice(2)) {
           const projection = name.endsWith('.chunks') ? { data: 0 } : undefined;
           const references = [];
           try {
-            const pipeline = [{ $project: { _id: 1, references: { $function: { body: migration.serverReferences.toString(), args: ['$$ROOT'], lang: 'js' } } } }, { $match: { 'references.0': { $exists: true } } }];
+            const pipeline = [{ $match: filter }, { $project: { _id: 1, references: { $function: { body: migration.serverReferences.toString(), args: ['$$ROOT'], lang: 'js' } } } }, { $match: { 'references.0': { $exists: true } } }];
             for await (const doc of db.collection(name).aggregate(pipeline, { maxTimeMS: 120000, batchSize: 100 })) for (const ref of doc.references) references.push({ ...ref, collection: name, documentId: doc._id });
           } catch (error) {
             if (!/\$function|javascript|scripting|not supported|not allowed/i.test(error.message || '')) throw error;
             references.length = 0;
-            for await (const doc of db.collection(name).find({}, projection ? { projection } : {})) migration.walkReferences(doc, (url, trail) => references.push({ collection: name, documentId: doc._id, path: trail.join('.'), url }));
+            for await (const doc of db.collection(name).find(filter, projection ? { projection } : {})) migration.walkReferences(doc, (url, trail) => references.push({ collection: name, documentId: doc._id, path: trail.join('.'), url }));
           }
           state.mongoReferences.push(...references); state.referenceCollectionsComplete.push(name); await save();
         }

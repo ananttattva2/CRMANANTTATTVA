@@ -129,6 +129,9 @@ test('mutating commands require approval; apply also requires a backup; dry-run 
   assert.equal(options(['apply', '--dry-run']).command, 'inventory');
   assert.equal(options(['apply', '--approve-production', '--backup-confirmed']).command, 'apply');
   assert.throws(() => options(['delete']), /Unknown/);
+  assert.throws(() => options(['inventory', '--references-since', 'invalid']), /cutoff/);
+  assert.equal(options(['inventory']).referencesSince, undefined, 'Full inventory remains the default');
+  assert.equal(options(['inventory', '--originals-only']).originalsOnly, true);
 });
 test('original source requests use signed asset IDs without transformations or format conversions', () => {
   const keys = ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET']; const previous = keys.map(key => process.env[key]);

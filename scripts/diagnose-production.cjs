@@ -131,12 +131,12 @@ async function measure(name, run) {
         }
       }
     }
-    if (process.argv.includes('--quick')) return;
+    const quick = process.argv.includes('--quick');
     await mongoose.connect(appRequire('./src/config/db').__test.buildMongoUri(), { dbName: process.env.DB_NAME || 'registerd_types', autoIndex: false, autoCreate: false, serverSelectionTimeoutMS: 10000, compressors: ['zlib'] });
-    if (fs.existsSync(storageState)) await measure('mongo-migrated-reference-verification', async () => {
+    if (fs.existsSync(storageState)) await measure(quick ? 'mongo-cutover-reference-verification' : 'mongo-migrated-reference-verification', async () => {
       const migration = appRequire('./src/services/storageMigration'); const { EJSON } = appRequire('bson');
       const grouped = new Map();
-      for (const directory of ['crm-full', 'crm-delta']) {
+      for (const directory of quick ? ['crm-delta'] : ['crm-full', 'crm-delta']) {
         const file = path.join(root, '.storage-migration/state', directory, 'state.json');
         if (!fs.existsSync(file)) continue;
         const state = migration.loadState(file);
@@ -158,6 +158,7 @@ async function measure(name, run) {
       }
       return { documents, verified, changedOrMissing };
     });
+    if (quick) return;
     if (inventoryCollection) await measure('inventory-current-collection', async () => ({ collection: inventoryCollection, estimatedDocuments: await mongoose.connection.db.collection(inventoryCollection).estimatedDocumentCount({ maxTimeMS: 10000 }) }));
     await measure('authentication-user-query', async () => ({ found: Boolean(await appRequire('./src/models/User').findOne({ isActive: { $ne: false } }).select('_id').maxTimeMS(10000).lean()) }));
     await measure('reminder-scan', async () => {

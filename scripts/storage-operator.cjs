@@ -8,7 +8,8 @@ const { spawn } = require('node:child_process');
 const [appArgument, requestedOperation, codeArgument] = process.argv.slice(2);
 const delta = requestedOperation.startsWith('delta-');
 const originalInventory = requestedOperation === 'delta-inventory-originals';
-const operation = originalInventory ? 'inventory' : delta ? requestedOperation.slice(6) : requestedOperation;
+const recentInventory = requestedOperation === 'delta-inventory-recent';
+const operation = originalInventory || recentInventory ? 'inventory' : delta ? requestedOperation.slice(6) : requestedOperation;
 const app = fs.realpathSync(appArgument);
 const code = fs.realpathSync(codeArgument);
 const backend = path.join(code, 'backend');
@@ -45,6 +46,25 @@ async function main() {
   };
   const stateDirectory = path.join(app, '.storage-migration/state', delta ? originalInventory || operation === 'copy-originals' ? 'crm-delta-originals' : 'crm-delta' : operation === 'copy-originals' ? 'crm-originals' : 'crm-full');
   fs.mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });
+  if (originalInventory && fs.existsSync(path.join(stateDirectory, 'state.json'))) {
+    if (fs.existsSync(path.join(stateDirectory, 'run.lock'))) throw new Error('An original inventory or copy is active.');
+    const migration = appRequire('./src/services/storageMigration'); const file = path.join(stateDirectory, 'state.json'); const state = migration.loadState(file);
+    if (state.discoveryComplete) { delete state.discovery; state.discoveryComplete = false; migration.atomicWrite(file, state); }
+  }
+  if (recentInventory) {
+    const migration = appRequire('./src/services/storageMigration'); const file = path.join(stateDirectory, 'state.json');
+    if (fs.existsSync(path.join(stateDirectory, 'run.lock'))) throw new Error('Stop the redundant inventory before recent reconciliation.');
+    const previous = fs.existsSync(file) ? migration.loadState(file) : null;
+    if (previous?.patches?.length) throw new Error('Preserve existing delta updates; choose a separate run for another cutover.');
+    if (!previous?.referenceScanSince) {
+      if (previous) migration.atomicWrite(path.join(stateDirectory, 'state.before-recent.json'), previous);
+      const source = migration.loadState(path.join(app, '.storage-migration/state/crm-delta-originals/state.json'));
+      if (!source.discoveryComplete) throw new Error('Complete original inventory first.');
+      source.discoveryComplete = false; source.referenceCollectionsComplete = []; source.collections = []; source.mongoReferences = []; source.patches = [];
+      delete source.originalsOnly; source.referenceScanSince = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      migration.atomicWrite(file, source);
+    }
+  }
   const backup = path.join(stateDirectory, 'backend-env.before-storage');
   if (!fs.existsSync(backup)) fs.writeFileSync(backup, original, { mode: 0o600, flag: 'wx' });
   let updated = original;
