@@ -69,6 +69,8 @@ test('a slow GET from before a write is retried before it reaches page state', a
   assert.equal(result.fresh, true);
   assert.equal(retryConfig._crmReadGeneration, 1);
   assert.equal(retryConfig._crmFreshnessRetries, 1);
+  await afterResponse({ config: { method: 'post', url: '/auth/milestones/ticket-100/claim' }, data: { claimed: false } });
+  assert.equal(generation, 1);
   const currentResponse = { config: retryConfig, data: { count: 11 } };
   assert.equal(await afterResponse(currentResponse), currentResponse);
   const revisionResponse = { config: { method: 'get', url: '/cache/revision' }, data: {} };
