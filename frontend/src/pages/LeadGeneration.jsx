@@ -1589,54 +1589,60 @@ export default function LeadGeneration() {
     return candidates.some((candidate) => userTokens.includes(candidate));
   }
 
-  async function loadPage() {
-    setLoading(true);
-    setError('');
-    try {
-      const meResponse = await api.get(API_ENDPOINTS.auth.me);
-      const me = meResponse.data.user;
-      setCurrentUser(me);
-
-      let staffList = [];
-      try {
-        const usersResponse = await api.get(API_ENDPOINTS.leads.assignmentUsers);
-        staffList = usersResponse.data.users || [];
-        setStaff(staffList);
-      } catch {
-        staffList = [meResponse.data.user];
-        setStaff(staffList);
-      }
-
-      void Promise.allSettled([
+  const referenceRequest = useRef(null);
+  function loadLeadReferenceData() {
+    if (referenceRequest.current) return referenceRequest.current;
+    setPiboCategoriesLoading(true);
+    referenceRequest.current = Promise.allSettled([
         api.get(API_ENDPOINTS.quotations.list),
         api.get(API_ENDPOINTS.quotations.piboCategories),
         api.get(API_ENDPOINTS.leads.duplicateApprovals),
         api.get(API_ENDPOINTS.leads.serviceCatalog),
         api.get(API_ENDPOINTS.leads.dropdownOptions)
-      ]).then(([quotationsResult, piboCategoriesResult, duplicateApprovalsResult, serviceCatalogResult, dropdownOptionsResult]) => {
+    ]).then(([quotationsResult, piboCategoriesResult, duplicateApprovalsResult, serviceCatalogResult, dropdownOptionsResult]) => {
         setQuotations(quotationsResult.status === 'fulfilled' ? (quotationsResult.value.data.quotations || []) : []);
         setPiboCategories(piboCategoriesResult.status === 'fulfilled' ? (piboCategoriesResult.value.data.categories || []) : []);
         setDuplicateLeadApprovals(duplicateApprovalsResult.status === 'fulfilled' ? (duplicateApprovalsResult.value.data.approvals || []) : []);
         setServiceCatalog(serviceCatalogResult.status === 'fulfilled' ? (serviceCatalogResult.value.data.catalog || []) : []);
         setCustomDropdownOptions(dropdownOptionsResult.status === 'fulfilled' ? (dropdownOptionsResult.value.data.options || {}) : {});
         setPiboCategoriesLoading(false);
-      }).catch(() => setPiboCategoriesLoading(false));
+      }).catch(() => setPiboCategoriesLoading(false))
+      .finally(() => { referenceRequest.current = null; });
+    return referenceRequest.current;
+  }
+  useEffect(() => {
+    if (viewMode !== 'list' || viewLead) void loadLeadReferenceData();
+  }, [viewMode, Boolean(viewLead)]);
 
+  async function loadPage() {
+    const requestId = ++leadListRequestRef.current;
+    if (viewMode !== 'list' || viewLead) void loadLeadReferenceData();
+    setLoading(true);
+    setError('');
+    try {
       const initialWorkspace = new URLSearchParams(location.search).get('tab') === 'notified' ? 'notified' : 'leads';
-      const crmLeadsResponse = await api.get(API_ENDPOINTS.leads.list, { params: { paginated: true, page: 1, limit: 10, workspace: initialWorkspace } });
+      const [meResponse, usersResult, crmLeadsResponse] = await Promise.all([
+        api.get(API_ENDPOINTS.auth.me),
+        api.get(API_ENDPOINTS.leads.assignmentUsers).catch(() => null),
+        api.get(API_ENDPOINTS.leads.list, { params: { paginated: true, directory: true, page: 1, limit: 10, workspace: initialWorkspace } })
+      ]);
+      const me = meResponse.data.user;
+      setCurrentUser(me);
+      setStaff(usersResult?.data?.users || [me]);
+      if (requestId !== leadListRequestRef.current) return;
       const crmLeads = crmLeadsResponse.data.leads || [];
       setAllCcpLeads(crmLeads);
       setLeads(crmLeads);
       setLeadPagination(crmLeadsResponse.data.pagination || { page: 1, limit: 10, total: crmLeads.length, totalPages: 1 });
       setLeadSummary(crmLeadsResponse.data.summary || { total: crmLeads.length, existing: 0, converted: 0, new: crmLeads.length });
     } catch (err) {
+      if (requestId !== leadListRequestRef.current) return;
       setError(err?.response?.data?.error || 'Unable to fetch lead data.');
       setLeads([]);
       setAllCcpLeads([]);
       setQuotations([]);
     } finally {
-      setLoading(false);
-      setPiboCategoriesLoading(false);
+      if (requestId === leadListRequestRef.current) setLoading(false);
     }
   }
 
@@ -1651,7 +1657,7 @@ export default function LeadGeneration() {
     setError('');
     try {
       const response = await api.get(API_ENDPOINTS.leads.list, {
-        params: { paginated: true, ...params }
+        params: { paginated: true, directory: true, ...params }
       });
       if (requestId !== leadListRequestRef.current) return;
       const rows = response.data?.leads || [];

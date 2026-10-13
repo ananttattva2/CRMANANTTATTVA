@@ -757,14 +757,16 @@ exports.listQuotations = async (req, res) => {
     testLeadReferences ? dashboardQuotationExclusionFilter(testLeadReferences) : {}
   );
   const query = Quotation.find(scopedFilter)
-    .select(req.query.compact === 'true'
+    .select(req.query.view === 'lead-review'
+      ? 'quotationNumber leadId leadRef leadCode businessLeadCode companyName leadDetails.companyName pricingMode combinedBasicAmount grandTotal items.unit items.basicAmount createdAt updatedAt'
+      : req.query.compact === 'true'
       ? 'quotationNumber leadId leadRef clientRef leadCode businessLeadCode companyName leadDetails quotationDate validUntil serviceState pricingMode combinedBasicAmount items subtotal grandTotal status source createdByName preparedByName leadGeneratedBy assignedUserName managementApproval approvalDecision createdBy createdAt updatedAt'
       : '')
-    .populate('createdBy', 'name email')
-    .populate('approvalDecision.actionBy', 'name email role')
     .sort({ quotationDate: -1, createdAt: -1 });
+  if (req.query.view !== 'lead-review') query.populate('createdBy', 'name email').populate('approvalDecision.actionBy', 'name email role');
   if (limit) query.skip((page - 1) * limit).limit(limit);
-  const [quotations, total] = await Promise.all([query.lean(), Quotation.countDocuments(scopedFilter)]);
+  const [quotations, counted] = await Promise.all([query.lean(), req.query.view === 'lead-review' && !limit ? Promise.resolve(null) : Quotation.countDocuments(scopedFilter)]);
+  const total = counted ?? quotations.length;
   res.json({ ok: true, quotations, pagination: { page, limit: limit || total, total, pages: limit ? Math.ceil(total / limit) : 1 } });
 };
 

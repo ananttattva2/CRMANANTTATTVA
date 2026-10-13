@@ -74,6 +74,15 @@ const connectDB = async () => {
     await ensureQuotationIndexes();
     await ensurePiboCategoryIndexes();
     await ReminderDelivery.createIndexes();
+    // Add only non-unique read indexes; an unrelated legacy unique-index
+    // problem must not prevent the CRM from starting.
+    await Promise.all([
+      ...[
+        { leadCode: 1, createdAt: 1 }, { status: 1, leadCode: 1, createdAt: 1 },
+        { createdBy: 1, leadCode: 1, createdAt: 1 }, { generatedForUser: 1, leadCode: 1, createdAt: 1 }
+      ].map(keys => mongoose.connection.collection('leads').createIndex(keys)),
+      mongoose.connection.collection('pendingapprovals').createIndex({ type: 1, approvalStatus: 1, actionAt: -1, createdAt: -1 })
+    ]).catch(error => console.error('CRM read index setup failed', { name: error.name, code: error.code }));
     console.log('MongoDB connected');
   } catch (err) {
     console.error('MongoDB connection error', err);

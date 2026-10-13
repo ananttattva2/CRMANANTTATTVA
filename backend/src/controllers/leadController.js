@@ -1272,8 +1272,8 @@ exports.listLeads = async (req, res) => {
     .select(req.query.view === 'review'
       ? 'leadCode sourceLeadId company createdAt updatedAt importedCreatedAt leadDate importedCreatedBy createdBy createdByCrmUserId createdByEmail createdByName applicantType subApplicantType piboCategory industryType eprCategory servicesOffered firstAnnualReturnYearApplicable assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail closedAt closedBy closedByText serviceSelections.applicantType serviceSelections.subApplicantType serviceSelections.piboCategory serviceSelections.eprCategory serviceSelections.servicesOffered serviceSelections.firstAnnualReturnYearApplicable serviceSelections.createdAt serviceSelections.createdByName serviceSelections.createdByEmail serviceSelections.closedAt serviceSelections.closedBy serviceSelections.closedByText assignments.closedAt assignments.closedBy assignments.closedByText'
       : '')
-    .populate('assignedTo', 'name email avatarUrl role')
-    .populate('closedBy', 'name email avatarUrl role')
+    .populate('assignedTo', req.query.view === 'review' ? 'name email role' : 'name email avatarUrl role')
+    .populate('closedBy', req.query.view === 'review' ? 'name email role' : 'name email avatarUrl role')
     .populate('createdBy', 'name email')
     .populate('generatedForUser', 'name email crmUserId')
       .sort({ leadCode: 1, createdAt: 1 })
@@ -1368,9 +1368,10 @@ exports.listLeads = async (req, res) => {
   if (workspace === 'notified') {
     // Avoid the nested MongoDB array/count query that can exceed the gateway
     // timeout. Classify the user's already-scoped directory in Node, then page.
-    const candidates = await Lead.find(filter).select(projection)
-      .sort({ [sortBy]: sortOrder, ...(sortBy === 'leadCode' ? { createdAt: sortOrder } : { _id: sortOrder }) })
-      .lean();
+    const notifiedSort = { [sortBy]: sortOrder, ...(sortBy === 'leadCode' ? { createdAt: sortOrder } : { _id: sortOrder }) };
+    const candidates = req.query.directory === 'true' && req.query.export !== 'true'
+      ? await Lead.aggregate([{ $match: filter }, { $sort: notifiedSort }, { $project: require('../services/leadDirectoryReadModel').directoryProjection(projection) }]).option({ maxTimeMS: 15000 })
+      : await Lead.find(filter).select(projection).sort(notifiedSort).lean();
     const matched = candidates.filter((lead) => hasPendingClosedManagerAssignment(lead, req.user));
     const total = matched.length;
     const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -1401,16 +1402,29 @@ exports.listLeads = async (req, res) => {
       timings: process.env.API_PERF_TIMINGS === 'true' ? { accessMs, queryMs, totalMs } : undefined
     });
   }
-  const [leads, total, summaryRows] = await Promise.all([
-    Lead.find(filter).select(projection)
+  const sort = { [sortBy]: sortOrder, ...(sortBy === 'leadCode' ? { createdAt: sortOrder } : { _id: sortOrder }) };
+  const compactDirectory = req.query.directory === 'true' && req.query.export !== 'true';
+  const directoryRead = compactDirectory
+    ? Lead.aggregate([
+        { $match: filter }, { $sort: sort }, { $skip: (page - 1) * limit }, { $limit: limit },
+        { $project: require('../services/leadDirectoryReadModel').directoryProjection(projection) }
+      ]).option({ maxTimeMS: 15000 }).then(rows => Lead.populate(rows, [
+        { path: 'assignedTo', select: 'name email avatarUrl role' },
+        { path: 'closedBy', select: 'name email avatarUrl role' },
+        { path: 'createdBy', select: 'name email' },
+        { path: 'generatedForUser', select: 'name email crmUserId' }
+      ]))
+    : Lead.find(filter).select(projection)
       .populate('assignedTo', 'name email avatarUrl role')
       .populate('closedBy', 'name email avatarUrl role')
       .populate('createdBy', 'name email')
       .populate('generatedForUser', 'name email crmUserId')
       .sort({ [sortBy]: sortOrder, ...(sortBy === 'leadCode' ? { createdAt: sortOrder } : { _id: sortOrder }) })
-      .skip((page - 1) * limit).limit(limit).lean(),
-    Lead.countDocuments(filter),
-    Lead.aggregate([
+      .skip((page - 1) * limit).limit(limit).lean();
+  const [leads, total, summaryRows] = await Promise.all([
+    directoryRead,
+    require('../services/crmCache').getCrmCache().remember(`lead-directory-count:${mongoose.mongo.BSON.EJSON.stringify(filter)}`, () => Lead.countDocuments(filter)),
+    require('../services/crmCache').getCrmCache().remember(`lead-directory-summary:${mongoose.mongo.BSON.EJSON.stringify(accessFilter)}`, () => Lead.aggregate([
       { $match: accessFilter },
       { $group: {
         _id: null,
@@ -1421,7 +1435,7 @@ exports.listLeads = async (req, res) => {
           { $ne: [{ $ifNull: ['$createdBy', null] }, null] }
         ] }, 1, 0] } }
       } }
-    ])
+    ]))
   ]);
   const queryMs = Number(process.hrtime.bigint() - queryStartedAt) / 1e6;
   const totalMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
@@ -2228,6 +2242,10 @@ exports.listDuplicateLeadApprovals = async (req, res) => {
       audience: req.user._id,
       'metadata.eventKey': { $exists: true, $ne: '' }
     }).select('metadata createdBy createdByName createdAt').populate('createdBy', 'name email').lean();
+    const eventKeys = [...new Set(legacyServiceNotifications.map(row => String(row.metadata?.eventKey || '').trim()).filter(Boolean))];
+    const existingServices = eventKeys.length ? await PendingApproval.find({ type: 'lead_service', source: 'crm', sourceClientId: { $in: eventKeys } })
+      .select('sourceClientId payload.contributorId payload.contributorName payload.contributorEmail').lean() : [];
+    const existingByEvent = new Map(existingServices.map(row => [row.sourceClientId, row]));
     await Promise.all(legacyServiceNotifications.map(async (notification) => {
       const metadata = notification.metadata || {};
       const eventKey = String(metadata.eventKey || '').trim();
@@ -2235,6 +2253,18 @@ exports.listDuplicateLeadApprovals = async (req, res) => {
       const contributorId = String(notification.createdBy?._id || notification.createdBy || '');
       const contributorName = notification.createdBy?.name || metadata.actorName || notification.createdByName || 'CRM User';
       const contributorEmail = notification.createdBy?.email || metadata.contributorEmail || '';
+      const existing = existingByEvent.get(eventKey);
+      if (existing) {
+        const saved = existing.payload || {};
+        if (saved.contributorId !== contributorId || saved.contributorName !== contributorName
+          || (contributorEmail && saved.contributorEmail !== contributorEmail)) {
+          await PendingApproval.updateOne({ _id: existing._id }, { $set: {
+            'payload.contributorId': contributorId, 'payload.contributorName': contributorName,
+            ...(contributorEmail ? { 'payload.contributorEmail': contributorEmail } : {})
+          } });
+        }
+        return existing;
+      }
       const approval = await PendingApproval.findOneAndUpdate(
         { type: 'lead_service', source: 'crm', sourceClientId: eventKey },
         {
@@ -2322,7 +2352,7 @@ exports.listDuplicateLeadApprovals = async (req, res) => {
     if (legacyLeadIds.length) leadLookup.push({ sourceLeadId: { $in: legacyLeadIds } });
     if (leadCodes.length) leadLookup.push({ leadCode: { $in: leadCodes } });
     if (companies.length) leadLookup.push(...companies.map((company) => ({ company: { $regex: `^${escapeRegex(company)}$`, $options: 'i' } })));
-    const leads = leadLookup.length ? await Lead.find({ $or: leadLookup }).populate('createdBy', 'name email').lean() : [];
+    const leads = leadLookup.length ? await Lead.find({ $or: leadLookup }).select('_id leadCode sourceLeadId company createdBy createdByEmail serviceSelections assignments').populate('createdBy', 'name email').maxTimeMS(15000).lean() : [];
     const leadById = new Map(leads.map((lead) => [String(lead._id), lead]));
     const leadByCode = new Map(leads.map((lead) => [String(lead.leadCode || '').toLowerCase(), lead]).filter(([code]) => code));
     const leadByCompany = new Map(leads.map((lead) => [String(lead.company || '').toLowerCase(), lead]).filter(([company]) => company));
@@ -2331,7 +2361,7 @@ exports.listDuplicateLeadApprovals = async (req, res) => {
     const quotations = await Quotation.find({ $or: [
       { leadRef: { $in: leadIds } }, { leadId: { $in: leadIds } },
       { leadCode: { $in: matchedLeadCodes } }, { businessLeadCode: { $in: matchedLeadCodes } }
-    ] }).lean();
+    ] }).select('_id leadRef leadId leadCode businessLeadCode quotationNumber items combinedBasicAmount subtotal grandTotal').maxTimeMS(15000).lean();
     const quoteForRow = (row, lead) => quotations.find((quote) => String(quote._id) === String(row.quotationId || ''))
       || quotations.find((quote) => quote.quotationNumber && quote.quotationNumber === row.quotationNumber)
       || quotations.find((quote) => [quote.leadRef, quote.leadId, quote.leadCode, quote.businessLeadCode].some((value) => [String(lead._id), lead.leadCode].includes(String(value || ''))));

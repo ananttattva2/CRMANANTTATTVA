@@ -120,7 +120,8 @@ test('monthly loader requests compact database projections and keeps proof-only 
     Lead: { aggregate(value) { pipeline = value; return { option: async () => [lead] }; } },
     Client: projectedModel([]), Quotation: projectedModel([])
   }, { scoped: true }, { monthly: true });
-  assert.deepEqual(pipeline[0], { $match: { scoped: true } });
+  assert.deepEqual(pipeline[0].$match.$and[0], { scoped: true });
+  assert.ok(pipeline[0].$match.$and[1].assignments.$elemMatch.poYearRows.$elemMatch.$or.some(condition => condition.poFileUrl));
   assert.equal(pipeline[1].$project, monthlyLeadProjection);
   assert.deepEqual(selections, ['_id selectedLead', '_id leadRef leadId leadCode businessLeadCode quotationNumber grandTotal']);
   assert.equal(records.length, 1);

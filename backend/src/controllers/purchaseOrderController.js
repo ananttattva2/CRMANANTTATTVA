@@ -86,10 +86,20 @@ function resolveQuotation(row, lead, quotations) {
     || null;
 }
 
+const monthlyPoLeadFilter = { assignments: { $elemMatch: {
+  poYearRows: { $elemMatch: { $or: [
+    { poNumber: { $exists: true, $nin: [null, ''] } },
+    { poFileUrl: { $exists: true, $nin: [null, ''] } }
+  ] } }
+} } };
+
 async function loadPurchaseOrders(models, leadFilter = {}, options = {}) {
   const compact = options.monthly === true;
   const leads = compact && typeof models.Lead.aggregate === 'function'
-    ? await models.Lead.aggregate([{ $match: leadFilter }, { $project: monthlyLeadProjection }]).option({ maxTimeMS: 20000 })
+    ? await models.Lead.aggregate([
+        { $match: { $and: [leadFilter, monthlyPoLeadFilter] } },
+        { $project: monthlyLeadProjection }
+      ]).option({ maxTimeMS: 20000 })
     : await leanFind(models.Lead, leadFilter);
   const leadIds = (leads || []).map(idText).filter(Boolean);
   const leadCodes = (leads || []).map((lead) => text(lead.leadCode)).filter(Boolean);

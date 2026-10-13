@@ -110,6 +110,10 @@ const LeadSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 LeadSchema.index({ companyIdentity: 1, workflowStatus: 1 });
+LeadSchema.index({ leadCode: 1, createdAt: 1 });
+LeadSchema.index({ status: 1, leadCode: 1, createdAt: 1 });
+LeadSchema.index({ createdBy: 1, leadCode: 1, createdAt: 1 });
+LeadSchema.index({ generatedForUser: 1, leadCode: 1, createdAt: 1 });
 LeadSchema.plugin(require('../utils/leadDeletionVisibility'));
 
 module.exports = mongoose.model('Lead', LeadSchema);

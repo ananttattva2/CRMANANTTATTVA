@@ -230,3 +230,51 @@ HTTP authentication, mutation acknowledgement and browser refresh tests. These
 tests use an injected cache/revision store and local HTTP fixture; they do not
 claim verification against your live Redis, Atlas or production server. Perform
 the server checks above after setup. Cache tests also gate DigitalOcean releases.
+
+## Dashboard and directory performance update
+
+The following page APIs use authenticated Redis response caching:
+
+| Page/tab | Main API |
+| --- | --- |
+| Purchase & Sales tab in Overall Dashboard | `/api/dashboard-insights/upload-tracker?financialYear=...&serviceType=...` |
+| PO tab | `/api/dashboard-insights/purchase-orders?view=monthly` |
+| Sidebar Lead Open / Lead Close | `/api/leads?view=review` and `/api/quotations?view=lead-review&compact=true` |
+| Sales Lead Generation directory | `/api/leads?paginated=true&directory=true&...` |
+| Pending client/quotation approvals | `/api/clients/pending-approvals` |
+| PO/special/service approval feed | `/api/leads/duplicate-approvals` |
+| Deactivation approvals | `/api/clients/deactivation-requests` |
+
+Related dashboard tabs now share revision-aware Redis read models. Concurrent
+requests for the same snapshot/revision share one loader. Changes still move every
+read to a new revision; in-flight old snapshots cannot populate the new generation.
+BSON IDs and dates survive cache serialization. Redis outages still use MongoDB.
+
+Cold dashboard reads batch linked Leads instead of doing a correlated lookup for
+every Client. Monthly PO reads discard Leads without PO evidence before loading
+related quotations. Lead directory responses include compact owner/service/PO
+status fields, not embedded proof files or full quotation items. View/Edit and
+exports still retrieve the full records. Lead lists start auth/staff/page reads in
+parallel and defer quotations/form catalogs until a form or detail is opened.
+Pending Approval starts its special/PO feed alongside primary reads, updates its
+visible lists immediately when primary data arrives, and refreshes after writes
+without resetting pagination. Repeated legacy-notification checks do not rewrite
+unchanged service approvals and invalidate the whole cache.
+
+Authentication executes once within a nested Express route, while every new HTTP
+request still verifies the JWT and reads the current active user. Response timing
+headers include `auth` and `cache` so slow warm requests can be investigated.
+
+No new Redis settings or manual restart are required if DigitalOcean Deploy succeeds;
+that workflow restarts the changed backend and creates the new non-unique read
+indexes on startup. Confirm the deployed release using `/api/health`, then refresh
+the browser. For each API compare two identical requests within 60 seconds and no
+intervening write. Expect a warm `HIT`. Check `Time`/`Server-Timing` and verify a
+relevant data change appears on the next fetch. These changes reduce work; actual
+production latency must be measured after deployment, not inferred from unit tests.
+
+Lead Open/Close month-end snapshots prepare each service timeline once and each
+month boundary once, preserving historical membership. Their price column uses a
+quotation projection containing only match IDs, dates and amounts, without full
+quotation items/approval documents or unused user populations. These pages also
+participate in write-driven live refresh.

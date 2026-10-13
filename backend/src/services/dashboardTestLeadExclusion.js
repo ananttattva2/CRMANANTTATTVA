@@ -24,15 +24,16 @@ async function loadAdminCreatedLeadReferences({ LeadModel = Lead, UserModel = Us
 }
 
 async function getAdminCreatedLeadReferences(options = {}) {
-  const useCache = false; // Redis owns response freshness; do not retain stale exclusions.
-  if (useCache && cached?.expiresAt > Date.now()) return cached.value;
-  const value = await loadAdminCreatedLeadReferences(options);
-  if (useCache) cached = { value, expiresAt: Date.now() + CACHE_TTL_MS };
-  return value;
+  if (options.LeadModel || options.UserModel) return loadAdminCreatedLeadReferences(options);
+  return require('./crmCache').getCrmCache().remember('admin-lead-references-v2', () => loadAdminCreatedLeadReferences(options));
 }
 
 // Creator-based test exclusions must not hide real work allocated to permanent staff.
 async function getAssignmentDashboardLeadReferences(options = {}) {
+  if (options.LeadModel || options.UserModel) return loadAssignmentLeadReferences(options);
+  return require('./crmCache').getCrmCache().remember('assignment-lead-references-v2', () => loadAssignmentLeadReferences(options));
+}
+async function loadAssignmentLeadReferences(options = {}) {
   const LeadModel = options.LeadModel || Lead;
   const references = await getAdminCreatedLeadReferences(options);
   if (!references.ids.length) return { assignmentScoped: true, ids: [], identityValues: [] };

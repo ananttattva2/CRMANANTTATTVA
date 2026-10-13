@@ -15,8 +15,8 @@ const emailProofUpload = multer({ storage: multer.memoryStorage(), limits: { fil
 const receiveEmailProof = (req, res, next) => emailProofUpload(req, res, (error) => error ? res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ success: false, message: error.code === 'LIMIT_FILE_SIZE' ? 'Email proof exceeds the configured size limit.' : 'Invalid email proof upload.', code: error.code || 'MULTIPART_UPLOAD_FAILED' }) : next());
 
 const deactivation = require('../services/clientDeactivation');
-router.get('/deactivation-status', requireAuth, deactivation.statuses);
-router.get('/deactivation-requests', requireAuth, deactivation.list);
+router.get('/deactivation-status', requireAuth, cacheRead, deactivation.statuses);
+router.get('/deactivation-requests', requireAuth, cacheRead, deactivation.list);
 router.post('/deactivation-requests/:requestId/decision', requireAuth, deactivation.decide);
 router.post('/:id/deactivation', requireAuth, deactivation.request);
 router.use('/:id', requireAuth, deactivation.guard);
