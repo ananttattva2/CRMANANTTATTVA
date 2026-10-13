@@ -23,6 +23,7 @@ import PoProofView from '../components/PoProofView';
 import LeadDeleteDialog from '../components/LeadDeleteDialog';
 import { poCommercialError, poYearLabel, hasSavedPoDetails } from '../utils/poCommercialDetails.mjs';
 import { formatDisplayDate } from '../utils/dateFormat';
+import { leadServiceExportRecords } from '../utils/leadServiceExport.mjs';
 
 const emptyLead = {
   sourceLeadId: '',
@@ -979,7 +980,7 @@ export default function LeadGeneration() {
   function startAddServicesMode() {
     if (!selectedSearchLead) return;
     const rows = normalizeLegacyServiceSelections(selectedSearchLead);
-    setLead({ ...emptyLead, ...selectedSearchLead, leadCode: displayLeadId(selectedSearchLead) === '-' ? nextVisibleLeadCode(allCcpLeads) : selectedSearchLead.leadCode, serviceSelections: rows.map((row, index) => ({ ...row, firstAnnualReturnYearApplicable: row.firstAnnualReturnYearApplicable || (index === 0 ? selectedSearchLead.firstAnnualReturnYearApplicable : '') })), addresses: Array.isArray(selectedSearchLead.addresses) && selectedSearchLead.addresses.length ? selectedSearchLead.addresses : [createAddressRow(selectedSearchLead)] });
+    setLead({ ...emptyLead, ...selectedSearchLead, leadCode: displayLeadId(selectedSearchLead) === '-' ? nextVisibleLeadCode(allCcpLeads) : selectedSearchLead.leadCode, serviceSelections: [...rows.map((row, index) => ({ ...row, firstAnnualReturnYearApplicable: row.firstAnnualReturnYearApplicable || (index === 0 ? selectedSearchLead.firstAnnualReturnYearApplicable : '') })), createServiceSelection()], addresses: Array.isArray(selectedSearchLead.addresses) && selectedSearchLead.addresses.length ? selectedSearchLead.addresses : [createAddressRow(selectedSearchLead)] });
     setEditingLeadId(leadRecordId(selectedSearchLead));
     setRoyaltyClaimed(false);
     setRoyaltyClaiming(false);
@@ -1918,6 +1919,9 @@ export default function LeadGeneration() {
   }
 
   function validateLeadForSubmit(workflowStatus) {
+    if (serviceOnlyMode && serviceRows.length <= frozenServiceRowCount) {
+      return 'Add at least one new service using Add Service before saving or submitting this lead.';
+    }
     const required = workflowStatus === 'submitted' ? ['status', 'company', 'servicesOffered', 'addressLine1', 'state', 'city', 'pinCode'] : [];
     const missing = required.find((field) => !String(lead[field] ?? '').trim());
     if (missing) return `${missing.replace(/([A-Z])/g, ' $1')} is required before submit.`;
@@ -2051,7 +2055,14 @@ export default function LeadGeneration() {
           : '';
       setHealthPromptOpen(false);
       setIntroductionConsent(false);
+      setServiceOnlyMode(false);
+      setFrozenServiceRowCount(0);
+      setFrozenAddressRowCount(0);
+      setFrozenContactRowCount(0);
+      setFrozenAssignmentRowCount(0);
       if (openHealthReport) {
+        setLead(savedLead);
+        setEditingLeadId(leadRecordId(savedLead));
         setHealthReportLead(savedLead);
         setHealthReport(reportToDraft(savedLead.complianceHealthReport));
         setHealthReportError('');
@@ -2063,11 +2074,11 @@ export default function LeadGeneration() {
       const successMessage = workflowStatus === 'submitted' ? `Lead submitted successfully.${introductionMessage}` : 'Lead draft saved successfully.';
       setNotice(successMessage);
       showToast(introductionFailed ? introductionMessage.trim() : successMessage, introductionFailed ? 'error' : 'success');
-      if (workflowStatus === 'submitted') { setLead(emptyLead); formStartedAtRef.current = ''; }
+      if (workflowStatus === 'submitted' || serviceOnlyMode) { setLead(emptyLead); formStartedAtRef.current = ''; }
       setEditingLeadId('');
       setActiveTab('basic');
       await loadPage();
-      if (workflowStatus === 'submitted') setViewMode('list');
+      if (workflowStatus === 'submitted' || serviceOnlyMode) setViewMode('list');
       return savedLead;
     } catch (err) {
       setError(err?.response?.data?.error || 'Unable to save lead');
@@ -2366,37 +2377,10 @@ export default function LeadGeneration() {
                 navigate('/sales/quotations', { state: { quotationContext, leadAction: 'revise' } });
                 return;
               }
-                const currentUserTokens = [
-                  currentUser?._id, currentUser?.id, currentUser?.crmUserId, currentUser?.userId,
-                  currentUser?.name, currentUser?.email
-                ].map(normalizePersonName).filter(Boolean);
-                const leadCreatorTokens = [
-                  viewLead.createdBy?._id, viewLead.createdBy?.id, viewLead.createdBy?.name,
-                  viewLead.createdBy?.email, viewLead.createdByCrmUserId, viewLead.createdByName,
-                  viewLead.createdByEmail, viewLead.importedCreatedBy
-                ].map(normalizePersonName).filter(Boolean);
                 const allServices = Array.isArray(viewLead.serviceSelections) && viewLead.serviceSelections.length
                   ? viewLead.serviceSelections
                   : [createServiceSelection(viewLead)];
-                const leadParticipantTokens = [
-                  ...leadCreatorTokens,
-                  viewLead.generatedForUser?._id, viewLead.generatedForUser?.id,
-                  viewLead.generatedForUser?.name, viewLead.generatedForUser?.email,
-                  viewLead.generatedForName, viewLead.generatedForEmail
-                ].map(normalizePersonName).filter(Boolean);
-                const participantCanSeeAllServices = adminRoles.includes(String(currentUser?.role || '').toLowerCase())
-                  || leadParticipantTokens.some((token) => currentUserTokens.includes(token));
-                const ownedServices = allServices.map((service, sourceServiceIndex) => ({
-                  ...service,
-                  sourceServiceIndex
-                })).filter((service) => {
-                  if (participantCanSeeAllServices) return true;
-                  const explicitOwnerTokens = [
-                    service.createdByCrmUserId, service.createdByName, service.createdByEmail
-                  ].map(normalizePersonName).filter(Boolean);
-                  const ownerTokens = explicitOwnerTokens.length ? explicitOwnerTokens : leadCreatorTokens;
-                  return ownerTokens.some((token) => currentUserTokens.includes(token));
-                });
+                const ownedServices = allServices.map((service, sourceServiceIndex) => ({ ...service, sourceServiceIndex }));
                 const primaryOwnedService = ownedServices[0] || {};
                 const quotationContext = {
                   sourceType: 'lead',
@@ -2682,7 +2666,8 @@ export default function LeadGeneration() {
                       // persisted. A newly added row must remain editable even when
                       // the lead is being generated on behalf of another user.
                       const isAdminUser = adminRoles.includes(String(currentUser?.role || '').trim().toLowerCase());
-                      const ownedByAnotherUser = !isAdminUser && index < frozenServiceRowCount && rowOwners.length > 0 && !rowOwners.some((value) => currentIds.includes(value));
+                      const isCreatorEditor = personIdentityTokens(lead.createdBy, lead.secondaryCreatedBy).some((value) => currentIds.includes(value));
+                      const ownedByAnotherUser = !isAdminUser && !isCreatorEditor && index < frozenServiceRowCount && rowOwners.length > 0 && !rowOwners.some((value) => currentIds.includes(value));
                       const rowFrozen = ownedByAnotherUser;
                       const directOptions = directApplicantOptions(row.eprCategory);
                       const direct = Boolean(directOptions);
@@ -3773,7 +3758,7 @@ function LeadDirectoryView({ leads, pagination, summary, staff, currentUser, loa
     const exportLeads = await onExportAll({
       search: query.trim(), status: statusFilter, staff: staffFilter, metric: metricFilter, workspace: workspaceTab
     }).catch(() => filteredLeads);
-    const rows = exportLeads.map((item) => {
+    const rows = exportLeads.flatMap(leadServiceExportRecords).map((item) => {
       const closure = leadClosureDetails(item);
       return ({
       'Lead ID': displayLeadId(item),
@@ -3782,10 +3767,17 @@ function LeadDirectoryView({ leads, pagination, summary, staff, currentUser, loa
       Industry: item.industryType || '',
       Status: closure.status,
       'Lead Pipeline Status': closure.pipelineStatus,
-      'Applicant Type': item.piboParent || item.piboCategoryParent || inferPiboParent(item.piboCategory),
+      'Service No.': item.exportServiceNumber,
+      'Lead Closed': item.exportLeadClosed,
+      'PO Closed': item.exportPoClosed,
+      'PO Received': item.exportPoReceived,
+      'PO Approval Status': item.exportPoApprovalStatus,
+      'Applicant Type': item.applicantType || item.piboParent || item.piboCategoryParent || inferPiboParent(item.piboCategory),
       'Sub Applicant Type': item.subApplicantType || item.piboCategory || '',
       'Service Category': item.eprCategory || '',
-      'Services Offered': item.servicesOffered || '',
+      'Services Offered': item.servicesOffered || item.applicableService || '',
+      'Plant Unit': item.plantUnit || '',
+      'Financial Year': item.firstAnnualReturnYearApplicable || '',
       'Contact Person': item.contactPerson || '',
       Designation: item.designation || '',
       'Mobile 1': item.mobileNo1 || '',
@@ -5728,6 +5720,7 @@ function canUserEditLead(item = {}, currentUser = {}) {
   const userTokens = personIdentityTokens(currentUser);
   if (!userTokens.length) return false;
   const ownerTokens = personIdentityTokens(
+    item.secondaryCreatedBy,
     item.createdBy, item.createdByCrmUserId, item.createdByName, item.createdByEmail, item.importedCreatedBy,
     item.generatedForUser, item.generatedForName, item.generatedForEmail,
     item.createdOnBehalfOfUser, item.createdOnBehalfOfName, item.createdOnBehalfOfEmail,
@@ -5748,6 +5741,7 @@ function canUserEditLead(item = {}, currentUser = {}) {
 
 function leadStaffIdentityTokens(item = {}) {
   const creatorTokens = personIdentityTokens(
+    item.secondaryCreatedBy,
     item.createdBy, item.createdByCrmUserId, item.createdByName, item.createdByEmail, item.importedCreatedBy
   );
   if (creatorTokens.length) return creatorTokens;

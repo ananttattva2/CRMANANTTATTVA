@@ -3,6 +3,57 @@ const assert = require('node:assert/strict');
 const users = [{ _id: 'sonal', name: 'Sonal', role: 'operation' }, { _id: 'krishna', name: 'Krishna', role: 'operation' }];
 const client = (id, owner, category, status = '') => ({ _id: id, selectedLead: { company: '20 MICRONS LIMITED', assignedStaff: owner, assignments: [{ poApprovalStatus:'APPROVED',assignedTo:'manager',assignedStaff:owner }] }, data: { basic: { piboCategory: category, servicesOffered: 'Consulting' }, cpcb: { status }, importMeta: { visibilityStatus: 'LIVE' } } });
 
+test('popup details collapse duplicate snapshots while retaining distinct lead, unit, service and status rows', async () => {
+  const { uniquePortfolioServiceDetails } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const original = { id: 'master', leadId: 'lead-323', leadCode: 'ATPL-LEAD-0323', name: 'SHREE MATANGI WOVEN SACK PRIVATE LIMITED', category: 'Producer', offered: 'Annual Return Filling', unit: 'Unit 1', cpcb: 'Approved' };
+  const snapshots = [original, { ...original, id: 'assignment', name: ' shree matangi woven sack private limited ' }];
+  assert.deepEqual(uniquePortfolioServiceDetails(snapshots), [original]);
+  const distinct = [
+    { ...original, id: 'registration', offered: 'New Registration' },
+    { ...original, id: 'unit-two', unit: 'Unit 2' },
+    { ...original, id: 'pending', cpcb: 'Under Review' },
+    { ...original, id: 'other-lead', leadId: 'lead-324', leadCode: 'ATPL-LEAD-0324' }
+  ];
+  assert.equal(uniquePortfolioServiceDetails([...snapshots, ...distinct]).length, 5);
+  assert.equal(snapshots.length, 2);
+});
+
+test('SPOC reports count all 43 services instead of collapsing them into 41 applicant records', async () => {
+  const { buildApplicationPortfolio, applicationReportGroups, PIBO_CATEGORIES, matchesStatusSummary, matchesServiceSummary } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const rows = Array.from({ length: 41 }, (_, index) => {
+    const row = client(`client-${index}`, 'sonal', 'Producer', 'Approved');
+    row.selectedLead.company = `Company ${index}`;
+    row.selectedLead.status = 'Closed';
+    return row;
+  });
+  for (const index of [0, 1]) {
+    const extra = client(`registration-${index}`, 'sonal', 'Producer', 'Approved');
+    extra.selectedLead.company = `Company ${index}`;
+    extra.selectedLead.status = 'Closed';
+    extra.data.basic.servicesOffered = 'New Registration';
+    rows.push(extra);
+  }
+  // Repeated masters for the same service still count only once.
+  rows.push({ ...rows[0], _id: 'duplicate-consulting' });
+  const groups = buildApplicationPortfolio(rows, users);
+  assert.equal(groups[0].records.length, 41);
+  const [report] = applicationReportGroups(groups);
+  assert.equal(report.records.length, 43);
+  assert.equal(report.records.filter(row => matchesStatusSummary(row, 'total')).length, 43);
+  assert.equal(report.records.filter(row => matchesServiceSummary(row, 'total')).length, 43);
+  assert.equal(PIBO_CATEGORIES.reduce((total, category) => total + report.records.filter(row => row.category === category).length, 0), 43);
+  assert.equal(report.records.filter(row => matchesStatusSummary(row, 'registrationApproved')).length, 2);
+  assert.equal(report.records.filter(row => matchesStatusSummary(row, 'otherServicesApproved')).length, 41);
+  assert.equal(new Set(report.records.map(row => row.id)).size, 43);
+  const other = client('other-user', 'krishna', 'Importer', 'Approved');
+  const reports = applicationReportGroups(buildApplicationPortfolio([...rows, other], users));
+  assert.equal(reports.flatMap(group => group.records).length, 44);
+  assert.equal(reports.find(group => group.id === 'sonal').records.length, 43);
+  assert.equal(reports.find(group => group.id === 'krishna').records.length, 1);
+  assert(reports.find(group => group.id === 'sonal').records.every(row => row.spocName === 'Sonal'));
+  assert(reports.find(group => group.id === 'krishna').records.every(row => row.spocName === 'Krishna'));
+});
+
 test('SPOC distribution deduplicates a company category, retains distinct categories and never merges staff', async () => {
   const { buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const groups = buildApplicationPortfolio([client('a', 'sonal', 'Importer'), client('b', 'sonal', 'Importer'), client('c', 'sonal', 'Producer'), client('d', 'krishna', 'Importer')], users);
@@ -195,6 +246,8 @@ test('service breakdown counts each application once and agrees with the Clients
   const loaded = new ExcelJS.Workbook(); await loaded.xlsx.load(buffer);
   assert.equal(loaded.getWorksheet('Clients').getCell('L4').value, 'Annual Return Filling');
   assert.equal(loaded.getWorksheet('Clients').getCell('L5').value, 'Annual Return Filling');
+  assert.equal(loaded.getWorksheet('Clients').getCell('N4').value, 'Sonal');
+  assert.equal(loaded.getWorksheet('Service Statuses').getCell('N4').value, 'Sonal');
   assert.equal(loaded.getWorksheet('Service Statuses').rowCount, 6);
   assert.equal(rows[0].services.length, 2);
 });
@@ -267,7 +320,7 @@ test('submitted applicant replaces a matching draft whose unit was not recorded'
   assert.deepEqual(group.records.map(record => record.id).sort(), ['submitted-importer', 'submitted-producer']);
 });
 
-test('current-FY approved annual applications count once in their earliest annual return year', async () => {
+test('approved annual applications accept matching Annual Return years across PO financial years', async () => {
   const {buildApplicationPortfolio, applicationSummaryRecords, financialYearForDate, annualReturnYearForDate, matchesServiceSummary, matchesStatusSummary, STATUS_COLUMNS} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   assert.equal(financialYearForDate(new Date('2026-10-08T12:00:00+05:30')), '2026-27');
   assert.equal(annualReturnYearForDate(new Date('2026-10-08T12:00:00+05:30')), '2025-26');
@@ -296,8 +349,14 @@ test('current-FY approved annual applications count once in their earliest annua
     assert.equal(matchesStatusSummary(result,'annualActionRequired',new Date('2026-10-08T12:00:00+05:30')),true);
     assert.equal(matchesStatusSummary(result,result.bucket,new Date('2026-10-08T12:00:00+05:30')),false);
   }
-  result=applicationSummaryRecords(buildApplicationPortfolio([make('wrong-fy','Approved',[{poFinancialYear:'2025-26',annualReturnYear:'2025-26'}])],users)[0])[0];
-  assert.equal(result.annual,false);assert.deepEqual(result.annualYears,[]);
+  result=applicationSummaryRecords(buildApplicationPortfolio([make('earlier-po-fy','Approved',[{poFinancialYear:'2025-26',annualReturnYear:'2025-26'}])],users)[0])[0];
+  assert.equal(result.annual,true);assert.deepEqual(result.annualYears,['2025-26']);
+  assert.equal(matchesStatusSummary(result,'annual:2025-26'),true);
+  assert.equal(matchesStatusSummary(result,'annualActionRequired'),false);
+  assert.equal(matchesServiceSummary(result,'Annual Return Filling'),true);
+  result=applicationSummaryRecords(buildApplicationPortfolio([make('unrelated-year','Approved',[{poFinancialYear:'2025-26',annualReturnYear:'2024-25'}])],users)[0])[0];
+  assert.equal(result.annual,false);
+  assert.equal(matchesStatusSummary(result,'annualActionRequired'),true);
 });
 
 test('portfolio excludes every draft and every service-not-recorded row', async () => {
@@ -328,6 +387,65 @@ test('matched blank service never inherits stale New Registration from Client Ma
   assert.equal(buildApplicationPortfolio([row], users).length, 0);
 });
 
+test('legacy closed assignments supply their own service label without inheriting a sibling Client Master service', async () => {
+  const { applicationRecord, buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  for (const company of ['20 MICRONS NANO MINERALS LIMITED', 'Thrishul Packaging Industries']) {
+    const row = client(company, 'sonal', 'Producer', 'Approved');
+    row.workflowStatus = 'submitted';
+    row.assignedServiceId = `${company}-annual`;
+    row.data.basic.servicesOffered = 'New Registration';
+    row.selectedLead.company = company;
+    row.selectedLead.serviceSelections = [{ assignedServiceId: row.assignedServiceId, subApplicantType: 'Producer', plantUnit: 'Unit 1', servicesOffered: '' }];
+    row.selectedLead.assignments = [{ assignedServiceId: row.assignedServiceId, assignedTo: 'manager', assignedStaff: 'sonal', closedAt: '2026-10-01', servicesOffered: 'Annual Return Filling' }];
+    assert.deepEqual(applicationRecord(row).offeredServices, ['Annual Return Filling']);
+    assert.equal(buildApplicationPortfolio([row], users)[0].records.length, 1);
+  }
+});
+
+test('legacy single-service closed leads remain visible when their service is stored at lead level', async () => {
+  const { applicationRecord, buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  for (const company of ['20 MICRONS NANO MINERALS LIMITED', 'Thrishul Packaging Industries']) {
+    const row = client(company, 'sonal', '', 'Approved');
+    row.workflowStatus = 'submitted';
+    row.assignedServiceId = '';
+    row.data.basic.servicesOffered = undefined;
+    row.data.basic.piboCategory = undefined;
+    row.selectedLead = {
+      _id: `${company}-lead`, company, status: 'Closed', servicesOffered: 'Annual Return Filling',
+      subApplicantType: 'Producer', eprCategory: 'EPR - Plastic Waste', plantUnit: 'Unit 1',
+      serviceSelections: [], assignments: [{ assignedTo: 'manager', assignedStaff: 'sonal', closedAt: '2026-10-01' }]
+    };
+    const record = applicationRecord(row);
+    assert.deepEqual(record.offeredServices, ['Annual Return Filling']);
+    assert.equal(record.category, 'Producer');
+    assert.equal(buildApplicationPortfolio([row], users)[0].records.length, 1);
+  }
+});
+
+test('legacy closed-by Operations users own missing permanent-staff applications for Sonal and Tushar', async () => {
+  const { buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const operationsUsers = [{ _id: 'sonal', name: 'Sonal More', role: 'operation' }, { _id: 'tushar', name: 'Tushar Gawas', role: 'operation' }];
+  const makeLegacyClosed = (id, company, ownerId, ownerName) => {
+    const row = client(id, '', 'Producer', 'Approved');
+    row.workflowStatus = 'submitted';
+    row.assignedServiceId = `${id}-service`;
+    row.selectedLead = {
+      _id: `${id}-lead`, company, status: 'Closed',
+      serviceSelections: [{ assignedServiceId: row.assignedServiceId, subApplicantType: 'Producer', plantUnit: 'Unit 1', servicesOffered: 'Annual Return Filling' }],
+      assignments: [{ assignedServiceId: row.assignedServiceId, assignedTo: 'manager', closedBy: ownerId, closedByText: ownerName, closedAt: '2026-10-01' }]
+    };
+    return row;
+  };
+  const groups = buildApplicationPortfolio([
+    makeLegacyClosed('nano', '20 MICRONS NANO MINERALS LIMITED', 'sonal', 'Sonal More'),
+    makeLegacyClosed('thrishul', 'Thrishul Packaging Industries', 'tushar', 'Tushar Gawas')
+  ], operationsUsers);
+  assert.deepEqual(groups.map(group => [group.name, group.records.map(record => record.name)]), [
+    ['Sonal More', ['20 MICRONS NANO MINERALS LIMITED']],
+    ['Tushar Gawas', ['Thrishul Packaging Industries']]
+  ]);
+});
+
 test('Annual Return PO service objects qualify for all users and applicant types without creating New Registration', async () => {
   const { buildApplicationPortfolio, applicationSummaryRecords, matchesApplicationService } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const makeAnnual = (id, owner, category) => {
@@ -348,7 +466,7 @@ test('Annual Return PO service objects qualify for all users and applicant types
     const rows = applicationSummaryRecords(group);
     assert.equal(rows.filter(row => matchesApplicationService(row, 'Annual Return Filling')).length, 1);
     assert.equal(rows.filter(row => matchesApplicationService(row, 'New Registration')).length, 0);
-    assert.equal(rows[0].annualCurrentFyPo, true);
+    assert.equal(rows[0].annualEligiblePo, true);
   }
 });
 
@@ -369,4 +487,43 @@ test('approved Registration and New Registration have a dedicated status-summary
   assert.equal(rows.find((row) => row.name === 'Consulting Client' && matchesStatusSummary(row, 'registrationApproved')), undefined);
   assert.deepEqual(rows.filter((row) => matchesStatusSummary(row, 'otherServicesApproved')).map((row) => row.name), ['Consulting Client']);
   assert.equal(rows.filter((row) => matchesStatusSummary(row, 'otherServicesApproved')).some((row) => ['Registration', 'New Registration'].includes(row.summaryService)), false);
+});
+
+test('legacy multi-service assignment rows preserve PO qualification by service position', async () => {
+  const { buildApplicationPortfolio, applicationServiceSummaryRecords, financialYearForDate } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const makeRows = (owner, company) => {
+    const selections = [
+      { assignedServiceId: `${owner}-brand-owner`, subApplicantType: 'Brand Owner', servicesOffered: 'Annual Return Filling' },
+      { assignedServiceId: `${owner}-importer`, subApplicantType: 'Importer', servicesOffered: 'Annual Return Filling' }
+    ];
+    const assignments = selections.map((selection, index) => ({
+      assignedTo: 'manager',
+      assignedStaff: owner,
+      closedAt: `2026-10-0${index + 1}`,
+      poStatus: 'received',
+      poYearRows: [{ poFinancialYear: financialYearForDate(), annualReturnYear: '2025-26', poNumber: `${owner}-PO-${index + 1}` }]
+    }));
+    return selections.map((selection, index) => {
+      const category = index === 0 ? 'Brand Owner' : 'Importer';
+      const row = client(selection.assignedServiceId, owner, category, 'Approved');
+      row.workflowStatus = 'submitted';
+      row.assignedServiceId = selection.assignedServiceId;
+      row.selectedLead._id = `${owner}-multi-service-lead`;
+      row.selectedLead.company = company;
+      row.selectedLead.serviceSelections = selections;
+      row.selectedLead.assignments = assignments;
+      return row;
+    });
+  };
+  const groups = buildApplicationPortfolio([
+    ...makeRows('sonal', '20 MICRONS LIMITED'),
+    ...makeRows('krishna', 'SECOND MULTI SERVICE CLIENT')
+  ], users);
+  assert.equal(groups.length, 2);
+  for (const group of groups) {
+    const rows = applicationServiceSummaryRecords(group).filter((row) => row.annualYears.includes('2025-26'));
+    assert.equal(rows.length, 2);
+    assert.deepEqual(rows.map((row) => row.category).sort(), ['Brand Owner', 'Importer']);
+    assert(rows.every((row) => row.annualEligiblePo));
+  }
 });

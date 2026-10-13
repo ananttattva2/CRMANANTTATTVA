@@ -15,6 +15,7 @@ import {
   downloadCompleteMisPdf, downloadOperationMisPdf, downloadProductivityPdf, downloadSalesMisPdf, exportProductivityExcel,
   exportCompleteMisExcel, formatDateTime, formatDuration, formatReportDate, REPORT_TITLE
 } from '../utils/productivityReportExports'
+import { buildSalesMisReport } from '../utils/salesMisReport.mjs'
 
 const roleLabels = { superadmin: 'Super Admin', admin: 'Admin', manager: 'Manager', operation: 'Operation', sales: 'Sales', compliance: 'Compliance', accounts: 'Accounts' }
 const DEFAULT_REPORT_FROM_DATE = '2026-08-01'
@@ -281,6 +282,29 @@ function SalesOwnershipTable({ groups, loading, onOpenUser }) {
   </tbody></table></div>
 }
 
+function SalesMisInfographic({ model, loading, period, onDownload, downloading, onOpenUser }) {
+  const { owners, groups, totals, ranked, openLeaders, focusOpen, focusPercent } = model
+  const scale = Math.max(1, ...groups.map((group) => group.total))
+  const ownerScale = Math.max(1, ...ranked.map((row) => row.closedLeads))
+  const topClosed = ranked.filter((row) => row.closedLeads > 0).slice(0, 4)
+  const zeroClosed = ranked.filter((row) => row.closedLeads === 0)
+  const focusNames = openLeaders.map((row) => row.name).join(' and ')
+  return <section className="mt-4 overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm">
+    <header className="flex flex-wrap items-center justify-between gap-4 border-b border-emerald-100 px-5 py-4">
+      <div className="flex min-w-0 items-center gap-4"><img src="/ananttattva-logo.png" alt="AnantTattva" className="h-10 w-auto object-contain" /><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-orange-500">Management report</p><h2 className="text-xl font-black text-[#075848]">Sales MIS</h2><p className="text-xs font-semibold text-slate-500">Permanent Lead Owner Performance · {formatReportDate(period.from)}–{formatReportDate(period.to)}</p></div></div>
+      <button type="button" onClick={onDownload} disabled={loading || downloading} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#075848] px-4 text-sm font-black text-white disabled:opacity-50">{downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}{downloading ? 'Generating…' : 'Download Sales MIS PDF'}</button>
+    </header>
+    <div className="grid grid-cols-2 border-b border-slate-100 sm:grid-cols-4">{[['Total Leads', totals.total, 'text-[#075848]'], ['Open Leads', totals.open, 'text-orange-600'], ['Closed Leads', totals.closed, 'text-emerald-700'], ['Close Rate', `${totals.closeRate}%`, 'text-[#075848]']].map(([label, value, tone]) => <div key={label} className="border-r border-slate-100 px-5 py-3 last:border-r-0"><p className="text-[9px] font-black uppercase tracking-wider text-slate-500">{label}</p><strong className={`mt-1 block text-2xl ${tone}`}>{loading ? '—' : value}</strong></div>)}</div>
+    <div className="grid gap-4 p-4 xl:grid-cols-2">
+      <section className="rounded-xl border border-slate-200 p-4"><div className="flex items-center justify-between"><div><h3 className="font-black text-[#075848]">Team Comparison</h3><p className="text-[10px] font-semibold text-slate-500">Open and closed leads · common scale</p></div><div className="flex gap-3 text-[10px] font-bold text-slate-500"><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-orange-400" />Open</span><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-emerald-700" />Closed</span></div></div><div className="mt-4 space-y-4">{groups.map((group) => <div key={group.name}><div className="mb-1 flex justify-between gap-3 text-xs"><strong className="text-slate-800">{group.name}</strong><span className="font-semibold text-slate-500">{group.users} users · {group.total} leads · {group.closeRate}% closed</span></div><div className="flex h-3 overflow-hidden rounded-full bg-slate-100" aria-label={`${group.name}: ${group.open} open and ${group.closed} closed`}><span className="bg-orange-400" style={{ width: `${group.open / scale * 100}%` }} /><span className="bg-emerald-700" style={{ width: `${group.closed / scale * 100}%` }} /></div><p className="mt-1 text-[10px] font-bold text-slate-500">{group.open} open · {group.closed} closed</p></div>)}</div></section>
+      <section className="rounded-xl border border-slate-200 p-4"><h3 className="font-black text-[#075848]">Closed Leads by Owner</h3><p className="text-[10px] font-semibold text-slate-500">Ranked by closed lead count</p><div className="mt-3 space-y-2">{topClosed.map((row) => <div key={String(row.id || row.name)} className="grid grid-cols-[minmax(110px,1fr)_2fr_auto] items-center gap-3 text-xs"><strong className="truncate text-slate-700">{row.name}</strong><span className="h-2 overflow-hidden rounded-full bg-slate-100"><i className="block h-full rounded-full bg-emerald-700" style={{ width: `${row.closedLeads / ownerScale * 100}%` }} /></span><span className="min-w-24 text-right font-bold text-slate-500">{row.closedLeads} · {row.closeRate}%</span></div>)}{zeroClosed.length > 0 && <p className="pt-1 text-[10px] font-bold text-slate-400">Remaining {zeroClosed.length} owner{zeroClosed.length === 1 ? '' : 's'}: 0 closed leads</p>}</div></section>
+    </div>
+    <div className="mx-4 mb-4 rounded-xl border-l-4 border-orange-400 bg-orange-50 px-4 py-3 text-xs font-semibold text-slate-700"><strong className="text-[#075848]">Management focus:</strong> {totals.open} leads remain open. {focusNames || 'The leading owners'} together hold {focusOpen} open leads, approximately {focusPercent}% of the open pipeline.</div>
+    <div className="overflow-x-auto border-t border-slate-100"><table className="w-full min-w-[760px] text-xs"><thead className="bg-[#075848] text-left text-[10px] uppercase tracking-wider text-white"><tr><th rowSpan={2} className="px-4 py-2.5 align-middle">Lead Owner</th><th colSpan={2} className="border-x border-emerald-300/40 px-4 py-2.5 text-center">Total Leads</th><th rowSpan={2} className="px-4 py-2.5 text-right align-middle">Open</th><th rowSpan={2} className="px-4 py-2.5 text-right align-middle">Closed</th><th rowSpan={2} className="px-4 py-2.5 text-right align-middle">Close Rate</th></tr><tr><th className="border-l border-t border-emerald-300/40 bg-[#0a6a58] px-4 py-2 text-right">Temp Lead</th><th className="border-r border-t border-emerald-300/40 bg-[#0a6a58] px-4 py-2 text-right">Lead</th></tr></thead><tbody>{owners.map((row) => <tr key={String(row.id || row.name)} className="border-b border-slate-100 last:border-0"><td className="px-4 py-2"><button type="button" onClick={() => onOpenUser(row)} className="font-bold text-slate-800 hover:text-emerald-700">{row.name}</button></td><td className="px-4 py-2 text-right font-bold text-violet-700">{row.temporaryLeads}</td><td className="px-4 py-2 text-right font-bold">{row.totalLeads}</td><td className="px-4 py-2 text-right font-bold text-orange-600">{row.openLeads}</td><td className="px-4 py-2 text-right font-bold text-emerald-700">{row.closedLeads}</td><td className="px-4 py-2 text-right font-bold">{row.closeRate}%</td></tr>)}</tbody><tfoot className="bg-emerald-50 font-black text-[#075848]"><tr><td className="px-4 py-2">Total · {owners.length} owners</td><td className="px-4 py-2 text-right text-violet-700">{totals.temporary}</td><td className="px-4 py-2 text-right">{totals.total}</td><td className="px-4 py-2 text-right">{totals.open}</td><td className="px-4 py-2 text-right">{totals.closed}</td><td className="px-4 py-2 text-right">{totals.closeRate}%</td></tr></tfoot></table></div>
+    <footer className="border-t border-slate-100 px-4 py-2 text-[10px] font-semibold text-slate-500">Temporary leads ({totals.temporary}) are shown as Temp Lead beside Lead under Total Leads and are not included in the permanent Lead count.</footer>
+  </section>
+}
+
 function MisPagination({ page, total, pageSize = MIS_PAGE_SIZE, onPageChange }) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
   if (total <= pageSize) return <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-3 text-xs font-bold text-slate-500">Showing {total} of {total} records</div>
@@ -408,6 +432,7 @@ export default function SuperAdminDashboard({ misPage = false }) {
     })
   }, [approvalWorkflowClients, report.users])
   const allSalesMisRows = useMemo(() => rows, [rows])
+  const salesMisModel = useMemo(() => buildSalesMisReport(allSalesMisRows), [allSalesMisRows])
   const salesDepartmentGroups = useMemo(() => buildSalesDepartmentGroups(allSalesMisRows), [allSalesMisRows])
   const managementSalesGroups = useMemo(() => salesDepartmentGroups.filter((group) => group.name === 'Management'), [salesDepartmentGroups])
   const departmentSalesGroups = useMemo(() => salesDepartmentGroups.filter((group) => group.name !== 'Management' && group.name !== 'Operations Team'), [salesDepartmentGroups])
@@ -423,7 +448,7 @@ export default function SuperAdminDashboard({ misPage = false }) {
   const salesMisRows = useMemo(() => allSalesMisRows.slice((salesPage - 1) * MIS_PAGE_SIZE, salesPage * MIS_PAGE_SIZE), [allSalesMisRows, salesPage])
   const operationGroups = useMemo(() => allOperationGroups.slice((operationPage - 1) * MIS_PAGE_SIZE, operationPage * MIS_PAGE_SIZE), [allOperationGroups, operationPage])
   const quotationMisRows = useMemo(() => allQuotationMisRows.slice((quotationPage - 1) * MIS_PAGE_SIZE, quotationPage * MIS_PAGE_SIZE), [allQuotationMisRows, quotationPage])
-  const salesTotals = useMemo(() => allSalesMisRows.reduce((total, row) => ({ leads: total.leads + Number(row.totalLeads || 0), open: total.open + Number(row.openLeads || 0), closed: total.closed + Number(row.closedLeads || 0) }), { leads: 0, open: 0, closed: 0 }), [allSalesMisRows])
+  const salesTotals = { leads: salesMisModel.totals.total, open: salesMisModel.totals.open, closed: salesMisModel.totals.closed }
   const operationTotals = useMemo(() => allOperationGroups.reduce((total, group) => ({ clients: total.clients + Number(group.clientMasters || 0), draft: total.draft + Number(group.draftClients || 0), submitted: total.submitted + Number(group.submittedClients || 0), pending: total.pending + Number(group.pendingClients || 0), filled: total.filled + Number(group.filled || 0), missing: total.missing + Number(group.missing || 0) }), { clients: 0, draft: 0, submitted: 0, pending: 0, filled: 0, missing: 0 }), [allOperationGroups])
   useEffect(() => { setSalesPage(1); setOperationPage(1); setQuotationPage(1) }, [appliedFilters.from, appliedFilters.to])
   const quotationTotals = useMemo(() => ({ total: allQuotationMisRows.length, open: allQuotationMisRows.filter((row) => ['draft', 'submitted', 'sent'].includes(String(row.status || '').toLowerCase())).length, converted: allQuotationMisRows.filter((row) => ['approved', 'converted'].includes(String(row.status || '').toLowerCase())).length }), [allQuotationMisRows])
@@ -565,20 +590,7 @@ export default function SuperAdminDashboard({ misPage = false }) {
           <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-center gap-2"><ShieldAlert className="h-5 w-5 text-orange-500" /><div><h2 className="font-black text-slate-950">Admin Attention</h2><p className="text-xs font-semibold text-slate-500">Accounts to review</p></div></div><div className="mt-3 space-y-2">{attention.map((item) => <button key={item.key} onClick={() => { const next = { ...draftFilters, risk: item.key }; setDraftFilters(next); setAppliedFilters(next) }} className="flex w-full items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-left hover:border-emerald-200"><span className="text-xs font-black text-slate-700">{item.label}</span><strong className="text-lg text-slate-950">{item.count}</strong></button>)}</div></aside>
         </section>}
 
-        {misPage && misAccess.showSales && <section className="mt-4 overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm">
-          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-emerald-100 bg-gradient-to-r from-emerald-50 to-white px-5 py-4">
-            <div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-emerald-100 text-emerald-700"><Users className="h-5 w-5" /></span><div><p className="text-[10px] font-black uppercase tracking-[.18em] text-emerald-700">Management · Lead Ownership MIS</p><h2 className="text-xl font-black text-slate-950">Sales & Operations Team Performance</h2><p className="text-xs font-semibold text-slate-500">Permanent Lead Owner based counts · Temp Lead includes all captured temporary records, including converted records</p></div></div>
-            <button type="button" onClick={() => downloadMisPdf('sales')} disabled={loading || Boolean(generatingMisPdf)} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#075848] px-4 text-sm font-black text-white disabled:opacity-50">{generatingMisPdf === 'sales' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}{generatingMisPdf === 'sales' ? 'Generating...' : 'Download Sales PDF'}</button>
-          </header>
-          <SalesOwnershipTable groups={departmentSalesGroups} loading={loading} onOpenUser={setWorkReportUser} />
-          <div className="border-t border-slate-100 bg-slate-50 px-5 py-3 text-xs font-bold text-slate-500">Showing {departmentSalesGroups.reduce((sum, group) => sum + group.members.length, 0)} lead owners across {departmentSalesGroups.length} department groups</div>
-        </section>}
-
-        {misPage && misAccess.showSales && <section className="mt-4 overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-sm">
-          <header className="border-b border-violet-100 bg-gradient-to-r from-violet-50 to-white px-5 py-4"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-violet-100 text-violet-700"><ShieldCheck className="h-5 w-5" /></span><div><p className="text-[10px] font-black uppercase tracking-[.18em] text-violet-700">Separate Management MIS</p><h2 className="text-xl font-black text-slate-950">Management Lead Ownership</h2><p className="text-xs font-semibold text-slate-500">Admin, Super Admin and Management team owners shown separately</p></div></div></header>
-          <SalesOwnershipTable groups={managementSalesGroups} loading={loading} onOpenUser={setWorkReportUser} />
-          <div className="border-t border-slate-100 bg-slate-50 px-5 py-3 text-xs font-bold text-slate-500">Showing {managementSalesGroups.reduce((sum, group) => sum + group.members.length, 0)} management lead owners</div>
-        </section>}
+        {misPage && misAccess.showSales && <SalesMisInfographic model={salesMisModel} loading={loading} period={report.period} onDownload={() => downloadMisPdf('sales')} downloading={generatingMisPdf === 'sales'} onOpenUser={setWorkReportUser} />}
 
         {misPage && <section className="mt-4 overflow-hidden rounded-2xl border border-cyan-200 bg-white shadow-sm">
           <header className="flex flex-wrap items-center justify-between gap-3 border-b border-cyan-100 bg-gradient-to-r from-cyan-50 to-white px-5 py-4">

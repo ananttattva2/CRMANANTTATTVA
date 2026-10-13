@@ -1,0 +1,20 @@
+{
+  "bucket": "ananttattva-crm-files",
+  "region": "sgp1",
+  "activeCrm": "https://crmananttattva.com",
+  "scope": "Reconciled inventory snapshot; ongoing external Cloudinary uploads are separate",
+  "originals": 5647,
+  "referencedVariants": 9,
+  "total": 5656,
+  "successful": 5656,
+  "failed": 0,
+  "missing": 0,
+  "pending": 0,
+  "bytesVerified": 2517000777,
+  "verification": "File size and full SHA-256 read-back",
+  "mongo": { "appliedJournalOperations": 1864, "conflicts": 0, "originalUniqueDocumentsVerified": 1802, "cutoverAppliedOperations": 3 },
+  "cloudinaryDeleted": 0,
+  "fullMigrationRun": "https://github.com/ananttattva2/CRMANANTTATTVA/actions/runs/38251924299",
+  "originalReconciliationRun": "https://github.com/ananttattva2/CRMANANTTATTVA/actions/runs/38255496760",
+  "cutoverApplyRun": "https://github.com/ananttattva2/CRMANANTTATTVA/actions/runs/38256041582"
+}

@@ -1110,6 +1110,16 @@ exports.listClients = async (req, res) => {
   // explicitly requests this bounded directory representation.
   if (!paginated) {
     const queryStartedAt = process.hrtime.bigint();
+    if (req.query.view === 'execution') {
+      const clients = await Client.find(combineAccessFilters(baseFilter, { 'adminControls.approvalStatus': 'APPROVED' }))
+        .select('data.basic.clientLegalName data.basic.tradeName data.basic.applicantType data.basic.subApplicantType data.basic.servicesOffered data.clientLifecycle.workFollowUps selectedLead adminControls.approvalStatus adminControls.assignedTo createdAt')
+        .populate('selectedLead', 'leadCode company applicantType subApplicantType servicesOffered eprCategory serviceSelections.applicantType serviceSelections.piboParent serviceSelections.subApplicantType serviceSelections.piboCategory serviceSelections.servicesOffered serviceSelections.serviceName serviceSelections.eprCategory assignedStaffText closedAt closedByText assignReachedAt assignments.assignedStaffText assignments.assignedAt assignments.updatedAt assignments.closedAt assignments.poYearRows.poNumber assignments.poYearRows.poReceivedDate assignments.poYearRows.poDate')
+        .populate('adminControls.assignedTo', 'name email')
+        .sort({ createdAt: -1 }).lean();
+      const queryMs = Number(process.hrtime.bigint() - queryStartedAt) / 1e6;
+      res.set('Server-Timing', `access;dur=${accessMs.toFixed(1)}, query;dur=${queryMs.toFixed(1)}`);
+      return res.json({ ok: true, clients });
+    }
     const clients = await Client.find(baseFilter)
     .select([
       '-data.companyOverview.productImage',
@@ -1215,6 +1225,11 @@ exports.listClients = async (req, res) => {
       'data.coordinating.mobile', 'data.coordinating.email', 'data.financials', 'data.validation'
     ] : []),
     ...(req.query.export === 'true' ? [
+      'services', 'data.basic.financialYear', 'data.basic.servicesForYear', 'data.basic.registrationYear',
+      'data.basic.financialYears', 'data.basic.annualReturnYear', 'data.basic.annualReturnYears',
+      'data.basic.firstAnnualReturnYearApplicable', 'data.financialYear', 'data.financialYears',
+      'data.servicesForYear', 'data.annualReturnYear', 'data.annualReturnYears',
+      'data.firstAnnualReturnYearApplicable', 'data.financials',
       'data.basic.servicesOffered', 'data.basic.companyIndustry', 'data.basic.website',
       'data.registeredAddress', 'data.communicationAddress', 'data.otp',
       'data.authorised.name', 'data.authorised.designation', 'data.authorised.mobile', 'data.authorised.email',
@@ -1228,7 +1243,11 @@ exports.listClients = async (req, res) => {
   const queryStartedAt = process.hrtime.bigint();
   const [clients, total, summaryRows] = await Promise.all([
     Client.find(filter).select(projection)
-      .populate('selectedLead', 'leadCode company status eprCategory applicantType subApplicantType piboParent serviceSelections assignedTo assignedToText assignedStaff assignedStaffText assignedStaffEmail assignments')
+      .populate({
+        path: 'selectedLead',
+        select: 'leadCode company status eprCategory applicantType subApplicantType piboParent firstAnnualReturnYearApplicable serviceSelections assignedTo assignedToText assignedStaff assignedStaffText assignedStaffEmail assignments createdBy createdByName createdByEmail createdByCrmUserId importedCreatedBy generatedForUser generatedForName generatedForEmail createdOnBehalfOfUser createdOnBehalfOfName createdOnBehalfOfEmail',
+        populate: ['createdBy', 'generatedForUser', 'createdOnBehalfOfUser'].map(path => ({ path, select: 'name email' }))
+      })
       .populate('createdBy', 'name email role avatarUrl')
       .populate('adminControls.assignedTo', 'name email role avatarUrl')
       .sort({ [sortBy]: sortOrder, _id: sortOrder })
@@ -1251,6 +1270,18 @@ exports.listClients = async (req, res) => {
       } }
     ])
   ]);
+  if (req.query.export === 'true' && clients.length) {
+    const leadIds = clients.map(client => client.selectedLead?._id).filter(Boolean);
+    const poApprovals = await PendingApproval.find({ type: 'purchase_order', 'payload.leadId': { $in: leadIds.flatMap(id => [id, String(id)]) } })
+      .select('approvalStatus payload.leadId payload.assignedServiceId payload.assignmentIndex payload.poYearRows.poNumber payload.poYearRows.poDate payload.poYearRows.poFinancialYear payload.poYearRows.annualReturnYear payload.poYearRows.fy payload.poYearRows.registrationYear').lean();
+    const byLead = new Map();
+    poApprovals.forEach(approval => {
+      const key = String(approval.payload.leadId);
+      if (!byLead.has(key)) byLead.set(key, []);
+      byLead.get(key).push(approval);
+    });
+    clients.forEach(client => { client.poApprovals = byLead.get(String(client.selectedLead?._id || '')) || []; });
+  }
   if (req.query.dashboard === 'true' && clients.length) {
     const [approvals, complianceReviews] = await Promise.all([
       PendingApproval.find({
@@ -1481,6 +1512,32 @@ exports.listClientReviewApplicants = async (req, res) => {
   return exports.listClientMasterServices({ ...req, query: { identity: `client:${req.params.id}` } }, res, { clientReview: true });
 };
 
+function clientMasterReviewServiceIdentity(item = {}) {
+  const normalize = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const normalizeOffering = (value) => {
+    const normalized = normalize(value);
+    return /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalized) ? 'annualreturn' : normalized;
+  };
+  const identity = [
+    item.eprCategory,
+    item.applicantType,
+    item.piboCategory,
+    normalizeOffering(item.servicesOffered),
+    item.plantUnit
+  ].map(normalize).join(':');
+  return identity.replace(/:/g, '') ? identity : `record:${item.clientMasterId}`;
+}
+
+function uniqueClientMasterReviewServices(records = [], preferredClientMasterId = '') {
+  const byService = new Map();
+  records.forEach((item) => {
+    const key = clientMasterReviewServiceIdentity(item);
+    const existing = byService.get(key);
+    if (!existing || String(item.clientMasterId) === String(preferredClientMasterId)) byService.set(key, item);
+  });
+  return [...byService.values()];
+}
+
 exports.listClientMasterServices = async (req, res, options = {}) => {
   const identity = String(req.query.identity || req.query.leadId || req.query.clientMasterId || '').trim();
   if (!identity) return res.status(400).json({ error: 'Client or Lead identity is required' });
@@ -1543,7 +1600,10 @@ exports.listClientMasterServices = async (req, res, options = {}) => {
         industryType: 1, applicantType: 1
       } }).sort({ workflowStatus: -1, updatedAt: -1 }).toArray()
     : [];
-  const services = records.map(normalizeClientMaster).filter((item) => item.clientMasterId);
+  const services = uniqueClientMasterReviewServices(
+    records.map(normalizeClientMaster).filter((item) => item.clientMasterId),
+    explicitClientId
+  );
   if (lead && !isLeadEligibleForClientMaster(lead) && !services.length) {
     return res.status(409).json({ error: CLIENT_MASTER_CLOSED_LEAD_ERROR, code: 'LEAD_NOT_CLOSED' });
   }

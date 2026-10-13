@@ -18,7 +18,7 @@ export function applicationSummaryRecords(group) {
     const priority = ['rejected', 'underReview', 'applied', 'notStarted', 'approved']
     const bucket = priority.find(status => statusServices.some(service => service.bucket === status))
     const labels = { rejected: 'Rejected', underReview: 'Under Review', applied: 'Applied', notStarted: 'Not Started', approved: 'Approved' }
-    const annual = summaryService === 'Annual Return Filling' && bucket === 'approved' && statusServices.some(service => service.annualCurrentFyPo)
+    const annual = summaryService === 'Annual Return Filling' && bucket === 'approved' && statusServices.some(service => service.annualEligiblePo)
     const recordedYears = annual ? [...new Set(statusServices.filter(service => service.closed && service.annual && service.annualWorkflowReady).flatMap(service => service.annualYears || []))].sort() : []
     const annualYears = recordedYears.length ? [recordedYears[0]] : []
     return { ...record, bucket, cpcb: labels[bucket], summaryService, annual, annualYears,
@@ -42,6 +42,23 @@ export function applicationServiceSummaryRecords(group) {
     }))
   })
   return applicationSummaryRecords({ records })
+}
+export function applicationReportGroups(groups) {
+  // Every tab counts the same company/category/unit/service applications.
+  // Keep category-level grouping internal, then expand services for reporting.
+  return groups.map(group => ({
+    ...group,
+    records: applicationServiceSummaryRecords(group).map(record => ({
+      ...record,
+      spocId: group.id,
+      spocName: group.name,
+      services: (record.services || []).map(service => ({
+        ...service,
+        spocId: group.id,
+        spocName: group.name
+      }))
+    }))
+  }))
 }
 export function matchesApplicationService(record, key) {
   if (key === 'total') return true
@@ -85,9 +102,9 @@ export function annualActionReasons(record) {
   const reasons = []
   if (!services.some(service => service.closed)) reasons.push('Service closure pending')
   if (!services.some(service => service.bucket === 'approved')) reasons.push('CPCB status is not Approved')
-  if (!services.some(service => service.annualCurrentFyPo)) reasons.push(`Received PO for FY ${financialYearForDate()} is missing`)
+  if (!services.some(service => service.annualEligiblePo)) reasons.push(`Received PO for Annual Return ${annualReturnYearForDate()} is missing`)
   if (!services.some(service => service.annualWorkflowReady)) reasons.push('Manager or permanent staff assignment is incomplete')
-  if (services.some(service => service.annualCurrentFyPo) && !services.some(service => service.annualYears?.length)) reasons.push('Annual Return Year is missing')
+  if (services.some(service => service.annualEligiblePo) && !services.some(service => service.annualYears?.length)) reasons.push('Annual Return Year is missing')
   return reasons.length ? reasons : ['Does not qualify for the selected Annual Return year']
 }
 export function applicationSummaryService(record) {
@@ -142,17 +159,31 @@ export function applicantCategory(value) {
 export function applicationRecord(client) {
   const data = client.data || {}, basic = data.basic || {}, meta = data.importMeta || {}, lead = client.selectedLead || {}
   const services = lead.serviceSelections || []
-  const service = services.find(item => String(item.assignedServiceId || item.serviceAssignmentId || '') === String(client.assignedServiceId || '')) || (services.length === 1 ? services[0] : {})
+  const selectedServiceId = String(client.assignedServiceId || '')
+  const serviceIndex = services.findIndex(item => selectedServiceId && String(item.assignedServiceId || item.serviceAssignmentId || '') === selectedServiceId)
+  const service = serviceIndex >= 0 ? services[serviceIndex] : (services.length === 1 ? services[0] : {})
   const assignments = lead.assignments || []
-  const assignment = assignments.find(item => String(item.assignedServiceId || item.serviceAssignmentId || '') === String(client.assignedServiceId || '')) || (assignments.length === 1 ? assignments[0] : {})
+  const exactAssignment = assignments.find(item => selectedServiceId && String(item.assignedServiceId || item.serviceAssignmentId || '') === selectedServiceId)
+  const indexedAssignment = serviceIndex >= 0 && assignments[serviceIndex]
+    && !String(assignments[serviceIndex].assignedServiceId || assignments[serviceIndex].serviceAssignmentId || '')
+    ? assignments[serviceIndex] : null
+  const assignment = exactAssignment || indexedAssignment || (assignments.length === 1 ? assignments[0] : {})
   const closed = Boolean(assignment.closedAt || assignment.closedBy || assignment.closedByText || assignment.permanentClosedAt || (services.length === 1 && (lead.closedAt || lead.closedBy)) || String(lead.status || '').toLowerCase() === 'closed')
   const hasMatchedLeadService = Boolean(Object.keys(service).length)
   // A matched lead service is authoritative, including when its service name
   // is blank. Falling back to Client Master in that case can copy a sibling
   // service (for example New Registration) into an Annual Return assignment.
+  const selectedServiceOffering = service.servicesOffered ?? service.applicableService
+  // Some legacy closed leads saved the service label on the matching
+  // assignment, while leaving the service-selection label blank. This is a
+  // same-service fallback; Client Master remains excluded because it can
+  // contain a sibling service.
+  const assignmentOffering = assignment.servicesOffered ?? assignment.applicableService
+  const legacyOffering = [lead.servicesOffered, lead.applicableService, basic.servicesOffered, basic.applicableService, data.selectedLeadSnapshot?.servicesOffered, data.selectedLeadSnapshot?.applicableService]
+    .find(value => canonicalOfferedServices(value).length) ?? []
   const offered = hasMatchedLeadService
-    ? (service.servicesOffered ?? service.applicableService ?? [])
-    : (basic.servicesOffered ?? basic.applicableService ?? data.selectedLeadSnapshot?.servicesOffered ?? data.selectedLeadSnapshot?.applicableService ?? [])
+    ? (canonicalOfferedServices(selectedServiceOffering).length ? selectedServiceOffering : assignmentOffering ?? [])
+    : legacyOffering
   const annual = isAnnualReturnService(offered)
   const annualWorkflowReady = Boolean(assignment.assignedTo || assignment.assignedToText || assignment.assignedToEmail)
     && Boolean(assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail)
@@ -160,13 +191,16 @@ export function applicationRecord(client) {
   const hasPoEvidence = po => [po.poNumber, po.poNo, po.poDate, po.poReceivedDate, po.poFileName, po.fileName, po.poFileUrl]
     .some(value => Boolean(String(value || '').trim()))
   const poReceived = String(assignment.poStatus || '').toLowerCase() === 'received' || poRows.some(hasPoEvidence)
-  const currentPoRows = annual && poReceived ? poRows
-    .filter(po => String(po.poFinancialYear || '').trim() === financialYearForDate())
+  const eligiblePoRows = annual && poReceived ? poRows
+    // The saved Annual Return year is independent of the PO financial year.
+    // Also retain current-FY rows so missing/year-specific details remain visible.
+    .filter(po => String(po.poFinancialYear || '').trim() === financialYearForDate()
+      || String(po.annualReturnYear || '').trim() === annualReturnYearForDate())
     .filter(po => !po.services?.length || isAnnualReturnService(po.services))
     : []
-  const annualCurrentFyPo = currentPoRows.length > 0
-  const annualYears = [...new Set(currentPoRows.map(po => po.annualReturnYear).filter(Boolean))]
-  const category = applicantCategory(text(service.subApplicantType, service.piboCategory, basic.piboCategory, basic.subApplicantType, service.applicantType, basic.applicantType))
+  const annualEligiblePo = eligiblePoRows.length > 0
+  const annualYears = [...new Set(eligiblePoRows.map(po => po.annualReturnYear).filter(Boolean))]
+  const category = applicantCategory(text(service.subApplicantType, service.piboCategory, lead.subApplicantType, lead.piboCategory, basic.piboCategory, basic.subApplicantType, service.applicantType, lead.applicantType, basic.applicantType))
   const cpcb = text(data.cpcb?.status, data.cpcb?.approvalStatus, data.cpcb?.applicationStatus, basic.cpcbStatus, meta.cpcbStatus)
   const state = text(data.registeredAddress?.state, data.address?.state, data.addresses?.state, basic.state, meta.state)
   const clientStatus = text(meta.clientStatus, client.adminControls?.clientStatus, client.workflowStatus)
@@ -174,7 +208,7 @@ export function applicationRecord(client) {
   const status = normalize(cpcb)
   const inactive = /suspend|discontinu|inactive/.test(normalize(`${clientStatus} ${visibility} ${cpcb}`))
   const bucket = cpcbStatusBucket(cpcb)
-  return { id: String(client._id), assignmentOnly: Boolean(client.assignmentOnly), statusSourceClientId: client.statusSourceClientId || '', leadId: String(lead._id || ''), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), offeredServices: canonicalOfferedServices(offered), closed, bucket, live: !inactive, annual, annualCurrentFyPo, annualWorkflowReady, annualYears, sourceIds: [String(client._id)] }
+  return { id: String(client._id), assignmentOnly: Boolean(client.assignmentOnly), statusSourceClientId: client.statusSourceClientId || '', leadId: String(lead._id || ''), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, lead.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, lead.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, lead.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), offeredServices: canonicalOfferedServices(offered), closed, bucket, live: !inactive, annual, annualEligiblePo, annualWorkflowReady, annualYears, sourceIds: [String(client._id)] }
 }
 // Placeholders and blank drafts do not represent another application when
 // this lead already has a submitted master for the same applicant/unit/service.
@@ -204,7 +238,7 @@ export function effectiveApplicationServices(services) {
     const key = `${service.statusSourceClientId || 'unlinked'}:${signature(service)}:${service.bucket}`
     const existing = hydrated.get(key)
     if (!existing) { hydrated.set(key, service); return true }
-    existing.annualCurrentFyPo ||= service.annualCurrentFyPo
+    existing.annualEligiblePo ||= service.annualEligiblePo
     existing.closed ||= service.closed
     existing.annualWorkflowReady ||= service.annualWorkflowReady
     existing.annualYears = [...new Set([...(existing.annualYears || []), ...(service.annualYears || [])])]
@@ -219,7 +253,7 @@ export function effectiveApplicationServices(services) {
       && (service.assignmentOnly ? signature(candidate) === signature(service) : sameDraftApplication(service, candidate))
       && (!replaceableDraft || normalize(candidate.clientStatus) === 'submitted'))
     if (!master) return true
-    master.annualCurrentFyPo ||= service.annualCurrentFyPo
+    master.annualEligiblePo ||= service.annualEligiblePo
     master.annualYears = [...new Set([...(master.annualYears || []), ...(service.annualYears || [])])]
     return false
   })
@@ -266,6 +300,23 @@ export function matchesPortfolioSearch(row, query) {
   const normalizeSearch = value => String(value || '').toLowerCase().normalize('NFKC').replace(/corpration/g, 'corporation').replace(/[^a-z0-9]/g, '')
   const needle = normalizeSearch(query)
   return !needle || [row, ...(row.services || [])].some(service => [service.name, service.code, service.leadCode, service.category, service.cpcb, service.state, service.industry, service.eprCategory, service.offered].some(value => normalizeSearch(value).includes(needle)))
+}
+
+// Client Master and assignment snapshots can describe the same displayed
+// service. Collapse identical detail rows without changing application counts.
+export function uniquePortfolioServiceDetails(services = []) {
+  const seen = new Set()
+  return services.filter(service => {
+    const key = JSON.stringify([
+      service.leadId || service.leadCode || service.code,
+      service.leadCode || service.code, service.name, service.category,
+      service.industry, service.eprCategory, service.offered,
+      service.unit, service.cpcb, service.clientStatus, service.visibility
+    ].map(value => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase()))
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 

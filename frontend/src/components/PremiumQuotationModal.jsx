@@ -40,9 +40,51 @@ function AnimatedInteger({ value, duration = 1.5, className = '' }) {
   );
 }
 
+function quotationItemKey(item = {}, index = 0) {
+  return String(item.assignedServiceId || item.id || (Number.isInteger(Number(item.sourceServiceIndex)) ? `source:${Number(item.sourceServiceIndex)}` : `item:${index}`)).trim();
+}
+
+function groupedPricingRows(items = [], groups = [], combinedBasicAmount = 0, totalAmount = 0) {
+  const normalizedGroups = Array.isArray(groups) && groups.length
+    ? groups.map((group, index) => ({
+      id: String(group?.id || `combined-group-${index + 1}`),
+      name: String(group?.name || `Combined Group ${index + 1}`),
+      itemKeys: [...new Set((Array.isArray(group?.itemKeys) ? group.itemKeys : []).map(String).filter(Boolean))],
+      basicAmount: Number(group?.basicAmount) || 0
+    }))
+    : [{
+      id: 'legacy-combined-group',
+      name: 'Combined Group 1',
+      itemKeys: items.map(quotationItemKey),
+      basicAmount: Number(combinedBasicAmount) || Number(totalAmount) || 0
+    }];
+  const groupByItemKey = new Map();
+  normalizedGroups.forEach((group) => group.itemKeys.forEach((key) => groupByItemKey.set(key, group)));
+  const rows = items.map((item, index) => ({
+    item,
+    index,
+    group: groupByItemKey.get(quotationItemKey(item, index)) || {
+      id: `unassigned-${index}`,
+      name: 'Individual item',
+      basicAmount: Number(item?.basicAmount) || 0
+    }
+  }));
+  const order = new Map(normalizedGroups.map((group, index) => [group.id, index]));
+  rows.sort((left, right) => (order.get(left.group.id) ?? normalizedGroups.length) - (order.get(right.group.id) ?? normalizedGroups.length) || left.index - right.index);
+  rows.forEach((row, rowIndex) => {
+    row.firstInGroup = rowIndex === 0 || rows[rowIndex - 1]?.group?.id !== row.group.id;
+    if (!row.firstInGroup) return;
+    let runEnd = rowIndex + 1;
+    while (runEnd < rows.length && rows[runEnd].group.id === row.group.id) runEnd += 1;
+    row.groupSize = runEnd - rowIndex;
+  });
+  return rows;
+}
+
 export default function PremiumQuotationModal({
   open = true,
   onClose,
+  overlayClassName = 'z-[220]',
   companyName = 'Quotation Details',
   quotationNumber = 'Quotation',
   totalAmount = 0,
@@ -51,13 +93,20 @@ export default function PremiumQuotationModal({
   piboCategory = '-',
   businessCategory = '-',
   serviceCategory = '-',
-  items = []
+  items = [],
+  pricingMode = 'individual',
+  combinedBasicAmount = 0,
+  combinedPricingGroups = []
 }) {
+  const groupedPricing = pricingMode === 'combined';
+  const displayRows = groupedPricing
+    ? groupedPricingRows(items, combinedPricingGroups, combinedBasicAmount, totalAmount)
+    : items.map((item, index) => ({ item, index }));
   return (
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-[220] grid place-items-center bg-slate-950/55 p-5 backdrop-blur-[9px]"
+          className={`fixed inset-0 ${overlayClassName} grid place-items-center bg-slate-950/55 p-5 backdrop-blur-[9px]`}
           role="presentation"
           onClick={onClose}
           initial={{ opacity: 0 }}
@@ -103,7 +152,7 @@ export default function PremiumQuotationModal({
                 >
                   <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">{quotationNumber}</p>
                   <AnimatedCurrency value={totalAmount} duration={2} className="mt-2 block text-4xl font-black leading-none text-orange-500" />
-                  <p className="mt-3 text-xs font-black text-teal-700">Basic Amount (INR)</p>
+                  <p className="mt-3 text-xs font-black text-teal-700">{groupedPricing ? 'Grouped Basic Amount (INR)' : 'Basic Amount (INR)'}</p>
                 </motion.div>
 
                 <motion.div
@@ -144,22 +193,20 @@ export default function PremiumQuotationModal({
 
               <div className="mt-5">
                 <div className="mb-3 flex items-center justify-between gap-3">
-                  <h4 className="font-black text-slate-950">Quotation Items</h4>
-                  <span className="text-xs font-black uppercase tracking-[0.1em] text-slate-500">
-                    <AnimatedInteger value={items.length} duration={1.2} /> item{items.length === 1 ? '' : 's'}
-                  </span>
+                  <div><h4 className="font-black text-slate-950">Quotation Items</h4><span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] ${groupedPricing ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-700'}`}>{groupedPricing ? 'Grouped pricing' : 'Individual pricing'}</span></div>
+                  <span className="text-xs font-black uppercase tracking-[0.1em] text-slate-500"><AnimatedInteger value={items.length} duration={1.2} /> item{items.length === 1 ? '' : 's'}</span>
                 </div>
                 <div className="overflow-auto rounded-lg border border-slate-200">
                   <table className="w-full min-w-[1280px] border-collapse text-left text-sm">
                     <thead className="bg-slate-50 text-[11px] font-black uppercase tracking-[0.06em] text-slate-600">
                       <tr>
-                        {['Sr.No', 'Business Category', 'Service Category', 'Service Period', 'Select Period', 'Transition Period', 'Service Category', 'Applicant Type', 'Unit', 'Basic Amount (INR)'].map((header) => (
+                        {['Sr.No', 'Business Category', 'Service Category', 'Service Period', 'Select Period', 'Transition Period', 'Service Category', 'Applicant Type', 'Unit', ...(groupedPricing ? ['Pricing Group'] : []), groupedPricing ? 'Group Amount (INR)' : 'Basic Amount (INR)'].map((header) => (
                           <th key={header} className="border-r border-slate-200 px-3 py-3 last:border-r-0">{header}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {items.length ? items.map((item, index) => (
+                      {displayRows.length ? displayRows.map(({ item, index, group, firstInGroup, groupSize }) => (
                         <motion.tr
                           key={`${item.serviceCategory || 'item'}-${index}`}
                           className="border-t border-slate-100"
@@ -176,12 +223,11 @@ export default function PremiumQuotationModal({
                           <td className="px-3 py-3 font-black uppercase text-slate-700">{item.eprCategory || '-'}</td>
                           <td className="px-3 py-3 font-black uppercase text-slate-700">{item.piboCategory || '-'}</td>
                           <td className="px-3 py-3 font-black text-slate-700">{item.unit || '-'}</td>
-                          <td className="px-3 py-3 text-right font-black text-orange-500">
-                            <AnimatedCurrency value={item.basicAmount} duration={2} />
-                          </td>
+                          {groupedPricing && firstInGroup && <td rowSpan={groupSize} className="border-l border-slate-100 px-3 py-3 text-center align-middle font-black text-emerald-700">{group.name}</td>}
+                          {(!groupedPricing || firstInGroup) && <td rowSpan={groupedPricing ? groupSize : undefined} className="px-3 py-3 text-right align-middle font-black text-orange-500"><AnimatedCurrency value={groupedPricing ? group.basicAmount : item.basicAmount} duration={2} /></td>}
                         </motion.tr>
                       )) : (
-                        <tr><td colSpan={10} className="px-4 py-8 text-center font-black text-slate-400">No quotation items added.</td></tr>
+                        <tr><td colSpan={groupedPricing ? 11 : 10} className="px-4 py-8 text-center font-black text-slate-400">No quotation items added.</td></tr>
                       )}
                     </tbody>
                   </table>

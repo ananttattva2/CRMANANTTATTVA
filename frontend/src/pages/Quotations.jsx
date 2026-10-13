@@ -569,8 +569,8 @@ function mapLeadServiceRows(lead = {}, savedItems = [], serviceState = 'open', c
     closed: leadServiceIsClosed(lead, index),
     owned: serviceBelongsToUser(row, lead, currentUser)
   }))
-    .filter(({ owned }) => owned)
-    .filter(({ closed }) => serviceState === 'closed' ? closed : !closed)
+    .filter(({ owned }) => serviceState === 'all' || owned)
+    .filter(({ closed }) => serviceState === 'all' || (serviceState === 'closed' ? closed : !closed))
     .map(({ row, index }) => {
     const saved = savedItems.find((item) => Number(item.sourceServiceIndex) === index)
       || savedItems.find((item) => quotationItemIdentity(item) === quotationItemIdentity(row))
@@ -669,6 +669,11 @@ function combinedPricingRows(quotation = {}, items = []) {
       basicAmount: item.basicAmount ?? 0
     }
   }));
+  // HTML rowSpan can only merge contiguous rows. Keep each saved pricing
+  // group together so an interleaved service cannot repeat its group amount.
+  const groupOrder = new Map(groups.map((group, index) => [group.id, index]));
+  rows.sort((left, right) => (groupOrder.get(left.group.id) ?? groups.length)
+    - (groupOrder.get(right.group.id) ?? groups.length) || left.index - right.index);
   rows.forEach((row, rowIndex) => {
     const previousGroupId = rows[rowIndex - 1]?.group?.id;
     row.firstInGroup = rowIndex === 0 || previousGroupId !== row.group.id;
@@ -1149,7 +1154,7 @@ export default function Quotations() {
       || !selectedLead
       || !currentUser
     ) return;
-    const ownedItems = mapLeadServiceRows(selectedLead, [], 'open', currentUser);
+    const ownedItems = mapLeadServiceRows(selectedLead, [], 'all', currentUser);
     setQuotation((current) => ({
       ...current,
       leadDetails: mapLeadToDetails(selectedLead),
@@ -1161,6 +1166,7 @@ export default function Quotations() {
     const editQuotationId = location.state?.editQuotationId;
     const previewQuotationId = location.state?.previewQuotationId;
     const leadAction = String(location.state?.leadAction || '').trim().toLowerCase();
+    if (new URLSearchParams(location.search).get('mode') === 'add' || leadAction === 'add') return;
     const quotationSnapshot = normalizeQuotationSnapshot(location.state?.quotationSnapshot);
     if (leadAction === 'revise' && quotationContext && !loading) {
       const target = [...quotations]
@@ -1196,7 +1202,7 @@ export default function Quotations() {
       editQuotation(target);
       navigate(location.pathname, { replace: true, state: {} });
     }
-  }, [loading, location.pathname, location.state, navigate, quotationContext, quotations]);
+  }, [loading, location.pathname, location.search, location.state, navigate, quotationContext, quotations]);
 
   useEffect(() => {
     setPage(1);
@@ -1457,34 +1463,20 @@ export default function Quotations() {
     const leadIndex = leads.findIndex((item) => String(item._id || item.id) === String(leadId));
     const lead = leadIndex >= 0 ? leads[leadIndex] : null;
     const businessLeadCode = displayLeadCode(lead, leadIndex);
-    const savedQuotation = [...quotations]
-      .filter((row) => String(row.leadId || '') === String(leadId || '')
-        && quotationBelongsToUser(row, currentUser)
-        && ['combined', 'individual'].includes(row.pricingMode)
-        && !['approved', 'rejected'].includes(String(row.status || '').toLowerCase()))
-      .sort((left, right) => new Date(right.updatedAt || right.createdAt || 0) - new Date(left.updatedAt || left.createdAt || 0))[0];
-    setQuotation((current) => ({
-      ...current,
+    // Selecting a lead always creates a fresh quotation. Existing quotations
+    // are loaded only through the explicit Revise action.
+    setQuotation({
+      ...emptyQuotation,
       leadId,
       leadCode: businessLeadCode === '-' ? '' : businessLeadCode,
       fromName: String(identity?.fromName || '').trim(),
       preparedByName: String(identity?.preparedByName || '').trim(),
       leadDetails: mapLeadToDetails(lead),
-      pricingMode: savedQuotation?.pricingMode || current.pricingMode || '',
-      combinedBasicAmount: savedQuotation?.pricingMode === 'combined' ? (savedQuotation.combinedBasicAmount ?? '') : '',
-      combinedPricingGroups: savedQuotation?.pricingMode === 'combined'
-        ? normalizeCombinedPricingGroups(savedQuotation, savedQuotation.items || [])
-        : [],
-      validUntil: savedQuotation?.validUntil || '',
-      items: mapLeadServiceRows(lead, Array.isArray(savedQuotation?.items) ? savedQuotation.items : [], 'open', currentUser),
-      terms: Array.isArray(savedQuotation?.terms)
-        ? savedQuotation.terms.map((term) => String(term ?? ''))
-        : [],
-      paymentTerm: quotationPaymentTerm(savedQuotation),
-      scopeOfWork: Array.isArray(savedQuotation?.scopeOfWork) ? savedQuotation.scopeOfWork.map(String) : [],
-      status: savedQuotation?.status || 'draft'
-    }));
-    setEditingId(savedQuotation?._id || savedQuotation?.id || '');
+      items: mapLeadServiceRows(lead, [], 'all', currentUser),
+      terms: [],
+      scopeOfWork: []
+    });
+    setEditingId('');
     setEditingItemIndex(null);
     setItemDrafts({});
   }

@@ -77,10 +77,17 @@ export function permanentStaffOwnerKeys(client = {}) {
     if (serviceIndex >= 0 && allAssignments[serviceIndex] && !allAssignments[serviceIndex].assignedServiceId && !allAssignments[serviceIndex].serviceAssignmentId) assignments = [allAssignments[serviceIndex]]
     else if (owners.size === 1) assignments = legacy
   }
-  return [...new Set([
+  const permanent = [...new Set([
     ...assignments.flatMap((assignment) => [assignment?.assignedStaff, assignment?.assignedStaffText, assignment?.assignedStaffEmail]),
     client.assignedStaff, client.assignedStaffText, client.assignedStaffEmail,
     lead.assignedStaff, lead.assignedStaffText, lead.assignedStaffEmail
+  ].flatMap(identity))]
+  if (permanent.length) return permanent
+  return [...new Set([
+    ...assignments.filter(assignment => assignment?.closedAt || assignment?.closedBy || assignment?.closedByText || assignment?.permanentClosedAt)
+      .flatMap(assignment => [assignment?.closedBy, assignment?.closedByText, assignment?.closedByEmail]),
+    ...(allAssignments.length <= 1 && (lead.closedAt || lead.closedBy || lead.closedByText)
+      ? [lead.closedBy, lead.closedByText, lead.closedByEmail] : [])
   ].flatMap(identity))]
 }
 
@@ -206,6 +213,7 @@ export function buildOperationsWorkbookData(groups = [], financialYear = 'all') 
       'Operations User': excelText(group.name, 'Unassigned'),
       'Financial Year Filter': excelText(financialYear, 'All'),
       'Assigned Clients': group.total,
+      'Assigned Applications': Number(group.applicationTotal ?? group.total),
       'Compliance Approved': group.complianceDone,
       'PO Received': group.poDone,
       'Compliance Tabs With Remarks': group.rows.reduce((count, row) => count + getOperationsTabRemarks(row).filter(tab => tab.remarks).length, 0),

@@ -1,6 +1,8 @@
 require('dotenv').config({ override: true });
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
+const { invalidateDashboardReads } = require('./services/dashboardReadModel');
 const mongoose = require('mongoose');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/auth');
@@ -69,19 +71,28 @@ app.use(cors({
     !origin || allowedOrigins.includes(origin) || /\.vercel\.app$/.test(origin)
   )
 }));
+app.use(compression({ threshold: 1024 }));
 app.use(express.json({ limit: '12mb' }));
+app.use('/api', (req, res, next) => {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && /^\/api\/(clients|leads|teams|dashboard-insights|pending-approvals)(?:\/|$)/.test(req.originalUrl)) {
+    res.on('finish', () => { if (res.statusCode < 400) invalidateDashboardReads(); });
+  }
+  next();
+});
 
 let schedulerStarted = false;
 let dbReady;
 const isServerlessRuntime = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 
 function connectAndStartServices() {
-  dbReady = connectDB().then(async () => {
+  dbReady = connectDB();
+  dbReady.then(async () => {
     await applyKnownDataCorrections().catch((error) => console.error('Known CRM data correction failed', error));
     await pauseExistingPendingClientApprovalTimers().catch((error) => console.error('Pending client reminder reconciliation failed', error));
     // Run once on every deployment/startup so legacy RED records immediately
     // receive their fresh 24-hour recovery window and email notification.
     await runClientComplianceCorrectionReminders().catch((error) => console.error('Compliance correction startup scan failed', error));
+    invalidateDashboardReads();
     // Persistent interval schedulers must never run inside short-lived serverless
     // function instances. Their work is handled by explicit cron endpoints.
     if (!schedulerStarted && !isServerlessRuntime) {
@@ -95,7 +106,7 @@ function connectAndStartServices() {
       startTemporaryAssignmentReminderScheduler();
       schedulerStarted = true;
     }
-  });
+  }).catch(error => console.error('CRM startup services failed', error));
   return dbReady;
 }
 

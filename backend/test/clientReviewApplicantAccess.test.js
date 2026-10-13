@@ -36,3 +36,31 @@ test('ordinary staff cannot use reviewer applicant discovery', async () => {
     assert.equal(passed,false);
   }
 });
+
+test('compliance applicant discovery collapses duplicate documents for the same logical service', async () => {
+  const duplicateId = '507f1f77bcf86cd799439012';
+  const originalOne=Client.findOne, originalFind=Client.collection.find;
+  const makeRecord = (recordId, assignedServiceId) => ({
+    _id: recordId,
+    assignedServiceId,
+    workflowStatus: 'submitted',
+    companyIdentity: 'manglamplasticspvtltd',
+    data: {
+      assignedServiceId,
+      basic: { clientLegalName:'MANGLAM PLASTICS PVT LTD', piboCategory:'Producer', eprCategory:'EPR - Plastic Waste', servicesOffered:'Annual Return Filling' },
+      selectedLeadSnapshot: { applicantType:'PIBO', plantUnit:'Unit 1' }
+    }
+  });
+  const preferred = makeRecord(id, 'producer-original');
+  const duplicate = makeRecord(duplicateId, 'producer-duplicate');
+  Client.findOne=()=>({select(){return this},async lean(){return preferred}});
+  Client.collection.find=()=>({sort(){return this},async toArray(){return [duplicate, preferred]}});
+  try {
+    const res=response();
+    await controller.listClientReviewApplicants({params:{id},user:{role:'compliance'}},res);
+    assert.equal(res.statusCode,200);
+    assert.equal(res.data.services.length,1);
+    assert.equal(res.data.services[0].clientMasterId,id);
+    assert.equal(res.data.services[0].assignedServiceId,'producer-original');
+  } finally {Client.findOne=originalOne;Client.collection.find=originalFind;}
+});

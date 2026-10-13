@@ -67,7 +67,9 @@ const connectDB = async () => {
     if (!uri) throw new Error('MongoDB Atlas is not configured. Set MONGO_ATLAS_URI or MONGO_URI.');
     await mongoose.connect(uri, {
       dbName: process.env.DB_NAME || 'registerd_types',
-      serverSelectionTimeoutMS: 10000
+      serverSelectionTimeoutMS: 10000,
+      compressors: ['zlib'],
+      zlibCompressionLevel: 1
     });
     await ensureQuotationIndexes();
     await ensurePiboCategoryIndexes();

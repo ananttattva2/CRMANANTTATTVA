@@ -1,5 +1,8 @@
 const express = require('express');
-const crypto = require('crypto');
+const spaces = require('../services/spacesStorage');
+const multer = require('multer');
+const crypto = require('node:crypto');
+const { pipeline } = require('node:stream/promises');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
@@ -7,24 +10,38 @@ const DEFAULT_LOGO_URL = 'https://crm.ananttattva.com/assets/at-logo-CTH78yrR.sv
 let cachedLogo = null;
 let cachedContentType = 'image/svg+xml';
 
-router.post('/cloudinary-signature', requireAuth, (req, res) => {
-  const cloudName = String(process.env.CLOUDINARY_CLOUD_NAME || '').trim();
-  const apiKey = String(process.env.CLOUDINARY_API_KEY || '').trim();
-  const apiSecret = String(process.env.CLOUDINARY_API_SECRET || '').trim();
-  if (!cloudName || !apiKey || !apiSecret) return res.status(503).json({ error: 'Cloudinary storage is not configured.' });
+// Same-origin fallback when browser-to-Spaces CORS/network access is unavailable.
+const receiveFile = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 1, fields: 2 } }).single('file');
+router.post('/upload', requireAuth, (req, res) => {
+  receiveFile(req, res, async error => {
+    if (error || !req.file) return res.status(400).json({ error: 'Invalid upload or file exceeds 25 MB.' });
+    if (crypto.createHash('sha256').update(req.file.buffer).digest('base64') !== req.body.checksum) return res.status(400).json({ error: 'Upload checksum mismatch.' });
+    try {
+      const stored = await spaces.uploadBuffer(req.file.buffer, req.file.originalname, req.file.mimetype, req.body.folder || 'crm/uploads');
+      return res.json({ ...stored, name: req.file.originalname, type: req.file.mimetype, uploadedAt: new Date().toISOString() });
+    } catch { return res.status(503).json({ error: 'Spaces storage upload failed.' }); }
+  });
+});
 
-  const safeFolder = String(req.body?.folder || 'crm/uploads')
-    .trim()
-    .replace(/[^a-zA-Z0-9/_-]+/g, '-')
-    .replace(/^\/+|\/+$/g, '')
-    .slice(0, 120) || 'crm/uploads';
-  const timestamp = Math.floor(Date.now() / 1000);
-  const signature = crypto
-    .createHash('sha1')
-    .update(`folder=${safeFolder}&timestamp=${timestamp}${apiSecret}`)
-    .digest('hex');
-
-  return res.json({ cloudName, apiKey, timestamp, folder: safeFolder, signature });
+router.post('/upload-url', requireAuth, async (req, res) => {
+  try { return res.json(await spaces.authorizeUpload(req.body || {}, req.user._id)); }
+  catch { return res.status(400).json({ error: 'Upload authorization failed. Check file size and Spaces configuration.' }); }
+});
+router.post('/upload-confirm', requireAuth, async (req, res) => {
+  try { return res.json(await spaces.confirmUpload(req.body?.token, req.user._id)); }
+  catch { return res.status(400).json({ error: 'Upload could not be verified.' }); }
+});
+// Stable capability links preserve existing preview UI; possession of a link grants access.
+router.get('/file', async (req, res) => {
+  try {
+    const key = String(req.query.key || '');
+    if (!spaces.validLink(key, String(req.query.signature || ''))) return res.status(403).json({ error: 'Invalid file link.' });
+    res.set({ 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer' });
+    const object = await spaces.get(key);
+    res.set({ 'Content-Type': object.ContentType || 'application/octet-stream', 'Content-Disposition': object.ContentDisposition || 'attachment', 'X-Content-Type-Options': 'nosniff' });
+    if (Number.isFinite(object.ContentLength)) res.set('Content-Length', String(object.ContentLength));
+    await pipeline(object.Body, res);
+  } catch { if (res.headersSent) return res.destroy(); return res.status(503).json({ error: 'File storage is unavailable.' }); }
 });
 
 router.get('/brand-logo', async (req, res) => {

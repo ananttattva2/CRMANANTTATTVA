@@ -115,3 +115,33 @@ test('AR allocation is restricted to the selected Annual Return year', () => {
   const tracker = buildUploadTracker([ar2025, ar2026, poYear, actionRequired], [user], [], [], { groupBy: 'application', serviceType: 'annual', financialYear: '2025-26' });
   assert.deepEqual(tracker[0].clients.map(row => row.clientName).sort(), ['AR 2025 Client', 'PO Annual Year Client']);
 });
+
+test('AR tracker keeps both legacy multi-service rows when assignments are linked by position', () => {
+  const secondUser = { _id: 'krishna', name: 'Krishna', role: 'operation' };
+  const makeRows = (owner, company) => {
+    const selections = [
+      { assignedServiceId: `${owner}-brand-owner`, subApplicantType: 'Brand Owner', servicesOffered: 'Annual Return Filling' },
+      { assignedServiceId: `${owner}-importer`, subApplicantType: 'Importer', servicesOffered: 'Annual Return Filling' }
+    ];
+    const assignments = selections.map((selection, index) => ({
+      assignedTo: 'manager', assignedStaff: owner, closedAt: `2026-10-0${index + 1}`, poStatus: 'received',
+      poYearRows: [{ poFinancialYear: financialYearForDate(), annualReturnYear: '2025-26', poNumber: `${owner}-PO-${index + 1}` }]
+    }));
+    return selections.map((selection, index) => ({
+      _id: selection.assignedServiceId,
+      assignedServiceId: selection.assignedServiceId,
+      workflowStatus: 'submitted',
+      selectedLead: { _id: `${owner}-multi-service-lead`, status: 'Closed', company, serviceSelections: selections, assignments },
+      data: { basic: { piboCategory: index === 0 ? 'Brand Owner' : 'Importer' }, cpcb: { status: 'Approved' } }
+    }));
+  };
+  const tracker = buildUploadTracker([
+    ...makeRows(user._id, '20 MICRONS LIMITED'),
+    ...makeRows(secondUser._id, 'SECOND MULTI SERVICE CLIENT')
+  ], [user, secondUser], [], [], { groupBy: 'application', serviceType: 'annual', financialYear: '2025-26' });
+  assert.equal(tracker.length, 2);
+  for (const group of tracker) {
+    assert.equal(group.clients.length, 2);
+    assert.deepEqual(group.clients.map((row) => row.category).sort(), ['Brand Owner', 'Importer']);
+  }
+});

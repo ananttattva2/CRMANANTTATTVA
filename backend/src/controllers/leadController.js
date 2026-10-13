@@ -57,6 +57,7 @@ async function leadAccessFilter(user) {
     'serviceSelections.createdByName',
     'serviceSelections.createdByEmail'
   ], [
+    'secondaryCreatedBy',
     'generatedForUser',
     'assignedStaff',
     'assignments.assignedTo',
@@ -303,7 +304,7 @@ function cleanBody(body) {
         return;
       }
       if (key === 'serviceSelections') {
-        data[key] = Array.isArray(value) ? value.slice(0, 25).map((row) => ({
+        data[key] = Array.isArray(value) ? value.map((row) => ({
           assignedServiceId: String(row?.assignedServiceId || row?.serviceAssignmentId || `service_assignment_${randomUUID()}`).trim(),
           industryType: String(row?.industryType || '').trim(),
           eprCategory: String(row?.eprCategory || '').trim(),
@@ -331,7 +332,7 @@ function cleanBody(body) {
         return;
       }
       if (key === 'addresses') {
-        data[key] = Array.isArray(value) ? value.slice(0, 25).map((row) => ({
+        data[key] = Array.isArray(value) ? value.map((row) => ({
           assignedServiceId: String(row?.assignedServiceId || '').trim(),
           plantUnit: String(row?.plantUnit || '').trim(),
           addressLine1: String(row?.addressLine1 || '').trim(),
@@ -347,7 +348,7 @@ function cleanBody(body) {
         return;
       }
       if (key === 'contacts') {
-        data[key] = Array.isArray(value) ? value.slice(0, 25).map((row) => ({
+        data[key] = Array.isArray(value) ? value.map((row) => ({
           assignedServiceId: String(row?.assignedServiceId || '').trim(),
           plantUnit: String(row?.plantUnit || '').trim(),
           salutation: String(row?.salutation || '').trim(),
@@ -365,7 +366,7 @@ function cleanBody(body) {
         return;
       }
       if (key === 'assignments') {
-        data[key] = Array.isArray(value) ? value.slice(0, 25).map((row) => ({
+        data[key] = Array.isArray(value) ? value.map((row) => ({
           assignedServiceId: String(row?.assignedServiceId || '').trim(),
           plantUnit: String(row?.plantUnit || '').trim(),
           assignedTo: String(row?.assignedTo || '').trim(),
@@ -695,7 +696,9 @@ function preserveExistingClosureEvidence(beforeData = {}, nextData = {}) {
       ...row,
       poStatus: row.poStatus || previous.poStatus,
       poYearRows: mergedPoRows,
-      poApprovalStatus: row.poApprovalStatus || previous.poApprovalStatus,
+      // An older open form must not overwrite a newer Admin PO decision.
+      // Changed PO submissions are reset to Pending by the approval workflow.
+      poApprovalStatus: previous.poApprovalStatus || '',
       closureApprovalProofUrl: row.closureApprovalProofUrl || previous.closureApprovalProofUrl,
       closureApprovalProofName: row.closureApprovalProofName || previous.closureApprovalProofName,
       quotationSent: row.quotationSent || previous.quotationSent,
@@ -1066,6 +1069,7 @@ function validateServiceRemovalPermission(beforeLead = {}, incomingRows = [], us
   });
   const userTokens = royaltyIdentityTokens(user._id, user.id, user.crmUserId, user.userId, user.email, user.name);
   const leadOwnerTokens = royaltyIdentityTokens(
+    beforeLead.secondaryCreatedBy,
     beforeLead.createdBy, beforeLead.createdByCrmUserId, beforeLead.createdByEmail, beforeLead.createdByName, beforeLead.importedCreatedBy,
     beforeLead.generatedForUser, beforeLead.generatedForName, beforeLead.generatedForEmail,
     beforeLead.createdOnBehalfOfUser, beforeLead.createdOnBehalfOfName, beforeLead.createdOnBehalfOfEmail
@@ -1265,6 +1269,9 @@ exports.listLeads = async (req, res) => {
   if (!paginated) {
     const queryStartedAt = process.hrtime.bigint();
     const leads = await Lead.find(accessFilter)
+    .select(req.query.view === 'review'
+      ? 'leadCode sourceLeadId company createdAt updatedAt importedCreatedAt leadDate importedCreatedBy createdBy createdByCrmUserId createdByEmail createdByName applicantType subApplicantType piboCategory industryType eprCategory servicesOffered firstAnnualReturnYearApplicable assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail closedAt closedBy closedByText serviceSelections.applicantType serviceSelections.subApplicantType serviceSelections.piboCategory serviceSelections.eprCategory serviceSelections.servicesOffered serviceSelections.firstAnnualReturnYearApplicable serviceSelections.createdAt serviceSelections.createdByName serviceSelections.createdByEmail serviceSelections.closedAt serviceSelections.closedBy serviceSelections.closedByText assignments.closedAt assignments.closedBy assignments.closedByText'
+      : '')
     .populate('assignedTo', 'name email avatarUrl role')
     .populate('closedBy', 'name email avatarUrl role')
     .populate('createdBy', 'name email')
@@ -1313,6 +1320,7 @@ exports.listLeads = async (req, res) => {
     const staffExpression = new RegExp(`^${escapeRegex(staff.replace(/^name:/, ''))}$`, 'i');
     filters.push({ $or: [
       { assignedTo: { $in: staffValues } }, { assignedStaff: { $in: staffValues } },
+      { secondaryCreatedBy: { $in: staffValues } },
       { generatedForUser: { $in: staffValues } }, { 'assignments.assignedTo': { $in: staffValues } },
       { 'assignments.assignedStaff': { $in: staffValues } }, { assignedToText: staffExpression },
       { assignedStaffText: staffExpression }, { generatedForName: staffExpression },
@@ -1338,7 +1346,8 @@ exports.listLeads = async (req, res) => {
     'eprCategory', 'piboCategory', 'existingClient', 'contactPerson', 'mobileNo1', 'emails',
     'addressLine1', 'state', 'city', 'pinCode', 'assignedTo', 'assignedToText', 'assignedToEmail', 'assignedStaff',
     'assignedStaffText', 'assignedStaffEmail', 'assignedBy', 'createdBy', 'createdByName',
-    'createdByEmail', 'importedCreatedBy', 'generatedForUser', 'generatedForName',
+    'createdByEmail', 'importedCreatedBy', 'secondaryCreatedBy', 'secondaryCreatedByName',
+    'secondaryCreatedByEmail', 'secondaryCreatedByCrmUserId', 'generatedForUser', 'generatedForName',
     'generatedForEmail', 'createdOnBehalfOfUser', 'createdOnBehalfOfName', 'closedBy',
     'closedByText', 'closedByEmail', 'closedOnBehalfOfName', 'closedAt', 'assignReachedAt', 'assignments',
     'serviceSelections', 'createdAt', 'updatedAt',
@@ -1349,6 +1358,7 @@ exports.listLeads = async (req, res) => {
     ] : []),
     ...(req.query.export === 'true' ? [
       'industryType', 'piboParent', 'piboCategoryParent', 'subApplicantType', 'servicesOffered',
+      'contacts', 'applicantType', 'applicableService', 'plantUnit', 'firstAnnualReturnYearApplicable',
       'designation', 'mobileNo2', 'website', 'emailsSentCount', 'lastEmailSent', 'referredBy',
       'source', 'notes', 'leadDate', 'nextFollowUpDate', 'nextFollowUpTime', 'followUpRemarks',
       'importedCreatedAt', 'importedUpdatedAt', 'businessCardUrl'
@@ -1557,15 +1567,34 @@ exports.allocateLead = async (req, res) => {
 
 exports.updateLeadCreator = async (req, res) => {
   try {
+    const slot = req.body?.slot || 'primary';
+    if (!['primary', 'secondary'].includes(slot)) return res.status(400).json({ error: 'Choose Primary or Secondary user.' });
     const userId = String(req.body?.userId || '').trim();
-    if (!mongoose.isValidObjectId(userId)) return res.status(400).json({ error: 'A valid creator user is required.' });
-    const target = await User.findById(userId).select('name email crmUserId role isActive');
-    if (!target || target.isActive === false) return res.status(404).json({ error: 'Active CRM user not found.' });
+    if ((slot === 'primary' || userId) && !mongoose.isValidObjectId(userId)) return res.status(400).json({ error: 'A valid creator user is required.' });
+    const target = userId ? await User.findById(userId).select('name email crmUserId role isActive') : null;
+    if (userId && (!target || target.isActive === false)) return res.status(404).json({ error: 'Active CRM user not found.' });
     const lead = await Lead.findById(req.params.id);
     if (!lead) return res.status(404).json({ error: 'Lead not found.' });
+    const otherUserId = slot === 'secondary' ? lead.createdBy : lead.secondaryCreatedBy;
+    if (userId && String(otherUserId || '') === userId) return res.status(400).json({ error: 'Primary and Secondary must be different users.' });
+    if (slot === 'secondary') {
+      const previousId = String(lead.secondaryCreatedBy || '');
+      if (previousId !== userId) {
+        lead.creatorChangeHistory.push({ slot, fromUserId: lead.secondaryCreatedBy || null, fromName: lead.secondaryCreatedByName || '', toUserId: target?._id || null, toName: target?.name || target?.email || '', changedBy: req.user?._id, changedByName: req.user?.name || req.user?.email || 'CRM Administrator', changedAt: new Date() });
+      }
+      lead.secondaryCreatedBy = target?._id || null;
+      lead.secondaryCreatedByCrmUserId = target?.crmUserId || (target ? String(target._id) : '');
+      lead.secondaryCreatedByName = target?.name || target?.email || '';
+      lead.secondaryCreatedByEmail = target?.email || '';
+      lead.updatedBy = req.user?.name || req.user?.email || String(req.user?._id || '');
+      await lead.save();
+      if (previousId !== userId) await LeadActivity.create({ lead: lead._id, type: 'lead_creator_changed', title: 'Secondary editor updated', description: `${lead.company || lead.leadCode || 'Lead'} secondary editor ${target ? `assigned to ${target.name || target.email}` : 'removed'}`, actor: req.user?._id });
+      const saved = await Lead.findById(lead._id).populate('createdBy', 'name email crmUserId role').populate('generatedForUser', 'name email crmUserId role');
+      return res.json({ ok: true, message: target ? `Secondary user ${target.name || target.email} can now view and edit this lead.` : 'Secondary user removed.', lead: saved });
+    }
     const previous = { userId: lead.createdBy || null, crmUserId: lead.createdByCrmUserId || '', name: lead.createdByName || lead.createdByEmail || lead.importedCreatedBy || 'Unknown creator', email: lead.createdByEmail || '' };
     if (String(previous.userId || '') !== String(target._id)) {
-      lead.creatorChangeHistory.push({ fromUserId: previous.userId, fromCrmUserId: previous.crmUserId, fromName: previous.name, fromEmail: previous.email, toUserId: target._id, toCrmUserId: target.crmUserId || String(target._id), toName: target.name || target.email, toEmail: target.email || '', changedBy: req.user?._id, changedByName: req.user?.name || req.user?.email || 'CRM Administrator', changedAt: new Date() });
+      lead.creatorChangeHistory.push({ slot: 'primary', fromUserId: previous.userId, fromCrmUserId: previous.crmUserId, fromName: previous.name, fromEmail: previous.email, toUserId: target._id, toCrmUserId: target.crmUserId || String(target._id), toName: target.name || target.email, toEmail: target.email || '', changedBy: req.user?._id, changedByName: req.user?.name || req.user?.email || 'CRM Administrator', changedAt: new Date() });
     }
     lead.createdBy = target._id;
     lead.createdByCrmUserId = target.crmUserId || String(target._id);
@@ -1928,6 +1957,12 @@ exports.decidePurchaseOrderApproval = async (req, res) => {
   }
   lead.markModified('assignments');
   await lead.save();
+  if (approval.approvalStatus !== 'PENDING' && approval.approvalStatus !== status) {
+    approval.payload = { ...(approval.payload || {}), decisionCorrections: [
+      ...(approval.payload?.decisionCorrections || []),
+      { previousStatus: approval.approvalStatus, previousRemarks: approval.remarks || '', previousActionBy: approval.actionBy, previousActionAt: approval.actionAt, status, correctedAt: new Date(), correctedBy: req.user?._id, reason: remarks }
+    ] };
+  }
   approval.approvalStatus = status;
   approval.remarks = remarks;
   approval.actionBy = req.user?._id;
@@ -2498,6 +2533,7 @@ exports.updateDuplicateLeadApproval = async (req, res) => {
 };
 
 exports._test = {
+  preserveExistingClosureEvidence,
   usesDirectApplicantType,
   primaryServiceCategory,
   shouldValidatePiboSelection,

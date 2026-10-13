@@ -1,12 +1,25 @@
 name: Production Diagnostics
 on:
   workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        default: diagnostics
+        options: [diagnostics, quick-diagnostics, inventory, restart-inventory, copy-originals, copy, backup, apply, restart-apply, rollback, delta-inventory, delta-stop-inventory, delta-inventory-originals, delta-inventory-recent, delta-copy-originals, delta-copy, delta-backup, delta-apply, delta-rollback]
+      confirmation:
+        description: 'For writes enter COPY_AND_UPDATE_APPROVED'
+        type: string
+        default: ''
+      backup_confirmed:
+        description: 'Atlas backup taken and verified (required for apply)'
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 180
     environment: production
     env:
       DO_HOST: ${{ secrets.DO_HOST }}
@@ -15,9 +28,15 @@ jobs:
       DO_SSH_PRIVATE_KEY: ${{ secrets.DO_SSH_PRIVATE_KEY }}
       DO_SSH_KNOWN_HOSTS: ${{ secrets.DO_SSH_KNOWN_HOSTS }}
       APP_DIR: ${{ vars.DO_APP_DIR }}
+      SPACES_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
+      SPACES_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_ACCESS_KEY }}
+      PUBLIC_ORIGIN: ${{ vars.DO_PUBLIC_URL }}
+      OPERATION: ${{ inputs.operation }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      BACKUP_CONFIRMED: ${{ inputs.backup_confirmed }}
     steps:
       - uses: actions/checkout@v4
-      - name: Read runtime and database health
+      - name: Configure SSH
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -25,5 +44,33 @@ jobs:
           printf '%s\n' "$DO_SSH_PRIVATE_KEY" > "$HOME/.ssh/digitalocean_deploy"
           chmod 600 "$HOME/.ssh/digitalocean_deploy"
           printf '%s\n' "$DO_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
-          printf -v remote_command 'node - %q' "${APP_DIR:-/var/www/CRMANANTTATTVA}"
-          ssh -i "$HOME/.ssh/digitalocean_deploy" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" "$remote_command" < scripts/diagnose-production.cjs
+      - name: Read runtime and database health
+        if: inputs.operation == 'diagnostics' || inputs.operation == 'quick-diagnostics'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          quick_argument=""; if [[ "$OPERATION" == "quick-diagnostics" ]]; then quick_argument="--quick"; fi
+          printf -v remote_command 'node - %q %q' "${APP_DIR:-/var/www/CRMANANTTATTVA}" "$quick_argument"
+          ssh -i "$HOME/.ssh/digitalocean_deploy" -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" "$remote_command" < scripts/diagnose-production.cjs
+      - name: Prepare isolated migration code
+        if: inputs.operation != 'diagnostics' && inputs.operation != 'quick-diagnostics'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ "$OPERATION" != inventory && "$CONFIRMATION" != COPY_AND_UPDATE_APPROVED ]]; then
+            echo 'Explicit migration approval is required.'; exit 1
+          fi
+          archive="/tmp/crm-storage-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tgz"
+          tar -czf migration-code.tgz backend/package.json backend/package-lock.json backend/src scripts/storage-operator.cjs scripts/storage-backup.cjs
+          scp -q -i "$HOME/.ssh/digitalocean_deploy" -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -P "${DO_PORT:-22}" migration-code.tgz "$DO_USER@$DO_HOST:$archive"
+          code_dir="${APP_DIR:-/var/www/CRMANANTTATTVA}/.storage-migration/code/${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          printf -v command 'mkdir -p %q && tar -xzf %q -C %q && cd %q && npm ci --omit=dev --silent' "$code_dir" "$archive" "$code_dir" "$code_dir/backend"
+          ssh -i "$HOME/.ssh/digitalocean_deploy" -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" "$command"
+          echo "STORAGE_CODE_DIR=$code_dir" >> "$GITHUB_ENV"
+      - name: Run approved storage operation
+        if: inputs.operation != 'diagnostics' && inputs.operation != 'quick-diagnostics'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          printf -v command 'node %q %q %q %q' "$STORAGE_CODE_DIR/scripts/storage-operator.cjs" "${APP_DIR:-/var/www/CRMANANTTATTVA}" "$OPERATION" "$STORAGE_CODE_DIR"
+          node -e 'process.stdout.write(JSON.stringify({SPACES_ACCESS_KEY_ID:process.env.SPACES_ACCESS_KEY_ID,SPACES_SECRET_ACCESS_KEY:process.env.SPACES_SECRET_ACCESS_KEY,confirmation:process.env.CONFIRMATION,backupConfirmed:process.env.BACKUP_CONFIRMED==="true",publicOrigin:process.env.PUBLIC_ORIGIN||"https://crmananttattva.com"}))' | ssh -i "$HOME/.ssh/digitalocean_deploy" -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" "$command"

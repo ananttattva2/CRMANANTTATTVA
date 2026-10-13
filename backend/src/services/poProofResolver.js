@@ -25,7 +25,7 @@ const FILE_FIELDS = [
   'payload', 'meta', 'metadata', 'data', 'info', 'detail', 'extra', 'source'
 ];
 
-const DEEP_URL_RE = /^https?:\/\/(?:res\.cloudinary\.com|storage\.googleapis\.com|[\w-]+\.s3[\w.-]*\.amazonaws\.com|[\w.-]*s3[\w.-]*\.amazonaws\.com|cdn[\w-]*\.digitaloceanspaces\.com|commondatastorage\.googleapis\.com|lh\d*\.googleusercontent\.com|firebasestorage\.googleapis\.com|drive\.google\.com|pdf\.s3)\/\S/i;
+const DEEP_URL_RE = /^https?:\/\/(?:[^\s/]+\/api\/assets\/file\?|(?:res\.cloudinary\.com|[\w.-]+\.digitaloceanspaces\.com|storage\.googleapis\.com|[\w.-]+\.amazonaws\.com|commondatastorage\.googleapis\.com|lh\d*\.googleusercontent\.com|firebasestorage\.googleapis\.com|drive\.google\.com|pdf\.s3)\/)\S/i;
 const DEEP_NAME_RE = /\.(?:pdf|png|jpe?g|webp|gif|heic|tiff?|bmp)(?:[?#].*)?$/i;
 
 function firstText(source, fields) {
