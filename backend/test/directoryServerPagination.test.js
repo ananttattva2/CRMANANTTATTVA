@@ -13,7 +13,7 @@ test('Lead list supports bounded server pagination without changing legacy consu
   const list = leadController.slice(leadController.indexOf('exports.listLeads'), leadController.indexOf('exports.getLead'));
   assert.match(list, /req\.query\.paginated === 'true'/);
   assert.match(list, /if \(!paginated\)/);
-  assert.match(list, /\.skip\(\(page - 1\) \* limit\)\.limit\(limit\)\.lean\(\)/);
+  assert.match(list, /\.skip\(snapshot \? 0 : \(page - 1\) \* limit\)\.limit\(snapshot \? 0 : limit\)\.maxTimeMS\(20000\)\.lean\(\)/);
   assert.match(list, /Lead\.countDocuments\(filter\)/);
   assert.match(list, /hasNextPage/);
   assert.doesNotMatch(list, /processExpiredProvisionalClosures/);
@@ -25,7 +25,7 @@ test('Client list uses an inclusion projection and bounded pagination', () => {
   assert.match(list, /req\.query\.paginated === 'true'/);
   assert.match(list, /data\.basic\.clientLegalName/);
   assert.match(list, /data\.registeredAddress\.state/);
-  assert.match(list, /\.skip\(\(page - 1\) \* limit\)\.limit\(limit\)\.lean\(\)/);
+  assert.match(list, /\.skip\(snapshot \? 0 : \(page - 1\) \* limit\)\.limit\(snapshot \? 0 : limit\)\.maxTimeMS\(20000\)\.lean\(\)/);
   assert.match(list, /Client\.countDocuments\(filter\)/);
   assert.doesNotMatch(list.slice(list.indexOf('const projection')), /cpcbScreenshots|processDiagrams|loginPassword|ceprPassword/);
 });

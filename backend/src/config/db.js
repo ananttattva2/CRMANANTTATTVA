@@ -81,7 +81,19 @@ const connectDB = async () => {
         { leadCode: 1, createdAt: 1 }, { status: 1, leadCode: 1, createdAt: 1 },
         { createdBy: 1, leadCode: 1, createdAt: 1 }, { generatedForUser: 1, leadCode: 1, createdAt: 1 }
       ].map(keys => mongoose.connection.collection('leads').createIndex(keys)),
-      mongoose.connection.collection('pendingapprovals').createIndex({ type: 1, approvalStatus: 1, actionAt: -1, createdAt: -1 })
+      mongoose.connection.collection('pendingapprovals').createIndex({ type: 1, approvalStatus: 1, actionAt: -1, createdAt: -1 }),
+      ...[
+        ['clients', { createdAt: -1, _id: -1 }],
+        ['clients', { createdBy: 1, createdAt: -1, _id: -1 }],
+        ['clients', { 'adminControls.approvalStatus': 1, createdAt: -1 }],
+        ['quotations', { quotationDate: -1, createdAt: -1 }],
+        ['quotations', { createdBy: 1, quotationDate: -1, createdAt: -1 }],
+        ['quotations', { 'managementApproval.status': 1, status: 1, createdAt: -1 }],
+        ['pendingapprovals', { type: 1, approvalStatus: 1, createdAt: -1 }],
+        ['usersessions', { userId: 1, loginAt: -1 }],
+        ['auditlogs', { userId: 1, occurredAt: -1 }],
+        ['auditlogs', { occurredAt: -1, module: 1, action: 1 }]
+      ].map(([collection, keys]) => mongoose.connection.collection(collection).createIndex(keys))
     ]).catch(error => console.error('CRM read index setup failed', { name: error.name, code: error.code }));
     console.log('MongoDB connected');
   } catch (err) {

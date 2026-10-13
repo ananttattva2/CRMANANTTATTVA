@@ -351,8 +351,8 @@ export default function SuperAdminDashboard({ misPage = false }) {
     })
   }
 
-  async function load() {
-    setLoading(true)
+  async function load({ silent = false } = {}) {
+    if (!silent) setLoading(true)
     setError('')
     try {
       let reportResult
@@ -394,7 +394,7 @@ export default function SuperAdminDashboard({ misPage = false }) {
     }
   }
 
-  useCrmRefresh(() => load())
+  useCrmRefresh(() => load({ silent: true }))
   useEffect(() => { load() }, [appliedFilters.from, appliedFilters.to])
 
   useEffect(() => {

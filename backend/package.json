@@ -9,6 +9,7 @@
     "test": "node --test",
     "test:cache": "node --test test/crmRedisCache.test.js test/crmCacheInvalidation.test.js test/crmFreshness.test.js",
     "cache:check": "node src/scripts/checkRedisCache.js",
+    "performance:check": "node src/scripts/checkPerformance.js",
     "cache:invalidate": "node src/scripts/invalidateCrmCache.js",
     "seed-admin": "node src/seed/adminSeed.js",
     "backfill:ccp": "node src/scripts/backfillCcpToCrm.js",

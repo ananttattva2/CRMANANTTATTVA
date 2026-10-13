@@ -39,7 +39,7 @@ function countBy(rows, key) {
 
 async function visibleUsers(scope, requester) {
   const filter = scope === null ? { isActive: { $ne: false } } : { _id: { $in: scope.ids }, isActive: { $ne: false } };
-  const users = await User.find(filter).select('_id crmUserId name email role roles managerId teamId').sort({ name: 1 }).maxTimeMS(10000).lean();
+  const users = await require('../services/crmCache').getCrmCache().remember(`dashboard-users:${require('mongoose').mongo.BSON.EJSON.stringify(filter)}`, () => User.find(filter).select('_id crmUserId name email role roles managerId teamId').sort({ name: 1 }).maxTimeMS(10000).lean());
   if (!users.length && requester?._id) return [{ _id: requester._id, name: requester.name, email: requester.email, role: requester.role }];
   return users;
 }
