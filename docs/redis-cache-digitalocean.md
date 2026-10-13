@@ -376,3 +376,14 @@ The diagnostic now compares original and compact MIS byte sizes for a bounded
 slowest page request's own Timing/Server-Timing if a delay remains. Synthetic
 fixtures prove payload reduction and count preservation; live page latency
 still needs verification after deployment.
+
+The first deployed compact-query diagnostic returned Atlas error `8000`. The
+generated depth-seven expression made the command deeper than 50 BSON levels.
+The corrected projection bounds the complete aggregate command below 50 levels;
+deeper field values remain unchanged. An Atlas `8000` rejection also falls back
+to the original scoped Client query so completion counts do not become empty.
+The diagnostic now prints a bounded error message with connection URLs hidden.
+Atlas' documented nesting limit is described at:
+https://www.mongodb.com/docs/atlas/reference/free-shared-limitations/
+After deploying this compatibility fix, run `npm run cache:invalidate` once to
+discard previously cached partial reports, then rerun `npm run performance:check`.
