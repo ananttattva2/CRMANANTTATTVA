@@ -49,6 +49,7 @@ async function main() {
   } finally { await connection.close(); }
 }
 main().catch(error => {
-  console.error('Performance check failed:', error.code || error.name);
+  const message = String(error.message || '').replace(/(?:mongodb(?:\+srv)?|rediss?):\/\/\S+/gi, '[connection hidden]').slice(0, 500);
+  console.error('Performance check failed:', error.code || error.name, message);
   process.exitCode = 1;
 });

@@ -222,7 +222,7 @@ async function getUserProductivityReport({ from, to, requester }) {
   const requesterRole = String(requester?.role || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
   const isAdmin = ['admin', 'superadmin'].includes(requesterRole);
   const requesterId = requester?._id || requester?.id;
-  const reportPromise = require('./crmCache').getCrmCache().remember(`productivity-report-v3:${JSON.stringify({ from: period.from, to: period.to, isAdmin, requesterId: isAdmin ? 'all' : entityId(requesterId) })}`, async () => {
+  const reportPromise = require('./crmCache').getCrmCache().remember(`productivity-report-v4:${JSON.stringify({ from: period.from, to: period.to, isAdmin, requesterId: isAdmin ? 'all' : entityId(requesterId) })}`, async () => {
     const operationTeams = await reportQuery('teams', isAdmin
       ? Team.find().select('name manager operationHead members').sort({ name: 1 }).lean()
       : Team.find({ $or: [{ manager: requesterId }, { operationHead: requesterId }] }).select('name manager operationHead members').sort({ name: 1 }).lean());
@@ -239,7 +239,7 @@ async function getUserProductivityReport({ from, to, requester }) {
         .select('userId action module description occurredAt statusCode').sort({ occurredAt: -1 }).limit(10000).maxTimeMS(15000).lean()),
       reportQuery('leads', Lead.find({ ...ownerFilter, createdAt }).select('createdBy createdByCrmUserId createdByEmail createdByName importedCreatedBy generatedForUser generatedForName generatedForEmail status closedBy closedByText closedAt createdAt').maxTimeMS(20000).lean()),
       reportQuery('temporary-leads', TemporaryLead.find({ ...ownerFilter, createdAt }).select('createdBy createdByName createdByEmail').maxTimeMS(15000).lean()),
-      reportQuery('clients', Client.aggregate([{ $match: { ...ownerFilter, createdAt } }, { $project: require('./misClientProjection').misClientProjection }]).option({ maxTimeMS: 20000 })),
+      reportQuery('clients', require('./misClientProjection').readMisClients(Client, { ...ownerFilter, createdAt })),
       reportQuery('tickets', SupportTicket.aggregate([
         { $match: { ...ownerFilter, createdAt } },
         { $group: {

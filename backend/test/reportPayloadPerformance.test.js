@@ -6,6 +6,23 @@ const vm = require('node:vm');
 const { presenceValue } = require('../src/services/misClientProjection');
 const { analyzeClientMasterData } = require('../src/services/userProductivityReport');
 
+test('complete MIS aggregate command stays below Atlas BSON nesting limit', () => {
+  const { misClientProjection } = require('../src/services/misClientProjection');
+  const depth = value => value && typeof value === 'object' ? 1 + Math.max(0, ...Object.values(value).map(depth)) : 0;
+  const command = { aggregate: 'clients', pipeline: [{ $match: {} }, { $project: misClientProjection }], cursor: {} };
+  assert.ok(depth(command) < 50, `Command nesting is ${depth(command)}`);
+});
+
+test('Atlas projection rejection falls back to the same scoped records rather than empty MIS counts', async () => {
+  const { readMisClients } = require('../src/services/misClientProjection');
+  const scope = { createdBy: { $in: ['manager-member'] } }, records = [{ _id: 'one', workflowStatus: 'draft' }];
+  const Client = {
+    aggregate(stages) { assert.equal(stages[0].$match, scope); return { option: async () => { throw Object.assign(new Error('Atlas restriction'), { code: 8000 }); } }; },
+    find(filter) { assert.equal(filter, scope); return { select() { return this; }, maxTimeMS() { return this; }, lean: async () => records }; }
+  };
+  assert.equal(await readMisClients(Client, scope), records);
+});
+
 // Evaluate the small Mongo expression subset used here against concrete fixtures.
 // Production uses these expressions in MongoDB before transferring documents.
 function evaluate(expression, document, variables = {}) {
