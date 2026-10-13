@@ -111,15 +111,11 @@ function writeSessionCache(key, data) {
 }
 
 async function fetchDashboardCollection(endpoint, key, requestConfig = {}, extraParams = {}) {
-  const params = { ...requestConfig.params, ...extraParams, paginated: true, page: 1, limit: 100 };
-  const first = await api.get(endpoint, { ...requestConfig, params });
-  const totalPages = Number(first.data?.pagination?.totalPages || first.data?.pagination?.pages || 1);
-  const remaining = totalPages > 1
-    ? await Promise.all(Array.from({ length: totalPages - 1 }, (_, index) => (
-      api.get(endpoint, { ...requestConfig, params: { ...params, page: index + 2 } })
-    )))
-    : [];
-  return { data: { ...first.data, [key]: [first, ...remaining].flatMap((response) => response.data?.[key] || []) } };
+  // Dashboards need the complete scoped dataset, not repeated directory pages
+  // and their repeated count/summary queries.
+  return api.get(endpoint, { ...requestConfig, params: {
+    ...requestConfig.params, ...extraParams, paginated: true, snapshot: true
+  } });
 }
 
 function readCalendarTodoItems() {

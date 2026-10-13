@@ -1268,21 +1268,27 @@ exports.listLeads = async (req, res) => {
   // Generation screen opts into the bounded list below with paginated=true.
   if (!paginated) {
     const queryStartedAt = process.hrtime.bigint();
-    const leads = await Lead.find(accessFilter)
+    const readLeads = () => Lead.find(accessFilter)
     .select(req.query.view === 'review'
       ? 'leadCode sourceLeadId company createdAt updatedAt importedCreatedAt leadDate importedCreatedBy createdBy createdByCrmUserId createdByEmail createdByName applicantType subApplicantType piboCategory industryType eprCategory servicesOffered firstAnnualReturnYearApplicable assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail closedAt closedBy closedByText serviceSelections.applicantType serviceSelections.subApplicantType serviceSelections.piboCategory serviceSelections.eprCategory serviceSelections.servicesOffered serviceSelections.firstAnnualReturnYearApplicable serviceSelections.createdAt serviceSelections.createdByName serviceSelections.createdByEmail serviceSelections.closedAt serviceSelections.closedBy serviceSelections.closedByText assignments.closedAt assignments.closedBy assignments.closedByText'
-      : '')
+      : req.query.view === 'quotation-editor'
+        ? '-businessCardUrl -poFileUrl -assignments.poYearRows.poFileUrl -assignments.originalPoDetails.poFileUrl'
+        : '')
     .populate('assignedTo', req.query.view === 'review' ? 'name email role' : 'name email avatarUrl role')
     .populate('closedBy', req.query.view === 'review' ? 'name email role' : 'name email avatarUrl role')
     .populate('createdBy', 'name email')
     .populate('generatedForUser', 'name email crmUserId')
       .sort({ leadCode: 1, createdAt: 1 })
-      .lean();
+      .maxTimeMS(20000).lean();
+    const leads = ['review', 'quotation-editor'].includes(req.query.view)
+      ? await require('../services/crmCache').getCrmCache().remember(`lead-view:${req.query.view}:${mongoose.mongo.BSON.EJSON.stringify(accessFilter)}`, readLeads)
+      : await readLeads();
     const queryMs = Number(process.hrtime.bigint() - queryStartedAt) / 1e6;
     res.set('Server-Timing', `access;dur=${accessMs.toFixed(1)}, query;dur=${queryMs.toFixed(1)}`);
     return res.json({ ok: true, leads });
   }
 
+  const snapshot = req.query.dashboard === 'true' && req.query.snapshot === 'true';
   const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
   const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 10));
   const search = String(req.query.search || '').trim();
@@ -1404,7 +1410,7 @@ exports.listLeads = async (req, res) => {
   }
   const sort = { [sortBy]: sortOrder, ...(sortBy === 'leadCode' ? { createdAt: sortOrder } : { _id: sortOrder }) };
   const compactDirectory = req.query.directory === 'true' && req.query.export !== 'true';
-  const directoryRead = compactDirectory
+  const directoryRead = () => compactDirectory
     ? Lead.aggregate([
         { $match: filter }, { $sort: sort }, { $skip: (page - 1) * limit }, { $limit: limit },
         { $project: require('../services/leadDirectoryReadModel').directoryProjection(projection) }
@@ -1420,11 +1426,11 @@ exports.listLeads = async (req, res) => {
       .populate('createdBy', 'name email')
       .populate('generatedForUser', 'name email crmUserId')
       .sort({ [sortBy]: sortOrder, ...(sortBy === 'leadCode' ? { createdAt: sortOrder } : { _id: sortOrder }) })
-      .skip((page - 1) * limit).limit(limit).lean();
-  const [leads, total, summaryRows] = await Promise.all([
-    directoryRead,
-    require('../services/crmCache').getCrmCache().remember(`lead-directory-count:${mongoose.mongo.BSON.EJSON.stringify(filter)}`, () => Lead.countDocuments(filter)),
-    require('../services/crmCache').getCrmCache().remember(`lead-directory-summary:${mongoose.mongo.BSON.EJSON.stringify(accessFilter)}`, () => Lead.aggregate([
+      .skip(snapshot ? 0 : (page - 1) * limit).limit(snapshot ? 0 : limit).maxTimeMS(20000).lean();
+  const [leads, counted, summaryRows] = await Promise.all([
+    snapshot ? require('../services/crmCache').getCrmCache().remember(`dashboard-leads:${mongoose.mongo.BSON.EJSON.stringify({ filter, projection, sort, compactDirectory })}`, directoryRead) : directoryRead(),
+    snapshot ? Promise.resolve(null) : require('../services/crmCache').getCrmCache().remember(`lead-directory-count:${mongoose.mongo.BSON.EJSON.stringify(filter)}`, () => Lead.countDocuments(filter)),
+    snapshot ? Promise.resolve([]) : require('../services/crmCache').getCrmCache().remember(`lead-directory-summary:${mongoose.mongo.BSON.EJSON.stringify(accessFilter)}`, () => Lead.aggregate([
       { $match: accessFilter },
       { $group: {
         _id: null,
@@ -1437,9 +1443,10 @@ exports.listLeads = async (req, res) => {
       } }
     ]))
   ]);
+  const total = counted ?? leads.length;
   const queryMs = Number(process.hrtime.bigint() - queryStartedAt) / 1e6;
   const totalMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const totalPages = snapshot ? 1 : Math.max(1, Math.ceil(total / limit));
   const summary = summaryRows[0] || { total: 0, existing: 0, allocated: 0 };
   res.set('Server-Timing', `access;dur=${accessMs.toFixed(1)}, query;dur=${queryMs.toFixed(1)}, total;dur=${totalMs.toFixed(1)}`);
   return res.json({

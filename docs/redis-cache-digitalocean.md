@@ -278,3 +278,59 @@ month boundary once, preserving historical membership. Their price column uses a
 quotation projection containing only match IDs, dates and amounts, without full
 quotation items/approval documents or unused user populations. These pages also
 participate in write-driven live refresh.
+
+## Follow-up: slow pages despite a Redis HIT
+
+A HIT describes one API request. It does not measure another request, browser
+queueing, downloading, or rendering. In the reported captures, the quotation
+price request was fast while `/leads?view=review` took about eight seconds;
+dashboard directory pages also took several seconds each.
+
+Dashboard collection reads now use `dashboard=true&paginated=true&snapshot=true`.
+This preserves the complete scoped dataset and exclusions, but reads it once
+instead of fetching every 100-record directory page and its count/summary.
+Ordinary directory pagination is unchanged. Snapshot loaders and compact lead
+review/editor reads share only within the current revision. Editor reads omit
+embedded lead proof bytes; normal detail/export routes keep their original data.
+View Quotations renders independently of lead/editor references. MIS background
+refreshes keep existing tables visible. Complete MIS, Super Admin and Sales
+Management can share identical admin productivity reads; each manager's report
+has a separate cache scope. Dashboard user-directory reads also share within a
+revision. CRM writes still invalidate reads.
+
+Additional non-unique client, quotation, session and audit indexes are ensured
+by the normal backend startup. No Redis password, port or TTL change is required.
+
+After the GitHub DigitalOcean deployment succeeds, run in the Droplet console:
+
+```bash
+cd /var/www/CRMANANTTATTVA/backend
+npm run cache:check
+npm run performance:check
+curl --fail http://127.0.0.1:4000/api/health
+pm2 logs crm-backend --lines 40 --nostream
+free -h
+vmstat 1 5
+```
+
+`performance:check` is read-only and prints MongoDB round trips plus bounded
+100-record sort query plans. It never prints credentials or CRM records. It
+diagnoses baseline database reads, not the complete authenticated page flow.
+An error prints its name/code only. Share these diagnostics without `.env`,
+authorization headers, or connection strings. Deployment restarts PM2 already;
+there is no need to restart Redis or rebuild the frontend on the Droplet.
+
+Hard-refresh the browser once. Check the slowest Fetch/XHR request's **Timing**
+tab as well as its own `X-CRM-Cache` and `Server-Timing`. High Queueing points to
+browser/connection contention; high Waiting with `query` timing points to a cold
+database read. Measure twice within the TTL without a CRM change, then verify a
+new record appears after a write. A HIT is evidence of caching, not proof that
+all pages are fast.
+
+Do not buy a larger Droplet solely because pages are slow. If these measurements
+show sustained CPU saturation or memory pressure, consider a 2-vCPU/4-GB plan.
+Use CPU/RAM-only resizing to retain disk-size flexibility, schedule the downtime,
+and follow DigitalOcean's snapshot/shutdown/resize/start instructions:
+https://docs.digitalocean.com/products/droplets/how-to/resize/
+If MongoDB round trips are high, inspect the Atlas cluster region/tier and its
+query diagnostics; increasing Droplet RAM alone does not resolve database latency.

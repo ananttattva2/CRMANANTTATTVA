@@ -222,7 +222,7 @@ async function getUserProductivityReport({ from, to, requester }) {
   const requesterRole = String(requester?.role || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
   const isAdmin = ['admin', 'superadmin'].includes(requesterRole);
   const requesterId = requester?._id || requester?.id;
-  const reportPromise = (async () => {
+  const reportPromise = require('./crmCache').getCrmCache().remember(`productivity-report-v2:${JSON.stringify({ from: period.from, to: period.to, isAdmin, requesterId: isAdmin ? 'all' : entityId(requesterId) })}`, async () => {
     const operationTeams = await reportQuery('teams', isAdmin
       ? Team.find().select('name manager operationHead members').sort({ name: 1 }).lean()
       : Team.find({ $or: [{ manager: requesterId }, { operationHead: requesterId }] }).select('name manager operationHead members').sort({ name: 1 }).lean());
@@ -259,7 +259,7 @@ async function getUserProductivityReport({ from, to, requester }) {
         operationTeams: operationTeams.map((team) => ({ id: entityId(team._id), name: String(team.name || 'Operations Team'), managerId: entityId(team.manager), operationHeadId: entityId(team.operationHead), memberIds: (team.members || []).map(entityId).filter(Boolean) }))
       }
     };
-  })();
+  });
   return reportPromise;
 }
 

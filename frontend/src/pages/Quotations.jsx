@@ -1027,6 +1027,7 @@ export default function Quotations() {
   const [leadIdentityPrompt, setLeadIdentityPrompt] = useState(null);
   const [leadIdentityError, setLeadIdentityError] = useState('');
   const bulkInputRef = useRef(null);
+  const listRequestRef = useRef(0);
   const navigate = useNavigate();
   const location = useLocation();
   const quotationContext = location.state?.quotationContext || null;
@@ -1237,39 +1238,52 @@ export default function Quotations() {
     setEditingId(savedQuotation._id || savedQuotation.id || '');
   }, [currentUser, editingId, quotation.pricingMode, quotationContext, quotations, viewMode]);
 
-  useCrmRefresh(() => loadPage(), viewMode === 'list');
+  useCrmRefresh(() => loadPage({ silent: true }), viewMode === 'list');
 
-  async function loadPage() {
-    setLoading(true);
+  async function loadPage({ silent = false } = {}) {
+    const sequence = ++listRequestRef.current;
+    let refreshedLeads;
+    if (!silent) setLoading(true);
     setError('');
+    // Leads/catalogs enrich the editor. They must not hold the quotation list
+    // behind an unrelated full lead read.
+    const references = Promise.allSettled([
+      api.get(API_ENDPOINTS.leads.list, { params: { view: 'quotation-editor' } }),
+      api.get(API_ENDPOINTS.quotations.serviceCategories),
+      api.get(API_ENDPOINTS.quotations.piboCategories),
+      api.get(API_ENDPOINTS.quotations.dropdownOptions)
+    ]).then(([leadResult, categories, pibos, dropdowns]) => {
+      if (sequence !== listRequestRef.current) return;
+      if (leadResult.status === 'fulfilled') {
+        const liveLeads = mergeLeadLists(leadResult.value.data.leads || []);
+        refreshedLeads = liveLeads;
+        setLeads(liveLeads);
+        setQuotations(rows => rows.map(saved => {
+          const lead = findLeadForQuotation(saved, liveLeads);
+          return lead ? { ...saved, items: syncQuotationItemsWithLead(saved.items, lead) } : saved;
+        }));
+      }
+      if (categories.status === 'fulfilled') setCustomServiceCategories(categories.value.data.categories || []);
+      if (pibos.status === 'fulfilled') setPiboCategories(pibos.value.data.categories || []);
+      if (dropdowns.status === 'fulfilled') setCustomDropdownOptions(dropdowns.value.data.options || []);
+      setPiboCategoriesLoading(false);
+    });
     try {
-      const meResponse = await api.get(API_ENDPOINTS.auth.me);
-      const me = meResponse.data.user;
-      const [crmLeadsResult, quotationsResponse, categoriesResponse, piboCategoriesResponse, dropdownOptionsResponse] = await Promise.all([
-        api.get(API_ENDPOINTS.leads.list).catch(() => ({ data: { leads: [] } })),
-        api.get(API_ENDPOINTS.quotations.list),
-        api.get(API_ENDPOINTS.quotations.serviceCategories).catch(() => ({ data: { categories: [] } })),
-        api.get(API_ENDPOINTS.quotations.piboCategories).catch(() => ({ data: { categories: [] } })),
-        api.get(API_ENDPOINTS.quotations.dropdownOptions).catch(() => ({ data: { options: [] } }))
+      const [meResponse, quotationsResponse] = await Promise.all([
+        api.get(API_ENDPOINTS.auth.me), api.get(API_ENDPOINTS.quotations.list)
       ]);
-      setCurrentUser(me);
-      const liveLeads = mergeLeadLists(crmLeadsResult.data.leads || []);
-      const liveQuotations = (quotationsResponse.data.quotations || []).map((savedQuotation) => {
-        const lead = findLeadForQuotation(savedQuotation, liveLeads);
-        return lead ? { ...savedQuotation, items: syncQuotationItemsWithLead(savedQuotation.items, lead) } : savedQuotation;
-      });
-      setLeads(liveLeads);
-      setQuotations(liveQuotations);
-      setCustomServiceCategories(categoriesResponse.data.categories || []);
-      setPiboCategories(piboCategoriesResponse.data.categories || []);
-      setCustomDropdownOptions(dropdownOptionsResponse.data.options || []);
-      setPiboCategoriesLoading(false);
+      if (sequence !== listRequestRef.current) return;
+      setCurrentUser(meResponse.data.user);
+      setQuotations((quotationsResponse.data.quotations || []).map(saved => {
+        const lead = findLeadForQuotation(saved, refreshedLeads || leads);
+        return lead ? { ...saved, items: syncQuotationItemsWithLead(saved.items, lead) } : saved;
+      }));
     } catch (err) {
-      setError(err?.response?.data?.error || 'Unable to load quotations.');
+      if (sequence === listRequestRef.current) setError(err?.response?.data?.error || 'Unable to load quotations.');
     } finally {
-      setLoading(false);
-      setPiboCategoriesLoading(false);
+      if (sequence === listRequestRef.current) setLoading(false);
     }
+    void references;
   }
 
   async function openManagementApproval(row) {

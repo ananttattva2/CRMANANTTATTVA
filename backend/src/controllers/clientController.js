@@ -1148,6 +1148,7 @@ exports.listClients = async (req, res) => {
     return res.json({ ok: true, clients });
   }
 
+  const snapshot = req.query.dashboard === 'true' && req.query.snapshot === 'true';
   const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
   const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 10));
   const search = String(req.query.search || '').trim();
@@ -1245,8 +1246,7 @@ exports.listClients = async (req, res) => {
     ] : [])
   ]);
   const queryStartedAt = process.hrtime.bigint();
-  const [clients, total, summaryRows] = await Promise.all([
-    Client.find(filter).select(projection)
+  const clientRead = () => Client.find(filter).select(projection)
       .populate({
         path: 'selectedLead',
         select: 'leadCode company status eprCategory applicantType subApplicantType piboParent firstAnnualReturnYearApplicable serviceSelections assignedTo assignedToText assignedStaff assignedStaffText assignedStaffEmail assignments createdBy createdByName createdByEmail createdByCrmUserId importedCreatedBy generatedForUser generatedForName generatedForEmail createdOnBehalfOfUser createdOnBehalfOfName createdOnBehalfOfEmail',
@@ -1255,9 +1255,11 @@ exports.listClients = async (req, res) => {
       .populate('createdBy', 'name email role avatarUrl')
       .populate('adminControls.assignedTo', 'name email role avatarUrl')
       .sort({ [sortBy]: sortOrder, _id: sortOrder })
-      .skip((page - 1) * limit).limit(limit).lean(),
-    Client.countDocuments(filter),
-    Client.aggregate([
+      .skip(snapshot ? 0 : (page - 1) * limit).limit(snapshot ? 0 : limit).maxTimeMS(20000).lean();
+  const [clients, counted, summaryRows] = await Promise.all([
+    snapshot ? require('../services/crmCache').getCrmCache().remember(`dashboard-clients:${mongoose.mongo.BSON.EJSON.stringify({ filter, projection, sortBy, sortOrder })}`, clientRead) : clientRead(),
+    snapshot ? Promise.resolve(null) : Client.countDocuments(filter),
+    snapshot ? Promise.resolve([]) : Client.aggregate([
       { $match: baseFilter },
       { $group: {
         _id: null,
@@ -1274,6 +1276,7 @@ exports.listClients = async (req, res) => {
       } }
     ])
   ]);
+  const total = counted ?? clients.length;
   if (req.query.export === 'true' && clients.length) {
     const leadIds = clients.map(client => client.selectedLead?._id).filter(Boolean);
     const poApprovals = await PendingApproval.find({ type: 'purchase_order', 'payload.leadId': { $in: leadIds.flatMap(id => [id, String(id)]) } })
@@ -1302,7 +1305,7 @@ exports.listClients = async (req, res) => {
   }
   const queryMs = Number(process.hrtime.bigint() - queryStartedAt) / 1e6;
   const totalMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const totalPages = snapshot ? 1 : Math.max(1, Math.ceil(total / limit));
   const summary = summaryRows[0] || { total: 0, annual: 0, processed: 0, pending: 0, progress: 0, rejected: 0, discontinued: 0 };
   res.set('Server-Timing', `access;dur=${accessMs.toFixed(1)}, query;dur=${queryMs.toFixed(1)}, total;dur=${totalMs.toFixed(1)}`);
   return res.json({

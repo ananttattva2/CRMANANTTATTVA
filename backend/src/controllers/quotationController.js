@@ -746,7 +746,8 @@ exports.listQuotations = async (req, res) => {
     ];
   }
   const page = Math.max(1, Number(req.query.page) || 1);
-  const limit = req.query.limit ? Math.min(100, Math.max(1, Number(req.query.limit) || 20)) : 0;
+  const snapshot = req.query.dashboard === 'true' && req.query.snapshot === 'true';
+  const limit = !snapshot && req.query.limit ? Math.min(100, Math.max(1, Number(req.query.limit) || 20)) : 0;
   const accessFilter = await quotationAccessFilter(req.user);
   const testLeadReferences = req.query.dashboard === 'true'
     ? await getAdminCreatedLeadReferences()
@@ -765,7 +766,7 @@ exports.listQuotations = async (req, res) => {
     .sort({ quotationDate: -1, createdAt: -1 });
   if (req.query.view !== 'lead-review') query.populate('createdBy', 'name email').populate('approvalDecision.actionBy', 'name email role');
   if (limit) query.skip((page - 1) * limit).limit(limit);
-  const [quotations, counted] = await Promise.all([query.lean(), req.query.view === 'lead-review' && !limit ? Promise.resolve(null) : Quotation.countDocuments(scopedFilter)]);
+  const [quotations, counted] = await Promise.all([query.lean(), (req.query.view === 'lead-review' || snapshot) && !limit ? Promise.resolve(null) : Quotation.countDocuments(scopedFilter)]);
   const total = counted ?? quotations.length;
   res.json({ ok: true, quotations, pagination: { page, limit: limit || total, total, pages: limit ? Math.ceil(total / limit) : 1 } });
 };
