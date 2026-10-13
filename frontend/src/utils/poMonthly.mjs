@@ -1,3 +1,4 @@
+const indiaMonthFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: 'numeric' })
 export const PO_MONTHS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar']
 export const poOwnerName = value => String(value || 'Unassigned').trim().toUpperCase()
 export function visiblePOMonths(year, date = new Date()) {
@@ -22,7 +23,7 @@ export function poPeriod(value) {
   if (!value) return null
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return null
-  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: 'numeric' }).formatToParts(date)
+  const parts = indiaMonthFormatter.formatToParts(date)
   const year = Number(parts.find(p => p.type === 'year').value)
   const month = Number(parts.find(p => p.type === 'month').value)
   const start = month >= 4 ? year : year - 1

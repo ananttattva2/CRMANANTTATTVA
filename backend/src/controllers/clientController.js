@@ -1013,6 +1013,10 @@ async function syncPendingApprovalRows(rows, type = 'client') {
 }
 
 async function readStoredPendingApprovals() {
+  return require('../services/crmCache').getCrmCache().remember('pending-approval-index-v2', loadStoredPendingApprovals);
+}
+
+async function loadStoredPendingApprovals() {
   const [pendingClientRecords, pendingQuotationRecords, recentDecisionRecords] = await Promise.all([
     PendingApproval.find({
       type: 'client',

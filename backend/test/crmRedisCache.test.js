@@ -56,6 +56,26 @@ test('user, role, team, filters and pagination have separate entries; query orde
   assert.equal((await f.read(changedRole)).headers['X-CRM-Cache'], 'MISS');
 });
 
+test('actual MongoDB user and team ObjectIds remain distinct in response cache keys', async () => {
+  const f = fixture();
+  const { ObjectId } = require('mongoose').Types;
+  const request = f.req();
+  request.user = { _id: new ObjectId('64b000000000000000000001'), role: 'manager' };
+  await f.read(request);
+  f.setCount(11);
+  const other = f.req();
+  other.user = { _id: new ObjectId('64b000000000000000000002'), role: 'manager' };
+  const result = await f.read(other);
+  assert.equal(result.headers['X-CRM-Cache'], 'MISS');
+  assert.equal(result.body.count, 11);
+  const originalKey = f.cache.keyFor(request, 'same-revision');
+  request.user.teamId = new ObjectId('64b000000000000000000003');
+  const teamKey = f.cache.keyFor(request, 'same-revision');
+  assert.notEqual(teamKey, originalKey);
+  request.user.teamId = new ObjectId('64b000000000000000000004');
+  assert.notEqual(f.cache.keyFor(request, 'same-revision'), teamKey);
+});
+
 test('read overlapping a write cannot repopulate a stale generation', async () => {
   const f = fixture();
   const oldResponse = f.response();
@@ -123,4 +143,57 @@ test('warm HTTP cache never skips authentication or roles, and serializes dates 
   assert.deepEqual(await second.json(), firstBody);
   assert.equal((await fetch(url)).status, 401);
   assert.equal(authCalls, 3);
+});
+
+test('shared read models coalesce loads, preserve BSON ids/dates/numbers and expire with the revision', async () => {
+  const f = fixture();
+  const { ObjectId } = require('bson');
+  let loads = 0;
+  const load = async () => { loads++; return { _id: new ObjectId('64b000000000000000000001'), at: new Date('2026-10-13'), count: 11 }; };
+  await Promise.all([f.cache.remember('scope-a', load), f.cache.remember('scope-a', load)]);
+  assert.equal(loads, 1);
+  const cached = await f.cache.remember('scope-a', load);
+  assert.equal(loads, 1);
+  assert.equal(cached._id.toHexString(), '64b000000000000000000001');
+  assert.ok(cached.at instanceof Date);
+  assert.equal(cached.count, 11);
+  await f.cache.remember('scope-b', load);
+  assert.equal(loads, 2);
+  await f.cache.invalidate();
+  await f.cache.remember('scope-a', load);
+  assert.equal(loads, 3);
+  f.advance(60001);
+  await f.cache.remember('scope-a', load);
+  assert.equal(loads, 4);
+});
+
+test('a post-write read model cannot join or be overwritten by an old in-flight read', async () => {
+  const f = fixture();
+  let finish;
+  const old = f.cache.remember('assignments', () => new Promise(resolve => { finish = resolve; }));
+  await new Promise(resolve => setImmediate(resolve));
+  await f.cache.invalidate();
+  assert.deepEqual(await f.cache.remember('assignments', async () => ({ count: 11 })), { count: 11 });
+  finish({ count: 10 });
+  await old;
+  assert.deepEqual(await f.cache.remember('assignments', () => assert.fail('fresh result must be cached')), { count: 11 });
+});
+
+test('read model failures can be retried and Redis outages never hide loader results', async () => {
+  const f = fixture();
+  await assert.rejects(f.cache.remember('records', async () => { throw new Error('query failed'); }));
+  f.store.get = f.store.set = async () => { throw new Error('Redis unavailable'); };
+  assert.deepEqual(await f.cache.remember('records', async () => ({ count: 11 })), { count: 11 });
+});
+
+test('failed invalidation also bypasses old in-flight snapshots in the affected worker', async () => {
+  const f = fixture();
+  let finish;
+  const old = f.cache.remember('same', () => new Promise(resolve => { finish = resolve; }));
+  await new Promise(resolve => setImmediate(resolve));
+  f.revisions.bump = async () => { throw new Error('revision write failed'); };
+  await f.cache.invalidate();
+  assert.deepEqual(await f.cache.remember('same', async () => ({ count: 11 })), { count: 11 });
+  finish({ count: 10 }); await old;
+  assert.equal(f.entries.size, 0);
 });

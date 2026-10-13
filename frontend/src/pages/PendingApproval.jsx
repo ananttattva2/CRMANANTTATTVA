@@ -1,3 +1,4 @@
+import useCrmRefresh from '../hooks/useCrmRefresh';
 import { canApprovePo, canReviewPoDecision } from '../utils/poDecision.mjs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Diamond, Edit3, Eye, FileCheck2, FileText, RefreshCw, RotateCcw, Search, X, XCircle, Users, Trash2 } from 'lucide-react';
@@ -903,6 +904,8 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
     document.querySelector('.pending-approval-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  useCrmRefresh(() => loadPage({ force: true, silent: true }));
+
   async function loadPage(options = {}) {
     const requestId = ++loadRequestRef.current;
     const cached = !options.force ? readPendingApprovalCache(currentUser) : null;
@@ -920,12 +923,13 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
         avatarUrl: cached.currentUser.avatarUrl || stored?.avatarUrl || stored?.avatar || stored?.profileImage || ''
       }));
       setLoading(false);
-    } else if (options.force || !options.silent) {
+    } else if (!options.silent) {
       setLoading(true);
     }
     setError('');
 
     try {
+      const duplicatePromise = Promise.allSettled([api.get(API_ENDPOINTS.leads.duplicateApprovals, dataRequestConfig)]);
       const [meResult, approvalsResult] = await Promise.allSettled([
         api.get(API_ENDPOINTS.auth.me, authRequestConfig),
         api.get(API_ENDPOINTS.clients.pendingApprovals, dataRequestConfig)
@@ -960,16 +964,13 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
         debug: snapshot.debug
       });
       writePendingApprovalCache(snapshot);
-      setClientPage(1);
-      setQuotePage(1);
+      if (!options.silent) { setClientPage(1); setQuotePage(1); }
       if (!options.silent || !cached) setLoading(false);
 
-      // Load the heavier special/PO approval feed after the primary client and
-      // quotation response is visible. A slow PO enrichment must not hold the
+      // The special/PO feed started in parallel. Apply its result after the
+      // primary client and quotation response is visible. A slow PO enrichment must not hold the
       // whole Pending Approval screen at zero until the data timeout expires.
-      const [duplicateResult] = await Promise.allSettled([
-        api.get(API_ENDPOINTS.leads.duplicateApprovals, dataRequestConfig)
-      ]);
+      const [duplicateResult] = await duplicatePromise;
       if (requestId !== loadRequestRef.current) return;
       const poStorage = duplicateResult.status === 'fulfilled' ? duplicateResult.value.data?.poStorage : null;
       if (poStorage) console.info('[POProof:database:locations]', poStorage);
@@ -1022,7 +1023,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
       const normalizedRows = normalizedPoApprovals.flatMap((approval) => approval.normalizedPoRows);
       console.table(normalizedRows.map((row) => ({ approvalId: row.approvalId, leadCode: row.leadCode, poNumber: row.poNumber, rowIndex: row.rowIndex, poFileUrl: row.poFileUrl, hasPoFileUrl: row.hasPoFileUrl })));
       console.groupEnd();
-      setPoPage(1);
+      if (!options.silent) setPoPage(1);
     } catch (err) {
       if (isSoftApprovalLoadError(err)) {
         const fallback = cached || cachedApprovalData || {};

@@ -9,9 +9,9 @@ const { loadPurchaseOrders } = require('./purchaseOrderController');
 const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
 const { loadOverallRecords } = require('../services/overallDashboardData');
 const { loadDashboardAssignments, createDashboardCache } = require('../services/dashboardReadModel');
-const cachedOverallRecords = createDashboardCache();
-const cachedAssignmentReviews = createDashboardCache();
-const cachedMonthlyPurchaseOrders = createDashboardCache();
+const cachedOverallRecords = createDashboardCache({ name: 'overall-records' });
+const cachedAssignmentReviews = createDashboardCache({ name: 'assignment-reviews' });
+const cachedMonthlyPurchaseOrders = createDashboardCache({ name: 'monthly-purchase-orders' });
 const { overallLeadFilter } = require('../services/overallDashboardVisibility');
 const { userHasAnyRole } = require('../utils/userRoles');
 const {

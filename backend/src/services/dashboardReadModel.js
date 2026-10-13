@@ -56,13 +56,16 @@ clientProjection['data.selectedLeadSnapshot.serviceSelections'] = {
 
 const caches = new Set();
 function createDashboardCache(options = {}) {
+  if (options.name) {
+    return (key, load) => require('./crmCache').getCrmCache().remember(`${options.name}:${key}`, load);
+  }
   let read = createOverallCache({ ttl: 0, ...options });
   const invalidate = () => { read = createOverallCache({ ttl: 0, ...options }); };
   caches.add(invalidate);
   return (key, load) => read(key, load);
 }
 function invalidateDashboardReads() { for (const invalidate of caches) invalidate(); }
-const cachedAssignments = createDashboardCache({ maxEntries: 2 });
+const cachedAssignments = createDashboardCache({ name: 'dashboard-assignments-v2', maxEntries: 2 });
 const staffFields = ['assignedStaff', 'assignedStaffText', 'assignedStaffEmail'];
 const legacyClosedOwnerFields = ['closedBy', 'closedByText', 'closedByEmail'];
 const present = field => ({ [field]: { $exists: true, $nin: [null, ''] } });
@@ -77,6 +80,12 @@ const permanentStaffFilter = {
     { assignments: { $elemMatch: { $or: legacyClosedOwnerFields.map(present) } } }
   ]
 };
+function hasPermanentOwner(record, includeLegacy = true) {
+  if (!record || typeof record !== 'object') return false;
+  const fields = includeLegacy ? [...staffFields, ...legacyClosedOwnerFields] : staffFields;
+  const presentOwner = row => fields.some(field => row?.[field] != null && row[field] !== '');
+  return presentOwner(record) || (includeLegacy && (Array.isArray(record.assignments) && record.assignments.some(presentOwner)));
+}
 async function loadDashboardAssignments({ Client, Lead }, clientFilter, leadFilter) {
   // The same compact snapshot serves all users; role filtering still happens
   // after loading it and no response is shared between authorization scopes.
@@ -84,16 +93,6 @@ async function loadDashboardAssignments({ Client, Lead }, clientFilter, leadFilt
     const [clients, leads] = await Promise.all([
       Client.aggregate([
         { $match: clientFilter },
-        // Only permanently allocated clients contribute to these dashboards.
-        // Resolve that eligibility in MongoDB before transferring client forms.
-        { $lookup: {
-          from: Lead.collection?.name || 'leads', localField: 'selectedLead', foreignField: '_id',
-          pipeline: [{ $match: permanentStaffFilter }, { $project: { _id: 1 } }], as: 'dashboardAssignedLead'
-        } },
-        { $match: { $or: [...staffFields.map(present), { 'dashboardAssignedLead.0': { $exists: true } },
-          ...staffFields.map(field => present(`data.selectedLeadSnapshot.${field}`)),
-          ...legacyClosedOwnerFields.map(field => present(`data.selectedLeadSnapshot.${field}`)),
-          { 'data.selectedLeadSnapshot.assignments': { $elemMatch: { $or: [...staffFields, ...legacyClosedOwnerFields].map(present) } } }] } },
         { $project: clientProjection }
       ]).option({ maxTimeMS: 12000 }),
       Lead.aggregate([{ $match: { $and: [leadFilter, permanentStaffFilter] } }, { $project: leadProjection }]).option({ maxTimeMS: 12000 })
@@ -106,7 +105,12 @@ async function loadDashboardAssignments({ Client, Lead }, clientFilter, leadFilt
       const linked = await Lead.aggregate([{ $match: { _id: { $in: missingIds } } }, { $project: leadProjection }]).option({ maxTimeMS: 12000 });
       for (const lead of linked) byId.set(String(lead._id), lead);
     }
-    return { clients: clients.map(client => ({ ...client, selectedLead: byId.get(String(client.selectedLead)) || client.selectedLead })), leads };
+    const retained = clients.filter(client => {
+      const snapshot = client.data?.selectedLeadSnapshot || {};
+      return hasPermanentOwner(client, false) || hasPermanentOwner(snapshot)
+        || hasPermanentOwner(byId.get(String(client.selectedLead)));
+    });
+    return { clients: retained.map(client => ({ ...client, selectedLead: byId.get(String(client.selectedLead)) || client.selectedLead })), leads };
   });
 }
-module.exports = { leadProjection, clientProjection, compactPo, loadDashboardAssignments, createDashboardCache, invalidateDashboardReads };
+module.exports = { leadProjection, clientProjection, compactPo, loadDashboardAssignments, createDashboardCache, invalidateDashboardReads, hasPermanentOwner };

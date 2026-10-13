@@ -2,8 +2,11 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { activityAudit } = require('./activityAudit');
 const { userHasAnyRole } = require('../utils/userRoles');
+const authenticatedRequest = Symbol('crm authenticated request');
 
 async function requireAuth(req, res, next) {
+  if (req.user && req[authenticatedRequest] === req.user) return next();
+  const startedAt = Date.now();
   try {
     const header = req.headers.authorization || '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : null;
@@ -20,6 +23,8 @@ async function requireAuth(req, res, next) {
     }
 
     req.user = user;
+    req[authenticatedRequest] = user;
+    req.crmAuthMs = Date.now() - startedAt;
     req.authSessionId = payload.sid || '';
     activityAudit(req, res, next);
   } catch (err) {

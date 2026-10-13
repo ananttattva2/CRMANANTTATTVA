@@ -31,10 +31,10 @@ test('Client list uses an inclusion projection and bounded pagination', () => {
 });
 
 test('Lead and Client directories request pages and debounce search', () => {
-  assert.match(leadPage, /params: \{ paginated: true, \.\.\.params \}/);
+  assert.match(leadPage, /params: \{ paginated: true, (?:directory: true, )?\.\.\.params \}/);
   assert.match(leadPage, /query\.trim\(\) \? 400 : 0/);
   assert.match(leadPage, /fetchLeadDetail/);
-  assert.match(clientPage, /params: \{ paginated: true, \.\.\.params \}/);
+  assert.match(clientPage, /params: \{ paginated: true, (?:directory: true, )?\.\.\.params \}/);
   assert.match(clientDirectory, /query\.trim\(\) \? 400 : 0/);
   assert.match(clientDirectory, /pagination\?\.totalPages/);
 });

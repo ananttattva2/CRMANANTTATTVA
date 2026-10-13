@@ -64,7 +64,7 @@ const QuotationSchema = new mongoose.Schema({
   leadId: { type: String, trim: true, index: true },
   leadRef: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead', index: true },
   clientRef: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', index: true },
-  leadCode: { type: String, trim: true },
+  leadCode: { type: String, trim: true, index: true },
   businessLeadCode: { type: String, trim: true, index: true },
   companyName: { type: String, trim: true },
   leadDetails: { type: QuoteLeadDetailsSchema, default: {} },
