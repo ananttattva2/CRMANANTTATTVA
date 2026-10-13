@@ -1,3 +1,4 @@
+import useCrmRefresh from '../hooks/useCrmRefresh'
 import { canReviseQuotation } from '../utils/quotationRevision.mjs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -1639,7 +1640,9 @@ export default function LeadGeneration() {
     }
   }
 
+  const lastDirectoryParams = useRef(null);
   const loadLeadDirectory = useCallback(async (params = {}) => {
+    lastDirectoryParams.current = params;
     const requestId = ++leadListRequestRef.current;
     const requestStartedAt = window.performance.now();
     const isNotifiedRequest = String(params.workspace || '').toLowerCase() === 'notified';
@@ -1682,6 +1685,8 @@ export default function LeadGeneration() {
       if (requestId === leadListRequestRef.current) setLoading(false);
     }
   }, []);
+
+  useCrmRefresh(() => lastDirectoryParams.current ? loadLeadDirectory(lastDirectoryParams.current) : loadPage(), viewMode === 'list');
 
   const loadAllLeadsForExport = useCallback(async (params = {}) => {
     const first = await api.get(API_ENDPOINTS.leads.list, { params: { paginated: true, export: true, ...params, page: 1, limit: 100 } });

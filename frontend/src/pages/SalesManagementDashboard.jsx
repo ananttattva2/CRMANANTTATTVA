@@ -1,3 +1,4 @@
+import useCrmRefresh from '../hooks/useCrmRefresh'
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -269,10 +270,7 @@ export default function SalesManagementDashboard() {
   }
 
   useEffect(() => { load() }, [filters])
-  useEffect(() => {
-    const timer = window.setInterval(() => load({ quiet: true }), 5 * 60 * 1000)
-    return () => window.clearInterval(timer)
-  }, [filters])
+  useCrmRefresh(() => load({ quiet: true }))
 
   const managers = useMemo(() => [...(data.managerPerformance || [])].sort((left, right) => {
     const delta = (Number(left[sort.field]) || 0) - (Number(right[sort.field]) || 0)

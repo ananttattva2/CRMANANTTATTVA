@@ -1,3 +1,4 @@
+import useCrmRefresh from '../hooks/useCrmRefresh'
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bar, BarChart, CartesianGrid, Legend, Tooltip, XAxis, YAxis } from 'recharts'
@@ -393,6 +394,7 @@ export default function SuperAdminDashboard({ misPage = false }) {
     }
   }
 
+  useCrmRefresh(() => load())
   useEffect(() => { load() }, [appliedFilters.from, appliedFilters.to])
 
   useEffect(() => {

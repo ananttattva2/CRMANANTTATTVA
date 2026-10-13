@@ -14,7 +14,7 @@ test('lead assignment loads all active managers after PO approval', () => {
   assert.match(controller, /exports\.listAssignmentUsers/);
   assert.match(controller, /User\.find\(\{ isActive: \{ \$ne: false \} \}\)/);
   assert.match(controller, /role roles team teamId managerId operationHeadId/);
-  assert.match(routes, /get\('\/assignment-users', requireAuth, leadCtrl\.listAssignmentUsers\)/);
+  assert.match(routes, /get\('\/assignment-users', requireAuth, cacheRead, leadCtrl\.listAssignmentUsers\)/);
   assert.ok(routes.indexOf("get('/assignment-users'") < routes.indexOf("get('/:id/history'"));
   assert.match(endpoints, /assignmentUsers: '\/leads\/assignment-users'/);
   assert.match(page, /api\.get\(API_ENDPOINTS\.leads\.assignmentUsers\)/);

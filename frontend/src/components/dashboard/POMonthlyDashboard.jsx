@@ -48,7 +48,7 @@ export default function POMonthlyDashboard({ refreshToken }) {
     let pending = false
     async function load() {
       if (pending) return
-      pending = true; setLoading(true)
+      pending = true; setLoading(true); setAsOf(new Date())
       try {
         const response = await api.get('/dashboard-insights/purchase-orders', { params: { view: 'monthly' }, signal: controller.signal, timeout: 45000 })
         if (!Array.isArray(response.data?.records)) throw new Error('Invalid PO dashboard response. Please refresh and retry.')
@@ -57,8 +57,7 @@ export default function POMonthlyDashboard({ refreshToken }) {
       finally { pending = false; if (!controller.signal.aborted) setLoading(false) }
     }
     load()
-    const timer = setInterval(() => { setAsOf(new Date()); if (document.visibilityState === 'visible') load() }, 60000)
-    return () => { controller.abort(); clearInterval(timer) }
+    return () => { controller.abort() }
   }, [refreshToken, reload])
   const records = useMemo(() => filterPoApproval(data?.records || [], 'APPROVED'), [data])
   const years = useMemo(() => [...new Set([poPeriod(asOf).year, ...records.map(r => poPeriod(r.poDate)?.year).filter(Boolean)])].sort().reverse(), [records, asOf])

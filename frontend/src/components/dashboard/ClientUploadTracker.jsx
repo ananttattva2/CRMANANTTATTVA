@@ -52,8 +52,7 @@ export default function ClientUploadTracker({ financialYear, refreshToken = 0 })
       finally { if (!controller.signal.aborted) setLoading(false) }
     }
     load()
-    const timer = setInterval(() => { if (document.visibilityState === 'visible') load() }, 60000)
-    return () => { controller.abort(); clearInterval(timer) }
+    return () => { controller.abort() }
   }, [selectedYear, refresh, refreshToken, serviceType])
   const users = (data?.users || []).filter(row => `${row.userName} ${row.clients.map(client => client.clientName).join(' ')}`.toLowerCase().includes(query.toLowerCase()))
   const total = users.reduce((sum, row) => sum + row.clients.length, 0)

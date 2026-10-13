@@ -1,3 +1,4 @@
+import { getCrmGeneration, notifyCrmChanged } from './crmFreshness'
 import axios from 'axios'
 import { API_ENDPOINTS } from './apiEndpoints'
 
@@ -113,6 +114,7 @@ export function apiDelete(endpoint, config) {
 }
 
 api.interceptors.request.use((config) => {
+  config._crmReadGeneration = getCrmGeneration()
   const token = getStoredToken()
 
   if (token) {
@@ -123,7 +125,24 @@ api.interceptors.request.use((config) => {
 })
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const method = String(response.config?.method || 'get').toLowerCase()
+    const url = String(response.config?.url || '')
+    // A GET started before a detected write must not overwrite freshly loaded
+    // dashboard/list state when its slower response eventually arrives.
+    if (method === 'get' && !url.includes('/cache/revision')
+      && response.config._crmReadGeneration !== getCrmGeneration()
+      && (response.config._crmFreshnessRetries || 0) < 2) {
+      return api.request({ ...response.config, _crmFreshnessRetries: (response.config._crmFreshnessRetries || 0) + 1 })
+    }
+    if (['post', 'put', 'patch', 'delete'].includes(method)
+      && !/\/(?:assets|notifications)(?:\/|$)/.test(url)
+      && !/\/auth\/(?:activity-heartbeat|request-otp|resend-otp|verify-otp|logout|forgot-password|reset-password)(?:\/|$)/.test(url)) {
+      // Server awaits cache invalidation before acknowledging the write.
+      window.setTimeout(() => notifyCrmChanged(), 0)
+    }
+    return response
+  },
   (error) => {
     const status = error?.response?.status
     const requestUrl = String(error?.config?.url || '')

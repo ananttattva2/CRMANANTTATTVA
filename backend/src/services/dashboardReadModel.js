@@ -56,8 +56,8 @@ clientProjection['data.selectedLeadSnapshot.serviceSelections'] = {
 
 const caches = new Set();
 function createDashboardCache(options = {}) {
-  let read = createOverallCache({ ttl: 15000, ...options });
-  const invalidate = () => { read = createOverallCache({ ttl: 15000, ...options }); };
+  let read = createOverallCache({ ttl: 0, ...options });
+  const invalidate = () => { read = createOverallCache({ ttl: 0, ...options }); };
   caches.add(invalidate);
   return (key, load) => read(key, load);
 }
