@@ -98,3 +98,21 @@ test('newest matching draft supplies CPCB status for every assigned service with
  assert.equal(placeholder.statusSourceClientId,'latest-draft');
  assert.equal(placeholder.workflowStatus,undefined);
 });
+
+test('legacy multi-service drafts resolve CPCB status by canonical applicant, unit and service without leaking to siblings',()=>{
+ const {dashboardStatusClient}=require('../src/services/managerStaffAllocations');
+ const services=[
+  {assignedServiceId:'brand',subApplicantType:'Brand Owner',plantUnit:'Unit 1',eprCategory:'EPR - Plastic Waste',servicesOffered:'Annual Return Filling'},
+  {assignedServiceId:'raw-importer',subApplicantType:'Importer of Raw Material',plantUnit:'Unit 2',eprCategory:'EPR - Plastic Waste',servicesOffered:'Annual Return Filling'},
+  {assignedServiceId:'producer',subApplicantType:'Producer',plantUnit:'Unit 3',eprCategory:'EPR - Plastic Waste',servicesOffered:'New Registration'}
+ ];
+ const lead={_id:'balaji-lead',company:'Balaji Plastic Finishing & Trading',serviceSelections:services,assignments:services.map(service=>({assignedServiceId:service.assignedServiceId,assignedTo:'manager',assignedStaff:'sonal',closedAt:'2026-10-01'}))};
+ const draft=dashboardStatusClient({_id:'balaji-draft',selectedLead:lead,assignedServiceId:'obsolete-importer-id',workflowStatus:'draft',data:{
+  assignedServiceId:'obsolete-importer-id',selectedLeadSnapshot:{id:'balaji-lead',assignedServiceId:'obsolete-importer-id',subApplicantType:'SIMP - Importer',plantUnit:'Unit 2',eprCategory:'EPR Plastic Waste',servicesOffered:'Annual Return Filing'},
+  cpcbDataByAssignedServiceId:{'obsolete-importer-id':{cpcb:{status:'Approved'}}},importMeta:{clientStatus:'draft'}
+ }});
+ const placeholders=mergeManagerStaffAllocations([draft],[lead]).filter(row=>row.assignmentOnly);
+ assert.equal(placeholders.find(row=>row.assignedServiceId==='raw-importer').data.cpcb.status,'Approved');
+ assert.equal(placeholders.find(row=>row.assignedServiceId==='brand').data.cpcb.status,undefined);
+ assert.equal(placeholders.find(row=>row.assignedServiceId==='producer').data.cpcb.status,undefined);
+});
