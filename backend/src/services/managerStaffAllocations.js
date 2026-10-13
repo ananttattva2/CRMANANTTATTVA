@@ -2,6 +2,62 @@ const { resolveClientMasterData } = require('./clientMasterResolver');
 const normalize = input => String(input || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const offering = input => (Array.isArray(input) ? input : [input]).map(v => /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalize(v)) ? 'annualreturn' : normalize(v)).sort().join('|');
 const value = input => String(input?._id || input || '');
+const applicant = input => {
+  const key = normalize(input);
+  if ((key.includes('rawmaterial') || key.includes('simp')) && key.includes('import')) return 'importerrawmaterial';
+  if ((key.includes('smallmicro') || key.includes('simp')) && key.includes('produc')) return 'producersmallmicro';
+  if (key.includes('brandowner')) return 'brandowner';
+  if (key.includes('importer')) return 'importer';
+  if (key.includes('producer')) return 'producer';
+  if (key.includes('recycler')) return 'recycler';
+  return key;
+};
+function clientMatchesService(client, services, service, serviceId) {
+  const data = client.data || {};
+  const selectedId = value(client.assignedServiceId || data.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId);
+  if (selectedId && selectedId === serviceId) return true;
+  const snapshot = data.selectedLeadSnapshot || {};
+  const basic = data.basic || {};
+  const selectedService = services.find(candidate => value(candidate.assignedServiceId || candidate.serviceAssignmentId) === selectedId);
+  const profile = {
+    category: applicant(selectedService?.subApplicantType || selectedService?.piboCategory || snapshot.subApplicantType || snapshot.piboCategory || basic.piboCategory || basic.subApplicantType),
+    unit: normalize(selectedService?.plantUnit || snapshot.plantUnit || basic.plantUnit),
+    epr: normalize(selectedService?.eprCategory || snapshot.eprCategory || basic.eprCategory),
+    offered: offering(selectedService?.servicesOffered || selectedService?.applicableService || snapshot.servicesOffered || snapshot.applicableService || basic.servicesOffered || basic.applicableService)
+  };
+  const compatible = candidate => {
+    const candidateProfile = {
+      category: applicant(candidate.subApplicantType || candidate.piboCategory),
+      unit: normalize(candidate.plantUnit),
+      epr: normalize(candidate.eprCategory),
+      offered: offering(candidate.servicesOffered || candidate.applicableService)
+    };
+    let compared = 0;
+    for (const field of ['category', 'unit', 'epr', 'offered']) {
+      if (!profile[field] || !candidateProfile[field]) continue;
+      compared += 1;
+      if (profile[field] !== candidateProfile[field]) return false;
+    }
+    return compared > 0;
+  };
+  // Two current assignments with the same applicant/unit/service signature
+  // represent the same CPCB application context, so a saved status may be
+  // shared between them even when their generated assignment ids differ.
+  if (selectedService) return compatible(service);
+  // Legacy drafts can retain an obsolete service id. In that case use their
+  // saved applicant/unit/service details only when they identify one current
+  // service unambiguously, preventing CPCB status leakage to sibling services.
+  const compatibleServices = services.filter(compatible);
+  return compatibleServices.length === 1
+    && value(compatibleServices[0].assignedServiceId || compatibleServices[0].serviceAssignmentId) === serviceId;
+}
+function clientMatchesLead(client, lead) {
+  const data = client.data || {};
+  const snapshot = data.selectedLeadSnapshot || {};
+  const leadKeys = [lead._id, lead.sourceLeadId, lead.leadCode].map(value).filter(Boolean);
+  const clientKeys = [client.selectedLead, data.selectedLead, snapshot.id, snapshot.sourceLeadId, snapshot.leadCode, data.importMeta?.leadNumber].map(value).filter(Boolean);
+  return clientKeys.some(key => leadKeys.includes(key));
+}
 function dashboardStatusClient(client) {
   const resolved = resolveClientMasterData(client);
   const data = { ...client.data, cpcb: Object.fromEntries(['status', 'approvalStatus', 'applicationStatus'].map(key => [key, resolved.cpcb?.[key]]).filter(([,v]) => v !== undefined)) };
@@ -57,10 +113,9 @@ function mergeManagerStaffAllocations(clients = [], leads = []) {
         ...(matchingAssignments.some(candidate => normalize(candidate.poStatus) === 'received') ? { poStatus: 'received' } : {})
       };
       const matchingMasters = clients.filter(client => {
-        if (value(client.selectedLead || client.data?.selectedLeadSnapshot?.id) !== value(lead._id)) return false;
-        const selectedId = client.assignedServiceId || client.data?.selectedLeadSnapshot?.assignedServiceId;
-        const selected = services.find(s => value(s.assignedServiceId || s.serviceAssignmentId) === value(selectedId));
-        return selected && signature(selected) === signature(service)
+        if (!clientMatchesLead(client, lead)) return false;
+        const selectedId = client.assignedServiceId || client.data?.assignedServiceId || client.data?.selectedLeadSnapshot?.assignedServiceId;
+        return clientMatchesService(client, services, service, serviceId)
           && Boolean(resolveClientMasterData(client, selectedId).cpcb?.status);
       }).sort((a, b) => new Date(b.updatedAt || b.submittedAt || b.createdAt || 0) - new Date(a.updatedAt || a.submittedAt || a.createdAt || 0));
       // Drafts are not applications, but the CPCB form is saved while the
