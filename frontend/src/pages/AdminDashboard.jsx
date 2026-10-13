@@ -1,3 +1,4 @@
+import useCrmRefresh from '../hooks/useCrmRefresh'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -5751,22 +5752,7 @@ export default function AdminDashboard() {
     loadDashboard()
   }, [location.pathname])
 
-  useEffect(() => {
-    let refreshing = false
-    const refreshLiveData = async () => {
-      if (refreshing || document.visibilityState === 'hidden') return
-      refreshing = true
-      try { await loadDashboard({ force: true, silent: true }) } finally { refreshing = false }
-    }
-    const intervalId = window.setInterval(refreshLiveData, 30000)
-    window.addEventListener('focus', refreshLiveData)
-    document.addEventListener('visibilitychange', refreshLiveData)
-    return () => {
-      window.clearInterval(intervalId)
-      window.removeEventListener('focus', refreshLiveData)
-      document.removeEventListener('visibilitychange', refreshLiveData)
-    }
-  }, [location.pathname])
+  useCrmRefresh(() => loadDashboard({ force: true, silent: true }))
 
   useEffect(() => {
     setPage(1)
@@ -5810,9 +5796,7 @@ export default function AdminDashboard() {
     const cached = !options.force ? readSessionCache(cacheKey) : null
     const retained = cached || dashboardDataRef.current || {}
     const retainStableList = (next, previous) => (
-      options.silent && Array.isArray(previous) && previous.length > 0 && (!Array.isArray(next) || next.length === 0)
-        ? previous
-        : (Array.isArray(next) ? next : (previous || []))
+      Array.isArray(next) ? next : (previous || [])
     )
     const requestConfig = { timeout: DASHBOARD_REQUEST_TIMEOUT_MS }
     if (cached) {
@@ -5941,7 +5925,7 @@ export default function AdminDashboard() {
         leadsResult.status === 'fulfilled' ? (leadsResult.value.data.leads || []) : [],
         []
       )
-      const nextLeads = retainStableList(freshLeads, retained.leads)
+      const nextLeads = retainStableList(leadsResult.status === 'fulfilled' ? freshLeads : null, retained.leads)
       const nextQuotations = retainStableList(
         quotationsResult.status === 'fulfilled' ? quotationsResult.value.data.quotations : null,
         retained.quotations

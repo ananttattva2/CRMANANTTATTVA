@@ -121,3 +121,9 @@ For stronger isolation, migrate the application and PM2 process from `root` to a
 dedicated `deploy` user later. The first workflow intentionally matches the current
 server ownership so deployment can be introduced without changing production process
 ownership at the same time.
+
+## Redis cache
+
+See [Redis cache setup](redis-cache-digitalocean.md) for the local Droplet or Managed
+Valkey setup, immediate write invalidation, browser refresh, health checks and rollback.
+Redis credentials belong in backend `.env` on the server; the deployment preserves it.

@@ -1,3 +1,4 @@
+const { cacheRead } = require('../services/crmCache');
 const express = require('express');
 const multer = require('multer');
 const router = express.Router();
@@ -21,18 +22,18 @@ router.post('/:id/deactivation', requireAuth, deactivation.request);
 router.use('/:id', requireAuth, deactivation.guard);
 router.use('/', requireAuth, deactivation.guard);
 
-router.get('/', requireAuth, clientCtrl.listClients);
+router.get('/', requireAuth, cacheRead, clientCtrl.listClients);
 router.get('/ar-compliance', requireAuth, requireRoles(AR_REVIEW_ROLES), arReviewCtrl.list);
 router.get('/:id/ar-compliance', requireAuth, requireRoles(AR_REVIEW_ROLES), arReviewCtrl.get);
 router.put('/:id/ar-compliance/field', requireAuth, requireRoles(AR_REVIEW_ROLES), arReviewCtrl.saveField);
 router.post('/:id/ar-compliance/decision', requireAuth, requireRoles(AR_REVIEW_ROLES), arReviewCtrl.decide);
-router.get('/dashboard/purchase-sales-progress', requireAuth, requireRoles(ADMIN_ROLES), clientCtrl.listPurchaseSalesProgress);
-router.get('/dashboard/compliance-records', requireAuth, clientCtrl.listDashboardComplianceRecords);
+router.get('/dashboard/purchase-sales-progress', requireAuth, requireRoles(ADMIN_ROLES), cacheRead, clientCtrl.listPurchaseSalesProgress);
+router.get('/dashboard/compliance-records', requireAuth, cacheRead, clientCtrl.listDashboardComplianceRecords);
 router.get('/discovery/search', requireAuth, clientCtrl.searchClientMasterCompanies);
 router.get('/discovery/services', requireAuth, clientCtrl.listClientMasterServices);
 router.get('/discovery/catalog', requireAuth, clientCtrl.listClientMasterCatalog);
 router.get('/pending-approvals/clients/:id/applicants', requireAuth, requireRoles(CLIENT_APPROVAL_ROLES), clientCtrl.listClientReviewApplicants);
-router.get('/pending-approvals', requireAuth, clientCtrl.listPendingApprovals);
+router.get('/pending-approvals', requireAuth, cacheRead, clientCtrl.listPendingApprovals);
 router.patch('/pending-approvals/clients/approve-all', requireAuth, requireRoles(CLIENT_APPROVAL_ROLES), clientCtrl.approveAllPendingClients);
 router.post('/bulk', requireAuth, requireRoles(ADMIN_ROLES), clientCtrl.bulkCreateClients);
 router.post('/years/bulk', requireAuth, requireRoles(ADMIN_ROLES), clientCtrl.bulkUpdateClientYears);

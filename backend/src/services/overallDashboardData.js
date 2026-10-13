@@ -80,6 +80,7 @@ async function loadOverallRecords(Lead, filter, scope = null) {
 function createOverallCache({ ttl = 30000, maxEntries = 50, now = Date.now } = {}) {
   const entries = new Map();
   return async (key, load) => {
+    if (ttl <= 0) return load();
     const current = entries.get(key);
     if (current && (current.loading || current.expiresAt > now())) return current.promise;
     if (entries.size >= maxEntries) entries.delete(entries.keys().next().value);

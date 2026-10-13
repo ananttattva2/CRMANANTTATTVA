@@ -1,3 +1,4 @@
+import useCrmRefresh from '../hooks/useCrmRefresh'
 import POMonthlyDashboard from '../components/dashboard/POMonthlyDashboard'
 import ApplicationPortfolio from '../components/dashboard/ApplicationPortfolio'
 import ClientUploadTracker from '../components/dashboard/ClientUploadTracker'
@@ -73,7 +74,8 @@ export default function OverallDashboard() {
       if (sequence === requestSequence.current) { pendingRequest.current = null; if (!signal?.aborted) setLoading(false) }
     }
   }, [])
-  useEffect(() => { if (!matrixView) { setLoading(false); return } const controller = new AbortController(); load(controller.signal); const timer = setInterval(() => { if (document.visibilityState === 'visible') load(controller.signal) }, 60000); return () => { controller.abort(); clearInterval(timer) } }, [load, matrixView])
+  useEffect(() => { if (!matrixView) { setLoading(false); return } const controller = new AbortController(); load(controller.signal); return () => { controller.abort() } }, [load, matrixView])
+  useCrmRefresh(() => { setRefreshToken(value => value + 1); if (matrixView) return load() })
   async function exportPdf(exportView) {
     if (!data || exporting || (exportView === 'users' && !canViewUsers)) return
     setShowPdfChoice(false)

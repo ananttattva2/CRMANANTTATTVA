@@ -24,7 +24,7 @@ async function loadAdminCreatedLeadReferences({ LeadModel = Lead, UserModel = Us
 }
 
 async function getAdminCreatedLeadReferences(options = {}) {
-  const useCache = !options.LeadModel && !options.UserModel;
+  const useCache = false; // Redis owns response freshness; do not retain stale exclusions.
   if (useCache && cached?.expiresAt > Date.now()) return cached.value;
   const value = await loadAdminCreatedLeadReferences(options);
   if (useCache) cached = { value, expiresAt: Date.now() + CACHE_TTL_MS };

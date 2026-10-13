@@ -38,6 +38,8 @@ function entityIdentity(entity = {}, body = {}) {
 
 async function activityAudit(req, res, next) {
   if (!req.user) return next();
+  // Background cache checks are not user activity and must not inflate MIS.
+  if (req.originalUrl.split('?')[0] === '/api/cache/revision') return next();
   const sessionId = String(req.authSessionId || '');
   UserSession.updateOne(
     { sessionId, userId: req.user._id },

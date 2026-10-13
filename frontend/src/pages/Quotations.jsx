@@ -1,3 +1,4 @@
+import useCrmRefresh from '../hooks/useCrmRefresh'
 import { canReviseQuotation } from '../utils/quotationRevision.mjs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -1235,6 +1236,8 @@ export default function Quotations() {
     }));
     setEditingId(savedQuotation._id || savedQuotation.id || '');
   }, [currentUser, editingId, quotation.pricingMode, quotationContext, quotations, viewMode]);
+
+  useCrmRefresh(() => loadPage(), viewMode === 'list');
 
   async function loadPage() {
     setLoading(true);

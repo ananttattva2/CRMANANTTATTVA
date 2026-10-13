@@ -2,8 +2,12 @@ require('dotenv').config({ override: true });
 const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
-const { invalidateDashboardReads } = require('./services/dashboardReadModel');
 const mongoose = require('mongoose');
+const { cacheInvalidationPlugin, writeInvalidation } = require('./services/crmCacheInvalidation');
+mongoose.plugin(cacheInvalidationPlugin);
+const { invalidateDashboardReads } = require('./services/dashboardReadModel');
+const { getCrmCache } = require('./services/crmCache');
+const { cacheStatus, getClient } = require('./services/redisStore');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/auth');
 const leadRoutes = require('./routes/leads');
@@ -73,6 +77,7 @@ app.use(cors({
 }));
 app.use(compression({ threshold: 1024 }));
 app.use(express.json({ limit: '12mb' }));
+app.use('/api', writeInvalidation);
 app.use('/api', (req, res, next) => {
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && /^\/api\/(clients|leads|teams|dashboard-insights|pending-approvals)(?:\/|$)/.test(req.originalUrl)) {
     res.on('finish', () => { if (res.statusCode < 400) invalidateDashboardReads(); });
@@ -93,6 +98,8 @@ function connectAndStartServices() {
     // receive their fresh 24-hour recovery window and email notification.
     await runClientComplianceCorrectionReminders().catch((error) => console.error('Compliance correction startup scan failed', error));
     invalidateDashboardReads();
+    await getCrmCache().invalidate();
+    getClient();
     // Persistent interval schedulers must never run inside short-lived serverless
     // function instances. Their work is handled by explicit cron endpoints.
     if (!schedulerStarted && !isServerlessRuntime) {
@@ -132,6 +139,7 @@ app.use('/api', async (req, res, next) => {
 app.get('/api/health', (req, res) => res.json({
   ok: true,
   database: mongoose.connection.readyState === 1 ? 'connected' : 'unavailable',
+  cache: cacheStatus(),
   release: String(process.env.DEPLOY_COMMIT || process.env.RENDER_GIT_COMMIT || process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 12) || undefined
 }));
 
@@ -170,6 +178,11 @@ app.get('/api/internal/client-compliance-correction-reminders', async (req, res)
   try { return res.json({ ok: true, ...(await runClientComplianceCorrectionReminders()) }); }
   catch (error) { return res.status(500).json({ ok: false, error: error.message || 'Compliance correction reminder run failed' }); }
 });
+app.get('/api/cache/revision', require('./middleware/auth').requireAuth, async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  res.json({ revision: await getCrmCache().revision(), ...cacheStatus() });
+});
+
   app.use('/api/auth', authRoutes);
   app.use('/api/assets', assetRoutes);
 app.use('/api/leads', leadRoutes);

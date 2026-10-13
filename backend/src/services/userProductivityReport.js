@@ -8,9 +8,7 @@ const Client = require('../models/Client');
 const Team = require('../models/Team');
 
 const ONLINE_WINDOW_MS = 15 * 60 * 1000;
-const REPORT_CACHE_TTL_MS = 60 * 1000;
-const productivityReportCache = new Map();
-const productivityReportInFlight = new Map();
+// Response caching is handled by the revision-aware Redis middleware.
 // Constructing an ICU formatter for every audit event dominates large reports.
 const indiaDayFormatter = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit'
@@ -224,10 +222,6 @@ async function getUserProductivityReport({ from, to, requester }) {
   const requesterRole = String(requester?.role || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
   const isAdmin = ['admin', 'superadmin'].includes(requesterRole);
   const requesterId = requester?._id || requester?.id;
-  const cacheKey = `${String(requesterId || 'anonymous')}:${requesterRole}:${period.from}:${period.to}`;
-  const cached = productivityReportCache.get(cacheKey);
-  if (cached && Date.now() - cached.createdAt < REPORT_CACHE_TTL_MS) return cached.report;
-  if (productivityReportInFlight.has(cacheKey)) return productivityReportInFlight.get(cacheKey);
   const reportPromise = (async () => {
     const operationTeams = await reportQuery('teams', isAdmin
       ? Team.find().select('name manager operationHead members').sort({ name: 1 }).lean()
@@ -266,15 +260,7 @@ async function getUserProductivityReport({ from, to, requester }) {
       }
     };
   })();
-  productivityReportInFlight.set(cacheKey, reportPromise);
-  try {
-    const report = await reportPromise;
-    productivityReportCache.set(cacheKey, { createdAt: Date.now(), report });
-    if (productivityReportCache.size > 50) productivityReportCache.delete(productivityReportCache.keys().next().value);
-    return report;
-  } finally {
-    if (productivityReportInFlight.get(cacheKey) === reportPromise) productivityReportInFlight.delete(cacheKey);
-  }
+  return reportPromise;
 }
 
 function canViewUserWorkReport({ requester, targetUserId, operationTeams = [] }) {

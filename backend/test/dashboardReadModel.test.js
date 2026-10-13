@@ -30,7 +30,7 @@ test('dashboard reads coalesce concurrent loads and expire without sharing scope
   assert.equal(await cached('owner-a', load), 3);
 });
 
-test('successful edits invalidate cached and in-flight dashboard snapshots', async () => {
+test('production dashboard loaders never retain completed or in-flight stale snapshots', async () => {
   const cached = createDashboardCache();
   let finish;
   const old = cached('owner', () => new Promise(resolve => { finish = resolve; }));
@@ -39,7 +39,7 @@ test('successful edits invalidate cached and in-flight dashboard snapshots', asy
   assert.equal(await cached('owner', async () => 'edited'), 'edited');
   finish('old');
   assert.equal(await old, 'old');
-  assert.equal(await cached('owner', async () => 'incorrect'), 'edited');
+  assert.equal(await cached('owner', async () => 'latest'), 'latest');
 });
 
 test('a failed dashboard read can be retried immediately', async () => {
