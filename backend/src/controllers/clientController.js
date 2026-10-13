@@ -579,8 +579,8 @@ function validateClientMasterIdentity(client, { assignedServiceId = '', selected
   return '';
 }
 
-function mergeAssignedServiceCpcbData(existingData = {}, incomingData = {}) {
-  return {
+function mergeAssignedServiceCpcbData(existingData = {}, incomingData = {}, assignedServiceId = '') {
+  const merged = {
     ...incomingData,
     cpcbDataByAssignedServiceId: {
       ...(isPlainObject(existingData.cpcbDataByAssignedServiceId) ? existingData.cpcbDataByAssignedServiceId : {}),
@@ -591,6 +591,18 @@ function mergeAssignedServiceCpcbData(existingData = {}, incomingData = {}) {
       ...(isPlainObject(incomingData.serviceDetailsByAssignedServiceId) ? incomingData.serviceDetailsByAssignedServiceId : {})
     }
   };
+  const serviceId = String(assignedServiceId || incomingData.assignedServiceId || incomingData.selectedLeadSnapshot?.assignedServiceId || '').trim();
+  if (serviceId && isPlainObject(incomingData.cpcb)) {
+    const existingScope = isPlainObject(merged.cpcbDataByAssignedServiceId[serviceId])
+      ? merged.cpcbDataByAssignedServiceId[serviceId] : {};
+    merged.cpcbDataByAssignedServiceId[serviceId] = {
+      ...existingScope,
+      assignedServiceId: serviceId,
+      cpcb: { ...(isPlainObject(existingScope.cpcb) ? existingScope.cpcb : {}), ...incomingData.cpcb },
+      updatedAt: new Date().toISOString()
+    };
+  }
+  return merged;
 }
 
 function readSelectedLeadId(value) {
@@ -1885,7 +1897,7 @@ exports.createClient = async (req, res) => {
   client.selectedLead = selectedLead;
   client.assignedServiceId = assignedServiceId;
   client.adminControls = adminControls;
-  client.data = existingClient ? mergeAssignedServiceCpcbData(existingClient.data, data) : data;
+  client.data = existingClient ? mergeAssignedServiceCpcbData(existingClient.data, data, assignedServiceId) : data;
   client.workflowStatus = workflowStatus;
   client.createdBy = existingClient?.createdBy || req.user?._id;
   if (transition.becameSubmitted) applyClientSubmissionMetadata(client, req.user?._id);
@@ -2041,7 +2053,7 @@ exports.updateClient = async (req, res) => {
   const safeData = readCpcbOnboarding(resolvedExistingData).registered === false
     ? preserveRestrictedCpcbSections(existingData, data)
     : data;
-  const mergedData = mergeAssignedServiceCpcbData(existingData, safeData);
+  const mergedData = mergeAssignedServiceCpcbData(existingData, safeData, effectiveAssignedServiceId);
 
   if (transition.becameSubmitted) {
     const submittedAt = new Date();
