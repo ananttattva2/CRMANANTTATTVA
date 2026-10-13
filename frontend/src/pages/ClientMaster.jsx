@@ -1030,9 +1030,8 @@ function clientMasterGroupingIdentity(service = {}) {
   const normalize = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   const applicantType = normalize(service.applicantType || service.piboParent || service.piboCategoryParent);
   const subApplicantType = normalize(service.subApplicantType || service.piboCategory || 'not-applicable') || 'notapplicable';
-  const plantUnit = normalize(service.plantUnit);
-  if (!applicantType || !plantUnit) return '';
-  return `${applicantType}:${subApplicantType}:${plantUnit}`;
+  if (!applicantType) return '';
+  return `${applicantType}:${subApplicantType}`;
 }
 
 function clientMasterLogicalServiceIdentity(service = {}) {
@@ -1084,26 +1083,18 @@ function legacyServiceFingerprintCompatible(lhsRaw, rhsRaw) {
 }
 
 function uniqueClientMasterServices(services = []) {
-  const seen = new Set();
-  return services.filter((service, index) => {
+  const groups = new Map();
+  services.forEach((service, index) => {
     const groupingIdentity = clientMasterGroupingIdentity(service);
-    const normalizeOffering = (value) => {
-      const normalized = String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      return /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalized) ? 'annualreturn' : normalized;
-    };
-    const offeringIdentity = (Array.isArray(service.servicesOffered) ? service.servicesOffered : [service.servicesOffered])
-      .map(normalizeOffering).filter(Boolean).sort().join('|');
-    const categoryIdentity = String(service.eprCategory || service.serviceCategory || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    const logicalIdentity = clientMasterLogicalServiceIdentity(service);
-    const key = groupingIdentity
-      ? `client-master-group:${groupingIdentity}:${categoryIdentity}:${offeringIdentity}`
-      : (logicalIdentity.replace(/[:|]/g, '')
-          ? `client-master-logical:${logicalIdentity}`
-          : (service.clientMasterId || readAssignedServiceId(service) || `service-${index}`));
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
+    const key = groupingIdentity || service.clientMasterId || readAssignedServiceId(service) || `service-${index}`;
+    const current = groups.get(key);
+    // Keep an eligible assignment as the representative so an open sibling
+    // cannot hide a closed PO for the same applicant/sub-applicant pair.
+    if (!current || (!current._clientMasterEligible && service._clientMasterEligible)) {
+      groups.set(key, service);
+    }
   });
+  return [...groups.values()];
 }
 
 function activateAssignedService(data = {}, service = {}, serviceCount = 1) {
@@ -1624,6 +1615,11 @@ export default function ClientMaster() {
     let rows = hasAuthoritativeLeadServices
       ? lead.serviceSelections
       : [{ industryType: lead?.industryType, eprCategory: lead?.eprCategory, applicantType: lead?.applicantType || lead?.piboParent, subApplicantType: lead?.subApplicantType, piboCategory: lead?.piboCategory, servicesOffered: lead?.servicesOffered }];
+    rows = rows.map((row, index) => ({
+      ...row,
+      _clientMasterEligible: isLeadServiceClosedForClientMaster(lead, row, index),
+      _leadServiceIndex: index
+    }));
     const storedServices = Array.isArray(lead?._clientMasterServices)
       ? lead._clientMasterServices.map((row) => ({
           ...row,
@@ -1696,20 +1692,20 @@ export default function ClientMaster() {
     return uniqueClientMasterServices(rows).map((row, index) => {
       const addressData = (lead.addresses || []).find((item) => row.plantUnit && item?.plantUnit === row.plantUnit)
         || (lead.addresses || []).find((item) => item?.assignedServiceId && item.assignedServiceId === row.assignedServiceId)
-        || (!row.plantUnit ? lead.addresses?.[index] : null)
+        || (!row.plantUnit ? lead.addresses?.[row._leadServiceIndex ?? index] : null)
         || {};
       const contactData = (lead.contacts || []).find((item) => row.plantUnit && item?.plantUnit === row.plantUnit)
         || (lead.contacts || []).find((item) => item?.assignedServiceId && item.assignedServiceId === row.assignedServiceId)
-        || (!row.plantUnit ? lead.contacts?.[index] : null)
+        || (!row.plantUnit ? lead.contacts?.[row._leadServiceIndex ?? index] : null)
         || {};
       return {
         ...row,
-        _clientMasterEligible: isLeadServiceClosedForClientMaster(lead, row, index),
+        _clientMasterEligible: isLeadServiceClosedForClientMaster(lead, row, row._leadServiceIndex ?? index),
         applicantType: row.applicantType || row.piboParent || row.piboCategoryParent || '',
         piboCategory: row.subApplicantType || row.piboCategory || '',
         addressData,
         contactData,
-        assignmentData: (lead.assignments || []).find((item) => item?.assignedServiceId && item.assignedServiceId === row.assignedServiceId) || lead.assignments?.[index] || {}
+        assignmentData: (lead.assignments || []).find((item) => item?.assignedServiceId && item.assignedServiceId === row.assignedServiceId) || lead.assignments?.[row._leadServiceIndex ?? index] || {}
       };
     });
   }
