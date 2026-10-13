@@ -51,3 +51,20 @@ test('service picker separates either applicant difference and prefers a closed 
   ];
   assert.deepEqual(Array.from(context.uniqueClientMasterServices(rows), row => row.assignedServiceId), ['closed', 'producer', 'pwp']);
 });
+
+test('grouped card displays both offerings without changing the selected assignment', () => {
+  const context = vm.createContext({ readAssignedServiceId: row => row.assignedServiceId });
+  vm.runInContext(source.slice(source.indexOf('function clientMasterGroupingIdentity'), source.indexOf('function legacyServiceFingerprintCompatible')), context);
+  vm.runInContext(source.slice(source.indexOf('function uniqueClientMasterServices'), source.indexOf('function activateAssignedService')), context);
+  const base = { applicantType: 'PIBO', subApplicantType: 'Importer' };
+  const grouped = context.uniqueClientMasterServices([
+    {...base, assignedServiceId: 'registration', servicesOffered: 'New Registration'},
+    {...base, assignedServiceId: 'annual', servicesOffered: 'Annual Return Filing', _clientMasterEligible: true},
+    {...base, assignedServiceId: 'alias', servicesOffered: ['Annual Filling']}
+  ]);
+  assert.equal(grouped.length, 1);
+  assert.equal(grouped[0]._chooserServiceOfferings.join(' / '), 'New Registration / Annual Return Filling');
+  assert.equal(grouped[0].assignedServiceId, 'annual');
+  assert.equal(grouped[0].servicesOffered, 'Annual Return Filing');
+  assert.equal(context.uniqueClientMasterServices(grouped)[0]._chooserServiceOfferings.join(' / '), 'New Registration / Annual Return Filling');
+});

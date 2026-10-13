@@ -1088,11 +1088,20 @@ function uniqueClientMasterServices(services = []) {
     const groupingIdentity = clientMasterGroupingIdentity(service);
     const key = groupingIdentity || service.clientMasterId || readAssignedServiceId(service) || `service-${index}`;
     const current = groups.get(key);
-    // Keep an eligible assignment as the representative so an open sibling
-    // cannot hide a closed PO for the same applicant/sub-applicant pair.
-    if (!current || (!current._clientMasterEligible && service._clientMasterEligible)) {
-      groups.set(key, service);
-    }
+    const offerings = new Map();
+    const labels = [...(current?._chooserServiceOfferings || []), ...(service._chooserServiceOfferings || []),
+      ...(Array.isArray(service.servicesOffered) ? service.servicesOffered : [service.servicesOffered || service.serviceName])];
+    labels.forEach((value) => {
+      const label = String(value || '').trim();
+      const token = label.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (!token) return;
+      const annual = /annual(?:return(?:fill?ing)?|fill?ing)/.test(token);
+      offerings.set(annual ? 'annualreturn' : token, annual ? 'Annual Return Filling' : label);
+    });
+    // Keep the selected assignment intact; combined labels are display-only.
+    const representative = !current || (!current._clientMasterEligible && service._clientMasterEligible)
+      ? service : current;
+    groups.set(key, { ...representative, _chooserServiceOfferings: [...offerings.values()] });
   });
   return [...groups.values()];
 }
@@ -3108,7 +3117,7 @@ export default function ClientMaster() {
                         {isEligible ? 'PO Closed - Available' : 'Lead Not Closed'}
                       </span>
                       <strong className="block text-base font-black text-slate-950">{service.eprCategory || `Service ${index + 1}`} · {applicantType}</strong>
-                      <span className={`mt-2 block text-sm font-bold ${isEligible ? 'text-emerald-700' : 'text-slate-500'}`}>{service.servicesOffered || '-'}</span>
+                      <span className={`mt-2 block text-sm font-bold ${isEligible ? 'text-emerald-700' : 'text-slate-500'}`}>{service._chooserServiceOfferings?.join(' / ') || service.servicesOffered || '-'}</span>
                       {service.applicableService && <span className="mt-1 block rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-black text-emerald-800">Applicable: {service.applicableService}</span>}
                       <span className="mt-2 block text-xs font-bold text-slate-500">Industry Type: {service.industryType || '-'}</span>
                       <span className="mt-1 block text-xs font-black text-teal-700">Plant Unit: {service.plantUnit || '-'}</span>
