@@ -659,21 +659,27 @@ exports.activityHeartbeat = async (req, res) => {
     if (!req.authSessionId) return res.json({ ok: true, tracking: false, reason: 'legacy-session' });
     const now = new Date();
     const requestedState = String(req.body?.state || 'active').toLowerCase() === 'away' ? 'away' : 'active';
-    const session = await UserSession.findOne({ sessionId: req.authSessionId, userId: req.user._id, logoutAt: null });
+    const elapsed = { $min: [30, { $max: [0, { $floor: { $add: [0.5, { $divide: [
+      { $subtract: [now, { $ifNull: ['$lastHeartbeatAt', { $ifNull: ['$lastActivityAt', now] }] }] }, 1000
+    ] }] } }] }] };
+    // Compute and append on MongoDB's current document. Concurrent tabs and
+    // activity auditing cannot overwrite a stale array/version from a read.
+    const session = await UserSession.findOneAndUpdate(
+      { sessionId: req.authSessionId, userId: req.user._id, logoutAt: null },
+      [{ $set: {
+        activeSeconds: requestedState === 'active' ? { $add: [{ $max: [0, { $ifNull: ['$activeSeconds', 0] }] }, elapsed] } : '$activeSeconds',
+        presenceTimeline: { $cond: [{ $ne: ['$presenceState', requestedState] }, { $slice: [{ $concatArrays: [
+          { $cond: [{ $isArray: '$presenceTimeline' }, '$presenceTimeline', []] },
+          [{ state: requestedState, at: now, description: requestedState === 'away' ? 'Away from CRM (another tab or website)' : 'Returned to CRM and became active' }]
+        ] }, -100] }, '$presenceTimeline'] },
+        presenceState: requestedState,
+        awaySince: requestedState === 'away' ? { $ifNull: ['$awaySince', now] } : null,
+        lastHeartbeatAt: { $max: [{ $ifNull: ['$lastHeartbeatAt', now] }, now] },
+        ...(requestedState === 'active' ? { lastActivityAt: { $max: [{ $ifNull: ['$lastActivityAt', now] }, now] } } : {})
+      } }],
+      { new: true, projection: { activeSeconds: 1, presenceState: 1 } }
+    ).lean();
     if (!session) return res.json({ ok: true, tracking: false, reason: 'session-not-found' });
-    const previous = session.lastHeartbeatAt || session.lastActivityAt || now;
-    const elapsed = Math.max(0, Math.min(30, Math.round((now.getTime() - new Date(previous).getTime()) / 1000)));
-    if (requestedState === 'active') session.activeSeconds = Math.max(0, Number(session.activeSeconds) || 0) + elapsed;
-    if (session.presenceState !== requestedState) {
-      session.presenceTimeline = [...(Array.isArray(session.presenceTimeline) ? session.presenceTimeline : []), {
-        state: requestedState, at: now, description: requestedState === 'away' ? 'Away from CRM (another tab or website)' : 'Returned to CRM and became active'
-      }].slice(-100);
-    }
-    session.presenceState = requestedState;
-    session.awaySince = requestedState === 'away' ? (session.awaySince || now) : null;
-    session.lastHeartbeatAt = now;
-    if (requestedState === 'active') session.lastActivityAt = now;
-    await session.save();
     return res.json({ ok: true, activeSeconds: session.activeSeconds, presenceState: session.presenceState });
   } catch (error) {
     console.error('[activity-heartbeat] telemetry unavailable', { message: error.message, code: error.code || '' });

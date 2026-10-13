@@ -5507,6 +5507,7 @@ export default function AdminDashboard() {
   const [dashboardMode, setDashboardMode] = useState('operations')
   const dashboardDataRef = useRef({})
   const dashboardRequestInFlightRef = useRef(false)
+  const dashboardLoadSequenceRef = useRef(0)
   const navigate = useNavigate()
   const location = useLocation()
   const isUserManagementView = location.pathname === '/dashboard/users'
@@ -5746,7 +5747,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     loadDashboard()
-  }, [location.pathname])
+  }, [location.pathname, dashboardMode])
 
   useCrmRefresh(() => loadDashboard({ force: true, silent: true }))
 
@@ -5788,6 +5789,7 @@ export default function AdminDashboard() {
   async function loadDashboard(options = {}) {
     if (dashboardRequestInFlightRef.current && options.silent) return
     dashboardRequestInFlightRef.current = true
+    const requestId = ++dashboardLoadSequenceRef.current
     const cacheKey = `${DASHBOARD_CACHE_KEY}:${location.pathname}`
     const cached = !options.force ? readSessionCache(cacheKey) : null
     const retained = cached || dashboardDataRef.current || {}
@@ -5805,6 +5807,7 @@ export default function AdminDashboard() {
 
     try {
       const meResponse = await api.get(API_ENDPOINTS.auth.me, requestConfig)
+      if (requestId !== dashboardLoadSequenceRef.current) return
       const user = meResponse.data.user
       setCurrentUser(user)
       storeSessionUser(user)
@@ -5834,6 +5837,7 @@ export default function AdminDashboard() {
             pendingClients: [],
             pendingQuotations: []
           }
+          if (requestId !== dashboardLoadSequenceRef.current) return
           applyDashboardData(snapshot)
           writeSessionCache(cacheKey, snapshot)
         } else {
@@ -5849,12 +5853,14 @@ export default function AdminDashboard() {
             pendingClients: [],
             pendingQuotations: []
           }
+          if (requestId !== dashboardLoadSequenceRef.current) return
           applyDashboardData(snapshot)
           writeSessionCache(cacheKey, snapshot)
         }
         return
       }
 
+      const salesOnly = isSalesDashboardUser(user) || (showDashboardSwitcher && dashboardMode === 'sales');
       const directoryRequests = Promise.allSettled([
         api.get(adminRoles.includes(authenticatedRole) ? API_ENDPOINTS.auth.adminUsers : API_ENDPOINTS.auth.users, requestConfig),
         adminRoles.includes(authenticatedRole) ? api.get(API_ENDPOINTS.teams.list, requestConfig) : Promise.resolve({ data: { teams: [] } })
@@ -5862,11 +5868,11 @@ export default function AdminDashboard() {
 
       const [clientsResult, complianceClientsResult, leadsResult, quotationsResult, annualReturnsResult, approvalsResult, calendarItemsResult] = await Promise.allSettled([
         fetchDashboardCollection(API_ENDPOINTS.clients.list, 'clients', requestConfig, { dashboard: true }),
-        api.get(API_ENDPOINTS.clients.dashboardComplianceRecords, { ...requestConfig, timeout: 60000 }),
+        salesOnly ? Promise.resolve({ data: { clients: [] } }) : api.get(API_ENDPOINTS.clients.dashboardComplianceRecords, { ...requestConfig, timeout: 60000 }),
         fetchDashboardCollection(API_ENDPOINTS.leads.list, 'leads', requestConfig, { dashboard: true }),
         fetchDashboardCollection(API_ENDPOINTS.quotations.list, 'quotations', requestConfig, { compact: true, dashboard: true }),
-        api.get(API_ENDPOINTS.annualReturns.list, { ...requestConfig, params: { dashboard: true } }),
-        api.get(API_ENDPOINTS.clients.pendingApprovals, { ...requestConfig, params: { compact: true } }),
+        salesOnly ? Promise.resolve({ data: { annualReturns: [] } }) : api.get(API_ENDPOINTS.annualReturns.list, { ...requestConfig, params: { dashboard: true } }),
+        salesOnly ? Promise.resolve({ data: { pendingClients: [], pendingQuotations: [] } }) : api.get(API_ENDPOINTS.clients.pendingApprovals, { ...requestConfig, params: { compact: true } }),
         api.get(API_ENDPOINTS.calendarItems.list, requestConfig)
       ])
 
@@ -5963,13 +5969,16 @@ export default function AdminDashboard() {
         pendingQuotations: nextPendingQuotations,
         calendarItems: nextCalendarItems
       }
+      if (requestId !== dashboardLoadSequenceRef.current) return
       applyDashboardData(snapshot)
       writeSessionCache(cacheKey, snapshot)
     } catch (err) {
-      if (!cached) setError(err?.response?.data?.error || 'Unable to load dashboard')
+      if (requestId === dashboardLoadSequenceRef.current && !cached) setError(err?.response?.data?.error || 'Unable to load dashboard')
     } finally {
-      dashboardRequestInFlightRef.current = false
-      setLoading(false)
+      if (requestId === dashboardLoadSequenceRef.current) {
+        dashboardRequestInFlightRef.current = false
+        setLoading(false)
+      }
     }
   }
 

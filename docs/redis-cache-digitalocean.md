@@ -334,3 +334,45 @@ and follow DigitalOcean's snapshot/shutdown/resize/start instructions:
 https://docs.digitalocean.com/products/droplets/how-to/resize/
 If MongoDB round trips are high, inspect the Atlas cluster region/tier and its
 query diagnostics; increasing Droplet RAM alone does not resolve database latency.
+
+## Follow-up after healthy server diagnostics
+
+The reported production checks showed Mongo round trips of 17–21 ms, indexed
+sample reads without blocking sorts, connected Redis and ample idle CPU/RAM.
+These samples do not measure full report payloads. No Droplet resize or Redis
+configuration change is indicated by those results.
+
+The Pending Approval PO feed now requests `listOnly=true`: saved amounts and
+statuses render without loading all related leads, quotations and proof bytes.
+Legacy records with incomplete amount snapshots retain the recovery path. Use
+**View PO Proofs** to load the existing authenticated PO detail endpoint; stored
+proofs and approve/reject workflows remain available there. Inline proof bytes
+are excluded from list responses so large uploads do not exceed the cache limit.
+The endpoint reports separate `approvals` and `enrichment` timings on a MISS.
+
+Super Admin/Complete MIS completion-count queries now compact long embedded
+strings into presence markers inside MongoDB, before data crosses the network.
+The projection preserves keys, nested arrays, scalar types and completion counts.
+Detailed work reports continue to fetch original documents. Operations Dashboard
+Annual Return rows omit unused Client Master sections and no longer repeat all
+filings inside each filing's client snapshot. Every filing/status/PO remains in
+the response. Sales Dashboard skips operations-only compliance, Annual Return
+and approval queries; changing dashboard mode triggers a guarded reload.
+
+Heartbeat updates now compute elapsed time and append presence changes atomically
+on the current session, avoiding the version conflict shown in the server logs.
+This optional telemetry remains separate from CRM cache invalidation.
+
+After the successful GitHub deployment, hard-refresh once and run:
+
+```bash
+cd /var/www/CRMANANTTATTVA/backend
+npm run performance:check
+curl --fail http://127.0.0.1:4000/api/health
+```
+
+The diagnostic now compares original and compact MIS byte sizes for a bounded
+100-client sample without printing client records. Report its output and the
+slowest page request's own Timing/Server-Timing if a delay remains. Synthetic
+fixtures prove payload reduction and count preservation; live page latency
+still needs verification after deployment.
