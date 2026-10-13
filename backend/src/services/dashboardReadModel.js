@@ -35,7 +35,7 @@ function scopedStatus(path) {
 const clientProjection = Object.fromEntries([
   '_id', 'createdBy', 'workflowStatus', 'assignedServiceId', 'assignedStaff', 'assignedStaffText', 'assignedStaffEmail',
   'assignedTo', 'assignedUser', 'userName', 'user', 'adminControls', 'serviceAllocations', 'selectedLead',
-  'createdAt', 'submittedAt', 'sla.status', 'firstAnnualReturnYear', 'financialYear',
+  'createdAt', 'updatedAt', 'submittedAt', 'sla.status', 'firstAnnualReturnYear', 'financialYear',
   ...'clientLegalName tradeName piboCategory subApplicantType applicantType servicesOffered applicableService cpcbStatus plantUnit companyIndustry industryType eprCategory state firstAnnualReturnYear servicesForYear'.split(' ').map(field => `data.basic.${field}`),
   ...'companyName assignedTo user userName leadNumber clientCode uniqueId clientStatus visibilityStatus cpcbStatus state approvalOverride'.split(' ').map(field => `data.importMeta.${field}`),
   'data.cpcb.status', 'data.cpcb.approvalStatus', 'data.cpcb.applicationStatus', 'data.assignedServiceId',
