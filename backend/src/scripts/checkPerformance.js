@@ -36,6 +36,15 @@ async function main() {
         examinedDocuments: stats.totalDocsExamined, examinedKeys: stats.totalKeysExamined,
         collectionScan: plan.includes('COLLSCAN'), blockingSort: /"stage":"SORT"/.test(plan) }));
     }
+    const { misClientProjection } = require('../services/misClientProjection');
+    for (const [label, project] of [['original', null], ['MIS-presence', misClientProjection]]) {
+      const start = performance.now();
+      const stages = [{ $limit: 100 }, ...(project ? [{ $project: project }] : []),
+        { $group: { _id: null, records: { $sum: 1 }, bytes: { $sum: { $bsonSize: '$$ROOT' } } } }];
+      const [sample] = await connection.collection('clients').aggregate(stages, { maxTimeMS: 20000 }).toArray();
+      console.log('client-payload-sample', label, JSON.stringify({ records: sample?.records || 0,
+        bytes: sample?.bytes || 0, elapsedMs: Math.round(performance.now() - start) }));
+    }
     console.log('Read-only performance check completed. Compare browser Timing: Waiting vs Queueing.');
   } finally { await connection.close(); }
 }

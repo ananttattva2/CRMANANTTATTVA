@@ -53,9 +53,9 @@ test('dashboard applies fetched clients when team loading fails and falls back t
   };
   let snapshot;
   await vm.runInNewContext(`${source.slice(start, end)} loadDashboard({ force: true })`, {
-    dashboardRequestInFlightRef: { current: false }, dashboardDataRef: { current: {} }, location: { pathname: '/dashboard' },
+    dashboardRequestInFlightRef: { current: false }, dashboardLoadSequenceRef: { current: 0 }, dashboardDataRef: { current: {} }, location: { pathname: '/dashboard' },
     DASHBOARD_CACHE_KEY: 'test', DASHBOARD_REQUEST_TIMEOUT_MS: 30000, currentUser: user, isUserManagementView: false,
-    adminRoles: ['admin', 'superadmin'], defaultRoles: [], API_ENDPOINTS: endpoints,
+    adminRoles: ['admin', 'superadmin'], defaultRoles: [], isSalesDashboardUser: () => false, showDashboardSwitcher: false, dashboardMode: 'operations', API_ENDPOINTS: endpoints,
     setLoading() {}, setError() {}, setCurrentUser() {}, storeSessionUser() {}, setAvailableRoles() {},
     readSessionCache: () => null, writeSessionCache() {}, normalizeKey: (value) => String(value).toLowerCase(),
     asRecordList: (value) => value || [], mergeLeadSources: (value) => value,
@@ -73,4 +73,28 @@ test('dashboard applies fetched clients when team loading fails and falls back t
   assert.equal(snapshot.clients[0]._id, 'client-1');
   assert.equal(snapshot.users[1].name, 'Owner');
   assert.equal(snapshot.teams.length, 0);
+});
+
+test('Sales Dashboard does not wait for operations-only compliance, annual returns or approvals', async () => {
+  const source = fs.readFileSync(path.join(__dirname, '../../frontend/src/pages/AdminDashboard.jsx'), 'utf8');
+  const start = source.indexOf('  async function loadDashboard('), end = source.indexOf('  async function handleCreateUser(', start);
+  const calls = [], user = { _id: 'admin', role: 'admin' };
+  let snapshot;
+  const endpoints = { auth: { me: 'me', roles: 'roles', adminUsers: 'users', users: 'users' }, teams: { list: 'teams' },
+    clients: { list: 'clients', dashboardComplianceRecords: 'compliance', pendingApprovals: 'approvals' },
+    leads: { list: 'leads' }, quotations: { list: 'quotes' }, annualReturns: { list: 'annual' }, calendarItems: { list: 'calendar' } };
+  await vm.runInNewContext(`${source.slice(start, end)} loadDashboard({ force: true })`, {
+    dashboardRequestInFlightRef: { current: false }, dashboardLoadSequenceRef: { current: 0 }, dashboardDataRef: { current: {} }, location: { pathname: '/dashboard' },
+    DASHBOARD_CACHE_KEY: 'test', DASHBOARD_REQUEST_TIMEOUT_MS: 30000, currentUser: user, isUserManagementView: false,
+    adminRoles: ['admin'], defaultRoles: [], isSalesDashboardUser: () => false, showDashboardSwitcher: true, dashboardMode: 'sales', API_ENDPOINTS: endpoints,
+    setLoading() {}, setError() {}, setCurrentUser() {}, storeSessionUser() {}, setAvailableRoles() {}, readSessionCache: () => null, writeSessionCache() {},
+    normalizeKey: value => String(value).toLowerCase(), asRecordList: value => value || [], mergeLeadSources: value => value,
+    readClientData: value => value.data || {}, complianceText: () => '', console: { groupCollapsed() {}, groupEnd() {}, info() {}, error() {}, table() {} },
+    api: { get: async endpoint => { calls.push(endpoint); return { data: { user, users: [user], teams: [], items: [] } }; } },
+    fetchDashboardCollection: async (endpoint, key) => { calls.push(endpoint); return { data: { [key]: [{ _id: `${key}-one`, data: {} }] } }; },
+    applyDashboardData: value => { snapshot = value; }
+  });
+  assert.ok(calls.includes('leads') && calls.includes('quotes') && calls.includes('clients'));
+  assert.ok(!calls.includes('compliance') && !calls.includes('annual') && !calls.includes('approvals'));
+  assert.equal(snapshot.leads.length, 1); assert.equal(snapshot.quotations.length, 1);
 });

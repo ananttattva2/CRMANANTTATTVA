@@ -2242,6 +2242,7 @@ exports.requestDuplicateLeadApproval = async (req, res) => {
 };
 
 exports.listDuplicateLeadApprovals = async (req, res) => {
+  const startedAt = Date.now();
   const admin = userHasAnyRole(req.user, ADMIN_ROLES);
   if (!admin && req.user?._id) {
     const legacyServiceNotifications = await Notification.find({
@@ -2331,29 +2332,39 @@ exports.listDuplicateLeadApprovals = async (req, res) => {
       { 'payload.temporaryUserId': userId }
     ];
   }
+  const listOnly = req.query.listOnly === 'true';
+  const listProjection = listOnly ? '-payload.poYearRows.poFileUrl -payload.poProofManifest.poFileUrl -payload.poRows.poFileUrl -payload.earlierQuotationProofUrl -payload.poFileUrl' : '';
   const [activeApprovals, recentDecisions] = await Promise.all([
     PendingApproval.find({
       ...query,
       approvalStatus: { $in: ['PENDING', 'PARTIALLY_APPROVED', 'REVISION_REQUIRED'] }
-    }).populate('actionBy', 'name email').sort({ createdAt: -1 }).limit(500).lean(),
+    }).select(listProjection).populate('actionBy', 'name email').sort({ createdAt: -1 }).limit(500).lean(),
     PendingApproval.find({
       ...query,
       approvalStatus: { $in: ['APPROVED', 'REJECTED'] }
-    }).populate('actionBy', 'name email').sort({ actionAt: -1, createdAt: -1 }).limit(100).lean()
+    }).select(listProjection).populate('actionBy', 'name email').sort({ actionAt: -1, createdAt: -1 }).limit(100).lean()
   ]);
   const approvals = [...activeApprovals, ...recentDecisions];
+  const readAt = Date.now();
   const purchaseOrderApprovals = approvals.filter((approval) => approval.type === 'purchase_order');
-  if (purchaseOrderApprovals.length) {
+  // Complete saved snapshots can render immediately. Legacy rows missing
+  // amounts still use the existing recovery path, so totals are not lost.
+  const poEnrichmentApprovals = purchaseOrderApprovals.filter(approval => {
+    if (!listOnly) return true;
+    const rows = approval.payload?.poYearRows;
+    return !Array.isArray(rows) || !rows.length || rows.some(row => !(Number(row?.poAmount) > 0));
+  });
+  if (poEnrichmentApprovals.length) {
     const approvalLeadId = (approval) => {
       const payloadId = String(approval.payload?.leadId || '').trim();
       if (mongoose.isValidObjectId(payloadId)) return payloadId;
       const sourceId = String(approval.sourceClientId || '').split(':po:')[0].trim();
       return mongoose.isValidObjectId(sourceId) ? sourceId : '';
     };
-    const leadIds = [...new Set(purchaseOrderApprovals.map(approvalLeadId).filter(Boolean))];
-    const legacyLeadIds = [...new Set(purchaseOrderApprovals.map((approval) => String(approval.sourceClientId || '').split(':po:')[0].trim()).filter((value) => value && !mongoose.isValidObjectId(value)))];
-    const leadCodes = [...new Set(purchaseOrderApprovals.flatMap((approval) => [approval.payload?.leadCode, approval.uniqueId]).map((value) => String(value || '').trim()).filter(Boolean))];
-    const companies = [...new Set(purchaseOrderApprovals.map((approval) => String(approval.clientName || '').trim()).filter(Boolean))];
+    const leadIds = [...new Set(poEnrichmentApprovals.map(approvalLeadId).filter(Boolean))];
+    const legacyLeadIds = [...new Set(poEnrichmentApprovals.map((approval) => String(approval.sourceClientId || '').split(':po:')[0].trim()).filter((value) => value && !mongoose.isValidObjectId(value)))];
+    const leadCodes = [...new Set(poEnrichmentApprovals.flatMap((approval) => [approval.payload?.leadCode, approval.uniqueId]).map((value) => String(value || '').trim()).filter(Boolean))];
+    const companies = [...new Set(poEnrichmentApprovals.map((approval) => String(approval.clientName || '').trim()).filter(Boolean))];
     const leadLookup = [];
     if (leadIds.length) leadLookup.push({ _id: { $in: leadIds } });
     if (legacyLeadIds.length) leadLookup.push({ sourceLeadId: { $in: legacyLeadIds } });
@@ -2372,7 +2383,7 @@ exports.listDuplicateLeadApprovals = async (req, res) => {
     const quoteForRow = (row, lead) => quotations.find((quote) => String(quote._id) === String(row.quotationId || ''))
       || quotations.find((quote) => quote.quotationNumber && quote.quotationNumber === row.quotationNumber)
       || quotations.find((quote) => [quote.leadRef, quote.leadId, quote.leadCode, quote.businessLeadCode].some((value) => [String(lead._id), lead.leadCode].includes(String(value || ''))));
-    purchaseOrderApprovals.forEach((approval) => {
+    poEnrichmentApprovals.forEach((approval) => {
       const payload = approval.payload || {};
       const snapshotRows = (Array.isArray(payload.poYearRows) ? payload.poYearRows
         : Array.isArray(payload.poRows) ? payload.poRows
@@ -2449,6 +2460,11 @@ exports.listDuplicateLeadApprovals = async (req, res) => {
       };
     });
   }
+  if (listOnly) purchaseOrderApprovals.forEach(approval => {
+    approval.detailsDeferred = true;
+    approval.payload = require('../services/approvalListPayload').withoutInlineProofs(approval.payload);
+  });
+  res.set?.('Server-Timing', `approvals;dur=${readAt - startedAt}, enrichment;dur=${Date.now() - readAt}`);
   res.json({ ok: true, approvals, poStorage: {
     binaryStore: 'Cloudinary: crm/leads/purchase-orders',
     leadCollection: Lead.collection.collectionName,

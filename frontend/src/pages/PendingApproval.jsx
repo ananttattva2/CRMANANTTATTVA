@@ -929,7 +929,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
     setError('');
 
     try {
-      const duplicatePromise = Promise.allSettled([api.get(API_ENDPOINTS.leads.duplicateApprovals, dataRequestConfig)]);
+      const duplicatePromise = Promise.allSettled([api.get(API_ENDPOINTS.leads.duplicateApprovals, { ...dataRequestConfig, params: { ...dataRequestConfig.params, listOnly: true } })]);
       const [meResult, approvalsResult] = await Promise.allSettled([
         api.get(API_ENDPOINTS.auth.me, authRequestConfig),
         api.get(API_ENDPOINTS.clients.pendingApprovals, dataRequestConfig)
@@ -1634,14 +1634,9 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                     <Cell strong>{row.clientName}<small className="mt-1 block text-xs text-slate-400">{row.payload?.leadCode || row.uniqueId || '-'}</small></Cell>
                     <Cell>{row.payload?.service?.servicesOffered || row.payload?.service?.applicableService || row.eprCategory || '-'}</Cell>
                     <Cell>{poRows.map((po) => <div key={`${po.approvalId || id}-${po.rowIndex ?? 0}-${po.poNumber || 'po'}-amount`} className="mb-1 font-black text-emerald-700">{po.poAmountValue ? `₹${po.poAmountValue.toLocaleString('en-IN')}` : '-'}<small className="ml-1 text-slate-400">{po.currency || 'INR'}</small></div>)}</Cell>
-                  <Cell>{(() => {
-                    // 🔴 NUCLEAR FIX: Calculate proof URL HERE, in the EXACT SAME closure scope that
-                    // ran poRows.forEach(console.log) which the user already CONFIRMED returns
-                    // hasPoFileUrl=true + valid Cloudinary URL for EVERY row (screenshot console table 1174).
-                    // NO NormalizedPoProof component call = NO prop passing = NO stale closure / frozen ref bugs!
-                    // Deep-clone row.payload (DEFROST) via JSON roundtrip → 100% bypass Proxy/getter traps.
-                    let clonedPayload;
-                    try { clonedPayload = JSON.parse(JSON.stringify(row.payload || {})); } catch { clonedPayload = Object.assign({}, row.payload || {}); }
+                  <Cell>{row.detailsDeferred ? <button type="button" onClick={() => openPoDetails(row)} className="rounded-lg border px-3 py-2 text-xs font-bold">View PO Proofs</button> : (() => {
+                    // Resolve saved metadata without copying large proof payloads on each render.
+                    const clonedPayload = row.payload || {};
                     const snap = Array.isArray(clonedPayload.poYearRows) ? clonedPayload.poYearRows : [];
                     const mani = Array.isArray(clonedPayload.poProofManifest) ? clonedPayload.poProofManifest : [];
                     // For each row, resolve URL matching by len1 (unambiguous) → rowIndex → poNumber → manifest → deepFind(payload)

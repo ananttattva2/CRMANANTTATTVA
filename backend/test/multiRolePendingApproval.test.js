@@ -33,7 +33,7 @@ test('special approval history is bounded without dropping active approvals', ()
 
 test('primary approvals render before waiting on the parallel special approval request', () => {
   const primaryLoad = pageSource.indexOf('setPendingQuotations(snapshot.pendingQuotations)');
-  const auxiliaryLoad = pageSource.indexOf('api.get(API_ENDPOINTS.leads.duplicateApprovals, dataRequestConfig)');
+  const auxiliaryLoad = pageSource.indexOf('api.get(API_ENDPOINTS.leads.duplicateApprovals,');
   assert.ok(primaryLoad >= 0);
   assert.ok(auxiliaryLoad >= 0 && auxiliaryLoad < primaryLoad);
   assert.ok(pageSource.indexOf('await duplicatePromise') > primaryLoad);

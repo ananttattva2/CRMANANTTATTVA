@@ -222,14 +222,14 @@ async function getUserProductivityReport({ from, to, requester }) {
   const requesterRole = String(requester?.role || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
   const isAdmin = ['admin', 'superadmin'].includes(requesterRole);
   const requesterId = requester?._id || requester?.id;
-  const reportPromise = require('./crmCache').getCrmCache().remember(`productivity-report-v2:${JSON.stringify({ from: period.from, to: period.to, isAdmin, requesterId: isAdmin ? 'all' : entityId(requesterId) })}`, async () => {
+  const reportPromise = require('./crmCache').getCrmCache().remember(`productivity-report-v3:${JSON.stringify({ from: period.from, to: period.to, isAdmin, requesterId: isAdmin ? 'all' : entityId(requesterId) })}`, async () => {
     const operationTeams = await reportQuery('teams', isAdmin
       ? Team.find().select('name manager operationHead members').sort({ name: 1 }).lean()
       : Team.find({ $or: [{ manager: requesterId }, { operationHead: requesterId }] }).select('name manager operationHead members').sort({ name: 1 }).lean());
     const scopedUserIds = isAdmin ? null : operationTeams.flatMap((team) => [entityId(team.manager), ...(team.members || []).map(entityId)]).filter(Boolean);
     const userFilter = isAdmin ? {} : { _id: { $in: scopedUserIds } };
     const activityUserFilter = isAdmin ? {} : { userId: { $in: scopedUserIds } };
-    const ownerFilter = isAdmin ? {} : { createdBy: { $in: scopedUserIds } };
+    const ownerFilter = isAdmin ? {} : { createdBy: { $in: scopedUserIds.filter(id => require('mongoose').isValidObjectId(id)).map(id => new (require('mongoose').Types.ObjectId)(id)) } };
     const createdAt = { $gte: period.start, $lte: period.end };
     const [users, sessions, activities, leads, temporaryLeads, clients, ticketStats] = await Promise.all([
       reportQuery('users', User.find(userFilter).select('name email crmUserId role team teamId managerId operationHeadId isActive lastLogin').lean()),
@@ -239,7 +239,7 @@ async function getUserProductivityReport({ from, to, requester }) {
         .select('userId action module description occurredAt statusCode').sort({ occurredAt: -1 }).limit(10000).maxTimeMS(15000).lean()),
       reportQuery('leads', Lead.find({ ...ownerFilter, createdAt }).select('createdBy createdByCrmUserId createdByEmail createdByName importedCreatedBy generatedForUser generatedForName generatedForEmail status closedBy closedByText closedAt createdAt').maxTimeMS(20000).lean()),
       reportQuery('temporary-leads', TemporaryLead.find({ ...ownerFilter, createdAt }).select('createdBy createdByName createdByEmail').maxTimeMS(15000).lean()),
-      reportQuery('clients', Client.find({ ...ownerFilter, createdAt }).select('createdBy data workflowStatus adminControls.approvalStatus createdAt updatedAt selectedLead assignedServiceId').maxTimeMS(20000).lean()),
+      reportQuery('clients', Client.aggregate([{ $match: { ...ownerFilter, createdAt } }, { $project: require('./misClientProjection').misClientProjection }]).option({ maxTimeMS: 20000 })),
       reportQuery('tickets', SupportTicket.aggregate([
         { $match: { ...ownerFilter, createdAt } },
         { $group: {

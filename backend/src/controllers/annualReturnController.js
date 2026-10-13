@@ -183,6 +183,8 @@ function shouldUseClientFiling(existing = {}, candidate = {}) {
 }
 
 exports.listAnnualReturns = async (req, res) => {
+  const dashboard = req.query.dashboard === 'true';
+  const dashboardClientFields = 'data.basic data.importMeta data.selectedLeadSnapshot data.financials adminControls';
   const scope = await getVisibleUserScope(req.user);
   const accessFilter = ownerFilter(scope, 'createdBy', 'adminControls.assignedTo', [
     'data.importMeta.assignedTo', 'data.importMeta.user', 'data.importMeta.userName',
@@ -200,7 +202,8 @@ exports.listAnnualReturns = async (req, res) => {
   const annualReturns = await AnnualReturn.find(
     scope === null && req.query.dashboard !== 'true' ? {} : { client: { $in: visibleClientIds } }
   )
-    .populate('client', 'data adminControls')
+    .select(dashboard ? '-clientData.companyOverview -clientData.compliance -clientData.cpcbScreenshots -clientData.processDiagrams -clientData.cte -clientData.msmeRows -clientData.authorisedPersons -clientData.annualReturn' : '')
+    .populate('client', dashboard ? dashboardClientFields : 'data adminControls')
     .populate('updatedBy', 'name email role')
     .sort({ updatedAt: -1 })
     .lean();
@@ -212,7 +215,7 @@ exports.listAnnualReturns = async (req, res) => {
   });
 
   const clients = await Client.find({ $and: [{ 'data.annualReturn.filings': { $exists: true } }, clientFilter] })
-    .select('data adminControls updatedAt')
+    .select(dashboard ? `${dashboardClientFields} data.annualReturn.filings data.annualReturn.lastSavedAt updatedAt` : 'data adminControls updatedAt')
     .lean();
   clients.forEach((client) => {
     const filings = client.data?.annualReturn?.filings || {};
@@ -223,6 +226,9 @@ exports.listAnnualReturns = async (req, res) => {
     });
   });
 
+  if (dashboard) for (const row of index.values()) {
+    if (row.clientData?.annualReturn) { const { annualReturn, ...clientData } = row.clientData; row.clientData = clientData; }
+  }
   const mergedRows = [...index.values()].sort((a, b) => new Date(b.updatedAt || b.savedAt || 0) - new Date(a.updatedAt || a.savedAt || 0));
   res.json({ ok: true, annualReturns: mergedRows });
 };

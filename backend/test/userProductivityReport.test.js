@@ -155,7 +155,7 @@ test('Operation MIS database query does not exclude draft Client Masters', () =>
   const fs = require('node:fs');
   const path = require('node:path');
   const source = fs.readFileSync(path.resolve(__dirname, '../src/services/userProductivityReport.js'), 'utf8');
-  assert.match(source, /Client\.find\(\{ \.\.\.ownerFilter, createdAt \}\)/);
+  assert.match(source, /Client\.aggregate\(\[\{ \$match: \{ \.\.\.ownerFilter, createdAt \} \}/);
   assert.doesNotMatch(source, /Client\.find\(\{ \.\.\.ownerFilter, workflowStatus: 'submitted'/);
 });
 

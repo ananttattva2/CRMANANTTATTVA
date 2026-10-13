@@ -19,7 +19,7 @@ test('MIS report shares admin reads but keeps manager scopes separate and reload
   const context = { require: () => ({ getCrmCache: () => cache }), entityId: value => String(value || ''),
     reportDateRange: () => ({ from: '2026-10-01', to: '2026-10-13', start: new Date('2026-10-01'), end: new Date('2026-10-14') }),
     reportQuery: async (_name, result) => result, buildUserProductivityReport: () => ({ users: [] }),
-    Team: { find() { reads++; return query(); } }, User: model, UserSession: model, AuditLog: model, Lead: model, TemporaryLead: model, Client: model,
+    Team: { find() { reads++; return query(); } }, User: model, UserSession: model, AuditLog: model, Lead: model, TemporaryLead: model, Client: { ...model, aggregate: () => ({ option: async () => [] }) },
     SupportTicket: { aggregate: () => ({ option: async () => [] }) }
   };
   vm.createContext(context); vm.runInContext(source.slice(start, end), context);
