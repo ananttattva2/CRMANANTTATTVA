@@ -137,6 +137,7 @@ api.interceptors.response.use(
     }
     if (['post', 'put', 'patch', 'delete'].includes(method)
       && !/\/(?:assets|notifications)(?:\/|$)/.test(url)
+      && !/\/auth\/milestones\/[^/]+\/claim$/.test(url)
       && !/\/auth\/(?:activity-heartbeat|request-otp|resend-otp|verify-otp|logout|forgot-password|reset-password)(?:\/|$)/.test(url)) {
       // Server awaits cache invalidation before acknowledging the write.
       window.setTimeout(() => notifyCrmChanged(), 0)

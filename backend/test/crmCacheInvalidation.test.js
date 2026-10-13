@@ -40,10 +40,28 @@ test('write response waits for invalidation, including bulk imports and partial 
 
 test('read requests and background heartbeat cannot thrash cached reports', () => {
   const middleware = createWriteInvalidation(() => { throw new Error('must not invalidate'); });
-  for (const [method, path] of [['GET', '/api/leads'], ['POST', '/api/auth/activity-heartbeat'], ['POST', '/api/assets/upload'], ['PATCH', '/api/notifications/id']]) {
+  for (const [method, path] of [['GET', '/api/leads'], ['POST', '/api/auth/activity-heartbeat'], ['POST', '/api/auth/milestones/support-ticket-100/claim'], ['POST', '/api/assets/upload'], ['PATCH', '/api/notifications/id']]) {
     const json = () => {};
     const res = { json };
     middleware({ method, originalUrl: path }, res, () => {});
     assert.equal(res.json, json);
   }
+});
+
+test('repeated no-op claims preserve warm cache; genuine updates, upserts and deletes invalidate', async () => {
+  const schema = new mongoose.Schema({});
+  let count = 0;
+  cacheInvalidationPlugin(schema, { invalidate: async () => { count++; } });
+  const run = (operation, result) => new Promise((resolve, reject) => {
+    schema.s.hooks.execPost(operation, { model: { modelName: 'User' } }, [result], {}, error => error ? reject(error) : resolve());
+  });
+  await run('updateOne', { matchedCount: 0, modifiedCount: 0 });
+  await run('updateMany', { matchedCount: 1, modifiedCount: 0 });
+  await run('deleteOne', { deletedCount: 0 });
+  await run('findOneAndUpdate', null);
+  assert.equal(count, 0);
+  await run('updateOne', { modifiedCount: 1 });
+  await run('updateOne', { modifiedCount: 0, upsertedCount: 1 });
+  await run('deleteOne', { deletedCount: 1 });
+  assert.equal(count, 3);
 });

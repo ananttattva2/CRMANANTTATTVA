@@ -56,21 +56,25 @@ function mergeManagerStaffAllocations(clients = [], leads = []) {
         ...(matchingPoRows.length ? { poYearRows: matchingPoRows } : {}),
         ...(matchingAssignments.some(candidate => normalize(candidate.poStatus) === 'received') ? { poStatus: 'received' } : {})
       };
-      const master = clients.find(client => {
-        if (normalize(client.workflowStatus || client.data?.importMeta?.clientStatus) === 'draft') return false;
+      const matchingMasters = clients.filter(client => {
         if (value(client.selectedLead || client.data?.selectedLeadSnapshot?.id) !== value(lead._id)) return false;
         const selectedId = client.assignedServiceId || client.data?.selectedLeadSnapshot?.assignedServiceId;
         const selected = services.find(s => value(s.assignedServiceId || s.serviceAssignmentId) === value(selectedId));
         return selected && signature(selected) === signature(service)
           && Boolean(resolveClientMasterData(client, selectedId).cpcb?.status);
-      });
-      const masterData = master ? resolveClientMasterData(master) : {};
+      }).sort((a, b) => new Date(b.updatedAt || b.submittedAt || b.createdAt || 0) - new Date(a.updatedAt || a.submittedAt || a.createdAt || 0));
+      // Drafts are not applications, but the CPCB form is saved while the
+      // Client Master is still a draft. Use the newest matching record only as
+      // a status source; use a non-draft record for application workflow data.
+      const statusMaster = matchingMasters[0];
+      const workflowMaster = matchingMasters.find(client => normalize(client.workflowStatus || client.data?.importMeta?.clientStatus) !== 'draft');
+      const masterData = statusMaster ? resolveClientMasterData(statusMaster) : {};
       result.push({ _id: `assignment:${key}`, assignedServiceId: serviceId,
-        statusSourceClientId: master ? value(master._id) : undefined,
-        workflowStatus: master?.workflowStatus,
+        statusSourceClientId: statusMaster ? value(statusMaster._id) : undefined,
+        workflowStatus: workflowMaster?.workflowStatus,
         selectedLead: { ...lead, assignments: [enrichedAssignment], serviceSelections: [service] },
         data: { cpcb: masterData.cpcb?.status ? { status: masterData.cpcb.status } : {}, registeredAddress: masterData.registeredAddress?.state ? { state: masterData.registeredAddress.state } : {}, basic: { clientLegalName: lead.company || lead.companyName || lead.clientName || 'Untitled client' }, importMeta: { leadNumber: lead.leadCode || lead.sourceLeadId || '' } },
-        adminControls: { visibilityStatus: master?.adminControls?.visibilityStatus }, sla: {}, assignmentOnly: true
+        adminControls: { visibilityStatus: (workflowMaster || statusMaster)?.adminControls?.visibilityStatus }, sla: {}, assignmentOnly: true
       });
     });
   }
