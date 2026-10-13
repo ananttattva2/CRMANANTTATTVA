@@ -69,6 +69,10 @@ test('draft Client Masters cannot suppress closed permanent staff assignments',a
   const merged=mergeManagerStaffAllocations([draft],[lead]);
   assert.equal(merged.length,2);
   assert.equal(merged.filter(row=>row.assignmentOnly).length,1);
+  const placeholder=merged.find(row=>row.assignmentOnly);
+  assert.equal(placeholder.data.cpcb.status,'Approved');
+  assert.equal(placeholder.statusSourceClientId,`${id}-draft`);
+  assert.equal(placeholder.workflowStatus,undefined);
   dashboardRows.push(...merged);
  }
  const groups=buildApplicationPortfolio(dashboardRows,users);
@@ -76,4 +80,21 @@ test('draft Client Masters cannot suppress closed permanent staff assignments',a
   ['Sonal More',['20 MICRONS NANO MINERALS LIMITED']],
   ['Tushar Gawas',['Thrishul Packaging Industries']]
  ]);
+});
+
+test('newest matching draft supplies CPCB status for every assigned service without counting as an application',()=>{
+ const service={assignedServiceId:'service',subApplicantType:'Importer',plantUnit:'Unit 1',servicesOffered:'Annual Return Filling'};
+ const lead={_id:'lead',company:'Any assigned client',serviceSelections:[service],assignments:[{assignedServiceId:'service',assignedTo:'manager',assignedStaff:'staff',closedAt:'2026-10-01'}]};
+ const client=(id,status,workflowStatus,updatedAt)=>({
+  _id:id,selectedLead:lead,assignedServiceId:'service',workflowStatus,updatedAt,
+  data:{cpcb:{status},basic:{piboCategory:'Importer',servicesOffered:'Annual Return Filling'},importMeta:{clientStatus:workflowStatus}}
+ });
+ const merged=mergeManagerStaffAllocations([
+  client('older-draft','Not Started','draft','2026-10-01'),
+  client('latest-draft','Under Review','draft','2026-10-13')
+ ],[lead]);
+ const placeholder=merged.find(row=>row.assignmentOnly);
+ assert.equal(placeholder.data.cpcb.status,'Under Review');
+ assert.equal(placeholder.statusSourceClientId,'latest-draft');
+ assert.equal(placeholder.workflowStatus,undefined);
 });
