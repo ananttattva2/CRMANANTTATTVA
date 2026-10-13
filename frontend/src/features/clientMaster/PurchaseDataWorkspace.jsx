@@ -108,7 +108,8 @@ export default function PurchaseDataWorkspace({ clientId, financialYear, current
     if (immediate) saveChecklist(next, 'Checklist saved.'); else saveTimer.current = setTimeout(() => saveChecklist(next), 650);
     const changedRow = next.checklist[index];
     const nilSelected = next.checklist.find((row) => row.particular === 'Nil Upload')?.yesNo === 'Yes';
-    const mandatory = changedRow.particular !== 'Client Approval on data' && !nilSelected && REQUIRED_NORMAL_ROWS.has(changedRow.particular);
+    const mandatory = REQUIRED_NORMAL_ROWS.has(changedRow.particular)
+      && (changedRow.particular === 'Client Approval on data' || !nilSelected);
     if (mandatory && patch.yesNo === 'Yes' && (!changedRow.date || !changedRow.files?.length)) setNotice({ type: 'warning', text: `${changedRow.particular}: date and supporting proof are required.` });
   };
 

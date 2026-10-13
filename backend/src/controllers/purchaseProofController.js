@@ -10,7 +10,7 @@ const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope')
 const { userHasAnyRole } = require('../utils/userRoles');
 
 function normalizedRole(user) { return String(user?.role || '').toLowerCase().replace(/[\s_-]+/g, ''); }
-function canEdit(user) { const role = normalizedRole(user); return ['admin', 'superadmin'].includes(role) || (role !== 'manager' && !role.includes('compliance')); }
+function canEdit(user) { const role = normalizedRole(user); return ['admin', 'superadmin'].includes(role) || !role.includes('compliance'); }
 function validYear(value) { return /^20\d{2}-\d{2}$/.test(String(value || '').trim()); }
 async function findClient(value, user, reviewRead = false) {
   if (!mongoose.Types.ObjectId.isValid(value)) return null;

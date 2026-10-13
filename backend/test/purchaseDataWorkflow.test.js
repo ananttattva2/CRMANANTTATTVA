@@ -160,7 +160,7 @@ test('quantity inside tolerance is matched', () => { const summary = reconcilePu
 test('short upload becomes a warning issue', () => { const summary = reconcilePurchaseRows(parsed([baseRow()], 'base').acceptedRows, parsed([portalRow({ 'Total Plastic Qty (Tons)': 9 })], 'portal').acceptedRows); assert.equal(summary.totals.result, 'Short Upload'); assert.equal(summary.warningIssueCount, 1); });
 test('GST difference is detected even when quantity matches', () => { const summary = reconcilePurchaseRows(parsed([baseRow()], 'base').acceptedRows, parsed([portalRow({ 'GST Paid': 1700 })], 'portal').acceptedRows); assert.equal(summary.totals.result, 'GST Mismatch'); });
 test('normal path is not ready until tracker, proof and both imports exist', () => { const value = { checklist: defaultChecklist() }; assert.equal(purchaseReadiness(value).ready, false); assert.match(purchaseReadiness(value).errors.join(' '), /Upload Complete/); });
-test('Nil Upload path requires only Client Approval on data', () => { const checklist = defaultChecklist().map((row) => row.particular === 'Nil Upload' ? { ...row, yesNo: 'Yes' } : row); const readiness = purchaseReadiness({ checklist }); assert.equal(readiness.ready, false); assert.equal(readiness.nilUpload, true); assert.deepEqual(readiness.errors, ['Client Approval on data: status must be Yes.']); });
+test('Nil Upload path requires Client Approval status, date and proof', () => { const checklist = defaultChecklist().map((row) => row.particular === 'Nil Upload' ? { ...row, yesNo: 'Yes' } : row); const readiness = purchaseReadiness({ checklist }); assert.equal(readiness.ready, false); assert.equal(readiness.nilUpload, true); assert.deepEqual(readiness.errors, ['Client Approval on data: status must be Yes.', 'Client Approval on data: date is required.', 'Client Approval on data: proof is required.']); });
 test('approved Nil Upload bypasses other tracker rows, evidence and both Excel files', () => { const checklist = defaultChecklist().map((row) => row.particular === 'Nil Upload' ? { ...row, yesNo: 'Yes' } : row.particular === 'Client Approval on data' ? { ...row, yesNo: 'Yes', date: '2025-04-10', files: [{ url: 'https://x.test/proof.pdf' }] } : row); assert.equal(purchaseReadiness({ checklist }).ready, true); });
 test('fully approved status wins over upload status', () => assert.equal(calculatePurchaseStatus({ complianceVerificationStatus: 'Approved' }), 'Fully Approved'));
 test('routes expose import, reconciliation and two-level approvals behind authentication', () => {
@@ -215,7 +215,8 @@ test('Outlook MSG proof opens a safe decoded mail viewer with attachments', () =
    assert.equal(rows.find(row => row.particular === 'Received from client').completeDataReceived, true);
    assert.equal(rows.find(row => row.particular === 'Ready to upload').partialDataReceived, false);
  });
- test('Nil Upload approval only needs Yes without date or proof', () => {
+ test('Nil Upload approval requires Yes, date and proof', () => {
    const checklist = defaultChecklist([{ particular: 'Nil Upload', yesNo: 'Yes' }, { particular: 'Client Approval on data', yesNo: 'Yes' }]);
-   assert.equal(purchaseReadiness({ checklist }).ready, true);
+   assert.equal(purchaseReadiness({ checklist }).ready, false);
+   assert.deepEqual(purchaseReadiness({ checklist }).errors, ['Client Approval on data: date is required.', 'Client Approval on data: proof is required.']);
  });

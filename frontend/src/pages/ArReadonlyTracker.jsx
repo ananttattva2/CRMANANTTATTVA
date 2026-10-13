@@ -6,7 +6,7 @@ import ArProofLinks from './ArProofLinks';
 export default function ArReadonlyTracker({ field, renderValue: Value }) {
   const [expanded, setExpanded] = useState(null);
   const rows = field.rows || [];
-  const simple = row => ['Nil Upload', 'Client Approval on data'].includes(row.particular);
+  const simple = row => row.particular === 'Nil Upload';
   const status = row => row.yesNo || row.status || '';
   const complete = row => simple(row) ? ['Yes', 'No'].includes(status(row)) : status(row) === 'Yes' && Boolean(row.date && row.files?.length);
   const completed = rows.filter(complete).length;

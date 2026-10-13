@@ -10,7 +10,7 @@ const normalizedRole = (user) => String(user?.role || '').trim().toLowerCase().r
 const isAdmin = (user) => ['admin', 'superadmin'].includes(normalizedRole(user));
 const isManager = (user) => normalizedRole(user) === 'manager';
 const isCompliance = (user) => normalizedRole(user).includes('compliance');
-const canEdit = (user) => isAdmin(user) || (!isManager(user) && !isCompliance(user));
+const canEdit = (user) => isAdmin(user) || !isCompliance(user);
 const validYear = (value) => /^20\d{2}-\d{2}$/.test(String(value || '').trim());
 const actor = (user) => ({ userId: user?._id, name: user?.name || user?.email || 'CRM User', role: user?.role || '' });
 const historyItem = (stage, decision, user, message = '') => ({ stage, decision, message: String(message || '').trim(), by: actor(user), at: new Date() });

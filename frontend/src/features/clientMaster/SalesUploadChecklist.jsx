@@ -5,7 +5,7 @@ import './uploadTracker.css';
 
 const HIDDEN = new Set(['Partially Data received', 'Complete Data Received', 'Work In Process', 'Partially Complete']);
 const DATA_STAGES = new Set(['Received from client', 'Ready to upload']);
-const SIMPLE = new Set(['Nil Upload', 'Client Approval on data']);
+const SIMPLE = new Set(['Nil Upload']);
 const isComplete = (row) => SIMPLE.has(row.particular) ? ['Yes', 'No'].includes(row.yesNo) : row.yesNo === 'Yes' && Boolean(row.date && row.files?.length);
 
 export default function SalesUploadChecklist({ title = 'Sales Data Upload Checklist', checklist = [], canEdit, busy, onChange, onUploadProof, onRemoveProof, onPreview, onError }) {

@@ -13,7 +13,7 @@ function role(user) { return String(user?.role || '').trim().toLowerCase().repla
 function isAdmin(user) { return ['admin', 'superadmin'].includes(role(user)); }
 function isManager(user) { return role(user) === 'manager'; }
 function isCompliance(user) { return role(user).includes('compliance'); }
-function canEdit(user) { return isAdmin(user) || (!isManager(user) && !isCompliance(user)); }
+function canEdit(user) { return isAdmin(user) || !isCompliance(user); }
 function actor(user) { return { userId: user?._id, name: user?.name || user?.email || 'CRM User', role: user?.role || '' }; }
 function historyItem(stage, decision, user, message = '') { return { stage, decision, message: String(message || '').trim(), by: actor(user), at: new Date() }; }
 function validYear(value) { return /^20\d{2}-\d{2}$/.test(String(value || '').trim()); }

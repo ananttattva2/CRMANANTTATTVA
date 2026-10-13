@@ -288,8 +288,8 @@ function purchaseReadiness(purchase = {}) {
   const errors = [];
   requiredRows.forEach((row) => {
     if (row.yesNo !== 'Yes') errors.push(`${row.particular}: status must be Yes.`);
-    if (row.particular !== 'Client Approval on data' && !row.date) errors.push(`${row.particular}: date is required.`);
-    if (row.particular !== 'Client Approval on data' && !row.files?.length) errors.push(`${row.particular}: proof is required.`);
+    if (!row.date) errors.push(`${row.particular}: date is required.`);
+    if (!row.files?.length) errors.push(`${row.particular}: proof is required.`);
   });
   if (!nilUpload) {
     if (!purchase.baseUpload || purchase.baseUpload.importStatus !== 'Imported') errors.push('Purchase Base Data is required.');
