@@ -19,6 +19,10 @@ test('actual frontend → CRM upload routes → local S3 HTTP → preview/downlo
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     if (!url.pathname.startsWith('/ananttattva-crm-files/')) return app(req, res);
+    if (url.searchParams.has('cors')) {
+      if (req.method === 'GET') { res.writeHead(404, { 'Content-Type': 'application/xml' }); return res.end('<Error><Code>NoSuchCORSConfiguration</Code></Error>'); }
+      if (req.method === 'PUT') { for await (const _chunk of req) { /* consume configuration */ } res.writeHead(200); return res.end(); }
+    }
     const key = decodeURIComponent(url.pathname.slice('/ananttattva-crm-files/'.length));
     storageRequests.push({ method: req.method, key });
     if (req.method === 'PUT') {

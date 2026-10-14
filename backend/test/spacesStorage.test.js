@@ -23,6 +23,11 @@ test('private storage, browser upload confirmation, stable preview links and att
     const resolved = resolvePoProof({ arbitrary: { nested: { other: image.url } } }); assert.equal(resolved.url, image.url);
     const download = new URL(await storage.downloadUrl(image.storageKey)); assert.equal(download.hostname, 'ananttattva-crm-files.sgp1.digitaloceanspaces.com'); assert.equal(download.searchParams.get('X-Amz-Expires'), '60');
     const authorization = await storage.authorizeUpload({ name: 'photo.png', type: 'image/png', size: 3, folder: 'crm/notifications', checksum }, 'user-1');
+    const corsCommand = calls.find(command => command.constructor.name === 'PutBucketCorsCommand');
+    const uploadRule = corsCommand.input.CORSConfiguration.CORSRules.find(rule => rule.ID === 'ananttattva-crm-browser-uploads');
+    assert.ok(uploadRule.AllowedOrigins.includes('https://crm.example.test'));
+    assert.deepEqual(uploadRule.AllowedMethods, ['PUT', 'GET', 'HEAD']);
+    assert.deepEqual(uploadRule.AllowedHeaders, ['*']);
     assert.equal(new URL(authorization.uploadUrl).hostname, 'ananttattva-crm-files.sgp1.digitaloceanspaces.com');
     const signedHeaders = new URL(authorization.uploadUrl).searchParams.get('X-Amz-SignedHeaders').split(';').filter(header => header !== 'host');
     assert.ok(signedHeaders.every(header => Object.keys(authorization.headers).some(actual => actual.toLowerCase() === header)), 'Browser receives every signed request header');

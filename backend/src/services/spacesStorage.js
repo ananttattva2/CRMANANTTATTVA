@@ -1,8 +1,10 @@
 const crypto = require('node:crypto');
-const { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand, DeleteObjectCommand, GetBucketCorsCommand, PutBucketCorsCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 let cachedClient;
 let cachedCredentials;
+let uploadCorsPromise;
+let uploadCorsIdentity;
 
 function config() {
   const secret = process.env.SPACES_LINK_SECRET;
@@ -33,6 +35,49 @@ function uploadKey(folder, name) {
   if (!prefix.startsWith('crm/')) throw new Error('Invalid upload folder.');
   return `${prefix}/${crypto.randomUUID()}-${String(name || 'file').replace(/[^a-zA-Z0-9._-]/g, '-').slice(-180)}`;
 }
+function browserUploadOrigins() {
+  const configured = [
+    process.env.SPACES_CORS_ORIGINS,
+    process.env.CLIENT_ORIGIN,
+    process.env.CLIENT_URLS,
+    process.env.FRONTEND_URL,
+    process.env.APP_URL,
+    process.env.STORAGE_PUBLIC_API_ORIGIN
+  ].filter(Boolean).join(',').split(',').map(value => value.trim().replace(/\/+$/, '')).filter(Boolean);
+  return [...new Set(['https://crmananttattva.com', 'https://crmananttattva.vercel.app', ...configured]
+    .filter(value => /^https?:\/\/[^/]+$/i.test(value)))];
+}
+async function ensureUploadCors() {
+  const c = config();
+  const origins = browserUploadOrigins();
+  const identity = JSON.stringify([c.bucket, origins]);
+  if (uploadCorsPromise && uploadCorsIdentity === identity) return uploadCorsPromise;
+  uploadCorsIdentity = identity;
+  uploadCorsPromise = (async () => {
+    let rules = [];
+    try {
+      rules = (await c.client.send(new GetBucketCorsCommand({ Bucket: c.bucket }))).CORSRules || [];
+    } catch (error) {
+      if (![404, 'NoSuchCORSConfiguration', 'NoSuchKey'].includes(error?.$metadata?.httpStatusCode)
+        && !['NoSuchCORSConfiguration', 'NoSuchKey'].includes(error?.name)) throw error;
+    }
+    const managedRule = {
+      ID: 'ananttattva-crm-browser-uploads',
+      AllowedOrigins: origins,
+      AllowedMethods: ['PUT', 'GET', 'HEAD'],
+      AllowedHeaders: ['*'],
+      ExposeHeaders: ['ETag', 'x-amz-request-id'],
+      MaxAgeSeconds: 3600
+    };
+    const retained = rules.filter(rule => rule.ID !== managedRule.ID);
+    await c.client.send(new PutBucketCorsCommand({ Bucket: c.bucket, CORSConfiguration: { CORSRules: [...retained, managedRule] } }));
+    return managedRule;
+  })().catch(error => {
+    uploadCorsPromise = null;
+    throw error;
+  });
+  return uploadCorsPromise;
+}
 async function putFile(key, body, size, type, metadata = {}) {
   if (!validKey(key)) throw new Error('Invalid object key.');
   const c = config();
@@ -47,6 +92,7 @@ async function authorizeUpload({ name, type, size, folder, checksum }, userId) {
   const maximum = Number(process.env.SPACES_UPLOAD_MAX_MB || 25) * 1024 * 1024;
   if (!name || !Number.isSafeInteger(size) || size < 1 || size > maximum || typeof type !== 'string' || type.length > 120 || /[\r\n]/.test(type) || !/^[A-Za-z0-9+/]{43}=$/.test(checksum || '')) throw new Error('Invalid file or configured size limit exceeded.');
   type = type || 'application/octet-stream';
+  await ensureUploadCors();
   const key = uploadKey(folder, name); const c = config();
   const digest = Buffer.from(checksum, 'base64').toString('hex');
   const receipt = Buffer.from(JSON.stringify({ key, name, type, size, digest, userId: String(userId), expires: Date.now() + 15 * 60 * 1000 })).toString('base64url');
@@ -64,4 +110,4 @@ async function confirmUpload(token, userId) {
   if (metadata.ContentLength !== data.size || metadata.ContentType !== data.type || metadata.Metadata?.sha256 !== data.digest) throw new Error('Uploaded object does not match the authorized file.');
   return { ...objectResult(data.key, data.size), name: data.name, type: data.type, uploadedAt: new Date().toISOString() };
 }
-module.exports = { config, validKey, fileUrl, validLink, managedUrl, putFile, head, get, downloadUrl, uploadBuffer, deleteObject, authorizeUpload, confirmUpload, objectResult, rawKey };
+module.exports = { config, validKey, fileUrl, validLink, managedUrl, putFile, head, get, downloadUrl, uploadBuffer, deleteObject, authorizeUpload, confirmUpload, ensureUploadCors, browserUploadOrigins, objectResult, rawKey };
