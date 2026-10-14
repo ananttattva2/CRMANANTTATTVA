@@ -76,6 +76,33 @@ test('saved CPCB statuses distinguish approved, applied, under review, pending, 
   assert.equal(applicationRecord(discontinued).live, false);
 });
 
+test('dashboard resolves CPCB status from the exact assigned service for every scoped Client Master', async () => {
+  const { applicationRecord } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const direct = client('balaji', 'sonal', 'Importer of Raw Material', 'Not Started');
+  direct.data.assignedServiceId = 'balaji-importer-unit-2';
+  direct.data.cpcbDataByAssignedServiceId = {
+    'balaji-importer-unit-2': { status: 'Approved' },
+    'balaji-producer-unit-1': { status: 'Rejected' }
+  };
+  assert.equal(applicationRecord(direct).cpcb, 'Approved');
+  assert.equal(applicationRecord(direct).bucket, 'approved');
+
+  const nested = client('other-client', 'sonal', 'Importer', 'Applied');
+  nested.assignedServiceId = 'importer-service';
+  nested.data.serviceDetailsByAssignedServiceId = {
+    'importer-service': { cpcb: { applicationStatus: 'Under Review' } },
+    'brand-owner-service': { cpcb: { status: 'Approved' } }
+  };
+  assert.equal(applicationRecord(nested).cpcb, 'Under Review');
+  assert.equal(applicationRecord(nested).bucket, 'underReview');
+
+  const legacyRootEdit = client('legacy-root-edit', 'sonal', 'Importer of Raw Material', 'Approved');
+  legacyRootEdit.assignedServiceId = 'matching-service';
+  legacyRootEdit.data.cpcbDataByAssignedServiceId = { 'matching-service': { status: 'Not Started' } };
+  assert.equal(applicationRecord(legacyRootEdit).cpcb, 'Approved');
+  assert.equal(applicationRecord(legacyRootEdit).bucket, 'approved');
+});
+
 test('annual eligibility follows assigned services offered and applicant labels resolve the assigned service', async () => {
   const { applicationRecord, applicantCategory } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const row = client('a', 'sonal', '', 'Approved');

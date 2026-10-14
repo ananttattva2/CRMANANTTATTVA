@@ -144,6 +144,22 @@ export function companyStatusRecord(rows) {
 }
 const text = (...values) => values.find(value => typeof value === 'string' && value.trim())?.trim() || ''
 const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+const scopedCpcbStatus = (data, assignedServiceId) => {
+  if (!assignedServiceId) return ''
+  const serviceScope = data.serviceDetailsByAssignedServiceId?.[assignedServiceId]
+  const cpcbScope = data.cpcbDataByAssignedServiceId?.[assignedServiceId]
+  const statusFrom = scope => text(
+    scope?.cpcb?.status,
+    scope?.cpcb?.approvalStatus,
+    scope?.cpcb?.applicationStatus,
+    scope?.status,
+    scope?.approvalStatus,
+    scope?.applicationStatus
+  )
+  // Match Client Master resolution order: the complete service scope is most
+  // specific, followed by the CPCB-only scope, then the legacy root section.
+  return statusFrom(serviceScope) || statusFrom(cpcbScope)
+}
 export function applicantCategory(value) {
   const key = normalize(value)
   if (key.includes('rawmaterial') && key.includes('import')) return 'Importer of Raw Material'
@@ -159,7 +175,7 @@ export function applicantCategory(value) {
 export function applicationRecord(client) {
   const data = client.data || {}, basic = data.basic || {}, meta = data.importMeta || {}, lead = client.selectedLead || {}
   const services = lead.serviceSelections || []
-  const selectedServiceId = String(client.assignedServiceId || '')
+  const selectedServiceId = String(client.assignedServiceId || data.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId || '')
   const serviceIndex = services.findIndex(item => selectedServiceId && String(item.assignedServiceId || item.serviceAssignmentId || '') === selectedServiceId)
   const service = serviceIndex >= 0 ? services[serviceIndex] : (services.length === 1 ? services[0] : {})
   const assignments = lead.assignments || []
@@ -201,7 +217,14 @@ export function applicationRecord(client) {
   const annualEligiblePo = eligiblePoRows.length > 0
   const annualYears = [...new Set(eligiblePoRows.map(po => po.annualReturnYear).filter(Boolean))]
   const category = applicantCategory(text(service.subApplicantType, service.piboCategory, lead.subApplicantType, lead.piboCategory, basic.piboCategory, basic.subApplicantType, service.applicantType, lead.applicantType, basic.applicantType))
-  const cpcb = text(data.cpcb?.status, data.cpcb?.approvalStatus, data.cpcb?.applicationStatus, basic.cpcbStatus, meta.cpcbStatus)
+  const scopedCpcb = scopedCpcbStatus(data, selectedServiceId)
+  const rootCpcb = text(data.cpcb?.status, data.cpcb?.approvalStatus, data.cpcb?.applicationStatus, basic.cpcbStatus, meta.cpcbStatus)
+  // Older saves sometimes changed the matching root value but retained a
+  // generated Not Started scope. A real scoped decision remains authoritative;
+  // only a default placeholder yields to a meaningful same-master root edit.
+  const cpcb = /^(notstarted|notrecorded|pending)?$/.test(normalize(scopedCpcb))
+    && rootCpcb && !/^(notstarted|notrecorded|pending)$/.test(normalize(rootCpcb))
+    ? rootCpcb : text(scopedCpcb, rootCpcb)
   const state = text(data.registeredAddress?.state, data.address?.state, data.addresses?.state, basic.state, meta.state)
   const clientStatus = text(meta.clientStatus, client.adminControls?.clientStatus, client.workflowStatus)
   const visibility = text(client.adminControls?.visibilityStatus, meta.visibilityStatus)
