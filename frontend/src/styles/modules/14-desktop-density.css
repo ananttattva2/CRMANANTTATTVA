@@ -516,6 +516,12 @@
 .applicant-picker-options { display:grid; gap:12px; }
 .applicant-picker-options button { display:flex; gap:16px; align-items:center; text-align:left; border:1px solid #dbe7ee; border-radius:14px; padding:18px; background:white; color:#23797d; cursor:pointer; }
 .applicant-picker-options button:hover { background:#f0faf7; border-color:#23797d; }
-.applicant-picker-options span { flex:1; display:grid; gap:5px; }
+.applicant-picker-copy { flex:1; display:grid; gap:5px; min-width:0; }
+.applicant-picker-title { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .applicant-picker-options strong { font-size:16px; }
 .applicant-picker-options small { color:#657d90; font-size:12px; }
+.applicant-picker-status { flex:0 0 auto; border-radius:999px; padding:4px 9px; font-size:10px; font-weight:800; line-height:1.2; white-space:nowrap; }
+.applicant-picker-status-approved { background:#dcfce7; color:#166534; }
+.applicant-picker-status-partial { background:#fef3c7; color:#92400e; }
+.applicant-picker-status-rejected { background:#fee2e2; color:#b91c1c; }
+.applicant-picker-status-pending { background:#f1f5f9; color:#475569; }

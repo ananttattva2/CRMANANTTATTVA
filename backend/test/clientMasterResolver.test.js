@@ -15,8 +15,8 @@ const records = [
   },
   {
     name: 'modern data envelope',
-    record: { _id: '000000000000000000000002', selectedLead: '100000000000000000000002', assignedServiceId: 'svc-2', data: { basic: { clientLegalName: 'Modern Ltd', piboCategory: 'Importer' } } },
-    expect: { companyName: 'Modern Ltd', piboCategory: 'Importer', legacy: false }
+    record: { _id: '000000000000000000000002', selectedLead: '100000000000000000000002', assignedServiceId: 'svc-2', adminControls: { approvalStatus: 'PARTIALLY_APPROVED' }, data: { basic: { clientLegalName: 'Modern Ltd', piboCategory: 'Importer' } } },
+    expect: { companyName: 'Modern Ltd', piboCategory: 'Importer', approvalStatus: 'PARTIALLY_APPROVED', legacy: false }
   },
   {
     name: 'populated ObjectId-like lead',
@@ -86,6 +86,10 @@ test('requested service id deterministically selects a nested service without ch
   };
   assert.equal(resolveClientMasterData(record, 'second').cpcb.status, 'Second');
   assert.equal(normalizeClientMaster(record).clientMasterId, record._id);
+});
+
+test('applicant summaries expose a pending decision when no compliance decision exists', () => {
+  assert.equal(normalizeClientMaster({ _id: '000000000000000000000015', data: {} }).approvalStatus, 'PENDING');
 });
 
 test('service hydration preserves populated legacy fields when scoped values are blank', () => {

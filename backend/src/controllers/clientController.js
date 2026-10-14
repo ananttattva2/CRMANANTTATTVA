@@ -1393,12 +1393,12 @@ function escapeSearchRegex(value = '') {
 
 function clientDiscoveryProjection() {
   return [
-    '_id', 'selectedLead', 'assignedServiceId', 'workflowStatus',
+    '_id', 'selectedLead', 'assignedServiceId', 'workflowStatus', 'adminControls.approvalStatus',
     'data.selectedLead', 'data.assignedServiceId', 'data.selectedLeadSnapshot',
     'data.basic.clientLegalName', 'data.basic.tradeName', 'data.basic.piboCategory',
     'data.basic.eprCategory', 'data.basic.servicesOffered', 'data.basic.plantUnit',
     'data.basic.companyIndustry', 'data.companyOverview.companyName',
-    'data.importMeta.companyName', 'data.importMeta.leadNumber', 'data.importMeta.uniqueId', 'data.cpcbOnboarding',
+    'data.importMeta.companyName', 'data.importMeta.leadNumber', 'data.importMeta.uniqueId', 'data.cpcbOnboarding', 'data.approvalMeta.status',
     'companyIdentity', 'companyName', 'clientLegalName', 'tradeName', 'piboCategory',
     'eprCategory', 'servicesOffered', 'plantUnit', 'industryType', 'applicantType'
   ].join(' ');
@@ -1606,6 +1606,7 @@ exports.listClientMasterServices = async (req, res, options = {}) => {
   const records = relatedFilters.length
     ? await Client.collection.find(combineAccessFilters({ $or: relatedFilters }, clientVisibility), { projection: {
         _id: 1, selectedLead: 1, assignedServiceId: 1, workflowStatus: 1,
+        'adminControls.approvalStatus': 1,
         'data.selectedLead': 1, 'data.assignedServiceId': 1, 'data.selectedLeadSnapshot': 1,
         'data.basic.clientLegalName': 1, 'data.basic.tradeName': 1, 'data.basic.piboCategory': 1,
         'data.basic.eprCategory': 1, 'data.basic.servicesOffered': 1, 'data.basic.plantUnit': 1,
@@ -1613,7 +1614,7 @@ exports.listClientMasterServices = async (req, res, options = {}) => {
         'data.cpcb.ceprUserId': 1, 'data.cpcb.ceprPassword': 1,
         'data.cpcbDataByAssignedServiceId': 1, 'data.serviceDetailsByAssignedServiceId.cpcb': 1,
         'data.importMeta.companyName': 1, 'data.importMeta.leadNumber': 1, 'data.importMeta.uniqueId': 1,
-        'data.cpcbOnboarding': 1,
+        'data.cpcbOnboarding': 1, 'data.approvalMeta.status': 1,
         companyIdentity: 1, companyName: 1, clientLegalName: 1, tradeName: 1,
         piboCategory: 1, eprCategory: 1, servicesOffered: 1, plantUnit: 1,
         industryType: 1, applicantType: 1
