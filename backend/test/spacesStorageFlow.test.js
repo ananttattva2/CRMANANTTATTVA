@@ -18,12 +18,19 @@ test('actual frontend → CRM upload routes → local S3 HTTP → preview/downlo
   const app = express(); app.use(express.json()); app.use('/api/assets', require(routePath));
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
-    if (!url.pathname.startsWith('/ananttattva-crm-files/')) return app(req, res);
-    if (url.searchParams.has('cors')) {
-      if (req.method === 'GET') { res.writeHead(404, { 'Content-Type': 'application/xml' }); return res.end('<Error><Code>NoSuchCORSConfiguration</Code></Error>'); }
-      if (req.method === 'PUT') { for await (const _chunk of req) { /* consume configuration */ } res.writeHead(200); return res.end(); }
+    if (!url.pathname.startsWith('/ananttattva-crm-files')) return app(req, res);
+    let key = decodeURIComponent(url.pathname.slice('/ananttattva-crm-files'.length).replace(/^\//, ''));
+    if (req.method === 'POST') {
+      const chunks = []; for await (const chunk of req) chunks.push(chunk);
+      const request = new Request(`http://localhost${req.url}`, { method: 'POST', headers: req.headers, body: Buffer.concat(chunks) });
+      const form = await request.formData();
+      key = String(form.get('key') || '');
+      const file = form.get('file');
+      const bytes = Buffer.from(await file.arrayBuffer());
+      storageRequests.push({ method: req.method, key });
+      objects.set(key, { bytes, type: String(form.get('Content-Type') || file.type), disposition: String(form.get('Content-Disposition') || 'attachment'), sha256: String(form.get('x-amz-meta-sha256') || '') });
+      res.writeHead(204, { ETag: '"fixture-etag"' }); return res.end();
     }
-    const key = decodeURIComponent(url.pathname.slice('/ananttattva-crm-files/'.length));
     storageRequests.push({ method: req.method, key });
     if (req.method === 'PUT') {
       const chunks = []; for await (const chunk of req) chunks.push(chunk); const bytes = Buffer.concat(chunks);
@@ -55,7 +62,7 @@ test('actual frontend → CRM upload routes → local S3 HTTP → preview/downlo
     const file = new File([bytes], 'invoice.pdf', { type: 'application/pdf' });
     const saved = await uploadMedia(file, 'crm/proforma-invoices');
     assert.ok(saved.publicId.startsWith('spaces:crm/proforma-invoices/')); assert.equal(saved.size, bytes.length);
-    assert.equal(objects.size, 1); assert.ok(storageRequests.some(r => r.method === 'PUT')); assert.ok(storageRequests.some(r => r.method === 'HEAD'));
+    assert.equal(objects.size, 1); assert.ok(storageRequests.some(r => r.method === 'POST')); assert.ok(storageRequests.some(r => r.method === 'HEAD'));
     const preview = await fetch(saved.secureUrl); assert.equal(preview.status, 200); assert.equal(preview.headers.get('content-type'), 'application/pdf'); assert.equal(preview.headers.get('content-disposition'), 'inline');
     assert.deepEqual(Buffer.from(await preview.arrayBuffer()), bytes);
     const fallbackBody = new FormData(); fallbackBody.append('file', file); fallbackBody.append('folder', 'crm/invoices'); fallbackBody.append('checksum', crypto.createHash('sha256').update(bytes).digest('base64'));

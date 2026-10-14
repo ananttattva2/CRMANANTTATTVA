@@ -23,14 +23,15 @@ test('private storage, browser upload confirmation, stable preview links and att
     const resolved = resolvePoProof({ arbitrary: { nested: { other: image.url } } }); assert.equal(resolved.url, image.url);
     const download = new URL(await storage.downloadUrl(image.storageKey)); assert.equal(download.hostname, 'ananttattva-crm-files.sgp1.digitaloceanspaces.com'); assert.equal(download.searchParams.get('X-Amz-Expires'), '60');
     const authorization = await storage.authorizeUpload({ name: 'photo.png', type: 'image/png', size: 3, folder: 'crm/notifications', checksum }, 'user-1');
-    const corsCommand = calls.find(command => command.constructor.name === 'PutBucketCorsCommand');
-    const uploadRule = corsCommand.input.CORSConfiguration.CORSRules.find(rule => rule.ID === 'ananttattva-crm-browser-uploads');
-    assert.ok(uploadRule.AllowedOrigins.includes('https://crm.example.test'));
-    assert.deepEqual(uploadRule.AllowedMethods, ['PUT', 'GET', 'HEAD']);
-    assert.deepEqual(uploadRule.AllowedHeaders, ['*']);
+    assert.equal(authorization.uploadMode, 'post');
+    assert.equal(authorization.fields['Content-Type'], 'image/png');
+    assert.equal(authorization.fields['x-amz-meta-sha256'], Buffer.from(checksum, 'base64').toString('hex'));
+    const encodedPolicy = authorization.fields.Policy || authorization.fields.policy;
+    const policy = JSON.parse(Buffer.from(encodedPolicy, 'base64').toString());
+    const contentLengthRange = policy.conditions.find(condition => Array.isArray(condition) && condition[0] === 'content-length-range');
+    assert.deepEqual(contentLengthRange.slice(0, 2), ['content-length-range', 3]);
+    assert.ok(contentLengthRange[2] > 3, 'Multipart form overhead must fit within the signed request limit');
     assert.equal(new URL(authorization.uploadUrl).hostname, 'ananttattva-crm-files.sgp1.digitaloceanspaces.com');
-    const signedHeaders = new URL(authorization.uploadUrl).searchParams.get('X-Amz-SignedHeaders').split(';').filter(header => header !== 'host');
-    assert.ok(signedHeaders.every(header => Object.keys(authorization.headers).some(actual => actual.toLowerCase() === header)), 'Browser receives every signed request header');
     const confirmed = await storage.confirmUpload(authorization.token, 'user-1'); assert.equal(confirmed.name, 'photo.png'); assert.equal(confirmed.type, 'image/png');
     await assert.rejects(storage.confirmUpload(authorization.token, 'other-user'), /unauthorized/);
     await assert.rejects(storage.confirmUpload(`${authorization.token}0`, 'user-1'), /Invalid/);
@@ -49,19 +50,20 @@ test('private storage, browser upload confirmation, stable preview links and att
     keys.forEach((key, i) => previous[i] === undefined ? delete process.env[key] : process.env[key] = previous[i]);
   }
 });
-test('actual frontend media helper uploads directly with PUT then saves only confirmed metadata', async () => {
+test('actual frontend media helper uploads with a no-CORS signed POST then saves only confirmed metadata', async () => {
   const code = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/services/mediaUpload.js'), 'utf8').replace(/^import api from '.\/api';\s*/m, '').replace(/export /g, '');
   const calls = []; const verified = { url: 'verified-url', secureUrl: 'verified-url', publicId: 'spaces:crm/file' };
-  const headers = { 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline', 'x-amz-checksum-sha256': 'checksum' };
-  const api = { post: async (endpoint, payload) => { calls.push({ endpoint, payload }); return { data: endpoint.endsWith('upload-url') ? { uploadUrl: 'https://bucket.sgp1.digitaloceanspaces.com/crm/file', token: 'receipt', headers } : verified }; } };
-  const fetch = async (url, options) => { calls.push({ url, options }); return { ok: true }; };
+  const fields = { key: 'crm/file', policy: 'signed-policy', 'Content-Type': 'application/pdf' };
+  const api = { post: async (endpoint, payload) => { calls.push({ endpoint, payload }); return { data: endpoint.endsWith('upload-url') ? { uploadMode: 'post', uploadUrl: 'https://bucket.sgp1.digitaloceanspaces.com', token: 'receipt', fields } : verified }; } };
+  const fetch = async (url, options) => { calls.push({ url, options }); return { ok: true, type: 'basic' }; };
   const { uploadMedia, mediaUrl } = new Function('api', 'fetch', `${code};return {uploadMedia,mediaUrl};`)(api, fetch);
-  const file = { name: 'invoice.pdf', type: 'application/pdf', size: 123, arrayBuffer: async () => Buffer.alloc(123) };
+  const file = new File([Buffer.alloc(123)], 'invoice.pdf', { type: 'application/pdf' });
   assert.equal(await uploadMedia(file, 'crm/proforma-invoices'), verified);
-  assert.equal(calls[0].endpoint, '/assets/upload-url'); assert.equal(calls[1].options.method, 'PUT'); assert.equal(calls[1].options.body, file);
-  assert.equal(calls[1].options.headers, headers); assert.equal(calls[0].payload.checksum, crypto.createHash('sha256').update(Buffer.alloc(123)).digest('base64'));
+  assert.equal(calls[0].endpoint, '/assets/upload-url'); assert.equal(calls[1].options.method, 'POST'); assert.equal(calls[1].options.mode, 'no-cors');
+  assert.equal(calls[1].options.body.get('key'), 'crm/file'); assert.equal(calls[1].options.body.get('file').name, 'invoice.pdf');
+  assert.equal(calls[0].payload.checksum, crypto.createHash('sha256').update(Buffer.alloc(123)).digest('base64'));
   assert.equal(calls[2].endpoint, '/assets/upload-confirm'); assert.equal(mediaUrl(verified), 'verified-url');
   calls.length = 0;
-  const failed = new Function('api', 'fetch', `${code};return uploadMedia;`)(api, async () => ({ ok: false }));
+  const failed = new Function('api', 'fetch', `${code};return uploadMedia;`)(api, async () => ({ ok: false, type: 'basic' }));
   await assert.rejects(failed(file), /upload failed/); assert.equal(calls.length, 1, 'Failed transfers never call confirmation');
 });

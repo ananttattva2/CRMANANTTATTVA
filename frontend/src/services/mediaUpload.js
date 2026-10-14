@@ -9,13 +9,22 @@ export async function uploadMedia(file, folder = 'crm/uploads') {
   });
   let response;
   try {
-    response = await fetch(authorization.uploadUrl, { method: 'PUT', headers: authorization.headers, body: file });
+    if (authorization.uploadMode === 'post') {
+      const upload = new FormData();
+      Object.entries(authorization.fields || {}).forEach(([key, value]) => upload.append(key, value));
+      upload.append('file', file);
+      response = await fetch(authorization.uploadUrl, { method: 'POST', body: upload, mode: 'no-cors' });
+    } else {
+      response = await fetch(authorization.uploadUrl, { method: 'PUT', headers: authorization.headers, body: file });
+    }
   } catch {
     const body = new FormData(); body.append('file', file); body.append('folder', folder); body.append('checksum', checksum);
     const { data } = await api.post('/assets/upload', body, { headers: { 'Content-Type': 'multipart/form-data' } });
     return data;
   }
-  if (!response.ok) throw new Error('Spaces upload failed. Please retry.');
+  // no-cors responses are intentionally opaque (status 0); server-side HEAD
+  // verification below remains the source of truth for upload success.
+  if (response.type !== 'opaque' && !response.ok) throw new Error('Spaces upload failed. Please retry.');
   const { data: verified } = await api.post('/assets/upload-confirm', { token: authorization.token });
   return verified;
 }
