@@ -648,17 +648,13 @@ function pendingClientCompanyKey(row = {}) {
   return `lead:${String(leadId || row.id || row._id || '').trim().toLowerCase()}`;
 }
 
-function groupedClientApprovalStatus(rows = []) {
-  const statuses = [...new Set(rows.map(getApprovalStatus))];
-  if (statuses.length === 1) return statuses[0];
-  if (statuses.some((status) => ['APPROVED', 'REJECTED', 'PARTIALLY_APPROVED'].includes(status))) return 'PARTIALLY_APPROVED';
-  return 'PENDING';
-}
-
 function groupPendingClientsByCompany(rows = []) {
   const groups = new Map();
   rows.forEach((row) => {
-    const key = pendingClientCompanyKey(row);
+    // Keep one compact company row only while the applicant decisions match.
+    // A company with one Pending and one Partially Approved applicant must
+    // appear independently in both status tabs.
+    const key = `${pendingClientCompanyKey(row)}:status:${getApprovalStatus(row)}`;
     const current = groups.get(key) || [];
     current.push(row);
     groups.set(key, current);
@@ -671,7 +667,7 @@ function groupPendingClientsByCompany(rows = []) {
     const createdByUsers = uniqueValues((row) => row.createdBy);
     return {
       ...representative,
-      approvalStatus: groupedClientApprovalStatus(companyRows),
+      approvalStatus: getApprovalStatus(representative),
       piboCategory: applicantTypes.join(', ') || '-',
       eprCategory: serviceCategories.join(', ') || '-',
       createdBy: createdByUsers.join(', ') || '-',

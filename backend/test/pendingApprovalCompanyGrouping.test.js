@@ -26,10 +26,16 @@ test('pending clients show one company row with all distinct applicants retained
   assert.equal(astra._clientApprovalRows.length, 2);
 });
 
-test('mixed applicant decisions produce one partially-approved company row', () => {
-  const [company] = context.groupPendingClientsByCompany([
-    { id:'one', clientName:'Example Pvt Ltd', approvalStatus:'APPROVED', piboCategory:'Importer' },
-    { id:'two', clientName:'Example Pvt Ltd', approvalStatus:'PENDING', piboCategory:'Brand Owner' }
+test('mixed applicant decisions appear independently in their correct status tabs', () => {
+  const grouped = context.groupPendingClientsByCompany([
+    { id:'one', clientName:'Example Pvt Ltd', approvalStatus:'PARTIALLY_APPROVED', piboCategory:'Importer' },
+    { id:'two', clientName:'Example Pvt Ltd', approvalStatus:'PENDING', piboCategory:'Producer' }
   ]);
-  assert.equal(company.approvalStatus, 'PARTIALLY_APPROVED');
+  assert.equal(grouped.length, 2);
+  const partial = grouped.find((row) => row.approvalStatus === 'PARTIALLY_APPROVED');
+  const pending = grouped.find((row) => row.approvalStatus === 'PENDING');
+  assert.equal(partial.piboCategory, 'Importer');
+  assert.equal(pending.piboCategory, 'Producer');
+  assert.equal(partial.applicantCount, 1);
+  assert.equal(pending.applicantCount, 1);
 });
