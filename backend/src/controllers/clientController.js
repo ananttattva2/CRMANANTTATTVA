@@ -21,6 +21,7 @@ const { normalizeCompanyIdentity } = require('../services/crmRecordPersistence')
 const { normalizeFinancialYear, resolveAnnualReturnPO } = require('../services/annualReturnPoResolver');
 const { syncStaffOnboardingCpcbStatus } = require('../services/staffOnboardingWorkflow');
 const { syncClientReviewReminderState } = require('../services/clientReviewReminderLifecycle');
+const { clientMasterSourceRecordFilter } = require('../services/clientMasterVisibility');
 const { sendMail } = require('../utils/mailer');
 const Notification = require('../models/Notification');
 const {
@@ -780,7 +781,7 @@ async function upsertAnnualReturnRecord(client, annualYear, filing, requestBody 
   return canonical;
 }
 
-function buildClientApprovalPayload(body = {}, status, userId, remarks = '') {
+function buildClientApprovalPayload(body = {}, status, userId, remarks = '', options = {}) {
   const existingPayload = isPlainObject(body.payload) ? body.payload : {};
   const payloadData = isPlainObject(existingPayload.data) ? existingPayload.data : {};
   const payloadImportMeta = isPlainObject(payloadData.importMeta) ? payloadData.importMeta : {};
@@ -811,7 +812,9 @@ function buildClientApprovalPayload(body = {}, status, userId, remarks = '') {
         assignedTo: fullData.importMeta?.assignedTo || assignedToLabel || '',
         uniqueId,
         sourceClientId: fullData.importMeta?.sourceClientId || sourceClientId,
-        approvalOverride: true
+        // Only fallback approval-only documents are overrides. Marking a real
+        // source Client Master hides it from the directory and dashboards.
+        approvalOverride: options.approvalOverride !== false
       },
       approvalMeta: {
         status,
@@ -916,7 +919,13 @@ async function applyClientApprovalStatus(record, status, userId, remarks = '') {
     payload: record.payload?.payload,
     source: record.source
   };
-  const approvalFields = buildClientApprovalPayload(approvalBody, status, userId, remarks);
+  const approvalFields = buildClientApprovalPayload(
+    approvalBody,
+    status,
+    userId,
+    remarks,
+    { approvalOverride: !client }
+  );
 
   if (client) {
     client.adminControls = { ...(client.adminControls || {}), ...approvalFields.adminControls };
@@ -1118,7 +1127,7 @@ exports.listClients = async (req, res) => {
     ? await getAdminCreatedLeadReferences()
     : null;
   const baseFilter = combineAccessFilters(
-    { 'data.importMeta.approvalOverride': { $ne: true } },
+    clientMasterSourceRecordFilter(),
     accessFilter,
     testLeadReferences ? dashboardClientExclusionFilter(testLeadReferences) : {}
   );
@@ -2345,6 +2354,9 @@ exports.updateClientApproval = async (req, res) => {
   const source = String(req.body.source || approvalRecord?.source || 'crm').trim() || 'crm';
   const sourceClientId = String(req.body.sourceClientId || req.params.id || approvalRecord?.sourceClientId || '').trim();
   const rawApprovalPayload = req.body.payload || approvalRecord?.payload?.payload || null;
+  const client = mongoose.Types.ObjectId.isValid(req.params.id)
+    ? await Client.findById(req.params.id)
+    : null;
   const shouldBuildApprovalPayload = isPlainObject(rawApprovalPayload)
     || isPlainObject(req.body.data)
     || isPlainObject(req.body.adminControls);
@@ -2355,11 +2367,7 @@ exports.updateClientApproval = async (req, res) => {
         sourceClientId,
         uniqueId: req.body.uniqueId || approvalRecord?.uniqueId || '',
         payload: rawApprovalPayload || req.body.payload || {}
-      }, status, req.user?._id, remarks)
-    : null;
-
-  const client = mongoose.Types.ObjectId.isValid(req.params.id)
-    ? await Client.findById(req.params.id)
+      }, status, req.user?._id, remarks, { approvalOverride: !client })
     : null;
 
   if (client && status === 'APPROVED') {

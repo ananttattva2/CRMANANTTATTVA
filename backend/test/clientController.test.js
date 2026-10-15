@@ -68,3 +68,18 @@ test('buildClientApprovalPayload preserves full CRM client data', () => {
   assert.equal(result.data.approvalMeta.status, 'APPROVED');
   assert.equal(result.data.approvalMeta.source, 'crm');
 });
+
+test('approval of an existing Client Master does not mark it as a hidden override', () => {
+  const result = __test.buildClientApprovalPayload({
+    source: 'crm',
+    sourceClientId: 'existing-client-id',
+    payload: {
+      data: {
+        basic: { clientLegalName: 'MANGLAM PLASTICS PVT LTD' },
+        importMeta: { approvalOverride: true }
+      }
+    }
+  }, 'APPROVED', 'reviewer-1', 'Approved', { approvalOverride: false });
+
+  assert.equal(result.data.importMeta.approvalOverride, false);
+});
