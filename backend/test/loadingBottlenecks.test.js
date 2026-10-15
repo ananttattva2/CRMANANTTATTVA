@@ -107,6 +107,7 @@ test('client dashboard snapshot retains every scoped client and does not repeat 
   const context = { exports: {}, process,
     req: { query: { dashboard: 'true', snapshot: 'true', paginated: 'true' }, user: {} }, res: { set() {}, json(value) { body = value; } },
     clientAccessFilter: async () => scope, getAdminCreatedLeadReferences: async () => [], dashboardClientExclusionFilter: () => ({ excluded: true }),
+    clientMasterSourceRecordFilter: () => ({ sourceRecord: true }),
     combineAccessFilters: (...filters) => ({ $and: filters }), inclusionProjection: fields => fields.join(' '),
     mongoose: { mongo: { BSON: { EJSON: { stringify: JSON.stringify } } } },
     Client: { find(filter) { matched = filter; return chain(rows); }, countDocuments() { assert.fail('snapshot must not count separately'); }, aggregate() { assert.fail('snapshot must not aggregate a directory summary'); } },

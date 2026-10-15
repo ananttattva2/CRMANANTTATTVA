@@ -35,7 +35,7 @@ jobs:
       CONFIRMATION: ${{ inputs.confirmation }}
       BACKUP_CONFIRMED: ${{ inputs.backup_confirmed }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Configure SSH
         shell: bash
         run: |
