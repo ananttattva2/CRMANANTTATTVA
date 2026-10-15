@@ -83,3 +83,86 @@ test('approval of an existing Client Master does not mark it as a hidden overrid
 
   assert.equal(result.data.importMeta.approvalOverride, false);
 });
+
+test('approval decision preserves newer live Client Master data instead of restoring its old snapshot', () => {
+  const currentData = {
+    companyOverview: { companyName: 'MANGLAM PLASTICS PVT LTD', companySummary: 'Latest saved summary' },
+    basic: { clientLegalName: 'MANGLAM PLASTICS PVT LTD', companyType: 'Private Limited' },
+    compliance: { gst: '20AAKFM5259M1Z1' },
+    cpcbScreenshots: [{ name: 'Latest CPCB proof.pdf' }]
+  };
+
+  const result = __test.applyApprovalDecisionToClientData(
+    currentData,
+    'PARTIALLY_APPROVED',
+    'crm',
+    'reviewer-1',
+    'Importer requires correction'
+  );
+
+  assert.deepEqual(result.companyOverview, currentData.companyOverview);
+  assert.deepEqual(result.basic, currentData.basic);
+  assert.deepEqual(result.compliance, currentData.compliance);
+  assert.deepEqual(result.cpcbScreenshots, currentData.cpcbScreenshots);
+  assert.equal(result.approvalMeta.status, 'PARTIALLY_APPROVED');
+  assert.equal(result.approvalMeta.remarks, 'Importer requires correction');
+});
+
+test('review applicant list merges the same service across financial years and keeps the complete record', () => {
+  const services = __test.uniqueClientMasterReviewServices([
+    {
+      clientMasterId: 'pending-with-data',
+      selectedLead: 'lead-67',
+      assignedServiceId: 'service-2025',
+      leadCode: 'ATPL-LEAD-0067',
+      companyName: 'MANGLAM PLASTICS',
+      eprCategory: 'EPR - Plastic Waste',
+      applicantType: 'PIBO',
+      piboCategory: 'Producer',
+      servicesOffered: 'Annual Return Filling',
+      plantUnit: 'Unit 1',
+      financialYear: '2025-26',
+      workflowStatus: 'submitted',
+      approvalStatus: 'PENDING'
+    },
+    {
+      clientMasterId: 'partial-without-data',
+      selectedLead: 'lead-67',
+      assignedServiceId: 'service-2026',
+      leadCode: 'ATPL-LEAD-0067',
+      companyName: 'MANGLAM PLASTICS',
+      eprCategory: 'EPR - Plastic Waste',
+      applicantType: 'PIBO',
+      piboCategory: 'Producer',
+      servicesOffered: 'Annual Return Filing',
+      plantUnit: '',
+      financialYear: '2026-27',
+      workflowStatus: 'submitted',
+      approvalStatus: 'PARTIALLY_APPROVED'
+    }
+  ], 'partial-without-data');
+
+  assert.equal(services.length, 1);
+  assert.equal(services[0].clientMasterId, 'pending-with-data');
+  assert.equal(services[0].plantUnit, 'Unit 1');
+  assert.equal(services[0].approvalStatus, 'PENDING');
+});
+
+test('review applicant list keeps identical services separate when plant units differ', () => {
+  const common = {
+    selectedLead: 'lead-67',
+    eprCategory: 'EPR - Plastic Waste',
+    applicantType: 'PIBO',
+    piboCategory: 'Producer',
+    servicesOffered: 'Annual Return Filling',
+    workflowStatus: 'submitted',
+    approvalStatus: 'PENDING'
+  };
+  const services = __test.uniqueClientMasterReviewServices([
+    { ...common, clientMasterId: 'unit-1', assignedServiceId: 'service-1', plantUnit: 'Unit 1' },
+    { ...common, clientMasterId: 'unit-2', assignedServiceId: 'service-2', plantUnit: 'Unit 2' }
+  ]);
+
+  assert.equal(services.length, 2);
+  assert.deepEqual(services.map(item => item.plantUnit).sort(), ['Unit 1', 'Unit 2']);
+});

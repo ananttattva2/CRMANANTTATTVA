@@ -827,6 +827,22 @@ function buildClientApprovalPayload(body = {}, status, userId, remarks = '', opt
   };
 }
 
+function applyApprovalDecisionToClientData(existingData = {}, status, source, userId, remarks = '') {
+  // The PendingApproval payload is a historical submission snapshot. Never
+  // merge it back over the live Client Master because the user may have saved
+  // newer or more complete data after the approval request was created.
+  return {
+    ...(isPlainObject(existingData) ? existingData : {}),
+    approvalMeta: {
+      status,
+      source: String(source || 'crm').trim() || 'crm',
+      actionBy: userId,
+      actionAt: new Date(),
+      remarks
+    }
+  };
+}
+
 function mergePendingClients(localRows, incomingRows) {
   const merged = [];
   const indexByKey = new Map();
@@ -929,17 +945,7 @@ async function applyClientApprovalStatus(record, status, userId, remarks = '') {
 
   if (client) {
     client.adminControls = { ...(client.adminControls || {}), ...approvalFields.adminControls };
-    client.data = {
-      ...(client.data || {}),
-      ...(approvalFields.data || {}),
-      approvalMeta: {
-        status,
-        source: String(record.source || 'crm').trim() || 'crm',
-        actionBy: userId,
-        actionAt: new Date(),
-        remarks
-      }
-    };
+    client.data = applyApprovalDecisionToClientData(client.data, status, record.source, userId, remarks);
     client.markModified('data');
     await client.save();
     await syncClientReviewReminderState({ client, status });
@@ -1552,20 +1558,94 @@ function clientMasterReviewServiceIdentity(item = {}) {
     item.eprCategory,
     item.applicantType,
     item.piboCategory,
-    normalizeOffering(item.servicesOffered),
-    item.plantUnit
+    normalizeOffering(item.servicesOffered)
   ].map(normalize).join(':');
   return identity.replace(/:/g, '') ? identity : `record:${item.clientMasterId}`;
+}
+
+function clientMasterReviewPlantIdentity(item = {}) {
+  return String(item.plantUnit || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function clientMasterReviewServiceScore(item = {}, preferredClientMasterId = '') {
+  const populated = [
+    item.assignedServiceId,
+    item.selectedLead,
+    item.leadCode,
+    item.companyName,
+    item.eprCategory,
+    item.applicantType,
+    item.piboCategory,
+    item.servicesOffered
+  ].filter(value => String(value || '').trim()).length;
+  const status = String(item.approvalStatus || '').trim().toUpperCase();
+  const statusScore = status === 'PENDING' ? 4
+    : status === 'PARTIALLY_APPROVED' ? 3
+      : status === 'APPROVED' ? 2
+        : status === 'REJECTED' ? 1 : 0;
+  return (populated * 10)
+    + (clientMasterReviewPlantIdentity(item) ? 30 : 0)
+    + (String(item.workflowStatus || '').trim().toLowerCase() === 'submitted' ? 5 : 0)
+    + statusScore
+    + (String(item.clientMasterId) === String(preferredClientMasterId) ? 0.5 : 0);
+}
+
+function mergeClientMasterReviewServices(primary = {}, secondary = {}) {
+  const merged = { ...primary };
+  Object.entries(secondary).forEach(([key, value]) => {
+    const current = merged[key];
+    const currentMissing = current === undefined || current === null || String(current).trim() === '';
+    if (currentMissing && value !== undefined && value !== null && String(value).trim() !== '') merged[key] = value;
+  });
+  return merged;
+}
+
+function preferredClientMasterReviewService(records = [], preferredClientMasterId = '') {
+  return records.reduce((selected, item) => {
+    if (!selected) return item;
+    const selectedScore = clientMasterReviewServiceScore(selected, preferredClientMasterId);
+    const itemScore = clientMasterReviewServiceScore(item, preferredClientMasterId);
+    const primary = itemScore > selectedScore ? item : selected;
+    const secondary = primary === item ? selected : item;
+    return mergeClientMasterReviewServices(primary, secondary);
+  }, null);
 }
 
 function uniqueClientMasterReviewServices(records = [], preferredClientMasterId = '') {
   const byService = new Map();
   records.forEach((item) => {
     const key = clientMasterReviewServiceIdentity(item);
-    const existing = byService.get(key);
-    if (!existing || String(item.clientMasterId) === String(preferredClientMasterId)) byService.set(key, item);
+    const group = byService.get(key) || [];
+    group.push(item);
+    byService.set(key, group);
   });
-  return [...byService.values()];
+  const merged = [];
+  byService.forEach((group) => {
+    const byPlant = new Map();
+    const withoutPlant = [];
+    group.forEach((item) => {
+      const plant = clientMasterReviewPlantIdentity(item);
+      if (!plant) withoutPlant.push(item);
+      else {
+        const plantGroup = byPlant.get(plant) || [];
+        plantGroup.push(item);
+        byPlant.set(plant, plantGroup);
+      }
+    });
+
+    // A legacy/incomplete row commonly has no plant unit. It is safe to merge it
+    // when the same logical service has exactly one concrete unit. If multiple
+    // units exist, keep the ambiguous row separate instead of joining Unit 1 and 2.
+    if (byPlant.size === 1) {
+      const onlyPlant = [...byPlant.keys()][0];
+      byPlant.set(onlyPlant, [...byPlant.get(onlyPlant), ...withoutPlant]);
+    } else if (withoutPlant.length) {
+      byPlant.set('', withoutPlant);
+    }
+
+    byPlant.forEach(items => merged.push(preferredClientMasterReviewService(items, preferredClientMasterId)));
+  });
+  return merged.filter(Boolean);
 }
 
 exports.listClientMasterServices = async (req, res, options = {}) => {
@@ -2442,17 +2522,13 @@ exports.updateClientApproval = async (req, res) => {
     ? { ...(client.adminControls || {}), ...approvalFields.adminControls }
     : { ...(client.adminControls || {}), approvalStatus: status };
 
-  client.data = {
-    ...(client.data || {}),
-    ...(approvalFields?.data || {}),
-    approvalMeta: {
-      status,
-      source,
-      actionBy: req.user?._id,
-      actionAt: new Date(),
-      remarks
-    }
-  };
+  client.data = applyApprovalDecisionToClientData(
+    client.data,
+    status,
+    source,
+    req.user?._id,
+    remarks
+  );
 
   client.markModified('data');
   await client.save();
@@ -3335,6 +3411,7 @@ exports.upsertClientServiceAllocations = async (req, res) => {
 
 exports.__test = {
   buildClientApprovalPayload,
+  applyApprovalDecisionToClientData,
   applyClientSubmissionMetadata,
   getClientWorkflowTransition,
   mergeAssignedServiceCpcbData,
@@ -3347,5 +3424,7 @@ exports.__test = {
   readRequestedClientId,
   validateClientMasterIdentity,
   normalizeClientMaster,
-  resolveClientMasterData
+  resolveClientMasterData,
+  clientMasterReviewServiceIdentity,
+  uniqueClientMasterReviewServices
 };
