@@ -1043,7 +1043,9 @@ async function loadStoredPendingApprovals() {
       approvalStatus: { $in: ['PENDING', 'PARTIALLY_APPROVED', 'REVISION_REQUIRED'] }
     })
       .populate('actionBy', 'name email')
-      .sort({ createdAt: -1 })
+      // Revisions update the existing index row, so updatedAt represents the
+      // latest approval request while createdAt remains the original request.
+      .sort({ updatedAt: -1, createdAt: -1 })
       .limit(500)
       .lean(),
     PendingApproval.find({
@@ -1794,7 +1796,7 @@ exports.listPendingApprovals = async (req, res) => {
   const liveQuotationsPromise = isAdministrativeReviewer
     ? Quotation.find({ 'managementApproval.status': 'PENDING', status: { $in: ['draft', 'submitted', 'sent', 'admin_approved'] } })
         .populate('createdBy', 'name email')
-        .sort({ createdAt: -1 })
+        .sort({ 'managementApproval.requestedAt': -1, createdAt: -1 })
         .limit(500)
         .lean()
         .catch((error) => {
@@ -1803,7 +1805,10 @@ exports.listPendingApprovals = async (req, res) => {
         })
     : Promise.resolve([]);
   const [storedFallback, liveQuotations] = await Promise.all([storedApprovalsPromise, liveQuotationsPromise]);
-  const liveQuotationRows = liveQuotations.map((quotation) => mapQuotationPendingApprovalRow(quotation, 'CREATE'));
+  const liveQuotationRows = liveQuotations.map((quotation) => mapQuotationPendingApprovalRow(
+    quotation,
+    Array.isArray(quotation.revisionHistory) && quotation.revisionHistory.length ? 'UPDATE' : 'CREATE'
+  ));
 
   const storedQuotationIds = new Set(storedFallback.pendingQuotations.map((row) => String(
     row.quotationId || row.payload?.quotationId || row.sourceClientId || row.id || row._id || ''
