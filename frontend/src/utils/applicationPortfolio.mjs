@@ -74,12 +74,9 @@ export function matchesServiceSummary(record, key, date = new Date()) {
   return matchesApplicationService(summary, key)
 }
 export function matchesStatusSummary(record, key, date = new Date()) {
-  const approvedRegistration = record.bucket === 'approved'
-    && ((record.services || []).some(service => isRegistrationService(service.offeredServices))
-      || isRegistrationService(rawApplicationSummaryService(record)))
-  // Approved Registration is a completed commercial/PO outcome, not an
-  // outstanding application-status item. Other registration statuses remain.
-  if (key === 'total') return !approvedRegistration
+  // Total represents every assigned application. Approved Registration is
+  // retained here even though it is hidden from the status breakdown below.
+  if (key === 'total') return true
   const actionRequired = matchesServiceSummary(record, 'annualActionRequired', date)
   if (key === 'annualActionRequired') return actionRequired
   if (key === 'registrationApproved') return false
