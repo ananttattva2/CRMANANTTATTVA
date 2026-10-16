@@ -43,6 +43,7 @@ test('SPOC reports count all 43 services instead of collapsing them into 41 appl
   assert.equal(report.records.filter(row => matchesServiceSummary(row, 'total')).length, 43);
   assert.equal(PIBO_CATEGORIES.reduce((total, category) => total + report.records.filter(row => row.category === category).length, 0), 43);
   assert.equal(report.records.filter(row => matchesStatusSummary(row, 'registrationApproved')).length, 0);
+  assert.equal(report.records.filter(row => matchesServiceSummary(row, 'New Registration')).length, 0);
   assert.equal(report.records.filter(row => matchesStatusSummary(row, 'otherServicesApproved')).length, 41);
   assert.equal(new Set(report.records.map(row => row.id)).size, 43);
   const other = client('other-user', 'krishna', 'Importer', 'Approved');
@@ -543,6 +544,18 @@ test('approved Registration and New Registration are excluded from status summar
   assert.equal(rows.find((row) => row.name === 'Consulting Client' && matchesStatusSummary(row, 'registrationApproved')), undefined);
   assert.deepEqual(rows.filter((row) => matchesStatusSummary(row, 'otherServicesApproved')).map((row) => row.name), ['Consulting Client']);
   assert.equal(rows.filter((row) => matchesStatusSummary(row, 'otherServicesApproved')).some((row) => ['Registration', 'New Registration'].includes(row.summaryService)), false);
+});
+
+test('approved Registration is excluded from service and PIBO breakdowns but retained in shared Total', async () => {
+  const { buildApplicationPortfolio, applicationServiceSummaryRecords, matchesServiceSummary, isApprovedRegistration } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const registration = client('approved-registration-breakdown', 'sonal', 'Importer', 'Approved');
+  registration.workflowStatus = 'submitted';
+  registration.data.basic.servicesOffered = 'New Registration';
+  const [group] = buildApplicationPortfolio([registration], users);
+  const [row] = applicationServiceSummaryRecords(group);
+  assert.equal(matchesServiceSummary(row, 'total'), true);
+  assert.equal(matchesServiceSummary(row, 'New Registration'), false);
+  assert.equal(isApprovedRegistration(row), true);
 });
 
 test('Yes Registered excludes approved New Registration when the same applicant also has Annual Return', async () => {

@@ -66,11 +66,14 @@ export function matchesApplicationService(record, key) {
 }
 export function matchesServiceSummary(record, key, date = new Date()) {
   const summary = record.annualYears ? record : applicationSummaryRecords({ records: [record] })[0]
+  if (key === 'total') return true
+  // Completed Registration remains part of the shared application Total and
+  // PO reporting, but must not appear in a dashboard service breakdown.
+  if (isApprovedRegistration(summary)) return false
   const representativeService = rawApplicationSummaryService(summary)
   const annualForYear = summary.annual && summary.annualYears.length > 0
   if (key === 'Annual Return Filling') return annualForYear
   if (key === 'annualActionRequired') return representativeService === 'Annual Return Filling' && !annualForYear
-  if (key === 'total') return true
   return matchesApplicationService(summary, key)
 }
 export function matchesStatusSummary(record, key, date = new Date()) {
@@ -95,6 +98,11 @@ export function isRegistrationService(value) {
     const service = normalize(item)
     return service === 'registration' || service === 'newregistration'
   })
+}
+export function isApprovedRegistration(record) {
+  return record?.bucket === 'approved'
+    && ((record.services || []).some(service => isRegistrationService(service.offeredServices))
+      || isRegistrationService(rawApplicationSummaryService(record)))
 }
 export function annualActionReasons(record) {
   const services = (record.services || []).filter(service => service.offeredServices?.includes('Annual Return Filling'))
