@@ -188,3 +188,20 @@ test('CPCB status is shared by registration and annual return for the same appli
  ]};
  assert.equal(mergeManagerStaffAllocations([master],[unrelatedLead]).find(row=>row.assignmentOnly && row.assignedServiceId==='other-unit').data.cpcb.status,undefined);
 });
+
+test('Yes Registered counts New Registration without approving its Annual Return sibling',()=>{
+ const {dashboardStatusClient}=require('../src/services/managerStaffAllocations');
+ const registration={assignedServiceId:'registration',subApplicantType:'Importer',plantUnit:'Unit 1',eprCategory:'EPR - Plastic Waste',servicesOffered:'New Registration'};
+ const annual={assignedServiceId:'annual',subApplicantType:'Importer',plantUnit:'Unit 1',eprCategory:'EPR - Plastic Waste',servicesOffered:'Annual Return Filling'};
+ const lead={_id:'registered-client',company:'Registered Client',serviceSelections:[registration,annual],assignments:[
+  {assignedServiceId:'registration',assignedStaff:'prachi',closedAt:'2026-10-01'},
+  {assignedServiceId:'annual',assignedStaff:'prachi',closedAt:'2026-10-01'}
+ ]};
+ const annualMaster=dashboardStatusClient({_id:'annual-master',selectedLead:lead,assignedServiceId:'annual',workflowStatus:'submitted',data:{
+  assignedServiceId:'annual',selectedLeadSnapshot:{id:'registered-client',assignedServiceId:'annual',subApplicantType:'Importer',plantUnit:'Unit 1',eprCategory:'EPR - Plastic Waste',servicesOffered:'Annual Return Filling'},
+  cpcbOnboarding:{cpcbPortalRegistered:true}
+ }});
+ const rows=mergeManagerStaffAllocations([annualMaster],[lead]);
+ assert.equal(rows.find(row=>row.assignmentOnly && row.assignedServiceId==='registration').data.cpcb.status,'Registered');
+ assert.equal(rows.find(row=>row._id==='annual-master').data.cpcb?.status,undefined);
+});

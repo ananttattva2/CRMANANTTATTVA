@@ -220,7 +220,8 @@ export function applicationRecord(client) {
   const annualEligiblePo = annualYears.length > 0
   const category = applicantCategory(text(service.subApplicantType, service.piboCategory, lead.subApplicantType, lead.piboCategory, basic.piboCategory, basic.subApplicantType, service.applicantType, lead.applicantType, basic.applicantType))
   const scopedCpcb = scopedCpcbStatus(data, selectedServiceId)
-  const rootCpcb = text(data.cpcb?.status, data.cpcb?.approvalStatus, data.cpcb?.applicationStatus, basic.cpcbStatus, meta.cpcbStatus)
+  const registrationConfirmed = data.cpcbOnboarding?.cpcbPortalRegistered === true && isRegistrationService(offered)
+  const rootCpcb = text(data.cpcb?.status, data.cpcb?.approvalStatus, data.cpcb?.applicationStatus, basic.cpcbStatus, meta.cpcbStatus, registrationConfirmed ? 'Registered' : '')
   // Older saves sometimes changed the matching root value but retained a
   // generated Not Started scope. A real scoped decision remains authoritative;
   // only a default placeholder yields to a meaningful same-master root edit.

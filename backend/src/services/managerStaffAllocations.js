@@ -111,7 +111,13 @@ function dashboardStatusClient(client) {
 function scopedCpcbStatus(client, services, service, serviceId) {
   const data = client.data || {};
   const cpcbCompatible = clientMatchesCpcbContext(client, services, service, serviceId);
-  const directStatus = data.cpcb?.status || data.cpcb?.approvalStatus || data.cpcb?.applicationStatus || '';
+  const serviceOffering = offering(service.servicesOffered || service.applicableService);
+  const registrationConfirmed = data.cpcbOnboarding?.cpcbPortalRegistered === true
+    && /(^|\|)(new)?registration($|\|)/.test(serviceOffering);
+  // Confirming "Yes, Registered" proves the registration service is complete,
+  // even when the separate CPCB Status field has not been revisited yet. This
+  // fallback is deliberately registration-only; it cannot approve Annual Return.
+  const directStatus = data.cpcb?.status || data.cpcb?.approvalStatus || data.cpcb?.applicationStatus || (registrationConfirmed ? 'Registered' : '');
   for (const scope of [data.cpcbDataByAssignedServiceId?.[serviceId], data.serviceDetailsByAssignedServiceId?.[serviceId]]) {
     const exact = scope?.cpcb || scope?.details || scope;
     const status = exact?.status || exact?.approvalStatus || exact?.applicationStatus;

@@ -544,6 +544,29 @@ test('approved Registration and New Registration have a dedicated status-summary
   assert.equal(rows.filter((row) => matchesStatusSummary(row, 'otherServicesApproved')).some((row) => ['Registration', 'New Registration'].includes(row.summaryService)), false);
 });
 
+test('Yes Registered counts New Registration once when the same applicant also has Annual Return', async () => {
+  const { buildApplicationPortfolio, applicationServiceSummaryRecords, matchesStatusSummary } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const registration = client('registered-service', 'sonal', 'Importer', '');
+  registration.workflowStatus = 'submitted';
+  registration.assignedServiceId = 'registration';
+  registration.data.cpcb = {};
+  registration.data.cpcbOnboarding = { cpcbPortalRegistered: true };
+  registration.selectedLead.serviceSelections = [
+    { assignedServiceId: 'registration', subApplicantType: 'Importer', plantUnit: 'Unit 1', eprCategory: 'EPR - Plastic Waste', servicesOffered: 'New Registration' },
+    { assignedServiceId: 'annual', subApplicantType: 'Importer', plantUnit: 'Unit 1', eprCategory: 'EPR - Plastic Waste', servicesOffered: 'Annual Return Filling' }
+  ];
+  registration.selectedLead.assignments = [
+    { assignedServiceId: 'registration', assignedTo: 'manager', assignedStaff: 'sonal', closedAt: '2026-10-01' },
+    { assignedServiceId: 'annual', assignedTo: 'manager', assignedStaff: 'sonal', closedAt: '2026-10-01', poStatus: 'received', poYearRows: [{ poFinancialYear: '2026-27', annualReturnYear: '2026-27' }] }
+  ];
+  const rows = applicationServiceSummaryRecords(buildApplicationPortfolio([registration], users)[0]);
+  assert.equal(rows.filter(row => matchesStatusSummary(row, 'registrationApproved')).length, 1);
+  const registrationRow = rows.find(row => row.summaryService === 'New Registration');
+  assert.equal(registrationRow.cpcb, 'Approved');
+  assert.equal(registrationRow.services[0].cpcb, 'Registered');
+  assert.equal(rows.filter(row => row.summaryService === 'Annual Return Filling' && matchesStatusSummary(row, 'annual:2026-27')).length, 0);
+});
+
 test('legacy multi-service assignment rows preserve PO qualification by service position', async () => {
   const { buildApplicationPortfolio, applicationServiceSummaryRecords, financialYearForDate } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const makeRows = (owner, company) => {
