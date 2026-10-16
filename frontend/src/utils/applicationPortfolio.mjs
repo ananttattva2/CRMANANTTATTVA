@@ -5,7 +5,6 @@ export const STATUS_COLUMNS = [
   ['total', 'Total'],
   ['annual:2025-26', '2025-26'], ['annual:2026-27', '2026-27'], ['annual:2027-28', '2027-28'], ['annual:unrecorded', 'Not Recorded'],
   ['annualActionRequired', 'AR Action Required'],
-  ['registrationApproved', 'Approved'],
   ['otherServicesApproved', 'Approved'],
   ['applied', 'Applied'], ['underReview', 'Under Review'],
   ['notStarted', 'Not Started'], ['rejected', 'Rejected']
@@ -75,13 +74,15 @@ export function matchesServiceSummary(record, key, date = new Date()) {
   return matchesApplicationService(summary, key)
 }
 export function matchesStatusSummary(record, key, date = new Date()) {
-  if (key === 'total') return true
-  const actionRequired = matchesServiceSummary(record, 'annualActionRequired', date)
-  if (key === 'annualActionRequired') return actionRequired
-  if (key === 'registrationApproved') return !actionRequired
-    && record.bucket === 'approved'
+  const approvedRegistration = record.bucket === 'approved'
     && ((record.services || []).some(service => isRegistrationService(service.offeredServices))
       || isRegistrationService(rawApplicationSummaryService(record)))
+  // Approved Registration is a completed commercial/PO outcome, not an
+  // outstanding application-status item. Other registration statuses remain.
+  if (key === 'total') return !approvedRegistration
+  const actionRequired = matchesServiceSummary(record, 'annualActionRequired', date)
+  if (key === 'annualActionRequired') return actionRequired
+  if (key === 'registrationApproved') return false
   if (key === 'otherServicesApproved') return !actionRequired
     && record.bucket === 'approved'
     && (record.services || []).some(service => service.offeredServices?.some(offered => (
