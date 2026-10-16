@@ -3,7 +3,7 @@ import { motion, useReducedMotion } from 'framer-motion'
 import { ArrowUpRight, FileSpreadsheet, Loader2, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react'
 import api from '../../services/api'
 import { formatDisplayDate } from '../../utils/dateFormat'
-import { buildApplicationPortfolio, applicationReportGroups, PIBO_CATEGORIES, STATUS_COLUMNS, matchesPortfolioSearch, offeredServiceColumns, applicationServiceSummaryRecords as applicationSummaryRecords, matchesApplicationService, matchesServiceSummary, matchesStatusSummary, isApprovedRegistration, annualActionReasons, uniquePortfolioServiceDetails } from '../../utils/applicationPortfolio.mjs'
+import { buildApplicationPortfolio, applicationReportGroups, PIBO_CATEGORIES, STATUS_COLUMNS, matchesPortfolioSearch, applicationServiceSummaryRecords as applicationSummaryRecords, matchesApplicationService, matchesServiceSummary, matchesStatusSummary, matchesPortfolioSection, isApprovedRegistration, annualActionReasons, uniquePortfolioServiceDetails } from '../../utils/applicationPortfolio.mjs'
 import './applicationPortfolio.css'
 
 function ClientRecordsPopup({ selection, onClose }) {
@@ -39,6 +39,7 @@ const ApplicationPortfolio = forwardRef(function ApplicationPortfolio({ mode, re
   const [refresh, setRefresh] = useState(0)
   const [query, setQuery] = useState('')
   const [selection, setSelection] = useState(null)
+  const [section, setSection] = useState('annualRegistration')
   const reducedMotion = useReducedMotion()
   useEffect(() => {
     const controller = new AbortController()
@@ -46,19 +47,29 @@ const ApplicationPortfolio = forwardRef(function ApplicationPortfolio({ mode, re
     api.get('/dashboard-insights/upload-tracker', { params: { assignmentsOnly: 'true', portfolioOnly: 'true' }, signal: controller.signal, timeout: 45000 }).then(response => { if (!controller.signal.aborted) setPayload(response.data) }).catch(err => { if (!controller.signal.aborted) setError(err.response?.data?.error || 'Unable to load application records. Please retry.') }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [refresh, refreshToken])
-  useEffect(() => { setSelection(null) }, [mode])
+  useEffect(() => { setSelection(null) }, [mode, section])
   const groups = useMemo(() => buildApplicationPortfolio(payload?.assignments || [], payload?.users || []), [payload])
   const distribution = mode === 'spoc'
   const serviceSummary = mode === 'services'
   const reportGroups = useMemo(() => applicationReportGroups(groups), [groups])
-  const shown = reportGroups.filter(group => group.name.toLowerCase().includes(query.toLowerCase()) || group.records.some(row => matchesPortfolioSearch(row, query)))
+  const scopedGroups = useMemo(() => reportGroups.map(group => ({
+    ...group,
+    records: group.records.filter(record => matchesPortfolioSection(record, section))
+  })), [reportGroups, section])
+  const shown = scopedGroups.filter(group => group.name.toLowerCase().includes(query.toLowerCase()) || group.records.some(row => matchesPortfolioSearch(row, query)))
   const allRecords = shown.flatMap(group => group.records)
   const categories = PIBO_CATEGORIES
-  const serviceColumns = useMemo(() => offeredServiceColumns(groups), [groups])
-  const columns = distribution ? [['total', 'Total'], ...categories.map(category => [category, category])] : serviceSummary ? [['total', 'Total'], ...serviceColumns.flatMap(service => service === 'Annual Return Filling' ? [[service, 'Annual Return Filling (First PO Year)'], ['annualActionRequired', 'AR Action Required']] : [[service, service]]), ...(groups.some(group => group.records.some(row => matchesApplicationService(row, 'unclassified'))) ? [['unclassified', 'Not Closed / Service Not Recorded']] : [])] : [...STATUS_COLUMNS.slice(0, 6), ...[...new Set(groups.flatMap(group => applicationSummaryRecords(group).flatMap(row => row.annualYears)))].filter(year => !['2025-26', '2026-27', '2027-28'].includes(year)).sort().map(year => [`annual:${year}`, year]), ...STATUS_COLUMNS.slice(6)]
+  const serviceColumns = useMemo(() => [...new Set(scopedGroups.flatMap(group => group.records.flatMap(record => (record.services || []).flatMap(service => service.offeredServices || []))).filter(service => service && service !== 'unclassified'))]
+    .sort((left, right) => left === 'Annual Return Filling' ? -1 : right === 'Annual Return Filling' ? 1 : left.localeCompare(right)), [scopedGroups])
+  const annualRegistrationSection = section === 'annualRegistration'
+  const statusColumns = annualRegistrationSection
+    ? [...STATUS_COLUMNS.slice(0, 6), ...[...new Set(scopedGroups.flatMap(group => applicationSummaryRecords(group).flatMap(row => row.annualYears)))].filter(year => !['2025-26', '2026-27', '2027-28'].includes(year)).sort().map(year => [`annual:${year}`, year]), ...STATUS_COLUMNS.filter(([key]) => ['applied', 'underReview', 'notStarted', 'rejected'].includes(key))]
+    : [['total', 'Total'], ['otherServicesApproved', 'Approved'], ...STATUS_COLUMNS.filter(([key]) => ['applied', 'underReview', 'notStarted', 'rejected'].includes(key))]
+  const columns = distribution ? [['total', 'Total'], ...categories.map(category => [category, category])] : serviceSummary ? [['total', 'Total'], ...serviceColumns.flatMap(service => service === 'Annual Return Filling' ? [[service, 'Annual Return Filling (First PO Year)'], ['annualActionRequired', 'AR Action Required']] : [[service, service]]), ...(scopedGroups.some(group => group.records.some(row => matchesApplicationService(row, 'unclassified'))) ? [['unclassified', 'Not Closed / Service Not Recorded']] : [])] : statusColumns
   const matches = (row, key) => distribution ? (key === 'total' || (!isApprovedRegistration(row) && row.category === key)) : serviceSummary ? matchesServiceSummary(row, key) : matchesStatusSummary(row, key)
   const open = (name, records, label = 'All categories', key = '') => setSelection({ name, records, label, key })
-  const title = distribution ? 'Application Distribution by SPOC & PIBo' : serviceSummary ? 'Application Service Summary' : 'Application Status Summary'
+  const sectionLabel = annualRegistrationSection ? 'Annual Return & Registration' : 'Other Services'
+  const title = `${distribution ? 'Application Distribution by SPOC & PIBo' : serviceSummary ? 'Application Service Summary' : 'Application Status Summary'} - ${sectionLabel}`
   const annualStatusColumns = columns.filter(([key]) => key.startsWith('annual:'))
   const registrationStatusColumns = columns.filter(([key]) => key === 'registrationApproved')
   const otherServicesStatusColumns = columns.filter(([key]) => key === 'otherServicesApproved')
@@ -83,10 +94,13 @@ const ApplicationPortfolio = forwardRef(function ApplicationPortfolio({ mode, re
   }), [columns, loading, matches, payload, query, shown, title])
   return <motion.section role="tabpanel" id={`portfolio-${mode}`} aria-labelledby={`dashboard-tab-${mode}`} initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .2 }} className="application-portfolio">
     <h2 className="sr-only">{title}</h2>
+    <div className="portfolio-section-tabs" role="tablist" aria-label={`${title} section`}>
+      {[['annualRegistration', 'Summary for Annual Return & Registration'], ['otherServices', 'Summary for Other Services']].map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={section === key} onClick={() => setSection(key)}>{label}</button>)}
+    </div>
     <div className="portfolio-toolbar"><label className="portfolio-search"><Search size={17} /><input aria-label="Search SPOC or client" placeholder="Search SPOC or client" value={query} onChange={event => setQuery(event.target.value)} /></label><span>Click a SPOC or count to explore clients <ArrowUpRight size={14} /><button type="button" className="portfolio-icon-button" aria-label="Refresh applications" disabled={loading} onClick={() => setRefresh(value => value + 1)}><RefreshCw size={18} className={loading ? 'animate-spin' : ''} /></button></span></div>
     {error && <div role="alert" className="portfolio-error">{error}<button type="button" onClick={() => setRefresh(value => value + 1)}>Retry</button></div>}
     {loading && !payload ? <div className="portfolio-empty" role="status"><Loader2 className="animate-spin" />Loading assigned applications…</div> : <div className="portfolio-matrix"><table><thead>{distribution || serviceSummary ? <tr><th>AnantTattva SPOC</th>{columns.map(([key, label]) => <th key={key} className={key === 'total' ? 'portfolio-live-column' : key === 'annualActionRequired' ? 'portfolio-action-column' : undefined}>{label}</th>)}</tr> : <><tr><th rowSpan={2}>AnantTattva SPOC</th><th rowSpan={2} className="portfolio-live-column">Total</th><th colSpan={annualStatusColumns.length}>Annual Return Applicable</th>{leadingStatusColumns.map(([key, label]) => <th key={key} rowSpan={2} className={key === 'annualActionRequired' ? 'portfolio-action-column' : undefined}>{label}</th>)}{registrationStatusColumns.length > 0 && <th colSpan={registrationStatusColumns.length}>Registration</th>}{otherServicesStatusColumns.length > 0 && <th colSpan={otherServicesStatusColumns.length}>Other Services</th>}{trailingStatusColumns.map(([key, label]) => <th key={key} rowSpan={2}>{label}</th>)}</tr><tr>{annualStatusColumns.map(([key, label]) => <th key={key}>{label}</th>)}{registrationStatusColumns.map(([key, label]) => <th key={key}>{label}</th>)}{otherServicesStatusColumns.map(([key, label]) => <th key={key}>{label}</th>)}</tr></>}</thead><tbody>{shown.map((group, index) => <tr key={group.id}><td><button type="button" className="portfolio-person" onClick={() => open(group.name, group.records)}><span className={`portfolio-avatar portfolio-avatar-${index % 4}`}>{group.name.split(' ').map(part => part[0]).slice(0, 2).join('')}</span><strong>{group.name}</strong><ArrowUpRight size={14} /></button></td>{columns.map(([key, label]) => { const records = group.records.filter(row => matches(row, key)); return <td key={key} className={key === 'total' ? 'portfolio-live-column' : key === 'annualActionRequired' ? 'portfolio-action-column' : undefined}><button type="button" className={`portfolio-count ${records.length ? 'has-records' : ''}`} aria-label={`${group.name}: ${records.length} ${popupLabel(key, label)}`} onClick={() => open(group.name, records, popupLabel(key, label), key)}>{records.length}</button></td> })}</tr>)}</tbody><tfoot><tr><th>Grand Total</th>{columns.map(([key, label]) => <td key={key} className={key === 'total' ? 'portfolio-live-column' : key === 'annualActionRequired' ? 'portfolio-action-column' : undefined}><button type="button" onClick={() => open('All SPOCs', allRecords.filter(row => matches(row, key)), popupLabel(key, label), key)}>{allRecords.filter(row => matches(row, key)).length}</button></td>)}</tr></tfoot></table>{!shown.length && <p className="portfolio-empty">No assigned applications match this search.</p>}</div>}
-    <footer>{distribution ? 'Total includes every assigned application. Approved Registration and New Registration remain in Total and PO reporting but are excluded from PIBO category breakdowns.' : serviceSummary ? 'Total includes every assigned application. Approved Registration and New Registration remain in Total and PO reporting but are excluded from the service breakdown. Annual Return Filing uses the first Annual Return year recorded on the received PO.' : 'Total includes every assigned application. Approved Registration and New Registration remain included in Total and PO reporting but are hidden from the status breakdown. Registration records in Applied, Under Review, Not Started or Rejected remain visible in those columns. Annual Return applications appear under the first Annual Return year recorded on their received PO.'}</footer>
+    <footer>{annualRegistrationSection ? 'This view includes only Annual Return and Registration applications.' : 'This view includes only services other than Annual Return and Registration.'} {distribution ? 'Approved Registration and New Registration remain in this view Total and PO reporting but are excluded from PIBO category breakdowns.' : serviceSummary ? 'Approved Registration and New Registration remain in this view Total and PO reporting but are excluded from the service breakdown. Annual Return Filing uses the first Annual Return year recorded on the received PO.' : 'Approved Registration and New Registration remain included in this view Total and PO reporting but are hidden from the status breakdown. Registration records in Applied, Under Review, Not Started or Rejected remain visible.'}</footer>
     {selection && <ClientRecordsPopup selection={selection} onClose={() => setSelection(null)} />}
   </motion.section>
 })

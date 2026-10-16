@@ -558,6 +558,23 @@ test('approved Registration is excluded from service and PIBO breakdowns but ret
   assert.equal(isApprovedRegistration(row), true);
 });
 
+test('portfolio sections split Annual Return and Registration from every other service', async () => {
+  const { buildApplicationPortfolio, applicationReportGroups, matchesPortfolioSection } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const annual = client('section-annual', 'sonal', 'Importer', 'Applied');
+  annual.data.basic.servicesOffered = 'Annual Return Filing';
+  const registration = client('section-registration', 'sonal', 'Producer', 'Not Started');
+  registration.data.basic.servicesOffered = 'New Registration';
+  const consulting = client('section-consulting', 'sonal', 'Brand Owner', 'Under Review');
+  consulting.data.basic.servicesOffered = 'Consulting';
+  for (const row of [annual, registration, consulting]) row.selectedLead.status = 'Closed';
+  const [group] = applicationReportGroups(buildApplicationPortfolio([annual, registration, consulting], users));
+  const annualRegistration = group.records.filter(row => matchesPortfolioSection(row, 'annualRegistration'));
+  const otherServices = group.records.filter(row => matchesPortfolioSection(row, 'otherServices'));
+  assert.deepEqual(annualRegistration.map(row => row.summaryService).sort(), ['Annual Return Filling', 'New Registration']);
+  assert.deepEqual(otherServices.map(row => row.summaryService), ['Consulting']);
+  assert.equal(annualRegistration.length + otherServices.length, group.records.length);
+});
+
 test('Yes Registered excludes approved New Registration when the same applicant also has Annual Return', async () => {
   const { buildApplicationPortfolio, applicationServiceSummaryRecords, matchesStatusSummary } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const registration = client('registered-service', 'sonal', 'Importer', '');

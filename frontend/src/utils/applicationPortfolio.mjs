@@ -104,6 +104,14 @@ export function isApprovedRegistration(record) {
     && ((record.services || []).some(service => isRegistrationService(service.offeredServices))
       || isRegistrationService(rawApplicationSummaryService(record)))
 }
+export function isAnnualReturnOrRegistration(record) {
+  const service = rawApplicationSummaryService(record)
+  return isAnnualReturnService(service) || isRegistrationService(service)
+}
+export function matchesPortfolioSection(record, section) {
+  const annualOrRegistration = isAnnualReturnOrRegistration(record)
+  return section === 'otherServices' ? !annualOrRegistration : annualOrRegistration
+}
 export function annualActionReasons(record) {
   const services = (record.services || []).filter(service => service.offeredServices?.includes('Annual Return Filling'))
   const reasons = []
