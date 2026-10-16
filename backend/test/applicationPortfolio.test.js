@@ -19,7 +19,7 @@ test('popup details collapse duplicate snapshots while retaining distinct lead, 
 });
 
 test('SPOC reports count all 43 services instead of collapsing them into 41 applicant records', async () => {
-  const { buildApplicationPortfolio, applicationReportGroups, PIBO_CATEGORIES, matchesStatusSummary, matchesServiceSummary } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const { buildApplicationPortfolio, applicationReportGroups, PIBO_CATEGORIES, matchesStatusSummary, matchesServiceSummary, matchesDistributionSummary } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const rows = Array.from({ length: 41 }, (_, index) => {
     const row = client(`client-${index}`, 'sonal', 'Producer', 'Approved');
     row.selectedLead.company = `Company ${index}`;
@@ -39,9 +39,10 @@ test('SPOC reports count all 43 services instead of collapsing them into 41 appl
   assert.equal(groups[0].records.length, 41);
   const [report] = applicationReportGroups(groups);
   assert.equal(report.records.length, 43);
-  assert.equal(report.records.filter(row => matchesStatusSummary(row, 'total')).length, 43);
-  assert.equal(report.records.filter(row => matchesServiceSummary(row, 'total')).length, 43);
-  assert.equal(PIBO_CATEGORIES.reduce((total, category) => total + report.records.filter(row => row.category === category).length, 0), 43);
+  assert.equal(report.records.filter(row => matchesStatusSummary(row, 'total')).length, 41);
+  assert.equal(report.records.filter(row => matchesServiceSummary(row, 'total')).length, 41);
+  assert.equal(report.records.filter(row => matchesDistributionSummary(row, 'total')).length, 41);
+  assert.equal(PIBO_CATEGORIES.reduce((total, category) => total + report.records.filter(row => matchesDistributionSummary(row, category)).length, 0), 41);
   assert.equal(report.records.filter(row => matchesStatusSummary(row, 'registrationApproved')).length, 0);
   assert.equal(report.records.filter(row => matchesServiceSummary(row, 'New Registration')).length, 0);
   assert.equal(report.records.filter(row => matchesStatusSummary(row, 'otherServicesApproved')).length, 41);
@@ -540,20 +541,20 @@ test('approved Registration and New Registration are excluded from status summar
   consulting.selectedLead.company = 'Consulting Client';
   const rows = applicationServiceSummaryRecords(buildApplicationPortfolio([registration, newRegistration, consulting], users)[0]);
   assert.deepEqual(rows.filter((row) => matchesStatusSummary(row, 'registrationApproved')).map((row) => row.name), []);
-  assert.deepEqual(rows.filter((row) => matchesStatusSummary(row, 'total')).map((row) => row.name).sort(), ['20 MICRONS LIMITED', 'Consulting Client', 'New Registration Client']);
+  assert.deepEqual(rows.filter((row) => matchesStatusSummary(row, 'total')).map((row) => row.name), ['Consulting Client']);
   assert.equal(rows.find((row) => row.name === 'Consulting Client' && matchesStatusSummary(row, 'registrationApproved')), undefined);
   assert.deepEqual(rows.filter((row) => matchesStatusSummary(row, 'otherServicesApproved')).map((row) => row.name), ['Consulting Client']);
   assert.equal(rows.filter((row) => matchesStatusSummary(row, 'otherServicesApproved')).some((row) => ['Registration', 'New Registration'].includes(row.summaryService)), false);
 });
 
-test('approved Registration is excluded from service and PIBO breakdowns but retained in shared Total', async () => {
+test('approved Registration is excluded from service and PIBO totals and breakdowns', async () => {
   const { buildApplicationPortfolio, applicationServiceSummaryRecords, matchesServiceSummary, isApprovedRegistration } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const registration = client('approved-registration-breakdown', 'sonal', 'Importer', 'Approved');
   registration.workflowStatus = 'submitted';
   registration.data.basic.servicesOffered = 'New Registration';
   const [group] = buildApplicationPortfolio([registration], users);
   const [row] = applicationServiceSummaryRecords(group);
-  assert.equal(matchesServiceSummary(row, 'total'), true);
+  assert.equal(matchesServiceSummary(row, 'total'), false);
   assert.equal(matchesServiceSummary(row, 'New Registration'), false);
   assert.equal(isApprovedRegistration(row), true);
 });
@@ -595,7 +596,7 @@ test('Yes Registered excludes approved New Registration when the same applicant 
   const registrationRow = rows.find(row => row.summaryService === 'New Registration');
   assert.equal(registrationRow.cpcb, 'Approved');
   assert.equal(registrationRow.services[0].cpcb, 'Registered');
-  assert.equal(matchesStatusSummary(registrationRow, 'total'), true);
+  assert.equal(matchesStatusSummary(registrationRow, 'total'), false);
   assert.equal(rows.filter(row => row.summaryService === 'Annual Return Filling' && matchesStatusSummary(row, 'annual:2026-27')).length, 0);
 });
 

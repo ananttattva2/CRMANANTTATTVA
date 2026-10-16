@@ -64,12 +64,15 @@ export function matchesApplicationService(record, key) {
   if (key === 'total') return true
   return applicationSummaryService(record) === key
 }
+export function matchesDistributionSummary(record, key) {
+  return !isApprovedRegistration(record) && (key === 'total' || record.category === key)
+}
 export function matchesServiceSummary(record, key, date = new Date()) {
   const summary = record.annualYears ? record : applicationSummaryRecords({ records: [record] })[0]
-  if (key === 'total') return true
-  // Completed Registration remains part of the shared application Total and
-  // PO reporting, but must not appear in a dashboard service breakdown.
+  // Completed Registration remains available in PO reporting, but must not
+  // appear in either the service Total or its visible breakdown.
   if (isApprovedRegistration(summary)) return false
+  if (key === 'total') return true
   const representativeService = rawApplicationSummaryService(summary)
   const annualForYear = summary.annual && summary.annualYears.length > 0
   if (key === 'Annual Return Filling') return annualForYear
@@ -77,9 +80,10 @@ export function matchesServiceSummary(record, key, date = new Date()) {
   return matchesApplicationService(summary, key)
 }
 export function matchesStatusSummary(record, key, date = new Date()) {
-  // Total represents every assigned application. Approved Registration is
-  // retained here even though it is hidden from the status breakdown below.
-  if (key === 'total') return true
+  // The status Total must reconcile with the visible status buckets. Completed
+  // Registration is intentionally hidden from this summary, so it must not be
+  // counted in Total either.
+  if (key === 'total') return !isApprovedRegistration(record)
   const actionRequired = matchesServiceSummary(record, 'annualActionRequired', date)
   if (key === 'annualActionRequired') return actionRequired
   if (key === 'registrationApproved') return false
