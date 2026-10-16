@@ -100,6 +100,12 @@ function scopedCpcbStatus(client, services, service, serviceId) {
     }
   }
   if (!compatible) return null;
+  // A directly saved status belongs to this service when the Client Master
+  // fingerprint matches it. Treat it as exact so a newer edit can outrank an
+  // older migrated Not Started scope from a duplicate Client Master.
+  if (directStatus && !/^(notstarted|notrecorded|pending)$/.test(normalize(directStatus))) {
+    return { status: directStatus, exact: true };
+  }
   const selectedId = client.assignedServiceId || data.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId;
   const resolved = resolveClientMasterData(client, selectedId);
   const status = resolved.cpcb?.status || resolved.cpcb?.approvalStatus || resolved.cpcb?.applicationStatus || '';
@@ -131,8 +137,8 @@ function mergeManagerStaffAllocations(clients = [], leads = []) {
       if (!permanentOwner && !legacyClosedOwner) return;
       const serviceId = value(assignment.assignedServiceId || assignment.serviceAssignmentId || services[index]?.assignedServiceId || services[index]?.serviceAssignmentId || `assignment-${index}`);
       const key = `${value(lead._id)}:${serviceId}`;
-      if (linked.has(key)) return;
-      linked.add(key);
+      const alreadyLinked = linked.has(key);
+      if (!alreadyLinked) linked.add(key);
       const service = services.find(s => value(s.assignedServiceId || s.serviceAssignmentId) === serviceId) || services[index] || {};
       const signature = row => [row.subApplicantType || row.piboCategory, row.plantUnit, row.eprCategory, offering(row.servicesOffered)].map(normalize).join(':');
       const matchingAssignments = (lead.assignments || []).flatMap((candidate, candidateIndex) => {
@@ -164,6 +170,28 @@ function mergeManagerStaffAllocations(clients = [], leads = []) {
       const statusMatch = matchingMasters[0];
       const statusMaster = statusMatch?.client;
       const workflowMaster = matchingMasters.map(match => match.client).find(client => normalize(client.workflowStatus || client.data?.importMeta?.clientStatus) !== 'draft');
+      if (alreadyLinked) {
+        // The submitted Client Master remains the dashboard application, but a
+        // newer matching draft/edit can carry the latest CPCB decision. Apply
+        // that status to the retained read model instead of leaving its older
+        // Not Started snapshot visible.
+        if (statusMatch?.status) {
+          const applicationIndex = result.findIndex(item => {
+            const itemLeadId = value(item.selectedLead || item.data?.selectedLeadSnapshot?.id);
+            const itemServiceId = value(item.assignedServiceId || item.data?.assignedServiceId || item.data?.selectedLeadSnapshot?.assignedServiceId);
+            return `${itemLeadId}:${itemServiceId}` === key
+              && normalize(item.workflowStatus || item.data?.importMeta?.clientStatus) !== 'draft';
+          });
+          if (applicationIndex >= 0) {
+            const application = result[applicationIndex];
+            result[applicationIndex] = {
+              ...application,
+              data: { ...(application.data || {}), cpcb: { ...(application.data?.cpcb || {}), status: statusMatch.status } }
+            };
+          }
+        }
+        return;
+      }
       const masterData = statusMaster ? resolveClientMasterData(statusMaster) : {};
       result.push({ _id: `assignment:${key}`, assignedServiceId: serviceId,
         statusSourceClientId: statusMaster ? value(statusMaster._id) : undefined,

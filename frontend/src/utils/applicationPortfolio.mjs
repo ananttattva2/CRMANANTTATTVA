@@ -21,7 +21,11 @@ export function applicationSummaryRecords(group) {
     const annual = summaryService === 'Annual Return Filling' && bucket === 'approved' && statusServices.some(service => service.annualEligiblePo)
     const recordedYears = annual ? [...new Set(statusServices.filter(service => service.closed && service.annual && service.annualWorkflowReady).flatMap(service => service.annualYears || []))].sort() : []
     const annualYears = recordedYears.length ? [recordedYears[0]] : []
-    return { ...record, bucket, cpcb: labels[bucket], summaryService, annual, annualYears,
+    const scheduledAnnualYears = [...new Set(statusServices.flatMap(service => service.poAnnualYears || []))]
+    const currentAnnualYear = annualReturnYearForDate()
+    const annualFutureOnly = scheduledAnnualYears.length > 0
+      && scheduledAnnualYears.every(year => financialYearStart(year) > financialYearStart(currentAnnualYear))
+    return { ...record, bucket, cpcb: labels[bucket], summaryService, annual, annualYears, annualFutureOnly,
       offered: summaryService === 'unclassified' ? 'Not Closed / Service Not Recorded' : summaryService }
   })
 }
@@ -69,12 +73,12 @@ export function matchesServiceSummary(record, key, date = new Date()) {
   const representativeService = rawApplicationSummaryService(summary)
   const annualForYear = summary.annual && summary.annualYears.includes(annualReturnYearForDate(date))
   if (key === 'Annual Return Filling') return annualForYear
-  if (key === 'annualActionRequired') return representativeService === 'Annual Return Filling' && !annualForYear
-  if (key === 'total') return true
+  if (key === 'annualActionRequired') return representativeService === 'Annual Return Filling' && !annualForYear && !summary.annualFutureOnly
+  if (key === 'total') return !summary.annualFutureOnly
   return matchesApplicationService(summary, key)
 }
 export function matchesStatusSummary(record, key, date = new Date()) {
-  if (key === 'total') return true
+  if (key === 'total') return !record.annualFutureOnly
   const actionRequired = matchesServiceSummary(record, 'annualActionRequired', date)
   if (key === 'annualActionRequired') return actionRequired
   if (key === 'registrationApproved') return !actionRequired
@@ -207,13 +211,14 @@ export function applicationRecord(client) {
   const hasPoEvidence = po => [po.poNumber, po.poNo, po.poDate, po.poReceivedDate, po.poFileName, po.fileName, po.poFileUrl]
     .some(value => Boolean(String(value || '').trim()))
   const poReceived = String(assignment.poStatus || '').toLowerCase() === 'received' || poRows.some(hasPoEvidence)
-  const eligiblePoRows = annual && poReceived ? poRows
-    // The saved Annual Return year is independent of the PO financial year.
-    // Also retain current-FY rows so missing/year-specific details remain visible.
-    .filter(po => String(po.poFinancialYear || '').trim() === financialYearForDate()
-      || String(po.annualReturnYear || '').trim() === annualReturnYearForDate())
+  const annualPoRows = annual && poReceived ? poRows
     .filter(po => !po.services?.length || isAnnualReturnService(po.services))
     : []
+  // PO financial year is commercial metadata. The dashboard becomes actionable
+  // only for the statutory Annual Return year currently due. Future return years
+  // remain visible in PO details without appearing in AR or AR Action Required.
+  const poAnnualYears = [...new Set(annualPoRows.map(po => String(po.annualReturnYear || '').trim()).filter(Boolean))]
+  const eligiblePoRows = annualPoRows.filter(po => String(po.annualReturnYear || '').trim() === annualReturnYearForDate())
   const annualEligiblePo = eligiblePoRows.length > 0
   const annualYears = [...new Set(eligiblePoRows.map(po => po.annualReturnYear).filter(Boolean))]
   const category = applicantCategory(text(service.subApplicantType, service.piboCategory, lead.subApplicantType, lead.piboCategory, basic.piboCategory, basic.subApplicantType, service.applicantType, lead.applicantType, basic.applicantType))
@@ -231,7 +236,7 @@ export function applicationRecord(client) {
   const status = normalize(cpcb)
   const inactive = /suspend|discontinu|inactive/.test(normalize(`${clientStatus} ${visibility} ${cpcb}`))
   const bucket = cpcbStatusBucket(cpcb)
-  return { id: String(client._id), assignmentOnly: Boolean(client.assignmentOnly), statusSourceClientId: client.statusSourceClientId || '', leadId: String(lead._id || ''), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, lead.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, lead.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, lead.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), offeredServices: canonicalOfferedServices(offered), closed, bucket, live: !inactive, annual, annualEligiblePo, annualWorkflowReady, annualYears, sourceIds: [String(client._id)] }
+  return { id: String(client._id), assignmentOnly: Boolean(client.assignmentOnly), statusSourceClientId: client.statusSourceClientId || '', leadId: String(lead._id || ''), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, lead.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, lead.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, lead.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), offeredServices: canonicalOfferedServices(offered), closed, bucket, live: !inactive, annual, annualEligiblePo, annualWorkflowReady, annualYears, poAnnualYears, sourceIds: [String(client._id)] }
 }
 // Placeholders and blank drafts do not represent another application when
 // this lead already has a submitted master for the same applicant/unit/service.
@@ -265,6 +270,7 @@ export function effectiveApplicationServices(services) {
     existing.closed ||= service.closed
     existing.annualWorkflowReady ||= service.annualWorkflowReady
     existing.annualYears = [...new Set([...(existing.annualYears || []), ...(service.annualYears || [])])]
+    existing.poAnnualYears = [...new Set([...(existing.poAnnualYears || []), ...(service.poAnnualYears || [])])]
     return false
   })
   const saved = services.filter(service => !service.assignmentOnly)
@@ -278,6 +284,7 @@ export function effectiveApplicationServices(services) {
     if (!master) return true
     master.annualEligiblePo ||= service.annualEligiblePo
     master.annualYears = [...new Set([...(master.annualYears || []), ...(service.annualYears || [])])]
+    master.poAnnualYears = [...new Set([...(master.poAnnualYears || []), ...(service.poAnnualYears || [])])]
     return false
   })
 }
@@ -363,6 +370,11 @@ export function financialYearForDate(date = new Date()) {
 export function annualReturnYearForDate(date = new Date()) {
   const startYear = Number(financialYearForDate(date).slice(0, 4)) - 1
   return `${startYear}-${String(startYear + 1).slice(-2)}`
+}
+
+function financialYearStart(value) {
+  const match = String(value || '').trim().match(/^(20\d{2})-\d{2}$/)
+  return match ? Number(match[1]) : Number.NEGATIVE_INFINITY
 }
 
 

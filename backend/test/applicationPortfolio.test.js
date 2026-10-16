@@ -384,6 +384,18 @@ test('approved annual applications accept matching Annual Return years across PO
   result=applicationSummaryRecords(buildApplicationPortfolio([make('unrelated-year','Approved',[{poFinancialYear:'2025-26',annualReturnYear:'2024-25'}])],users)[0])[0];
   assert.equal(result.annual,false);
   assert.equal(matchesStatusSummary(result,'annualActionRequired'),true);
+
+  // A PO received now for the following return year remains visible in PO
+  // details, but it is not yet an actionable dashboard application.
+  result=applicationSummaryRecords(buildApplicationPortfolio([make('future-return','Approved',[{poFinancialYear:'2026-27',annualReturnYear:'2026-27'}])],users)[0])[0];
+  assert.equal(result.annual,false);
+  assert.equal(result.annualFutureOnly,true);
+  assert.deepEqual(result.annualYears,[]);
+  assert.equal(matchesStatusSummary(result,'annual:2026-27',new Date('2026-10-08T12:00:00+05:30')),false);
+  assert.equal(matchesStatusSummary(result,'annualActionRequired',new Date('2026-10-08T12:00:00+05:30')),false);
+  assert.equal(matchesServiceSummary(result,'annualActionRequired',new Date('2026-10-08T12:00:00+05:30')),false);
+  assert.equal(matchesStatusSummary(result,'total',new Date('2026-10-08T12:00:00+05:30')),false);
+  assert.equal(matchesServiceSummary(result,'total',new Date('2026-10-08T12:00:00+05:30')),false);
 });
 
 test('portfolio excludes every draft and every service-not-recorded row', async () => {

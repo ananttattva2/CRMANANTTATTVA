@@ -151,3 +151,19 @@ test('a directly saved Approved edit repairs an older Not Started snapshot for t
  const row=mergeManagerStaffAllocations([master],[lead]).find(item=>item.assignmentOnly);
  assert.equal(row.data.cpcb.status,'Approved');
 });
+
+test('newer directly saved CPCB status outranks an older exact Not Started duplicate',()=>{
+ const {dashboardStatusClient}=require('../src/services/managerStaffAllocations');
+ const service={assignedServiceId:'annual',subApplicantType:'Importer',plantUnit:'Unit 1',eprCategory:'EPR - Plastic Waste',servicesOffered:'Annual Return Filling'};
+ const lead={_id:'nuviashop',company:'NUVIASHOP PRIVATE LIMITED',serviceSelections:[service],assignments:[{assignedServiceId:'annual',assignedTo:'manager',assignedStaff:'prachi',closedAt:'2026-10-01'}]};
+ const older=dashboardStatusClient({_id:'older-scope',selectedLead:lead,assignedServiceId:'annual',workflowStatus:'submitted',updatedAt:'2026-09-09',data:{
+  assignedServiceId:'annual',selectedLeadSnapshot:{id:'nuviashop',assignedServiceId:'annual',subApplicantType:'Importer',plantUnit:'Unit 1',eprCategory:'EPR - Plastic Waste',servicesOffered:'Annual Return Filling'},
+  cpcb:{status:'Not Started'},cpcbDataByAssignedServiceId:{annual:{cpcb:{status:'Not Started'}}}
+ }});
+ const newer=dashboardStatusClient({_id:'newer-edit',selectedLead:lead,assignedServiceId:'annual',workflowStatus:'draft',updatedAt:'2026-10-15',data:{
+  assignedServiceId:'annual',selectedLeadSnapshot:{id:'nuviashop',assignedServiceId:'annual',subApplicantType:'Importer',plantUnit:'Unit 1',eprCategory:'EPR - Plastic Waste',servicesOffered:'Annual Return Filling'},
+  cpcb:{status:'Approved'}
+ }});
+ const row=mergeManagerStaffAllocations([older,newer],[lead]).find(item=>item._id==='older-scope');
+ assert.equal(row.data.cpcb.status,'Approved');
+});
