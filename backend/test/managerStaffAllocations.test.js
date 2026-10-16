@@ -167,3 +167,24 @@ test('newer directly saved CPCB status outranks an older exact Not Started dupli
  const row=mergeManagerStaffAllocations([older,newer],[lead]).find(item=>item._id==='older-scope');
  assert.equal(row.data.cpcb.status,'Approved');
 });
+
+test('CPCB status is shared by registration and annual return for the same applicant unit',()=>{
+ const {dashboardStatusClient}=require('../src/services/managerStaffAllocations');
+ const registration={assignedServiceId:'registration',subApplicantType:'Importer',plantUnit:'Unit 1',eprCategory:'EPR - Plastic Waste',servicesOffered:'New Registration'};
+ const annual={assignedServiceId:'annual',subApplicantType:'Importer',plantUnit:'Unit 1',eprCategory:'EPR - Plastic Waste',servicesOffered:'Annual Return Filling'};
+ const lead={_id:'common-man',company:'Common Man Multiventures Pvt Ltd',serviceSelections:[registration,annual],assignments:[
+  {assignedServiceId:'registration',assignedStaff:'prachi',closedAt:'2026-10-01'},
+  {assignedServiceId:'annual',assignedStaff:'prachi',closedAt:'2026-10-01'}
+ ]};
+ const master=dashboardStatusClient({_id:'common-man-master',selectedLead:lead,assignedServiceId:'registration',workflowStatus:'submitted',updatedAt:'2026-10-14',data:{
+  assignedServiceId:'registration',selectedLeadSnapshot:{id:'common-man',assignedServiceId:'registration',subApplicantType:'Importer',plantUnit:'Unit 1',eprCategory:'EPR - Plastic Waste',servicesOffered:'New Registration'},
+  cpcb:{status:'Approved'}
+ }});
+ const rows=mergeManagerStaffAllocations([master],[lead]);
+ const annualRow=rows.find(row=>row.assignmentOnly && row.assignedServiceId==='annual');
+ assert.equal(annualRow.data.cpcb.status,'Approved');
+ const unrelatedLead={...lead,serviceSelections:[registration,{...annual,assignedServiceId:'other-unit',plantUnit:'Unit 2'}],assignments:[
+  lead.assignments[0],{assignedServiceId:'other-unit',assignedStaff:'prachi',closedAt:'2026-10-01'}
+ ]};
+ assert.equal(mergeManagerStaffAllocations([master],[unrelatedLead]).find(row=>row.assignmentOnly && row.assignedServiceId==='other-unit').data.cpcb.status,undefined);
+});

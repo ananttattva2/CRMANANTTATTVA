@@ -51,6 +51,33 @@ function clientMatchesService(client, services, service, serviceId) {
   return compatibleServices.length === 1
     && value(compatibleServices[0].assignedServiceId || compatibleServices[0].serviceAssignmentId) === serviceId;
 }
+function clientMatchesCpcbContext(client, services, service, serviceId) {
+  if (clientMatchesService(client, services, service, serviceId)) return true;
+  const data = client.data || {};
+  const selectedId = value(client.assignedServiceId || data.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId);
+  const snapshot = data.selectedLeadSnapshot || {};
+  const basic = data.basic || {};
+  const selectedService = services.find(candidate => value(candidate.assignedServiceId || candidate.serviceAssignmentId) === selectedId);
+  const profile = {
+    category: applicant(selectedService?.subApplicantType || selectedService?.piboCategory || snapshot.subApplicantType || snapshot.piboCategory || basic.piboCategory || basic.subApplicantType),
+    unit: normalize(selectedService?.plantUnit || snapshot.plantUnit || basic.plantUnit),
+    epr: normalize(selectedService?.eprCategory || snapshot.eprCategory || basic.eprCategory)
+  };
+  const candidate = {
+    category: applicant(service.subApplicantType || service.piboCategory),
+    unit: normalize(service.plantUnit),
+    epr: normalize(service.eprCategory)
+  };
+  let compared = 0;
+  for (const field of ['category', 'unit', 'epr']) {
+    if (!profile[field] || !candidate[field]) continue;
+    compared += 1;
+    if (profile[field] !== candidate[field]) return false;
+  }
+  // CPCB registration/status belongs to an applicant + unit + EPR context,
+  // not separately to New Registration and Annual Return service offerings.
+  return compared > 0;
+}
 function clientMatchesLead(client, lead) {
   const data = client.data || {};
   const snapshot = data.selectedLeadSnapshot || {};
@@ -83,7 +110,7 @@ function dashboardStatusClient(client) {
 }
 function scopedCpcbStatus(client, services, service, serviceId) {
   const data = client.data || {};
-  const compatible = clientMatchesService(client, services, service, serviceId);
+  const cpcbCompatible = clientMatchesCpcbContext(client, services, service, serviceId);
   const directStatus = data.cpcb?.status || data.cpcb?.approvalStatus || data.cpcb?.applicationStatus || '';
   for (const scope of [data.cpcbDataByAssignedServiceId?.[serviceId], data.serviceDetailsByAssignedServiceId?.[serviceId]]) {
     const exact = scope?.cpcb || scope?.details || scope;
@@ -93,16 +120,16 @@ function scopedCpcbStatus(client, services, service, serviceId) {
     // only for the same service; an exact non-default status stays authoritative.
     const defaultStatus = /^(notstarted|notrecorded|pending)?$/.test(normalize(status));
     if (status) {
-      if (compatible && directStatus && defaultStatus && !/^(notstarted|notrecorded|pending)$/.test(normalize(directStatus))) {
+      if (cpcbCompatible && directStatus && defaultStatus && !/^(notstarted|notrecorded|pending)$/.test(normalize(directStatus))) {
         return { status: directStatus, exact: true };
       }
       return { status, exact: true };
     }
   }
-  if (!compatible) return null;
-  // A directly saved status belongs to this service when the Client Master
-  // fingerprint matches it. Treat it as exact so a newer edit can outrank an
-  // older migrated Not Started scope from a duplicate Client Master.
+  if (!cpcbCompatible) return null;
+  // A directly saved status belongs to this CPCB applicant/unit context.
+  // Treat it as exact so a newer edit can outrank an older migrated Not
+  // Started scope from a duplicate Client Master.
   if (directStatus && !/^(notstarted|notrecorded|pending)$/.test(normalize(directStatus))) {
     return { status: directStatus, exact: true };
   }

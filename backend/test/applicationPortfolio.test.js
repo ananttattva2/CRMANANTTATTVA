@@ -347,7 +347,7 @@ test('submitted applicant replaces a matching draft whose unit was not recorded'
   assert.deepEqual(group.records.map(record => record.id).sort(), ['submitted-importer', 'submitted-producer']);
 });
 
-test('approved annual applications accept matching Annual Return years across PO financial years', async () => {
+test('approved annual applications use the first Annual Return year regardless of PO financial year', async () => {
   const {buildApplicationPortfolio, applicationSummaryRecords, financialYearForDate, annualReturnYearForDate, matchesServiceSummary, matchesStatusSummary, STATUS_COLUMNS} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   assert.equal(financialYearForDate(new Date('2026-10-08T12:00:00+05:30')), '2026-27');
   assert.equal(annualReturnYearForDate(new Date('2026-10-08T12:00:00+05:30')), '2025-26');
@@ -385,17 +385,33 @@ test('approved annual applications accept matching Annual Return years across PO
   assert.equal(result.annual,false);
   assert.equal(matchesStatusSummary(result,'annualActionRequired'),true);
 
-  // A PO received now for the following return year remains visible in PO
-  // details, but it is not yet an actionable dashboard application.
-  result=applicationSummaryRecords(buildApplicationPortfolio([make('future-return','Approved',[{poFinancialYear:'2026-27',annualReturnYear:'2026-27'}])],users)[0])[0];
-  assert.equal(result.annual,false);
-  assert.equal(result.annualFutureOnly,true);
-  assert.deepEqual(result.annualYears,[]);
-  assert.equal(matchesStatusSummary(result,'annual:2026-27',new Date('2026-10-08T12:00:00+05:30')),false);
+  result=applicationSummaryRecords(buildApplicationPortfolio([make('po-2025-multiple','Approved',[
+    {poFinancialYear:'2025-26',annualReturnYear:'2027-28'},
+    {poFinancialYear:'2025-26',annualReturnYear:'2025-26'},
+    {poFinancialYear:'2025-26',annualReturnYear:'2026-27'}
+  ])],users)[0])[0];
+  assert.deepEqual(result.annualYears,['2025-26']);
+  assert.equal(matchesStatusSummary(result,'annual:2025-26'),true);
+  result=applicationSummaryRecords(buildApplicationPortfolio([make('po-2026-multiple','Approved',[
+    {poFinancialYear:'2026-27',annualReturnYear:'2027-28'},
+    {poFinancialYear:'2026-27',annualReturnYear:'2025-26'},
+    {poFinancialYear:'2026-27',annualReturnYear:'2026-27'}
+  ])],users)[0])[0];
+  assert.deepEqual(result.annualYears,['2025-26']);
+  assert.equal(matchesStatusSummary(result,'annual:2025-26'),true);
+  result=applicationSummaryRecords(buildApplicationPortfolio([make('po-2026-future','Approved',[
+    {poFinancialYear:'2026-27',annualReturnYear:'2027-28'},
+    {poFinancialYear:'2026-27',annualReturnYear:'2026-27'}
+  ])],users)[0])[0];
+  assert.equal(result.annual,true);
+  assert.deepEqual(result.annualYears,['2026-27']);
+  assert.equal(matchesStatusSummary(result,'annual:2026-27',new Date('2026-10-08T12:00:00+05:30')),true);
   assert.equal(matchesStatusSummary(result,'annualActionRequired',new Date('2026-10-08T12:00:00+05:30')),false);
+  assert.equal(matchesStatusSummary(result,'notStarted',new Date('2026-10-08T12:00:00+05:30')),false);
+  assert.deepEqual(STATUS_COLUMNS.filter(([key])=>key!=='total'&&matchesStatusSummary(result,key)).map(([key])=>key),['annual:2026-27']);
   assert.equal(matchesServiceSummary(result,'annualActionRequired',new Date('2026-10-08T12:00:00+05:30')),false);
-  assert.equal(matchesStatusSummary(result,'total',new Date('2026-10-08T12:00:00+05:30')),false);
-  assert.equal(matchesServiceSummary(result,'total',new Date('2026-10-08T12:00:00+05:30')),false);
+  assert.equal(matchesStatusSummary(result,'total',new Date('2026-10-08T12:00:00+05:30')),true);
+  assert.equal(matchesServiceSummary(result,'total',new Date('2026-10-08T12:00:00+05:30')),true);
 });
 
 test('portfolio excludes every draft and every service-not-recorded row', async () => {

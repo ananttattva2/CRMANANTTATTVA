@@ -57,7 +57,7 @@ const ApplicationPortfolio = forwardRef(function ApplicationPortfolio({ mode, re
   const annualReturnYear = annualReturnYearForDate()
   const serviceColumns = useMemo(() => offeredServiceColumns(groups), [groups])
   const columns = distribution ? [['total', 'Total'], ...categories.map(category => [category, category])] : serviceSummary ? [['total', 'Total'], ...serviceColumns.flatMap(service => service === 'Annual Return Filling' ? [[service, `Annual Return Filling (${annualReturnYear})`], ['annualActionRequired', 'AR Action Required']] : [[service, service]]), ...(groups.some(group => group.records.some(row => matchesApplicationService(row, 'unclassified'))) ? [['unclassified', 'Not Closed / Service Not Recorded']] : [])] : [...STATUS_COLUMNS.slice(0, 6), ...[...new Set(groups.flatMap(group => applicationSummaryRecords(group).flatMap(row => row.annualYears)))].filter(year => !['2025-26', '2026-27', '2027-28'].includes(year)).sort().map(year => [`annual:${year}`, year]), ...STATUS_COLUMNS.slice(6)]
-  const matches = (row, key) => distribution ? !row.annualFutureOnly && (key === 'total' || row.category === key) : serviceSummary ? matchesServiceSummary(row, key) : matchesStatusSummary(row, key)
+  const matches = (row, key) => distribution ? (key === 'total' || row.category === key) : serviceSummary ? matchesServiceSummary(row, key) : matchesStatusSummary(row, key)
   const open = (name, records, label = 'All categories', key = '') => setSelection({ name, records, label, key })
   const title = distribution ? 'Application Distribution by SPOC & PIBo' : serviceSummary ? 'Application Service Summary' : 'Application Status Summary'
   const annualStatusColumns = columns.filter(([key]) => key.startsWith('annual:'))
