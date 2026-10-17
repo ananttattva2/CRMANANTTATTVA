@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Database, Loader2, RefreshCw, Search } from 'lucide-react';
+import { ChevronDown, Database, Loader2, RefreshCw, Search } from 'lucide-react';
 import api from '../../services/api';
 import { API_ENDPOINTS } from '../../services/apiEndpoints';
 
@@ -11,6 +11,7 @@ export default function ClientConsoleData({ clientId, financialYear }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
+  const [expandedCategories, setExpandedCategories] = useState(() => new Set());
 
   const load = useCallback(async () => {
     if (!clientId || !financialYear) return;
@@ -22,7 +23,7 @@ export default function ClientConsoleData({ clientId, financialYear }) {
     finally { setLoading(false); }
   }, [clientId, financialYear, moduleName]);
 
-  useEffect(() => { setQuery(''); load(); }, [load]);
+  useEffect(() => { setQuery(''); setExpandedCategories(new Set()); load(); }, [load]);
 
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -34,6 +35,11 @@ export default function ClientConsoleData({ clientId, financialYear }) {
     groups.get(category).push(row);
     return groups;
   }, new Map()), [rows]);
+  const toggleCategory = (category) => setExpandedCategories((current) => {
+    const next = new Set(current);
+    if (next.has(category)) next.delete(category); else next.add(category);
+    return next;
+  });
 
   return <div className="space-y-4 bg-[linear-gradient(145deg,#f8fafc,#fff,#f0fdfa)] p-4">
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -50,7 +56,7 @@ export default function ClientConsoleData({ clientId, financialYear }) {
           <div><div className="flex items-center gap-2"><span className="rounded-lg bg-orange-100 px-3 py-1.5 text-xs font-black text-orange-700">Category Of Plastic</span><strong className="text-sm text-slate-900">{payload?.source || `${moduleName === 'sales' ? 'Sales' : 'Purchase'} Portal Upload`}</strong></div><p className="mt-2 text-xs font-bold text-slate-500">{payload?.rows?.length || 0} unique category/entity records from {payload?.sourceRowCount || 0} uploaded rows.</p></div>
           <label className="flex h-10 min-w-64 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3"><Search className="h-4 w-4 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search console data" className="w-full text-xs font-bold outline-none" /></label>
         </div>
-        {rows.length ? <div className="space-y-4 p-4">{[...categoryGroups].map(([category, categoryRows]) => <section key={category} className="overflow-hidden rounded-xl border border-slate-200"><header className="flex items-center justify-between bg-gradient-to-r from-teal-50 to-emerald-50 px-4 py-3"><h6 className="font-black text-teal-900">{category.replace('-', ' ')}</h6><span className="rounded-full bg-white px-3 py-1 text-[10px] font-black text-teal-700 ring-1 ring-teal-200">{categoryRows.length} unique entities</span></header><div className="overflow-x-auto"><table className="w-full min-w-[850px] text-left text-xs"><thead className="bg-slate-100 text-slate-600"><tr>{['Entity Name','Register Type','Entity Type','Recycled'].map((label) => <th key={label} className="px-4 py-3 font-black uppercase tracking-wide">{label}</th>)}</tr></thead><tbody>{categoryRows.map((row) => <tr key={`${row.category}-${row.entityName}`} className="border-t border-slate-100"><td className="px-4 py-3 font-black text-slate-950">{row.entityName}</td><td className="px-4 py-3 font-bold text-slate-700">{row.registerType || '-'}</td><td className="px-4 py-3 font-bold text-slate-700">{row.entityType || '-'}</td><td className="px-4 py-3 font-bold text-slate-700">{row.recycled || '-'}</td></tr>)}</tbody></table></div></section>)}</div> : <div className="p-10 text-center text-xs font-bold text-slate-400">{payload?.sourceRowCount ? 'No entities match your search.' : `No Category Of Plastic records are available in the ${moduleName === 'sales' ? 'Sales' : 'Purchase'} Portal Upload.`}</div>}
+        {rows.length ? <div className="space-y-3 p-4">{[...categoryGroups].map(([category, categoryRows]) => { const expanded = expandedCategories.has(category); return <section key={category} className="overflow-hidden rounded-xl border border-slate-200"><button type="button" aria-expanded={expanded} aria-controls={`console-category-${category}`} onClick={() => toggleCategory(category)} className="flex w-full items-center justify-between gap-3 bg-gradient-to-r from-teal-50 to-emerald-50 px-4 py-3 text-left transition hover:from-teal-100 hover:to-emerald-100"><span className="flex items-center gap-3"><ChevronDown className={`h-4 w-4 text-teal-700 transition-transform ${expanded ? 'rotate-180' : ''}`} /><strong className="text-sm font-black text-teal-900">{category.replace('-', ' ')}</strong></span><span className="rounded-full bg-white px-3 py-1 text-[10px] font-black text-teal-700 ring-1 ring-teal-200">{categoryRows.length} unique entities</span></button>{expanded && <div id={`console-category-${category}`} className="overflow-x-auto"><table className="w-full min-w-[850px] text-left text-xs"><thead className="bg-slate-100 text-slate-600"><tr>{['Entity Name','Register Type','Entity Type','Recycled'].map((label) => <th key={label} className="px-4 py-3 font-black uppercase tracking-wide">{label}</th>)}</tr></thead><tbody>{categoryRows.map((row) => <tr key={`${row.category}-${row.entityName}`} className="border-t border-slate-100"><td className="px-4 py-3 font-black text-slate-950">{row.entityName}</td><td className="px-4 py-3 font-bold text-slate-700">{row.registerType || '-'}</td><td className="px-4 py-3 font-bold text-slate-700">{row.entityType || '-'}</td><td className="px-4 py-3 font-bold text-slate-700">{row.recycled || '-'}</td></tr>)}</tbody></table></div>}</section>; })}</div> : <div className="p-10 text-center text-xs font-bold text-slate-400">{payload?.sourceRowCount ? 'No entities match your search.' : `No Category Of Plastic records are available in the ${moduleName === 'sales' ? 'Sales' : 'Purchase'} Portal Upload.`}</div>}
       </>}
     </section>
   </div>;

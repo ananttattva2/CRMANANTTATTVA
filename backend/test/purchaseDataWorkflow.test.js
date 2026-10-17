@@ -206,6 +206,8 @@ test('Client Console Data exposes Purchase and Sales portal rows grouped by ever
   const component = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/ClientConsoleData.jsx'), 'utf8');
   assert.match(routes, /client-console-data/);
   ['Purchase','Sales','Category Of Plastic','Entity Name','Register Type','Entity Type','Recycled'].forEach((label) => assert.match(component, new RegExp(label)));
+  assert.match(component, /aria-expanded=\{expanded\}/);
+  assert.match(component, /toggleCategory\(category\)/);
 });
 test('mandatory status displays date and drag-drop proof validation', () => {
   const workspace = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/PurchaseDataWorkspace.jsx'), 'utf8');
