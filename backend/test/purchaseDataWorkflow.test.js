@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   PURCHASE_CHECKLIST_PARTICULARS, normalizeEntityName, normalizeMaterial, normalizePurchaseRows, describePurchaseFinancialYearMismatch,
-  reconcilePurchaseRows, parseDate, parseNumber, defaultChecklist, purchaseReadiness, calculatePurchaseStatus
+  reconcilePurchaseRows, parseDate, parseNumber, defaultChecklist, purchaseReadiness, calculatePurchaseStatus, buildClientConsoleRows
 } = require('../src/services/purchaseDataService');
 
 const FY = '2025-26';
@@ -106,6 +106,7 @@ test('purchase portal procurement-details export maps its shortened headers', ()
     'Sr. No.': '1',
     'Register Type': 'UnRegistered',
     'Entity Type': 'Brand Owner',
+    Recycled: 'Yes',
     'Entity Name': 'COLMAN POLYCHEM LLP',
     ' State': 'Gujarat',
     'Plastic Type': 'Others',
@@ -119,6 +120,8 @@ test('purchase portal procurement-details export maps its shortened headers', ()
   }], 'portal');
   assert.equal(result.invalidRowCount, 0);
   assert.equal(result.acceptedRows[0].registrationType, 'Unregistered');
+  assert.equal(result.acceptedRows[0].entityType, 'Brand Owner');
+  assert.equal(result.acceptedRows[0].recycled, 'Yes');
   assert.equal(result.acceptedRows[0].materialType, 'Others');
   assert.equal(result.acceptedRows[0].portalReferenceNumber, 'CPL_25-26_1827');
   assert.equal(result.acceptedRows[0].gstin, '24AARFC6352J1Z5');
@@ -149,6 +152,14 @@ test('zero quantity is accepted with a warning', () => { const result = parsed([
 test('registered and unregistered rows remain separate', () => {
   const result = parsed([baseRow(), baseRow({ 'Name of Entity': 'Loose Supplier', GSTIN: '', 'Registration Type': 'Unregistered', 'Invoice Number': 'INV-2' })], 'base');
   const summary = reconcilePurchaseRows(result.acceptedRows, []); assert.equal(summary.entitySummary.Registered.length, 1); assert.equal(summary.entitySummary.Unregistered.length, 1);
+});
+test('client console Cat-I data groups repeated entity names into one complete row', () => {
+  const input = parsed([
+    portalRow({ 'Entity Type': 'Recycler', Recycled: 'Yes' }),
+    portalRow({ 'Name of Entity': 'ABC RECYCLERS PVT. LTD.', 'Portal Reference Number': 'PR-2', 'Entity Type': 'Recycler', Recycled: 'Yes', 'Plastic Material Type': 'HDPE' }),
+    portalRow({ 'Name of Entity': 'Other Entity', 'Portal Reference Number': 'PR-3', 'Category of Plastic': 'Cat-II', 'Entity Type': 'Producer', Recycled: 'No' })
+  ], 'portal');
+  assert.deepEqual(buildClientConsoleRows(input.acceptedRows), [{ entityName: 'ABC Recyclers Pvt Ltd', registerType: 'Registered', entityType: 'Recycler', recycled: 'Yes', sourceRowCount: 2 }]);
 });
 test('matched uploads reconcile by GSTIN, category and normalized material', () => {
   const summary = reconcilePurchaseRows(parsed([baseRow()], 'base').acceptedRows, parsed([portalRow()], 'portal').acceptedRows);
@@ -184,8 +195,14 @@ test('frontend mounts Purchase Data inside Data Compliance and exposes all reque
   const annual = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/ClientMasterAnnualReturn.jsx'), 'utf8');
   const workspace = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/PurchaseDataWorkspace.jsx'), 'utf8');
   assert.match(annual, /<PurchaseDataWorkspace/);
-  ['Purchase Data','Sales Data','Pre Consumer / State / Annual','EPR Target','EPR CREDIT'].forEach((tab) => assert.match(workspace, new RegExp(tab.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
+  ['Purchase Data','Sales Data','Client Console Data','Pre Consumer / State / Annual','EPR Target','EPR CREDIT'].forEach((tab) => assert.match(workspace, new RegExp(tab.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
   assert.doesNotMatch(workspace, /Upload All Screenshot/);
+});
+test('Client Console Data exposes Purchase and Sales Cat-I portal rows with grouped entity columns', () => {
+  const routes = fs.readFileSync(path.resolve(__dirname, '../src/routes/clients.js'), 'utf8');
+  const component = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/ClientConsoleData.jsx'), 'utf8');
+  assert.match(routes, /client-console-data/);
+  ['Purchase','Sales','Entity Name','Register Type','Entity Type','Recycled','Cat I'].forEach((label) => assert.match(component, new RegExp(label)));
 });
 test('mandatory status displays date and drag-drop proof validation', () => {
   const workspace = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/PurchaseDataWorkspace.jsx'), 'utf8');

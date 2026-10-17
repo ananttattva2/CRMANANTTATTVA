@@ -81,6 +81,7 @@ const API_ENDPOINTS = {
     ,purchaseScreenshots: (id) => `/clients/${encodePathValue(id)}/purchase-data/screenshots`
     ,purchaseImport: (id, source) => `/clients/${encodePathValue(id)}/purchase-imports/${encodePathValue(source)}`
     ,purchaseRows: (id) => `/clients/${encodePathValue(id)}/purchase-data/rows`
+      ,clientConsoleData: (id) => `/clients/${encodePathValue(id)}/client-console-data`
     ,purchaseReconciliation: (id) => `/clients/${encodePathValue(id)}/purchase-reconciliation`
     ,purchaseErrors: (id, source) => `/clients/${encodePathValue(id)}/purchase-imports/${encodePathValue(source)}/errors`
     ,purchaseSubmit: (id) => `/clients/${encodePathValue(id)}/purchase-data/submit`

@@ -2,9 +2,11 @@ const mongoose = require('mongoose');
 const Client = require('../models/Client');
 const PurchaseData = require('../models/PurchaseData');
 const PurchaseImportRow = require('../models/PurchaseImportRow');
+const SalesData = require('../models/SalesData');
+const SalesImportRow = require('../models/SalesImportRow');
 const {
   PURCHASE_CHECKLIST_PARTICULARS, defaultChecklist, normalizePurchaseRows, describePurchaseFinancialYearMismatch, reconcilePurchaseRows,
-  purchaseReadiness, calculatePurchaseStatus, checksum
+  purchaseReadiness, calculatePurchaseStatus, checksum, buildClientConsoleRows
 } = require('../services/purchaseDataService');
 const { notifyPurchaseWorkflow } = require('../services/purchaseDataNotifications');
 const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
@@ -300,6 +302,27 @@ exports.listPurchaseRows = async (req, res) => {
     const [rows, total] = await Promise.all([PurchaseImportRow.find(filter).sort({ rowNumber: 1 }).skip((page - 1) * limit).limit(limit).lean(), PurchaseImportRow.countDocuments(filter)]);
     res.json({ ok: true, rows, pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) } });
   } catch (error) { console.error('Purchase rows load failed', error); res.status(500).json({ error: 'Unable to load Purchase rows.' }); }
+};
+
+exports.getClientConsoleData = async (req, res) => {
+  try {
+    const financialYear = String(req.query.financialYear || '').trim();
+    const moduleName = String(req.query.module || 'purchase').trim().toLowerCase();
+    if (!validYear(financialYear)) return res.status(400).json({ error: 'financialYear must use YYYY-YY.' });
+    if (!['purchase', 'sales'].includes(moduleName)) return res.status(400).json({ error: 'module must be purchase or sales.' });
+    const client = await findClient(req.params.id, req.user);
+    if (!client) return res.status(404).json({ error: 'Client not found or not accessible' });
+    const DataModel = moduleName === 'sales' ? SalesData : PurchaseData;
+    const RowModel = moduleName === 'sales' ? SalesImportRow : PurchaseImportRow;
+    const data = await DataModel.findOne({ clientId: client._id, financialYear }).lean();
+    if (!data?.portalUpload?.uploadId) return res.json({ ok: true, module: moduleName, category: 'Cat-I', source: `${moduleName === 'sales' ? 'Sales' : 'Purchase'} Portal Upload`, rows: [], sourceRowCount: 0 });
+    const sourceRows = await RowModel.find({ uploadId: data.portalUpload.uploadId, source: 'portal', plasticCategory: 'Cat-I', validationStatus: { $in: ['Valid', 'Warning'] } }).sort({ rowNumber: 1 }).lean();
+    const rows = buildClientConsoleRows(sourceRows);
+    res.json({ ok: true, module: moduleName, category: 'Cat-I', source: `${moduleName === 'sales' ? 'Sales' : 'Purchase'} Portal Upload`, rows, sourceRowCount: sourceRows.length });
+  } catch (error) {
+    console.error('Client Console Data load failed', error);
+    res.status(500).json({ error: 'Unable to load Client Console Data.' });
+  }
 };
 
 exports.getReconciliation = async (req, res) => {

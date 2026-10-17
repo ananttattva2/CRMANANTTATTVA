@@ -50,6 +50,7 @@ router.put('/:id/purchase-data/screenshots', requireAuth, purchaseCtrl.updateScr
 router.post('/:id/purchase-imports/:source', requireAuth, purchaseCtrl.importPurchaseRows);
 router.delete('/:id/purchase-imports/:source', requireAuth, purchaseCtrl.removePurchaseImport);
 router.get('/:id/purchase-data/rows', requireAuth, purchaseCtrl.listPurchaseRows);
+router.get('/:id/client-console-data', requireAuth, purchaseCtrl.getClientConsoleData);
 router.get('/:id/purchase-reconciliation', requireAuth, purchaseCtrl.getReconciliation);
 router.get('/:id/purchase-imports/:source/errors', requireAuth, purchaseCtrl.getPurchaseErrors);
 router.post('/:id/purchase-data/submit', requireAuth, purchaseCtrl.submitPurchaseData);
