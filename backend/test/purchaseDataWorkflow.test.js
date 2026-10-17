@@ -153,13 +153,16 @@ test('registered and unregistered rows remain separate', () => {
   const result = parsed([baseRow(), baseRow({ 'Name of Entity': 'Loose Supplier', GSTIN: '', 'Registration Type': 'Unregistered', 'Invoice Number': 'INV-2' })], 'base');
   const summary = reconcilePurchaseRows(result.acceptedRows, []); assert.equal(summary.entitySummary.Registered.length, 1); assert.equal(summary.entitySummary.Unregistered.length, 1);
 });
-test('client console Cat-I data groups repeated entity names into one complete row', () => {
+test('client console groups repeated entity names once per available plastic category', () => {
   const input = parsed([
     portalRow({ 'Entity Type': 'Recycler', Recycled: 'Yes' }),
     portalRow({ 'Name of Entity': 'ABC RECYCLERS PVT. LTD.', 'Portal Reference Number': 'PR-2', 'Entity Type': 'Recycler', Recycled: 'Yes', 'Plastic Material Type': 'HDPE' }),
     portalRow({ 'Name of Entity': 'Other Entity', 'Portal Reference Number': 'PR-3', 'Category of Plastic': 'Cat-II', 'Entity Type': 'Producer', Recycled: 'No' })
   ], 'portal');
-  assert.deepEqual(buildClientConsoleRows(input.acceptedRows), [{ entityName: 'ABC Recyclers Pvt Ltd', registerType: 'Registered', entityType: 'Recycler', recycled: 'Yes', sourceRowCount: 2 }]);
+  assert.deepEqual(buildClientConsoleRows(input.acceptedRows), [
+    { category: 'Cat-I', entityName: 'ABC Recyclers Pvt Ltd', registerType: 'Registered', entityType: 'Recycler', recycled: 'Yes', sourceRowCount: 2 },
+    { category: 'Cat-II', entityName: 'Other Entity', registerType: 'Registered', entityType: 'Producer', recycled: 'No', sourceRowCount: 1 }
+  ]);
 });
 test('matched uploads reconcile by GSTIN, category and normalized material', () => {
   const summary = reconcilePurchaseRows(parsed([baseRow()], 'base').acceptedRows, parsed([portalRow()], 'portal').acceptedRows);
@@ -198,11 +201,11 @@ test('frontend mounts Purchase Data inside Data Compliance and exposes all reque
   ['Purchase Data','Sales Data','Client Console Data','Pre Consumer / State / Annual','EPR Target','EPR CREDIT'].forEach((tab) => assert.match(workspace, new RegExp(tab.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
   assert.doesNotMatch(workspace, /Upload All Screenshot/);
 });
-test('Client Console Data exposes Purchase and Sales Cat-I portal rows with grouped entity columns', () => {
+test('Client Console Data exposes Purchase and Sales portal rows grouped by every plastic category', () => {
   const routes = fs.readFileSync(path.resolve(__dirname, '../src/routes/clients.js'), 'utf8');
   const component = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/ClientConsoleData.jsx'), 'utf8');
   assert.match(routes, /client-console-data/);
-  ['Purchase','Sales','Entity Name','Register Type','Entity Type','Recycled','Cat I'].forEach((label) => assert.match(component, new RegExp(label)));
+  ['Purchase','Sales','Category Of Plastic','Entity Name','Register Type','Entity Type','Recycled'].forEach((label) => assert.match(component, new RegExp(label)));
 });
 test('mandatory status displays date and drag-drop proof validation', () => {
   const workspace = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/PurchaseDataWorkspace.jsx'), 'utf8');

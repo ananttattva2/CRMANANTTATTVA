@@ -315,10 +315,10 @@ exports.getClientConsoleData = async (req, res) => {
     const DataModel = moduleName === 'sales' ? SalesData : PurchaseData;
     const RowModel = moduleName === 'sales' ? SalesImportRow : PurchaseImportRow;
     const data = await DataModel.findOne({ clientId: client._id, financialYear }).lean();
-    if (!data?.portalUpload?.uploadId) return res.json({ ok: true, module: moduleName, category: 'Cat-I', source: `${moduleName === 'sales' ? 'Sales' : 'Purchase'} Portal Upload`, rows: [], sourceRowCount: 0 });
-    const sourceRows = await RowModel.find({ uploadId: data.portalUpload.uploadId, source: 'portal', plasticCategory: 'Cat-I', validationStatus: { $in: ['Valid', 'Warning'] } }).sort({ rowNumber: 1 }).lean();
+    if (!data?.portalUpload?.uploadId) return res.json({ ok: true, module: moduleName, categories: [], source: `${moduleName === 'sales' ? 'Sales' : 'Purchase'} Portal Upload`, rows: [], sourceRowCount: 0 });
+    const sourceRows = await RowModel.find({ uploadId: data.portalUpload.uploadId, source: 'portal', validationStatus: { $in: ['Valid', 'Warning'] } }).sort({ rowNumber: 1 }).lean();
     const rows = buildClientConsoleRows(sourceRows);
-    res.json({ ok: true, module: moduleName, category: 'Cat-I', source: `${moduleName === 'sales' ? 'Sales' : 'Purchase'} Portal Upload`, rows, sourceRowCount: sourceRows.length });
+    res.json({ ok: true, module: moduleName, categories: [...new Set(rows.map((row) => row.category))], source: `${moduleName === 'sales' ? 'Sales' : 'Purchase'} Portal Upload`, rows, sourceRowCount: sourceRows.length });
   } catch (error) {
     console.error('Client Console Data load failed', error);
     res.status(500).json({ error: 'Unable to load Client Console Data.' });

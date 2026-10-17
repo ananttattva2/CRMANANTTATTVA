@@ -327,10 +327,11 @@ function originalValue(original = {}, aliases = []) {
 function buildClientConsoleRows(rows = []) {
   const grouped = new Map();
   for (const row of rows) {
-    if (row.plasticCategory !== 'Cat-I') continue;
-    const key = row.entityKey || normalizeEntityName(row.entityName);
-    if (!key) continue;
-    const current = grouped.get(key) || { entityName: text(row.entityName), registerTypes: new Set(), entityTypes: new Set(), recycledValues: new Set(), sourceRowCount: 0 };
+    const entityKey = row.entityKey || normalizeEntityName(row.entityName);
+    const category = text(row.plasticCategory) || 'Not Recorded';
+    if (!entityKey) continue;
+    const key = `${category}|${entityKey}`;
+    const current = grouped.get(key) || { category, entityName: text(row.entityName), registerTypes: new Set(), entityTypes: new Set(), recycledValues: new Set(), sourceRowCount: 0 };
     const registerType = text(row.registrationType) || originalValue(row.original, HEADER_ALIASES.registrationType);
     const entityType = text(row.entityType) || originalValue(row.original, HEADER_ALIASES.entityType);
     const recycled = text(row.recycled) || originalValue(row.original, HEADER_ALIASES.recycled);
@@ -341,12 +342,16 @@ function buildClientConsoleRows(rows = []) {
     grouped.set(key, current);
   }
   return [...grouped.values()].map((item) => ({
+    category: item.category,
     entityName: item.entityName,
     registerType: [...item.registerTypes].join(', '),
     entityType: [...item.entityTypes].join(', '),
     recycled: [...item.recycledValues].join(', '),
     sourceRowCount: item.sourceRowCount
-  })).sort((left, right) => left.entityName.localeCompare(right.entityName));
+  })).sort((left, right) => {
+    const categoryOrder = CATEGORIES.indexOf(left.category) - CATEGORIES.indexOf(right.category);
+    return categoryOrder || left.entityName.localeCompare(right.entityName);
+  });
 }
 
 module.exports = {
