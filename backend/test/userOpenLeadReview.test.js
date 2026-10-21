@@ -114,3 +114,26 @@ test('closed review counts each lead once, uses closure dates and excludes tempo
   assert.equal(filterReviewRows(rows, { from: '2026-10-21', to: '2026-10-21' }).length, 1);
   assert.equal(filterReviewRows(rows, { days: '7' }, Date.parse('2026-10-22T00:00:00Z')).length, 1);
 });
+const fixedNow = Date.parse('2026-10-21T10:00:00+05:30');
+test('open ageing buckets use India calendar days at exact 30/60/90 boundaries', async () => {
+  const { pendingDays, openAgeBucket, summarizeReviewRows, filterReviewRows } = await load();
+  const rows = [0, 29, 30, 59, 60, 89, 90, 120].map((days, index) => ({ id: String(index), ownerKey: 'user', ownerName: 'Gaurav', mode: 'TeleCalling', date: new Date(fixedNow - days * 86400000).toISOString(), note: '', lead: {} }));
+  assert.deepEqual(rows.map(row => pendingDays(row, fixedNow)), [0, 29, 30, 59, 60, 89, 90, 120]);
+  assert.deepEqual(rows.map(row => openAgeBucket(row, fixedNow)), ['0-29', '0-29', '30-59', '30-59', '60-89', '60-89', '90+', '90+']);
+  const [summary] = summarizeReviewRows(rows, fixedNow);
+  assert.deepEqual(summary.ages, { '0-29': 2, '30-59': 2, '60-89': 2, '90+': 2, unknown: 0 });
+  for (const age of ['0-29', '30-59', '60-89', '90+']) assert.equal(filterReviewRows(rows, { age }, fixedNow).length, 2);
+  assert.equal(pendingDays({ date: '2026-10-20T18:29:59Z' }, fixedNow), 1);
+  assert.equal(pendingDays({ date: '2026-10-20T18:30:00Z' }, fixedNow), 0);
+});
+test('ageing excludes temporary/closed leads and keeps unknown dates out of 90+ counts', async () => {
+  const { openAgeBucket, summarizeReviewRows, filterReviewRows } = await load();
+  const base = { ownerKey: 'user', ownerName: 'Gaurav', mode: 'TeleCalling', note: '', lead: {}, date: '2026-01-01' };
+  const rows = [{ ...base, temporary: true }, { ...base, closed: true }, { ...base, date: '' }, { ...base, date: 'invalid' }, { ...base, date: '2027-01-01' }];
+  assert.deepEqual(rows.map(row => openAgeBucket(row, fixedNow)), [null, null, 'unknown', 'unknown', 'unknown']);
+  const [summary] = summarizeReviewRows(rows, fixedNow);
+  assert.equal(summary.ages['90+'], 0);
+  assert.equal(summary.ages.unknown, 3);
+  assert.equal(filterReviewRows(rows, { age: '90+' }, fixedNow).length, 0);
+  assert.equal(filterReviewRows(rows, { age: 'unknown' }, fixedNow).length, 3);
+});

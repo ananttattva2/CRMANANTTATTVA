@@ -93,11 +93,24 @@ export function temporaryReviewRecords(temporaryLeads = []) {
     __temporary: true, notes: lead.followUpRemarks || ''
   }));
 }
+export const OPEN_AGE_BUCKETS = [['0-29', '0–29 Days'], ['30-59', '30–59 Days'], ['60-89', '60–89 Days'], ['90+', '90+ Days']];
+export function pendingDays(row, now = Date.now()) {
+  const start = reviewDate(row.date), end = reviewDate(now);
+  if (!start || !end) return null;
+  const days = Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000);
+  return days >= 0 ? days : null;
+}
+export function openAgeBucket(row, now = Date.now()) {
+  if (row.temporary || row.closed) return null;
+  const days = pendingDays(row, now);
+  return days === null ? 'unknown' : days < 30 ? '0-29' : days < 60 ? '30-59' : days < 90 ? '60-89' : '90+';
+}
 export function filterReviewRows(rows, filters = {}, now = Date.now()) {
   return rows.filter(row => {
     if (filters.user && filters.user !== 'all' && row.ownerKey !== filters.user) return false;
     if (filters.mode && filters.mode !== 'all' && row.mode !== filters.mode) return false;
     if (filters.type === 'lead' && row.temporary || filters.type === 'temp' && !row.temporary) return false;
+    if (filters.age && filters.age !== 'all' && openAgeBucket(row, now) !== filters.age) return false;
     const date = reviewDate(row.date);
     if (filters.from && (!date || date < filters.from)) return false;
     if (filters.to && (!date || date > filters.to)) return false;
@@ -109,12 +122,14 @@ export function filterReviewRows(rows, filters = {}, now = Date.now()) {
     return matchesReviewSearch(row, filters.search);
   });
 }
-export function summarizeReviewRows(rows) {
+export function summarizeReviewRows(rows, now = Date.now()) {
   const users = new Map();
   rows.forEach(row => {
-    if (!users.has(row.ownerKey)) users.set(row.ownerKey, { key: row.ownerKey, name: row.ownerName, open: 0, closed: 0, temporary: 0, total: 0, modes: Object.fromEntries(COMMUNICATION_MODES.map(mode => [mode, 0])) });
+    if (!users.has(row.ownerKey)) users.set(row.ownerKey, { key: row.ownerKey, name: row.ownerName, open: 0, closed: 0, temporary: 0, total: 0, ages: Object.fromEntries([...OPEN_AGE_BUCKETS.map(([key]) => [key, 0]), ['unknown', 0]]), modes: Object.fromEntries(COMMUNICATION_MODES.map(mode => [mode, 0])) });
     const user = users.get(row.ownerKey);
     user.total++;
+    const age = openAgeBucket(row, now);
+    if (age) user.ages[age]++;
     if (row.temporary) user.temporary++;
     else { if (row.closed) user.closed++; else user.open++; user.modes[row.mode]++; }
   });
