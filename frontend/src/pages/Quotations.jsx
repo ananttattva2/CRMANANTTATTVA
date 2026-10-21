@@ -1037,6 +1037,8 @@ export default function Quotations() {
   const navigate = useNavigate();
   const location = useLocation();
   const quotationContext = location.state?.quotationContext || null;
+  const isExplicitAddQuotation = new URLSearchParams(location.search).get('mode') === 'add'
+    || String(location.state?.leadAction || '').trim().toLowerCase() === 'add';
   const [fromPendingApproval, setFromPendingApproval] = useState(Boolean(location.state?.fromPendingApproval));
 
   const selectedLead = useMemo(() => {
@@ -1150,9 +1152,8 @@ export default function Quotations() {
   }, []);
 
   useEffect(() => {
-    const mode = new URLSearchParams(location.search).get('mode');
-    if (mode === 'add') startNew(quotationContext);
-  }, [location.search, quotationContext]);
+    if (isExplicitAddQuotation) startNew(quotationContext);
+  }, [isExplicitAddQuotation, quotationContext]);
 
   useEffect(() => {
     if (
@@ -1217,7 +1218,9 @@ export default function Quotations() {
   }, [adminApprovalFilter, listMode, query, quotationStatusFilter, rowsPerPage, userFilter, validityFilter]);
 
   useEffect(() => {
-    if (!quotationContext || viewMode !== 'form' || editingId || quotation.pricingMode || !quotations.length) return;
+    // Add Quotation is always a new record. Only the explicit Revise action
+    // may rehydrate and update an existing quotation for this lead.
+    if (isExplicitAddQuotation || !quotationContext || viewMode !== 'form' || editingId || quotation.pricingMode || !quotations.length) return;
     const savedQuotation = [...quotations]
       .filter((row) => contextMatchesQuotation(row, quotationContext)
         && quotationBelongsToUser(row, currentUser)
@@ -1240,7 +1243,7 @@ export default function Quotations() {
       status: savedQuotation.status || current.status
     }));
     setEditingId(savedQuotation._id || savedQuotation.id || '');
-  }, [currentUser, editingId, quotation.pricingMode, quotationContext, quotations, viewMode]);
+  }, [currentUser, editingId, isExplicitAddQuotation, quotation.pricingMode, quotationContext, quotations, viewMode]);
 
   useCrmRefresh(() => loadPage({ silent: true }), viewMode === 'list');
 
