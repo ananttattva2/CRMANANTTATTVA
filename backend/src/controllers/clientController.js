@@ -1788,16 +1788,17 @@ exports.updateCpcbOnboarding = async (req, res) => {
   if (!assignedServiceId) return res.status(400).json({ error: 'Assigned service is required' });
   if (clientMasterId && !mongoose.Types.ObjectId.isValid(clientMasterId)) return res.status(400).json({ error: 'Invalid Client Master ID' });
 
-  const scope = await getVisibleUserScope(req.user);
-  const visibility = ownerFilter(scope, 'createdBy', 'adminControls.assignedTo', ['data.importMeta.assignedTo']);
+  // Use the same linked-Lead and legacy-owner access as directory/detail.
+  // Keep service identity separate so its $or cannot replace visibility.$or.
+  const visibility = await clientAccessFilter(req.user);
   let client = clientMasterId
-    ? await Client.findOne({ _id: clientMasterId, ...visibility })
+    ? await Client.findOne(combineAccessFilters({ _id: clientMasterId }, visibility))
     : selectedLead
-      ? await Client.findOne({ selectedLead, ...visibility, $or: [
+      ? await Client.findOne(combineAccessFilters({ selectedLead, $or: [
           { assignedServiceId },
           { 'data.assignedServiceId': assignedServiceId },
           { 'data.selectedLeadSnapshot.assignedServiceId': assignedServiceId }
-        ] })
+        ] }, visibility))
       : null;
 
   if (clientMasterId && !client) return res.status(404).json({ error: 'Client Master record not found' });
