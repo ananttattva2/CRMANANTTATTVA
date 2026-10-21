@@ -97,3 +97,20 @@ test('overall temporary rows include current drafts once, with readable owner an
   assert.equal(rows[0].importedCreatedBy, 'Gaurav');
   assert.equal(rows[0].notes, 'Follow up tomorrow');
 });
+test('closed review counts each lead once, uses closure dates and excludes temporary drafts', async () => {
+  const { leadReviewRows, summarizeReviewRows, filterReviewRows } = await load();
+  const owner = { _id: 'gaurav', name: 'GAURAV CHANDRA', email: 'gaurav@example.com' };
+  const rows = leadReviewRows([
+    lead('closed', { createdAt: '2025-01-01', generatedForUser: owner, closedAt: '2026-10-18T00:00:00Z', serviceSelections: [{ closedAt: '2026-10-19T20:00:00Z' }, { closedAt: '2026-10-21T04:00:00Z' }] }),
+    lead('closed', { generatedForUser: owner }),
+    lead('undated', { generatedForUser: owner, closedByText: 'Manager' })
+  ], [lead('temp', { status: 'DRAFT' })], { mode: 'closed' });
+  assert.equal(rows.length, 2);
+  const [summary] = summarizeReviewRows(rows);
+  assert.equal(summary.closed, 2); assert.equal(summary.open, 0); assert.equal(summary.temporary, 0); assert.equal(summary.total, 2);
+  assert.equal(summary.modes.TeleCalling, 2);
+  assert.equal(rows[0].date, '2026-10-21T04:00:00Z');
+  assert.equal(rows[1].date, '');
+  assert.equal(filterReviewRows(rows, { from: '2026-10-21', to: '2026-10-21' }).length, 1);
+  assert.equal(filterReviewRows(rows, { days: '7' }, Date.parse('2026-10-22T00:00:00Z')).length, 1);
+});

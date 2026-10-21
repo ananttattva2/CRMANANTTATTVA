@@ -1,5 +1,5 @@
 import useTemporaryReviewLeads from '../hooks/useTemporaryReviewLeads';
-import { temporaryReviewRecords } from '../utils/userOpenLeadReview.mjs';
+import { temporaryReviewRecords, closedLeadDate, leadReviewRows, matchesReviewSearch, COMMUNICATION_MODES } from '../utils/userOpenLeadReview.mjs';
 import UserOpenLeads from '../components/leads/UserOpenLeads';
 import useCrmRefresh from '../hooks/useCrmRefresh';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -86,7 +86,7 @@ function servicesForMode(row = {}, mode = 'open') {
 function closedLead(row) {
   return servicesForMode(row, 'closed').length > 0;
 }
-function filterDateFor(row, mode) { return mode === 'closed' ? (row.closedAt || row.updatedAt || dateFor(row)) : dateFor(row); }
+function filterDateFor(row, mode) { return mode === 'closed' ? closedLeadDate(row) : dateFor(row); }
 function monthKey(input) {
   const date = new Date(input || 0);
   return date.getTime() ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}` : '';
@@ -160,7 +160,7 @@ function buildMonthEndReviewRows(leads = [], input = new Date()) {
 }
 
 const PAGE_SIZE = 10;
-function leadOwner(row = {}) { return value(row.importedCreatedBy || row.createdByName || row.createdByEmail); }
+function leadOwner(row = {}) { return value(row.generatedForUser?.name || row.generatedForName || row.generatedForEmail || row.importedCreatedBy || row.createdByName || row.createdBy?.name || row.createdByEmail); }
 function paginationPages(current, total) {
   if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1);
   const pages = new Set([1, total, current - 1, current, current + 1].filter((page) => page > 0 && page <= total));
@@ -180,10 +180,12 @@ export default function PendingLeads({ mode = 'open' }) {
   const [dayFilter, setDayFilter] = useState('all');
   const [userFilter, setUserFilter] = useState('all');
   const [page, setPage] = useState(1);
+  const [searchFilter, setSearchFilter] = useState('');
+  const [communicationFilter, setCommunicationFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const temporary = useTemporaryReviewLeads(mode === 'open');
   const [openTab, setOpenTab] = useState('overall');
-  const currentOpenLeads = useMemo(() => leads.filter(row => servicesForMode(row, 'open').length), [leads]);
+  const currentOpenLeads = useMemo(() => leads.filter(row => servicesForMode(row, mode).length), [leads, mode]);
   const reviewLeads = useMemo(() => mode === 'open' ? [...buildMonthEndReviewRows(leads), ...temporaryReviewRecords(temporary.rows)] : leads, [leads, temporary.rows, mode]);
   const monthOptions = useMemo(() => [...new Set(reviewLeads.map((row) => row.__reviewMonth || monthKey(filterDateFor(row, mode))).filter(Boolean))].sort().reverse(), [reviewLeads, mode]);
   const userOptions = useMemo(() => [...new Set(reviewLeads.map(leadOwner).filter((name) => name !== '-'))].sort((left, right) => left.localeCompare(right)), [reviewLeads]);
@@ -195,6 +197,10 @@ export default function PendingLeads({ mode = 'open' }) {
     const identities = [currentUser?._id, currentUser?.id, currentUser?.crmUserId, currentUser?.email, currentUser?.name].map(normalizeIdentity).filter(Boolean);
     if (!admin && !identities.some((id) => mine.includes(id))) return false;
     if (mode === 'closed' ? !closedLead(row) : !servicesForMode(row, 'open').length) return false;
+    if (mode === 'closed') {
+      if (communicationFilter !== 'all' && leadReviewRows([row])[0].mode !== communicationFilter) return false;
+      if (!matchesReviewSearch(leadReviewRows([row], [], { mode })[0], searchFilter)) return false;
+    }
     const relevantDate = new Date(filterDateFor(row, mode) || 0);
     if (monthFilter !== 'all' && (row.__reviewMonth || monthKey(relevantDate)) !== monthFilter) return false;
     if (userFilter !== 'all' && leadOwner(row) !== userFilter) return false;
@@ -203,11 +209,11 @@ export default function PendingLeads({ mode = 'open' }) {
       if (elapsedDays < 0 || elapsedDays > Number(dayFilter)) return false;
     }
     return true;
-  }), [currentUser, dayFilter, reviewLeads, mode, monthFilter, userFilter, typeFilter]);
+  }), [currentUser, dayFilter, reviewLeads, mode, monthFilter, userFilter, typeFilter, searchFilter, communicationFilter]);
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const paginatedRows = useMemo(() => rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [page, rows]);
 
-  useEffect(() => { setPage(1); }, [monthFilter, dayFilter, userFilter, mode, typeFilter]);
+  useEffect(() => { setPage(1); }, [monthFilter, dayFilter, userFilter, mode, typeFilter, searchFilter, communicationFilter]);
   useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
 
   useCrmRefresh(() => load({ silent: true }));
@@ -236,30 +242,31 @@ export default function PendingLeads({ mode = 'open' }) {
 
   return <DashboardShell currentUser={currentUser}>
     <div className="p-6">
-      {mode === 'open' && <nav aria-label="Open lead views" className="mb-5 flex gap-2 rounded-2xl border border-emerald-100 bg-white p-2 w-fit">{[['overall', 'Overall Open Lead'], ['users', 'User Open Lead']].map(([key, label]) => <button type="button" key={key} aria-pressed={openTab === key} onClick={() => setOpenTab(key)} className={`rounded-xl px-5 py-3 text-sm font-black ${openTab === key ? 'bg-emerald-700 text-white' : 'text-slate-600 hover:bg-emerald-50'}`}>{label}</button>)}</nav>}
-      {mode === 'open' && openTab === 'users' ? <UserOpenLeads leads={currentOpenLeads} temporary={temporary.rows} loading={loading || temporary.loading} error={[error, temporary.error].filter(Boolean).join(' ')} onRefresh={() => { load(); temporary.refresh(); }} onView={view} /> : <>
+      {<nav aria-label={mode === 'closed' ? 'Closed lead views' : 'Open lead views'} className="mb-5 flex gap-2 rounded-2xl border border-emerald-100 bg-white p-2 w-fit">{[['overall', mode === 'closed' ? 'Overall Lead Close' : 'Overall Open Lead'], ['users', mode === 'closed' ? 'User Lead Close' : 'User Open Lead']].map(([key, label]) => <button type="button" key={key} aria-pressed={openTab === key} onClick={() => setOpenTab(key)} className={`rounded-xl px-5 py-3 text-sm font-black ${openTab === key ? 'bg-emerald-700 text-white' : 'text-slate-600 hover:bg-emerald-50'}`}>{label}</button>)}</nav>}
+      {openTab === 'users' ? <UserOpenLeads key={mode} mode={mode} leads={currentOpenLeads} temporary={mode === 'closed' ? [] : temporary.rows} loading={loading || (mode === 'open' && temporary.loading)} error={[error, temporary.error].filter(Boolean).join(' ')} onRefresh={() => { load(); temporary.refresh(); }} onView={view} /> : <>
 
       <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div><p className="text-xs font-black uppercase tracking-[.18em] text-emerald-700">Lead Review</p><h1 className="text-3xl font-black">{mode === 'closed' ? 'Lead Close' : 'Overall Open Lead'}</h1><p className="mt-1 font-bold text-slate-500">{mode === 'closed' ? 'Closed leads visible within your assigned scope.' : 'Lead month-end snapshots and current Temp Lead drafts. Completed monthly snapshots remain available.'}</p></div>
+        <div><p className="text-xs font-black uppercase tracking-[.18em] text-emerald-700">Lead Review</p><h1 className="text-3xl font-black">{mode === 'closed' ? 'Overall Lead Close' : 'Overall Open Lead'}</h1><p className="mt-1 font-bold text-slate-500">{mode === 'closed' ? 'Closed leads visible within your assigned scope.' : 'Lead month-end snapshots and current Temp Lead drafts. Completed monthly snapshots remain available.'}</p></div>
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex h-11 items-center gap-3 rounded-xl border border-emerald-100 bg-emerald-50 px-4 text-emerald-800"><Users className="h-4 w-4" /><div><span className="block text-[9px] font-black uppercase tracking-wider">Total Leads</span><strong className="text-lg leading-none">{rows.length.toLocaleString('en-IN')}</strong></div></div>
           {mode === 'open' && <label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500">Lead Type<select value={typeFilter} onChange={event => setTypeFilter(event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><option value="all">All Leads</option><option value="lead">Lead</option><option value="temp">Temp Lead</option></select></label>}
           <label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500">User<select value={userFilter} onChange={(event) => setUserFilter(event.target.value)} className="h-11 min-w-44 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><option value="all">All Users</option>{userOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
           <label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500">Month<select value={monthFilter} onChange={(event) => setMonthFilter(event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><option value="all">All Months</option>{monthOptions.map((month) => <option key={month} value={month}>{new Date(`${month}-01`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</option>)}</select></label>
           <label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500">Days<select value={dayFilter} onChange={(event) => setDayFilter(event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><option value="all">All Days</option><option value="7">Last 7 Days</option><option value="15">Last 15 Days</option></select></label>
+          {mode === 'closed' && <><label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500">Communication Mode<select value={communicationFilter} onChange={event => setCommunicationFilter(event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold"><option value="all">All Modes</option>{COMMUNICATION_MODES.map(item => <option key={item}>{item}</option>)}</select></label><label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500">Search company, lead or note<input type="search" value={searchFilter} onChange={event => setSearchFilter(event.target.value)} placeholder="Search notes, company, lead…" className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold" /></label></>}
           <button onClick={() => { load(); temporary.refresh(); }} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 font-black text-white"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Refresh</button>
         </div>
       </div>
       {(error || temporary.error) && <div role="alert" className="mb-4 rounded-xl bg-rose-50 p-4 font-bold text-rose-700">{[error, temporary.error].filter(Boolean).join(' ')}</div>}
       <div className="overflow-auto rounded-2xl border border-slate-200 bg-white shadow-lg shadow-slate-900/5">
         <table className="w-full min-w-[1450px] text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['Sr. No.', mode === 'closed' ? 'Closed Date' : 'Lead Date', mode === 'closed' ? 'Lead Status' : 'Pending For', 'Lead Generated By', 'Company', ...(mode === 'open' ? ['Type'] : []), 'Services', 'Service Added By', 'Financial Years', 'Quotation Basic Amount (INR)'].map((item) => <th className="px-4 py-4" key={item}>{item}</th>)}</tr></thead>
+          <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['Sr. No.', mode === 'closed' ? 'Closed Date' : 'Lead Date', mode === 'closed' ? 'Lead Status' : 'Pending For', 'Lead Generated By', 'Company', ...(mode === 'open' ? ['Type'] : []), 'Services', 'Service Added By', 'Financial Years', 'Quotation Basic Amount (INR)', ...(mode === 'closed' ? ['Note'] : [])].map((item) => <th className="px-4 py-4" key={item}>{item}</th>)}</tr></thead>
           <tbody>{paginatedRows.map((row, index) => {
             const matchingServices = servicesForMode(row, mode);
             const quotation = row.__temporary ? null : [...quotations].filter((item) => quotationMatchesLead(item, row)).sort((left, right) => new Date(right.updatedAt || right.createdAt || 0) - new Date(left.updatedAt || left.createdAt || 0))[0];
             const contributors = [...new Set(matchingServices.map(({ service }) => service.createdByName || service.createdByEmail || row.importedCreatedBy || row.createdByName || row.createdByEmail).filter(Boolean))];
-            return <tr className="border-t border-slate-100 hover:bg-emerald-50/30" key={row.__reviewRowKey || idFor(row)}><td className="px-4 py-4 font-black">{(page - 1) * PAGE_SIZE + index + 1}</td><td className="px-4 py-4">{value(filterDateFor(row, mode)).slice(0, 10)}</td><td className="px-4 py-4"><span className={`rounded-full px-3 py-1 font-black ${mode === 'closed' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{mode === 'closed' ? 'Closed' : pendingFor(row)}</span></td><td className="px-4 py-4">{leadOwner(row)}</td><td className="px-4 py-4"><button type="button" onClick={() => view(row)} className="text-left font-black text-slate-950 underline decoration-emerald-300 underline-offset-4 hover:text-emerald-700">{value(row.company)}</button></td>{mode === 'open' && <td className="px-4 py-4"><span className={`whitespace-nowrap rounded-full px-2 py-1 text-xs font-bold ${row.__temporary ? 'bg-violet-50 text-violet-700' : 'bg-amber-50 text-amber-700'}`}>{row.__temporary ? 'Temp Lead' : 'Lead'}</span></td>}<td className="px-4 py-4">{value([...new Set(matchingServices.map(({ service }) => service.servicesOffered).filter(Boolean))].join(', '))}</td><td className="px-4 py-4"><div className="flex flex-wrap gap-1.5">{contributors.length ? contributors.map((name) => <span key={name} className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-black text-sky-700">{name}</span>) : '-'}</div></td><td className="px-4 py-4">{value([...new Set(matchingServices.map(({ service }) => service.firstAnnualReturnYearApplicable).filter(Boolean))].join(', '))}</td><td className="px-4 py-4 font-black text-emerald-700">{quotation ? formatInr(quotationBasicAmount(quotation)) : '-'}</td></tr>;
-          })}{!rows.length && <tr><td colSpan={mode === 'open' ? 10 : 9} className="p-12 text-center font-black text-slate-400">{(loading || temporary.loading) ? 'Loading leads...' : mode === 'closed' ? 'No closed leads found.' : 'No open leads found in the available month-end snapshots.'}</td></tr>}</tbody>
+            return <tr className="border-t border-slate-100 hover:bg-emerald-50/30" key={row.__reviewRowKey || idFor(row)}><td className="px-4 py-4 font-black">{(page - 1) * PAGE_SIZE + index + 1}</td><td className="px-4 py-4">{value(filterDateFor(row, mode)).slice(0, 10)}</td><td className="px-4 py-4"><span className={`rounded-full px-3 py-1 font-black ${mode === 'closed' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{mode === 'closed' ? 'Closed' : pendingFor(row)}</span></td><td className="px-4 py-4">{leadOwner(row)}</td><td className="px-4 py-4"><button type="button" onClick={() => view(row)} className="text-left font-black text-slate-950 underline decoration-emerald-300 underline-offset-4 hover:text-emerald-700">{value(row.company)}</button></td>{mode === 'open' && <td className="px-4 py-4"><span className={`whitespace-nowrap rounded-full px-2 py-1 text-xs font-bold ${row.__temporary ? 'bg-violet-50 text-violet-700' : 'bg-amber-50 text-amber-700'}`}>{row.__temporary ? 'Temp Lead' : 'Lead'}</span></td>}<td className="px-4 py-4">{value([...new Set(matchingServices.map(({ service }) => service.servicesOffered).filter(Boolean))].join(', '))}</td><td className="px-4 py-4"><div className="flex flex-wrap gap-1.5">{contributors.length ? contributors.map((name) => <span key={name} className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-black text-sky-700">{name}</span>) : '-'}</div></td><td className="px-4 py-4">{value([...new Set(matchingServices.map(({ service }) => service.firstAnnualReturnYearApplicable).filter(Boolean))].join(', '))}</td><td className="px-4 py-4 font-black text-emerald-700">{quotation ? formatInr(quotationBasicAmount(quotation)) : '-'}</td>{mode === 'closed' && <td className="min-w-80 whitespace-pre-wrap px-4 py-4">{[row.communicationModeNote, row.notes].filter(Boolean).join('\n') || 'No note added'}</td>}</tr>;
+          })}{!rows.length && <tr><td colSpan={10} className="p-12 text-center font-black text-slate-400">{(loading || temporary.loading) ? 'Loading leads...' : mode === 'closed' ? 'No closed leads found.' : 'No open leads found in the available month-end snapshots.'}</td></tr>}</tbody>
         </table>
         {!loading && rows.length > 0 && <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-xs font-bold text-slate-500"><span>Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, rows.length)} of {rows.length} leads</span><div className="flex items-center gap-1"><button type="button" aria-label="Previous page" disabled={page === 1} onClick={() => setPage((current) => current - 1)} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>{paginationPages(page, totalPages).map((item, index) => item === 'ellipsis' ? <span key={`ellipsis-${index}`} className="px-2">…</span> : <button type="button" key={item} onClick={() => setPage(item)} className={`h-9 min-w-9 rounded-lg px-2 ${item === page ? 'bg-emerald-700 text-white' : 'hover:bg-slate-100'}`}>{item}</button>)}<button type="button" aria-label="Next page" disabled={page === totalPages} onClick={() => setPage((current) => current + 1)} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button></div><span>10 per page</span></footer>}
       </div>

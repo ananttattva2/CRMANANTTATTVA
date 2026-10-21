@@ -6,7 +6,12 @@ export function communicationMode(value) {
 }
 // Only account profiles establish aliases. Never union identity fields from a
 // lead: its owner, editor and legacy importer can be three different people.
-export function leadReviewRows(leads = [], temporaryLeads = []) {
+export function closedLeadDate(lead = {}) {
+  const dates = [lead.closedAt, ...(lead.serviceSelections || []).map(service => service.closedAt), ...(lead.assignments || []).map(assignment => assignment.closedAt)]
+    .filter(value => value && Number.isFinite(new Date(value).getTime()));
+  return dates.sort((a, b) => new Date(b) - new Date(a))[0] || '';
+}
+export function leadReviewRows(leads = [], temporaryLeads = [], { mode = 'open' } = {}) {
   const profiles = new Map();
   const aliases = new Map();
   const profileId = profile => identity(entityId(profile));
@@ -49,15 +54,15 @@ export function leadReviewRows(leads = [], temporaryLeads = []) {
   const seen = new Set();
   const rows = [];
   const add = (lead, temporary) => {
-    if (temporary && lead.status !== 'DRAFT') return;
+    if (temporary && (mode === 'closed' || lead.status !== 'DRAFT')) return;
     const id = `${temporary ? 'temp' : 'lead'}:${lead._id || lead.id || lead.leadCode || lead.tempLeadCode}`;
     if (seen.has(id)) return;
     seen.add(id);
     const owner = ownerFor(lead, temporary);
-    rows.push({ id, lead, temporary, ownerKey: owner.key, ownerName: owner.name,
+    rows.push({ id, lead, temporary, closed: mode === 'closed', ownerKey: owner.key, ownerName: owner.name,
       company: temporary ? lead.clientName : lead.company,
       code: temporary ? lead.tempLeadCode : lead.leadCode || lead.sourceLeadId,
-      date: lead.createdAt || lead.importedCreatedAt || lead.leadDate || '',
+      date: mode === 'closed' ? closedLeadDate(lead) : lead.createdAt || lead.importedCreatedAt || lead.leadDate || '',
       mode: temporary ? 'Other / Not specified' : communicationMode(lead.communicationMode),
       note: temporary ? lead.followUpRemarks || '' : [lead.communicationModeNote, lead.notes].filter(Boolean).filter((note, index, notes) => notes.indexOf(note) === index).join('\n')
     });
@@ -78,7 +83,7 @@ export function matchesReviewSearch(row, query) {
   // non-breaking spaces and punctuation such as CTE/CTO or Importer + Seller.
   const normalize = value => String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
   const tokens = normalize(query).split(/\s+/).filter(Boolean);
-  const text = [row.company, row.code, row.ownerName, row.mode, row.note, row.lead?.status].map(normalize).join(' ');
+  const text = [row.company, row.code, row.ownerName, row.mode, row.note, row.closed ? 'Closed' : row.lead?.status].map(normalize).join(' ');
   return tokens.every(token => text.includes(token));
 }
 export function temporaryReviewRecords(temporaryLeads = []) {
@@ -107,11 +112,11 @@ export function filterReviewRows(rows, filters = {}, now = Date.now()) {
 export function summarizeReviewRows(rows) {
   const users = new Map();
   rows.forEach(row => {
-    if (!users.has(row.ownerKey)) users.set(row.ownerKey, { key: row.ownerKey, name: row.ownerName, open: 0, temporary: 0, total: 0, modes: Object.fromEntries(COMMUNICATION_MODES.map(mode => [mode, 0])) });
+    if (!users.has(row.ownerKey)) users.set(row.ownerKey, { key: row.ownerKey, name: row.ownerName, open: 0, closed: 0, temporary: 0, total: 0, modes: Object.fromEntries(COMMUNICATION_MODES.map(mode => [mode, 0])) });
     const user = users.get(row.ownerKey);
     user.total++;
     if (row.temporary) user.temporary++;
-    else { user.open++; user.modes[row.mode]++; }
+    else { if (row.closed) user.closed++; else user.open++; user.modes[row.mode]++; }
   });
   return [...users.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
 }

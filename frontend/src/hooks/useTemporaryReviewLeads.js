@@ -8,7 +8,7 @@ export default function useTemporaryReviewLeads(enabled = true) {
   const [error, setError] = useState('');
   const request = useRef(0);
   async function refresh() {
-    if (!enabled) return;
+    if (!enabled) { setLoading(false); return; }
     const version = ++request.current;
     setLoading(true); setError('');
     try {
