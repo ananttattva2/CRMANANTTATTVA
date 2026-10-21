@@ -21,6 +21,7 @@ const { normalizeCompanyIdentity } = require('../services/crmRecordPersistence')
 const { normalizeFinancialYear, resolveAnnualReturnPO } = require('../services/annualReturnPoResolver');
 const { syncStaffOnboardingCpcbStatus } = require('../services/staffOnboardingWorkflow');
 const { syncClientReviewReminderState } = require('../services/clientReviewReminderLifecycle');
+const { clientMasterSourceRecordFilter } = require('../services/clientMasterVisibility');
 const { sendMail } = require('../utils/mailer');
 const Notification = require('../models/Notification');
 const {
@@ -579,8 +580,8 @@ function validateClientMasterIdentity(client, { assignedServiceId = '', selected
   return '';
 }
 
-function mergeAssignedServiceCpcbData(existingData = {}, incomingData = {}) {
-  return {
+function mergeAssignedServiceCpcbData(existingData = {}, incomingData = {}, assignedServiceId = '') {
+  const merged = {
     ...incomingData,
     cpcbDataByAssignedServiceId: {
       ...(isPlainObject(existingData.cpcbDataByAssignedServiceId) ? existingData.cpcbDataByAssignedServiceId : {}),
@@ -591,6 +592,18 @@ function mergeAssignedServiceCpcbData(existingData = {}, incomingData = {}) {
       ...(isPlainObject(incomingData.serviceDetailsByAssignedServiceId) ? incomingData.serviceDetailsByAssignedServiceId : {})
     }
   };
+  const serviceId = String(assignedServiceId || incomingData.assignedServiceId || incomingData.selectedLeadSnapshot?.assignedServiceId || '').trim();
+  if (serviceId && isPlainObject(incomingData.cpcb)) {
+    const existingScope = isPlainObject(merged.cpcbDataByAssignedServiceId[serviceId])
+      ? merged.cpcbDataByAssignedServiceId[serviceId] : {};
+    merged.cpcbDataByAssignedServiceId[serviceId] = {
+      ...existingScope,
+      assignedServiceId: serviceId,
+      cpcb: { ...(isPlainObject(existingScope.cpcb) ? existingScope.cpcb : {}), ...incomingData.cpcb },
+      updatedAt: new Date().toISOString()
+    };
+  }
+  return merged;
 }
 
 function readSelectedLeadId(value) {
@@ -768,7 +781,7 @@ async function upsertAnnualReturnRecord(client, annualYear, filing, requestBody 
   return canonical;
 }
 
-function buildClientApprovalPayload(body = {}, status, userId, remarks = '') {
+function buildClientApprovalPayload(body = {}, status, userId, remarks = '', options = {}) {
   const existingPayload = isPlainObject(body.payload) ? body.payload : {};
   const payloadData = isPlainObject(existingPayload.data) ? existingPayload.data : {};
   const payloadImportMeta = isPlainObject(payloadData.importMeta) ? payloadData.importMeta : {};
@@ -799,7 +812,9 @@ function buildClientApprovalPayload(body = {}, status, userId, remarks = '') {
         assignedTo: fullData.importMeta?.assignedTo || assignedToLabel || '',
         uniqueId,
         sourceClientId: fullData.importMeta?.sourceClientId || sourceClientId,
-        approvalOverride: true
+        // Only fallback approval-only documents are overrides. Marking a real
+        // source Client Master hides it from the directory and dashboards.
+        approvalOverride: options.approvalOverride !== false
       },
       approvalMeta: {
         status,
@@ -808,6 +823,22 @@ function buildClientApprovalPayload(body = {}, status, userId, remarks = '') {
         actionAt: new Date(),
         remarks
       }
+    }
+  };
+}
+
+function applyApprovalDecisionToClientData(existingData = {}, status, source, userId, remarks = '') {
+  // The PendingApproval payload is a historical submission snapshot. Never
+  // merge it back over the live Client Master because the user may have saved
+  // newer or more complete data after the approval request was created.
+  return {
+    ...(isPlainObject(existingData) ? existingData : {}),
+    approvalMeta: {
+      status,
+      source: String(source || 'crm').trim() || 'crm',
+      actionBy: userId,
+      actionAt: new Date(),
+      remarks
     }
   };
 }
@@ -904,21 +935,17 @@ async function applyClientApprovalStatus(record, status, userId, remarks = '') {
     payload: record.payload?.payload,
     source: record.source
   };
-  const approvalFields = buildClientApprovalPayload(approvalBody, status, userId, remarks);
+  const approvalFields = buildClientApprovalPayload(
+    approvalBody,
+    status,
+    userId,
+    remarks,
+    { approvalOverride: !client }
+  );
 
   if (client) {
     client.adminControls = { ...(client.adminControls || {}), ...approvalFields.adminControls };
-    client.data = {
-      ...(client.data || {}),
-      ...(approvalFields.data || {}),
-      approvalMeta: {
-        status,
-        source: String(record.source || 'crm').trim() || 'crm',
-        actionBy: userId,
-        actionAt: new Date(),
-        remarks
-      }
-    };
+    client.data = applyApprovalDecisionToClientData(client.data, status, record.source, userId, remarks);
     client.markModified('data');
     await client.save();
     await syncClientReviewReminderState({ client, status });
@@ -1031,7 +1058,9 @@ async function loadStoredPendingApprovals() {
       approvalStatus: { $in: ['PENDING', 'PARTIALLY_APPROVED', 'REVISION_REQUIRED'] }
     })
       .populate('actionBy', 'name email')
-      .sort({ createdAt: -1 })
+      // Revisions update the existing index row, so updatedAt represents the
+      // latest approval request while createdAt remains the original request.
+      .sort({ updatedAt: -1, createdAt: -1 })
       .limit(500)
       .lean(),
     PendingApproval.find({
@@ -1104,7 +1133,7 @@ exports.listClients = async (req, res) => {
     ? await getAdminCreatedLeadReferences()
     : null;
   const baseFilter = combineAccessFilters(
-    { 'data.importMeta.approvalOverride': { $ne: true } },
+    clientMasterSourceRecordFilter(),
     accessFilter,
     testLeadReferences ? dashboardClientExclusionFilter(testLeadReferences) : {}
   );
@@ -1381,12 +1410,12 @@ function escapeSearchRegex(value = '') {
 
 function clientDiscoveryProjection() {
   return [
-    '_id', 'selectedLead', 'assignedServiceId', 'workflowStatus',
+    '_id', 'selectedLead', 'assignedServiceId', 'workflowStatus', 'adminControls.approvalStatus',
     'data.selectedLead', 'data.assignedServiceId', 'data.selectedLeadSnapshot',
     'data.basic.clientLegalName', 'data.basic.tradeName', 'data.basic.piboCategory',
     'data.basic.eprCategory', 'data.basic.servicesOffered', 'data.basic.plantUnit',
     'data.basic.companyIndustry', 'data.companyOverview.companyName',
-    'data.importMeta.companyName', 'data.importMeta.leadNumber', 'data.importMeta.uniqueId', 'data.cpcbOnboarding',
+    'data.importMeta.companyName', 'data.importMeta.leadNumber', 'data.importMeta.uniqueId', 'data.cpcbOnboarding', 'data.approvalMeta.status',
     'companyIdentity', 'companyName', 'clientLegalName', 'tradeName', 'piboCategory',
     'eprCategory', 'servicesOffered', 'plantUnit', 'industryType', 'applicantType'
   ].join(' ');
@@ -1529,20 +1558,94 @@ function clientMasterReviewServiceIdentity(item = {}) {
     item.eprCategory,
     item.applicantType,
     item.piboCategory,
-    normalizeOffering(item.servicesOffered),
-    item.plantUnit
+    normalizeOffering(item.servicesOffered)
   ].map(normalize).join(':');
   return identity.replace(/:/g, '') ? identity : `record:${item.clientMasterId}`;
+}
+
+function clientMasterReviewPlantIdentity(item = {}) {
+  return String(item.plantUnit || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function clientMasterReviewServiceScore(item = {}, preferredClientMasterId = '') {
+  const populated = [
+    item.assignedServiceId,
+    item.selectedLead,
+    item.leadCode,
+    item.companyName,
+    item.eprCategory,
+    item.applicantType,
+    item.piboCategory,
+    item.servicesOffered
+  ].filter(value => String(value || '').trim()).length;
+  const status = String(item.approvalStatus || '').trim().toUpperCase();
+  const statusScore = status === 'PENDING' ? 4
+    : status === 'PARTIALLY_APPROVED' ? 3
+      : status === 'APPROVED' ? 2
+        : status === 'REJECTED' ? 1 : 0;
+  return (populated * 10)
+    + (clientMasterReviewPlantIdentity(item) ? 30 : 0)
+    + (String(item.workflowStatus || '').trim().toLowerCase() === 'submitted' ? 5 : 0)
+    + statusScore
+    + (String(item.clientMasterId) === String(preferredClientMasterId) ? 0.5 : 0);
+}
+
+function mergeClientMasterReviewServices(primary = {}, secondary = {}) {
+  const merged = { ...primary };
+  Object.entries(secondary).forEach(([key, value]) => {
+    const current = merged[key];
+    const currentMissing = current === undefined || current === null || String(current).trim() === '';
+    if (currentMissing && value !== undefined && value !== null && String(value).trim() !== '') merged[key] = value;
+  });
+  return merged;
+}
+
+function preferredClientMasterReviewService(records = [], preferredClientMasterId = '') {
+  return records.reduce((selected, item) => {
+    if (!selected) return item;
+    const selectedScore = clientMasterReviewServiceScore(selected, preferredClientMasterId);
+    const itemScore = clientMasterReviewServiceScore(item, preferredClientMasterId);
+    const primary = itemScore > selectedScore ? item : selected;
+    const secondary = primary === item ? selected : item;
+    return mergeClientMasterReviewServices(primary, secondary);
+  }, null);
 }
 
 function uniqueClientMasterReviewServices(records = [], preferredClientMasterId = '') {
   const byService = new Map();
   records.forEach((item) => {
     const key = clientMasterReviewServiceIdentity(item);
-    const existing = byService.get(key);
-    if (!existing || String(item.clientMasterId) === String(preferredClientMasterId)) byService.set(key, item);
+    const group = byService.get(key) || [];
+    group.push(item);
+    byService.set(key, group);
   });
-  return [...byService.values()];
+  const merged = [];
+  byService.forEach((group) => {
+    const byPlant = new Map();
+    const withoutPlant = [];
+    group.forEach((item) => {
+      const plant = clientMasterReviewPlantIdentity(item);
+      if (!plant) withoutPlant.push(item);
+      else {
+        const plantGroup = byPlant.get(plant) || [];
+        plantGroup.push(item);
+        byPlant.set(plant, plantGroup);
+      }
+    });
+
+    // A legacy/incomplete row commonly has no plant unit. It is safe to merge it
+    // when the same logical service has exactly one concrete unit. If multiple
+    // units exist, keep the ambiguous row separate instead of joining Unit 1 and 2.
+    if (byPlant.size === 1) {
+      const onlyPlant = [...byPlant.keys()][0];
+      byPlant.set(onlyPlant, [...byPlant.get(onlyPlant), ...withoutPlant]);
+    } else if (withoutPlant.length) {
+      byPlant.set('', withoutPlant);
+    }
+
+    byPlant.forEach(items => merged.push(preferredClientMasterReviewService(items, preferredClientMasterId)));
+  });
+  return merged.filter(Boolean);
 }
 
 exports.listClientMasterServices = async (req, res, options = {}) => {
@@ -1594,6 +1697,7 @@ exports.listClientMasterServices = async (req, res, options = {}) => {
   const records = relatedFilters.length
     ? await Client.collection.find(combineAccessFilters({ $or: relatedFilters }, clientVisibility), { projection: {
         _id: 1, selectedLead: 1, assignedServiceId: 1, workflowStatus: 1,
+        'adminControls.approvalStatus': 1,
         'data.selectedLead': 1, 'data.assignedServiceId': 1, 'data.selectedLeadSnapshot': 1,
         'data.basic.clientLegalName': 1, 'data.basic.tradeName': 1, 'data.basic.piboCategory': 1,
         'data.basic.eprCategory': 1, 'data.basic.servicesOffered': 1, 'data.basic.plantUnit': 1,
@@ -1601,7 +1705,7 @@ exports.listClientMasterServices = async (req, res, options = {}) => {
         'data.cpcb.ceprUserId': 1, 'data.cpcb.ceprPassword': 1,
         'data.cpcbDataByAssignedServiceId': 1, 'data.serviceDetailsByAssignedServiceId.cpcb': 1,
         'data.importMeta.companyName': 1, 'data.importMeta.leadNumber': 1, 'data.importMeta.uniqueId': 1,
-        'data.cpcbOnboarding': 1,
+        'data.cpcbOnboarding': 1, 'data.approvalMeta.status': 1,
         companyIdentity: 1, companyName: 1, clientLegalName: 1, tradeName: 1,
         piboCategory: 1, eprCategory: 1, servicesOffered: 1, plantUnit: 1,
         industryType: 1, applicantType: 1
@@ -1781,7 +1885,7 @@ exports.listPendingApprovals = async (req, res) => {
   const liveQuotationsPromise = isAdministrativeReviewer
     ? Quotation.find({ 'managementApproval.status': 'PENDING', status: { $in: ['draft', 'submitted', 'sent', 'admin_approved'] } })
         .populate('createdBy', 'name email')
-        .sort({ createdAt: -1 })
+        .sort({ 'managementApproval.requestedAt': -1, createdAt: -1 })
         .limit(500)
         .lean()
         .catch((error) => {
@@ -1790,7 +1894,10 @@ exports.listPendingApprovals = async (req, res) => {
         })
     : Promise.resolve([]);
   const [storedFallback, liveQuotations] = await Promise.all([storedApprovalsPromise, liveQuotationsPromise]);
-  const liveQuotationRows = liveQuotations.map((quotation) => mapQuotationPendingApprovalRow(quotation, 'CREATE'));
+  const liveQuotationRows = liveQuotations.map((quotation) => mapQuotationPendingApprovalRow(
+    quotation,
+    Array.isArray(quotation.revisionHistory) && quotation.revisionHistory.length ? 'UPDATE' : 'CREATE'
+  ));
 
   const storedQuotationIds = new Set(storedFallback.pendingQuotations.map((row) => String(
     row.quotationId || row.payload?.quotationId || row.sourceClientId || row.id || row._id || ''
@@ -1885,7 +1992,7 @@ exports.createClient = async (req, res) => {
   client.selectedLead = selectedLead;
   client.assignedServiceId = assignedServiceId;
   client.adminControls = adminControls;
-  client.data = existingClient ? mergeAssignedServiceCpcbData(existingClient.data, data) : data;
+  client.data = existingClient ? mergeAssignedServiceCpcbData(existingClient.data, data, assignedServiceId) : data;
   client.workflowStatus = workflowStatus;
   client.createdBy = existingClient?.createdBy || req.user?._id;
   if (transition.becameSubmitted) applyClientSubmissionMetadata(client, req.user?._id);
@@ -2041,7 +2148,7 @@ exports.updateClient = async (req, res) => {
   const safeData = readCpcbOnboarding(resolvedExistingData).registered === false
     ? preserveRestrictedCpcbSections(existingData, data)
     : data;
-  const mergedData = mergeAssignedServiceCpcbData(existingData, safeData);
+  const mergedData = mergeAssignedServiceCpcbData(existingData, safeData, effectiveAssignedServiceId);
 
   if (transition.becameSubmitted) {
     const submittedAt = new Date();
@@ -2327,6 +2434,9 @@ exports.updateClientApproval = async (req, res) => {
   const source = String(req.body.source || approvalRecord?.source || 'crm').trim() || 'crm';
   const sourceClientId = String(req.body.sourceClientId || req.params.id || approvalRecord?.sourceClientId || '').trim();
   const rawApprovalPayload = req.body.payload || approvalRecord?.payload?.payload || null;
+  const client = mongoose.Types.ObjectId.isValid(req.params.id)
+    ? await Client.findById(req.params.id)
+    : null;
   const shouldBuildApprovalPayload = isPlainObject(rawApprovalPayload)
     || isPlainObject(req.body.data)
     || isPlainObject(req.body.adminControls);
@@ -2337,11 +2447,7 @@ exports.updateClientApproval = async (req, res) => {
         sourceClientId,
         uniqueId: req.body.uniqueId || approvalRecord?.uniqueId || '',
         payload: rawApprovalPayload || req.body.payload || {}
-      }, status, req.user?._id, remarks)
-    : null;
-
-  const client = mongoose.Types.ObjectId.isValid(req.params.id)
-    ? await Client.findById(req.params.id)
+      }, status, req.user?._id, remarks, { approvalOverride: !client })
     : null;
 
   if (client && status === 'APPROVED') {
@@ -2416,17 +2522,13 @@ exports.updateClientApproval = async (req, res) => {
     ? { ...(client.adminControls || {}), ...approvalFields.adminControls }
     : { ...(client.adminControls || {}), approvalStatus: status };
 
-  client.data = {
-    ...(client.data || {}),
-    ...(approvalFields?.data || {}),
-    approvalMeta: {
-      status,
-      source,
-      actionBy: req.user?._id,
-      actionAt: new Date(),
-      remarks
-    }
-  };
+  client.data = applyApprovalDecisionToClientData(
+    client.data,
+    status,
+    source,
+    req.user?._id,
+    remarks
+  );
 
   client.markModified('data');
   await client.save();
@@ -3309,6 +3411,7 @@ exports.upsertClientServiceAllocations = async (req, res) => {
 
 exports.__test = {
   buildClientApprovalPayload,
+  applyApprovalDecisionToClientData,
   applyClientSubmissionMetadata,
   getClientWorkflowTransition,
   mergeAssignedServiceCpcbData,
@@ -3321,5 +3424,7 @@ exports.__test = {
   readRequestedClientId,
   validateClientMasterIdentity,
   normalizeClientMaster,
-  resolveClientMasterData
+  resolveClientMasterData,
+  clientMasterReviewServiceIdentity,
+  uniqueClientMasterReviewServices
 };

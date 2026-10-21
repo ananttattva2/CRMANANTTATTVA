@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   PURCHASE_CHECKLIST_PARTICULARS, normalizeEntityName, normalizeMaterial, normalizePurchaseRows, describePurchaseFinancialYearMismatch,
-  reconcilePurchaseRows, parseDate, parseNumber, defaultChecklist, purchaseReadiness, calculatePurchaseStatus
+  reconcilePurchaseRows, parseDate, parseNumber, defaultChecklist, purchaseReadiness, calculatePurchaseStatus, buildClientConsoleRows
 } = require('../src/services/purchaseDataService');
 
 const FY = '2025-26';
@@ -106,6 +106,7 @@ test('purchase portal procurement-details export maps its shortened headers', ()
     'Sr. No.': '1',
     'Register Type': 'UnRegistered',
     'Entity Type': 'Brand Owner',
+    Recycled: 'Yes',
     'Entity Name': 'COLMAN POLYCHEM LLP',
     ' State': 'Gujarat',
     'Plastic Type': 'Others',
@@ -119,6 +120,8 @@ test('purchase portal procurement-details export maps its shortened headers', ()
   }], 'portal');
   assert.equal(result.invalidRowCount, 0);
   assert.equal(result.acceptedRows[0].registrationType, 'Unregistered');
+  assert.equal(result.acceptedRows[0].entityType, 'Brand Owner');
+  assert.equal(result.acceptedRows[0].recycled, 'Yes');
   assert.equal(result.acceptedRows[0].materialType, 'Others');
   assert.equal(result.acceptedRows[0].portalReferenceNumber, 'CPL_25-26_1827');
   assert.equal(result.acceptedRows[0].gstin, '24AARFC6352J1Z5');
@@ -150,6 +153,17 @@ test('registered and unregistered rows remain separate', () => {
   const result = parsed([baseRow(), baseRow({ 'Name of Entity': 'Loose Supplier', GSTIN: '', 'Registration Type': 'Unregistered', 'Invoice Number': 'INV-2' })], 'base');
   const summary = reconcilePurchaseRows(result.acceptedRows, []); assert.equal(summary.entitySummary.Registered.length, 1); assert.equal(summary.entitySummary.Unregistered.length, 1);
 });
+test('client console groups repeated entity names once per available plastic category', () => {
+  const input = parsed([
+    portalRow({ 'Entity Type': 'Recycler', Recycled: 'Yes' }),
+    portalRow({ 'Name of Entity': 'ABC RECYCLERS PVT. LTD.', 'Portal Reference Number': 'PR-2', 'Entity Type': 'Recycler', Recycled: 'Yes', 'Plastic Material Type': 'HDPE' }),
+    portalRow({ 'Name of Entity': 'Other Entity', 'Portal Reference Number': 'PR-3', 'Category of Plastic': 'Cat-II', 'Entity Type': 'Producer', Recycled: 'No' })
+  ], 'portal');
+  assert.deepEqual(buildClientConsoleRows(input.acceptedRows), [
+    { category: 'Cat-I', entityName: 'ABC Recyclers Pvt Ltd', registerType: 'Registered', entityType: 'Recycler', recycled: 'Yes', sourceRowCount: 2 },
+    { category: 'Cat-II', entityName: 'Other Entity', registerType: 'Registered', entityType: 'Producer', recycled: 'No', sourceRowCount: 1 }
+  ]);
+});
 test('matched uploads reconcile by GSTIN, category and normalized material', () => {
   const summary = reconcilePurchaseRows(parsed([baseRow()], 'base').acceptedRows, parsed([portalRow()], 'portal').acceptedRows);
   assert.equal(summary.totals.result, 'Matched'); assert.equal(summary.blockingIssueCount, 0); assert.equal(summary.matchingEntities, 1);
@@ -160,7 +174,7 @@ test('quantity inside tolerance is matched', () => { const summary = reconcilePu
 test('short upload becomes a warning issue', () => { const summary = reconcilePurchaseRows(parsed([baseRow()], 'base').acceptedRows, parsed([portalRow({ 'Total Plastic Qty (Tons)': 9 })], 'portal').acceptedRows); assert.equal(summary.totals.result, 'Short Upload'); assert.equal(summary.warningIssueCount, 1); });
 test('GST difference is detected even when quantity matches', () => { const summary = reconcilePurchaseRows(parsed([baseRow()], 'base').acceptedRows, parsed([portalRow({ 'GST Paid': 1700 })], 'portal').acceptedRows); assert.equal(summary.totals.result, 'GST Mismatch'); });
 test('normal path is not ready until tracker, proof and both imports exist', () => { const value = { checklist: defaultChecklist() }; assert.equal(purchaseReadiness(value).ready, false); assert.match(purchaseReadiness(value).errors.join(' '), /Upload Complete/); });
-test('Nil Upload path requires only Client Approval on data', () => { const checklist = defaultChecklist().map((row) => row.particular === 'Nil Upload' ? { ...row, yesNo: 'Yes' } : row); const readiness = purchaseReadiness({ checklist }); assert.equal(readiness.ready, false); assert.equal(readiness.nilUpload, true); assert.deepEqual(readiness.errors, ['Client Approval on data: status must be Yes.']); });
+test('Nil Upload path requires Client Approval status, date and proof', () => { const checklist = defaultChecklist().map((row) => row.particular === 'Nil Upload' ? { ...row, yesNo: 'Yes' } : row); const readiness = purchaseReadiness({ checklist }); assert.equal(readiness.ready, false); assert.equal(readiness.nilUpload, true); assert.deepEqual(readiness.errors, ['Client Approval on data: status must be Yes.', 'Client Approval on data: date is required.', 'Client Approval on data: proof is required.']); });
 test('approved Nil Upload bypasses other tracker rows, evidence and both Excel files', () => { const checklist = defaultChecklist().map((row) => row.particular === 'Nil Upload' ? { ...row, yesNo: 'Yes' } : row.particular === 'Client Approval on data' ? { ...row, yesNo: 'Yes', date: '2025-04-10', files: [{ url: 'https://x.test/proof.pdf' }] } : row); assert.equal(purchaseReadiness({ checklist }).ready, true); });
 test('fully approved status wins over upload status', () => assert.equal(calculatePurchaseStatus({ complianceVerificationStatus: 'Approved' }), 'Fully Approved'));
 test('routes expose import, reconciliation and two-level approvals behind authentication', () => {
@@ -184,8 +198,16 @@ test('frontend mounts Purchase Data inside Data Compliance and exposes all reque
   const annual = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/ClientMasterAnnualReturn.jsx'), 'utf8');
   const workspace = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/PurchaseDataWorkspace.jsx'), 'utf8');
   assert.match(annual, /<PurchaseDataWorkspace/);
-  ['Purchase Data','Sales Data','Pre Consumer / State / Annual','EPR Target','EPR CREDIT'].forEach((tab) => assert.match(workspace, new RegExp(tab.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
+  ['Purchase Data','Sales Data','Client Console Data','Pre Consumer / State / Annual','EPR Target','EPR CREDIT'].forEach((tab) => assert.match(workspace, new RegExp(tab.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
   assert.doesNotMatch(workspace, /Upload All Screenshot/);
+});
+test('Client Console Data exposes Purchase and Sales portal rows grouped by every plastic category', () => {
+  const routes = fs.readFileSync(path.resolve(__dirname, '../src/routes/clients.js'), 'utf8');
+  const component = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/ClientConsoleData.jsx'), 'utf8');
+  assert.match(routes, /client-console-data/);
+  ['Purchase','Sales','Category Of Plastic','Entity Name','Register Type','Entity Type','Recycled'].forEach((label) => assert.match(component, new RegExp(label)));
+  assert.match(component, /aria-expanded=\{expanded\}/);
+  assert.match(component, /toggleCategory\(category\)/);
 });
 test('mandatory status displays date and drag-drop proof validation', () => {
   const workspace = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/PurchaseDataWorkspace.jsx'), 'utf8');
@@ -215,7 +237,8 @@ test('Outlook MSG proof opens a safe decoded mail viewer with attachments', () =
    assert.equal(rows.find(row => row.particular === 'Received from client').completeDataReceived, true);
    assert.equal(rows.find(row => row.particular === 'Ready to upload').partialDataReceived, false);
  });
- test('Nil Upload approval only needs Yes without date or proof', () => {
+ test('Nil Upload approval requires Yes, date and proof', () => {
    const checklist = defaultChecklist([{ particular: 'Nil Upload', yesNo: 'Yes' }, { particular: 'Client Approval on data', yesNo: 'Yes' }]);
-   assert.equal(purchaseReadiness({ checklist }).ready, true);
+   assert.equal(purchaseReadiness({ checklist }).ready, false);
+   assert.deepEqual(purchaseReadiness({ checklist }).errors, ['Client Approval on data: date is required.', 'Client Approval on data: proof is required.']);
  });

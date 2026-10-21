@@ -491,9 +491,20 @@ function approvalDateParts(value) {
   }
 
   return {
-    date: date.toLocaleDateString('en-GB'),
-    time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    date: date.toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata' }),
+    time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
   };
+}
+
+function quotationApprovalRequestedAt(quotation, approvalType = 'CREATE') {
+  const latestRevisionAt = Array.isArray(quotation.revisionHistory)
+    ? [...quotation.revisionHistory].reverse().find((revision) => revision?.at)?.at
+    : null;
+
+  return quotation.managementApproval?.requestedAt
+    || (approvalType === 'UPDATE' ? latestRevisionAt || quotation.updatedAt : quotation.createdAt)
+    || quotation.updatedAt
+    || new Date();
 }
 
 function readCreatedBy(quotation) {
@@ -505,7 +516,10 @@ function quotationApprovalSource(quotation) {
 }
 
 function mapQuotationPendingApprovalRow(quotation, approvalType = 'CREATE') {
-  const parts = approvalDateParts(quotation.createdAt || new Date());
+  // A revision starts a new approval cycle. Keep createdAt for quotation history,
+  // but show the latest submission date in Pending Approval.
+  const approvalRequestedAt = quotationApprovalRequestedAt(quotation, approvalType);
+  const parts = approvalDateParts(approvalRequestedAt);
   const details = quotation.leadDetails || {};
   const firstItem = Array.isArray(quotation.items) ? quotation.items[0] || {} : {};
   const itemBasicAmount = roundMoney((quotation.items || []).reduce((sum, item) => sum + (Number(item.basicAmount) || 0), 0));
@@ -558,7 +572,7 @@ function mapQuotationPendingApprovalRow(quotation, approvalType = 'CREATE') {
     managementApprovalSource: quotation.managementApproval?.source || '',
     managementApprovalNote: quotation.managementApproval?.note || '',
     managementApprovalRequestedBy: quotation.managementApproval?.requestedByName || '',
-    managementApprovalRequestedAt: quotation.managementApproval?.requestedAt || null,
+    managementApprovalRequestedAt: approvalRequestedAt,
     requestDate: parts.date,
     requestTime: parts.time
   };

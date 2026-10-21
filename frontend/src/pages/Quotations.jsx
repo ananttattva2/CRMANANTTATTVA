@@ -2061,6 +2061,14 @@ export default function Quotations() {
       const response = editingId
         ? await api.put(API_ENDPOINTS.quotations.detail(editingId), payload)
         : await api.post(API_ENDPOINTS.quotations.create, payload);
+      // Do not let the Pending Approval page reuse the previous approval-cycle
+      // date after a quotation is revised and resubmitted.
+      try {
+        sessionStorage.removeItem('crm.pendingApproval.cache.v7');
+        localStorage.removeItem('crm.pendingApproval.cache.v7');
+      } catch {
+        // Storage can be unavailable without affecting the save operation.
+      }
       setSuccessModal({
         title: editingId ? 'Quotation updated' : 'Quotation saved',
         message: `${response.data.quotation?.quotationNumber || 'Quotation'} was saved and sent directly to Super Admin for approval. Admin approval is not required.`

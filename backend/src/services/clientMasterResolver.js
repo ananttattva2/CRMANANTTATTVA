@@ -104,6 +104,7 @@ function normalizeClientMaster(record = {}) {
     cpcbApplicationStatus: firstText(data.cpcbOnboarding?.cpcbApplicationStatus) || null,
     ceprUserId: firstText(cpcb.ceprUserId) || null,
     ceprPassword: firstText(cpcb.ceprPassword) || null,
+    approvalStatus: firstText(raw.adminControls?.approvalStatus, data.approvalMeta?.status, 'PENDING').toUpperCase(),
     workflowStatus: firstText(raw.workflowStatus, 'draft'),
     legacy: !assignedServiceId
   };

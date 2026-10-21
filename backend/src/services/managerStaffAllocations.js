@@ -51,6 +51,33 @@ function clientMatchesService(client, services, service, serviceId) {
   return compatibleServices.length === 1
     && value(compatibleServices[0].assignedServiceId || compatibleServices[0].serviceAssignmentId) === serviceId;
 }
+function clientMatchesCpcbContext(client, services, service, serviceId) {
+  if (clientMatchesService(client, services, service, serviceId)) return true;
+  const data = client.data || {};
+  const selectedId = value(client.assignedServiceId || data.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId);
+  const snapshot = data.selectedLeadSnapshot || {};
+  const basic = data.basic || {};
+  const selectedService = services.find(candidate => value(candidate.assignedServiceId || candidate.serviceAssignmentId) === selectedId);
+  const profile = {
+    category: applicant(selectedService?.subApplicantType || selectedService?.piboCategory || snapshot.subApplicantType || snapshot.piboCategory || basic.piboCategory || basic.subApplicantType),
+    unit: normalize(selectedService?.plantUnit || snapshot.plantUnit || basic.plantUnit),
+    epr: normalize(selectedService?.eprCategory || snapshot.eprCategory || basic.eprCategory)
+  };
+  const candidate = {
+    category: applicant(service.subApplicantType || service.piboCategory),
+    unit: normalize(service.plantUnit),
+    epr: normalize(service.eprCategory)
+  };
+  let compared = 0;
+  for (const field of ['category', 'unit', 'epr']) {
+    if (!profile[field] || !candidate[field]) continue;
+    compared += 1;
+    if (profile[field] !== candidate[field]) return false;
+  }
+  // CPCB registration/status belongs to an applicant + unit + EPR context,
+  // not separately to New Registration and Annual Return service offerings.
+  return compared > 0;
+}
 function clientMatchesLead(client, lead) {
   const data = client.data || {};
   const snapshot = data.selectedLeadSnapshot || {};
@@ -60,10 +87,62 @@ function clientMatchesLead(client, lead) {
 }
 function dashboardStatusClient(client) {
   const resolved = resolveClientMasterData(client);
-  const data = { ...client.data, cpcb: Object.fromEntries(['status', 'approvalStatus', 'applicationStatus'].map(key => [key, resolved.cpcb?.[key]]).filter(([,v]) => v !== undefined)) };
-  delete data.cpcbDataByAssignedServiceId;
-  delete data.serviceDetailsByAssignedServiceId;
+  const statusOnly = source => Object.fromEntries(['status', 'approvalStatus', 'applicationStatus']
+    .map(key => [key, source?.[key]]).filter(([, status]) => status !== undefined));
+  const sanitizeScopes = scopes => Object.fromEntries(Object.entries(scopes || {}).map(([key, scope]) => {
+    const direct = statusOnly(scope);
+    const cpcb = statusOnly(scope?.cpcb || scope?.details || scope);
+    return [key, { ...direct, ...(Object.keys(cpcb).length ? { cpcb } : {}) }];
+  }));
+  // A legacy Client Master can contain CPCB states for several services.
+  // Preserve only those status fields so the dashboard can resolve each row
+  // without exposing credentials, documents or other private CPCB details.
+  const directCpcb = statusOnly(client.data?.cpcb);
+  const data = {
+    ...client.data,
+    // Keep a directly saved edit when present. Service resolution below only
+    // applies it to the matching applicant/unit/service, never to siblings.
+    cpcb: Object.keys(directCpcb).length ? directCpcb : statusOnly(resolved.cpcb),
+    cpcbDataByAssignedServiceId: sanitizeScopes(client.data?.cpcbDataByAssignedServiceId),
+    serviceDetailsByAssignedServiceId: sanitizeScopes(client.data?.serviceDetailsByAssignedServiceId)
+  };
   return { ...client, data };
+}
+function scopedCpcbStatus(client, services, service, serviceId) {
+  const data = client.data || {};
+  const cpcbCompatible = clientMatchesCpcbContext(client, services, service, serviceId);
+  const serviceOffering = offering(service.servicesOffered || service.applicableService);
+  const registrationConfirmed = data.cpcbOnboarding?.cpcbPortalRegistered === true
+    && /(^|\|)(new)?registration($|\|)/.test(serviceOffering);
+  // Confirming "Yes, Registered" proves the registration service is complete,
+  // even when the separate CPCB Status field has not been revisited yet. This
+  // fallback is deliberately registration-only; it cannot approve Annual Return.
+  const directStatus = data.cpcb?.status || data.cpcb?.approvalStatus || data.cpcb?.applicationStatus || (registrationConfirmed ? 'Registered' : '');
+  for (const scope of [data.cpcbDataByAssignedServiceId?.[serviceId], data.serviceDetailsByAssignedServiceId?.[serviceId]]) {
+    const exact = scope?.cpcb || scope?.details || scope;
+    const status = exact?.status || exact?.approvalStatus || exact?.applicationStatus;
+    // Legacy saves could update the matching root CPCB field without updating
+    // an older Not Started service snapshot. Prefer the meaningful root edit
+    // only for the same service; an exact non-default status stays authoritative.
+    const defaultStatus = /^(notstarted|notrecorded|pending)?$/.test(normalize(status));
+    if (status) {
+      if (cpcbCompatible && directStatus && defaultStatus && !/^(notstarted|notrecorded|pending)$/.test(normalize(directStatus))) {
+        return { status: directStatus, exact: true };
+      }
+      return { status, exact: true };
+    }
+  }
+  if (!cpcbCompatible) return null;
+  // A directly saved status belongs to this CPCB applicant/unit context.
+  // Treat it as exact so a newer edit can outrank an older migrated Not
+  // Started scope from a duplicate Client Master.
+  if (directStatus && !/^(notstarted|notrecorded|pending)$/.test(normalize(directStatus))) {
+    return { status: directStatus, exact: true };
+  }
+  const selectedId = client.assignedServiceId || data.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId;
+  const resolved = resolveClientMasterData(client, selectedId);
+  const status = resolved.cpcb?.status || resolved.cpcb?.approvalStatus || resolved.cpcb?.applicationStatus || '';
+  return status ? { status, exact: false } : null;
 }
 // Count permanent staff assignments per lead service, including services whose Client Master is not created yet.
 function mergeManagerStaffAllocations(clients = [], leads = []) {
@@ -91,8 +170,8 @@ function mergeManagerStaffAllocations(clients = [], leads = []) {
       if (!permanentOwner && !legacyClosedOwner) return;
       const serviceId = value(assignment.assignedServiceId || assignment.serviceAssignmentId || services[index]?.assignedServiceId || services[index]?.serviceAssignmentId || `assignment-${index}`);
       const key = `${value(lead._id)}:${serviceId}`;
-      if (linked.has(key)) return;
-      linked.add(key);
+      const alreadyLinked = linked.has(key);
+      if (!alreadyLinked) linked.add(key);
       const service = services.find(s => value(s.assignedServiceId || s.serviceAssignmentId) === serviceId) || services[index] || {};
       const signature = row => [row.subApplicantType || row.piboCategory, row.plantUnit, row.eprCategory, offering(row.servicesOffered)].map(normalize).join(':');
       const matchingAssignments = (lead.assignments || []).flatMap((candidate, candidateIndex) => {
@@ -112,23 +191,46 @@ function mergeManagerStaffAllocations(clients = [], leads = []) {
         ...(matchingPoRows.length ? { poYearRows: matchingPoRows } : {}),
         ...(matchingAssignments.some(candidate => normalize(candidate.poStatus) === 'received') ? { poStatus: 'received' } : {})
       };
-      const matchingMasters = clients.filter(client => {
-        if (!clientMatchesLead(client, lead)) return false;
-        const selectedId = client.assignedServiceId || client.data?.assignedServiceId || client.data?.selectedLeadSnapshot?.assignedServiceId;
-        return clientMatchesService(client, services, service, serviceId)
-          && Boolean(resolveClientMasterData(client, selectedId).cpcb?.status);
-      }).sort((a, b) => new Date(b.updatedAt || b.submittedAt || b.createdAt || 0) - new Date(a.updatedAt || a.submittedAt || a.createdAt || 0));
+      const matchingMasters = clients.flatMap(client => {
+        if (!clientMatchesLead(client, lead)) return [];
+        const match = scopedCpcbStatus(client, services, service, serviceId);
+        return match ? [{ client, ...match }] : [];
+      }).sort((a, b) => Number(b.exact) - Number(a.exact)
+        || new Date(b.client.updatedAt || b.client.submittedAt || b.client.createdAt || 0) - new Date(a.client.updatedAt || a.client.submittedAt || a.client.createdAt || 0));
       // Drafts are not applications, but the CPCB form is saved while the
       // Client Master is still a draft. Use the newest matching record only as
       // a status source; use a non-draft record for application workflow data.
-      const statusMaster = matchingMasters[0];
-      const workflowMaster = matchingMasters.find(client => normalize(client.workflowStatus || client.data?.importMeta?.clientStatus) !== 'draft');
+      const statusMatch = matchingMasters[0];
+      const statusMaster = statusMatch?.client;
+      const workflowMaster = matchingMasters.map(match => match.client).find(client => normalize(client.workflowStatus || client.data?.importMeta?.clientStatus) !== 'draft');
+      if (alreadyLinked) {
+        // The submitted Client Master remains the dashboard application, but a
+        // newer matching draft/edit can carry the latest CPCB decision. Apply
+        // that status to the retained read model instead of leaving its older
+        // Not Started snapshot visible.
+        if (statusMatch?.status) {
+          const applicationIndex = result.findIndex(item => {
+            const itemLeadId = value(item.selectedLead || item.data?.selectedLeadSnapshot?.id);
+            const itemServiceId = value(item.assignedServiceId || item.data?.assignedServiceId || item.data?.selectedLeadSnapshot?.assignedServiceId);
+            return `${itemLeadId}:${itemServiceId}` === key
+              && normalize(item.workflowStatus || item.data?.importMeta?.clientStatus) !== 'draft';
+          });
+          if (applicationIndex >= 0) {
+            const application = result[applicationIndex];
+            result[applicationIndex] = {
+              ...application,
+              data: { ...(application.data || {}), cpcb: { ...(application.data?.cpcb || {}), status: statusMatch.status } }
+            };
+          }
+        }
+        return;
+      }
       const masterData = statusMaster ? resolveClientMasterData(statusMaster) : {};
       result.push({ _id: `assignment:${key}`, assignedServiceId: serviceId,
         statusSourceClientId: statusMaster ? value(statusMaster._id) : undefined,
         workflowStatus: workflowMaster?.workflowStatus,
         selectedLead: { ...lead, assignments: [enrichedAssignment], serviceSelections: [service] },
-        data: { cpcb: masterData.cpcb?.status ? { status: masterData.cpcb.status } : {}, registeredAddress: masterData.registeredAddress?.state ? { state: masterData.registeredAddress.state } : {}, basic: { clientLegalName: lead.company || lead.companyName || lead.clientName || 'Untitled client' }, importMeta: { leadNumber: lead.leadCode || lead.sourceLeadId || '' } },
+        data: { cpcb: statusMatch?.status ? { status: statusMatch.status } : {}, registeredAddress: masterData.registeredAddress?.state ? { state: masterData.registeredAddress.state } : {}, basic: { clientLegalName: lead.company || lead.companyName || lead.clientName || 'Untitled client' }, importMeta: { leadNumber: lead.leadCode || lead.sourceLeadId || '' } },
         adminControls: { visibilityStatus: (workflowMaster || statusMaster)?.adminControls?.visibilityStatus }, sla: {}, assignmentOnly: true
       });
     });

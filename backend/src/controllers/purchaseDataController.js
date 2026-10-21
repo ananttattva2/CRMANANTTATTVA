@@ -2,9 +2,11 @@ const mongoose = require('mongoose');
 const Client = require('../models/Client');
 const PurchaseData = require('../models/PurchaseData');
 const PurchaseImportRow = require('../models/PurchaseImportRow');
+const SalesData = require('../models/SalesData');
+const SalesImportRow = require('../models/SalesImportRow');
 const {
   PURCHASE_CHECKLIST_PARTICULARS, excelUploadComplete, defaultChecklist, normalizePurchaseRows, describePurchaseFinancialYearMismatch, reconcilePurchaseRows,
-  purchaseReadiness, calculatePurchaseStatus, checksum
+  purchaseReadiness, calculatePurchaseStatus, checksum, buildClientConsoleRows
 } = require('../services/purchaseDataService');
 const { notifyPurchaseWorkflow } = require('../services/purchaseDataNotifications');
 const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
@@ -13,7 +15,7 @@ function role(user) { return String(user?.role || '').trim().toLowerCase().repla
 function isAdmin(user) { return ['admin', 'superadmin'].includes(role(user)); }
 function isManager(user) { return role(user) === 'manager'; }
 function isCompliance(user) { return role(user).includes('compliance'); }
-function canEdit(user) { return isAdmin(user) || (!isManager(user) && !isCompliance(user)); }
+function canEdit(user) { return isAdmin(user) || !isCompliance(user); }
 function actor(user) { return { userId: user?._id, name: user?.name || user?.email || 'CRM User', role: user?.role || '' }; }
 function historyItem(stage, decision, user, message = '') { return { stage, decision, message: String(message || '').trim(), by: actor(user), at: new Date() }; }
 function validYear(value) { return /^20\d{2}-\d{2}$/.test(String(value || '').trim()); }
@@ -316,6 +318,27 @@ exports.listPurchaseRows = async (req, res) => {
     const [rows, total] = await Promise.all([PurchaseImportRow.find(filter).sort({ rowNumber: 1 }).skip((page - 1) * limit).limit(limit).lean(), PurchaseImportRow.countDocuments(filter)]);
     res.json({ ok: true, rows, pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) } });
   } catch (error) { console.error('Purchase rows load failed', error); res.status(500).json({ error: 'Unable to load Purchase rows.' }); }
+};
+
+exports.getClientConsoleData = async (req, res) => {
+  try {
+    const financialYear = String(req.query.financialYear || '').trim();
+    const moduleName = String(req.query.module || 'purchase').trim().toLowerCase();
+    if (!validYear(financialYear)) return res.status(400).json({ error: 'financialYear must use YYYY-YY.' });
+    if (!['purchase', 'sales'].includes(moduleName)) return res.status(400).json({ error: 'module must be purchase or sales.' });
+    const client = await findClient(req.params.id, req.user);
+    if (!client) return res.status(404).json({ error: 'Client not found or not accessible' });
+    const DataModel = moduleName === 'sales' ? SalesData : PurchaseData;
+    const RowModel = moduleName === 'sales' ? SalesImportRow : PurchaseImportRow;
+    const data = await DataModel.findOne({ clientId: client._id, financialYear }).lean();
+    if (!data?.portalUpload?.uploadId) return res.json({ ok: true, module: moduleName, categories: [], source: `${moduleName === 'sales' ? 'Sales' : 'Purchase'} Portal Upload`, rows: [], sourceRowCount: 0 });
+    const sourceRows = await RowModel.find({ uploadId: data.portalUpload.uploadId, source: 'portal', validationStatus: { $in: ['Valid', 'Warning'] } }).sort({ rowNumber: 1 }).lean();
+    const rows = buildClientConsoleRows(sourceRows);
+    res.json({ ok: true, module: moduleName, categories: [...new Set(rows.map((row) => row.category))], source: `${moduleName === 'sales' ? 'Sales' : 'Purchase'} Portal Upload`, rows, sourceRowCount: sourceRows.length });
+  } catch (error) {
+    console.error('Client Console Data load failed', error);
+    res.status(500).json({ error: 'Unable to load Client Console Data.' });
+  }
 };
 
 exports.getReconciliation = async (req, res) => {

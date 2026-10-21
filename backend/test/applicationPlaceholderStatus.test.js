@@ -2,12 +2,12 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 test('repeated unlinked annual assignments merge without losing years or distinct units and services',async()=>{
  const {effectiveApplicationServices}=await import('../../frontend/src/utils/applicationPortfolio.mjs');
- const first={id:'first',assignmentOnly:true,leadId:'khatri',category:'Producer',unit:'Unit 1',industry:'Manufacturing',eprCategory:'Plastic Waste',offeredServices:['Annual Return Filling'],bucket:'notStarted',closed:false,annualWorkflowReady:false,annualCurrentFyPo:false,annualYears:['2025-26']};
- const second={...first,id:'second',closed:true,annualWorkflowReady:true,annualCurrentFyPo:true,annualYears:['2026-27']};
+ const first={id:'first',assignmentOnly:true,leadId:'khatri',category:'Producer',unit:'Unit 1',industry:'Manufacturing',eprCategory:'Plastic Waste',offeredServices:['Annual Return Filling'],bucket:'notStarted',closed:false,annualWorkflowReady:false,annualEligiblePo:false,annualYears:['2025-26']};
+ const second={...first,id:'second',closed:true,annualWorkflowReady:true,annualEligiblePo:true,annualYears:['2026-27']};
  const result=effectiveApplicationServices([{...first},second]);
  assert.equal(result.length,1);
  assert.deepEqual(result[0].annualYears,['2025-26','2026-27']);
- assert.equal(result[0].closed,true);assert.equal(result[0].annualWorkflowReady,true);assert.equal(result[0].annualCurrentFyPo,true);
+ assert.equal(result[0].closed,true);assert.equal(result[0].annualWorkflowReady,true);assert.equal(result[0].annualEligiblePo,true);
  for(const other of [{unit:'Unit 2'},{leadId:'another'},{category:'Importer'},{offeredServices:['New Registration']},{bucket:'approved'},{statusSourceClientId:'different-master'}]){
  assert.equal(effectiveApplicationServices([{...first},{...second,...other}]).length,2);
  }
@@ -33,7 +33,7 @@ test('service summaries keep registration in Not Started and only annual records
 test('NUVIASHOP registration master retains annual sibling action in an exclusive status bucket',async()=>{
  const {applicationSummaryRecords,matchesStatusSummary,matchesServiceSummary,STATUS_COLUMNS}=await import('../../frontend/src/utils/applicationPortfolio.mjs');
  const registration={id:'registration',closed:true,offeredServices:['New Registration'],bucket:'notStarted',annual:false};
- const annual={id:'annual',closed:true,assignmentOnly:true,offeredServices:['Annual Return Filling'],bucket:'notStarted',annual:true,annualWorkflowReady:true,annualCurrentFyPo:true,annualYears:['2025-26']};
+ const annual={id:'annual',closed:true,assignmentOnly:true,offeredServices:['Annual Return Filling'],bucket:'notStarted',annual:true,annualWorkflowReady:true,annualEligiblePo:true,annualYears:['2025-26']};
  const [summary]=applicationSummaryRecords({records:[{...registration,services:[registration,annual]}]});
  assert.equal(matchesStatusSummary(summary,'annualActionRequired'),true);
  assert.equal(matchesStatusSummary(summary,'notStarted'),false);
@@ -101,9 +101,9 @@ test('summary CPCB status excludes other offered services but retains all units 
 
 test('multiple new assignments linked to one saved CPCB master show one service',async()=>{
  const {effectiveApplicationServices}=await import('../../frontend/src/utils/applicationPortfolio.mjs');
- const service={id:'assignment:new1',assignmentOnly:true,statusSourceClientId:'master',leadId:'lead',category:'Importer',unit:'Unit 1',industry:'Manufacturing',eprCategory:'Plastic Waste',offeredServices:['Annual Return Filling'],cpcb:'Approved',bucket:'approved',annualCurrentFyPo:false,annualYears:[]};
- const services=effectiveApplicationServices([service,{...service,id:'assignment:new2',annualCurrentFyPo:true,annualYears:['2025-26','2026-27']}]);
+ const service={id:'assignment:new1',assignmentOnly:true,statusSourceClientId:'master',leadId:'lead',category:'Importer',unit:'Unit 1',industry:'Manufacturing',eprCategory:'Plastic Waste',offeredServices:['Annual Return Filling'],cpcb:'Approved',bucket:'approved',annualEligiblePo:false,annualYears:[]};
+ const services=effectiveApplicationServices([service,{...service,id:'assignment:new2',annualEligiblePo:true,annualYears:['2025-26','2026-27']}]);
   assert.equal(services.length,1);assert.equal(services[0].cpcb,'Approved');assert.deepEqual(services[0].annualYears,['2025-26','2026-27']);
- assert.equal(services[0].annualCurrentFyPo,true);
+ assert.equal(services[0].annualEligiblePo,true);
  assert.equal(effectiveApplicationServices([service,{...service,id:'assignment:unit2',unit:'Unit 2'}]).length,2);
 });

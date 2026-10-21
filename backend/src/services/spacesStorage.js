@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const { createPresignedPost } = require('@aws-sdk/s3-presigned-post');
 let cachedClient;
 let cachedCredentials;
 
@@ -51,9 +52,31 @@ async function authorizeUpload({ name, type, size, folder, checksum }, userId) {
   const digest = Buffer.from(checksum, 'base64').toString('hex');
   const receipt = Buffer.from(JSON.stringify({ key, name, type, size, digest, userId: String(userId), expires: Date.now() + 15 * 60 * 1000 })).toString('base64url');
   const token = `${receipt}.${sign(`upload:${receipt}`)}`;
-  const headers = { 'Content-Type': type, 'Content-Disposition': disposition(type), 'x-amz-checksum-sha256': checksum };
-  const uploadUrl = await getSignedUrl(c.client, new PutObjectCommand({ Bucket: c.bucket, Key: key, ContentType: type, ContentDisposition: disposition(type), ChecksumSHA256: checksum, Metadata: { sha256: digest } }), { expiresIn: 600, unhoistableHeaders: new Set(['x-amz-checksum-sha256']) });
-  return { uploadUrl, token, headers };
+  // A presigned multipart POST can be sent as a simple no-CORS browser request.
+  // Signed PUT headers trigger a preflight that object-only Spaces keys cannot
+  // configure, while proxying the whole file through CRM can hit a 413 limit.
+  const fields = {
+    'Content-Type': type,
+    'Content-Disposition': disposition(type),
+    'x-amz-meta-sha256': digest,
+    acl: 'private'
+  };
+  const signed = await createPresignedPost(c.client, {
+    Bucket: c.bucket,
+    Key: key,
+    Fields: fields,
+    Conditions: [
+      // The policy sees the complete multipart request, not only the file.
+      // Exact object size is enforced by confirmUpload after Spaces stores it.
+      ['content-length-range', size, Math.min(maximum + 1024 * 1024, size + 1024 * 1024)],
+      { 'Content-Type': type },
+      { 'Content-Disposition': disposition(type) },
+      { 'x-amz-meta-sha256': digest },
+      { acl: 'private' }
+    ],
+    Expires: 600
+  });
+  return { uploadMode: 'post', uploadUrl: signed.url, fields: signed.fields, token };
 }
 async function confirmUpload(token, userId) {
   const [receipt, signature] = String(token || '').split('.');

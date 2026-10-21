@@ -48,6 +48,22 @@ test('deleting a Service B document cannot delete a Service A document', () => {
   assert.deepEqual(saved.cpcbDataByAssignedServiceId[serviceB].cpcbScreenshots, incoming.cpcbDataByAssignedServiceId[serviceB].cpcbScreenshots);
 });
 
+test('a legacy root CPCB edit is persisted into its effective assigned-service scope', () => {
+  const existing = {
+    cpcb: { status: 'Not Started' },
+    cpcbDataByAssignedServiceId: {
+      legacyImporter: { cpcb: { status: 'Not Started', registrationNumber: 'REG-1' } }
+    }
+  };
+  const saved = __test.mergeAssignedServiceCpcbData(existing, {
+    assignedServiceId: 'legacyImporter',
+    cpcb: { status: 'Approved', registrationNumber: 'REG-1' }
+  }, 'legacyImporter');
+  assert.equal(saved.cpcb.status, 'Approved');
+  assert.equal(saved.cpcbDataByAssignedServiceId.legacyImporter.cpcb.status, 'Approved');
+  assert.equal(saved.cpcbDataByAssignedServiceId.legacyImporter.cpcb.registrationNumber, 'REG-1');
+});
+
 test('an exact Client Master cannot be updated with another assigned service identity', () => {
   const record = {
     selectedLead: '6a7427653e6eb1b90295f6d0',

@@ -14,6 +14,7 @@ const cachedAssignmentReviews = createDashboardCache({ name: 'assignment-reviews
 const cachedMonthlyPurchaseOrders = createDashboardCache({ name: 'monthly-purchase-orders' });
 const { overallLeadFilter } = require('../services/overallDashboardVisibility');
 const { userHasAnyRole } = require('../utils/userRoles');
+const { clientMasterSourceRecordFilter } = require('../services/clientMasterVisibility');
 const {
   getAdminCreatedLeadReferences,
   getAssignmentDashboardLeadReferences,
@@ -187,7 +188,7 @@ exports.overall = async (req, res) => {
       canViewUsers ? visibleUsers(scope, req.user) : [],
       canViewUsers ? require('../models/Team').find(scope === null ? {} : { manager: { $in: scope.ids } }).select('_id manager members').maxTimeMS(10000).lean() : [],
       canViewUsers ? loadDashboardAssignments({ Client, Lead }, combineFilters(
-        { 'data.importMeta.approvalOverride': { $ne: true } }, allocatedClientFilter,
+        clientMasterSourceRecordFilter(), allocatedClientFilter,
         dashboardClientExclusionFilter(testLeadReferences)
       ), dashboardLeadExclusionFilter(testLeadReferences)) : { clients: [], leads: [] }
     ]);

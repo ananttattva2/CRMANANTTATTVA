@@ -5,6 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { createRequire } = require('node:module');
 const { createDashboardCache, invalidateDashboardReads, loadDashboardAssignments } = require('../src/services/dashboardReadModel');
+const { dashboardStatusClient, mergeManagerStaffAllocations } = require('../src/services/managerStaffAllocations');
 
 test('assignment loader includes every legacy closed-owner snapshot, not only named examples', async () => {
   invalidateDashboardReads();
@@ -18,6 +19,44 @@ test('assignment loader includes every legacy closed-owner snapshot, not only na
   for (const field of ['closedBy', 'closedByText', 'closedByEmail']) {
     assert.match(pipeline, new RegExp(`data\\.selectedLeadSnapshot\\.${field}`));
   }
+});
+
+test('legacy Balaji draft linked by lead code reaches the Unit 2 importer dashboard row as Approved', async () => {
+  invalidateDashboardReads();
+  const services = [
+    { assignedServiceId: 'brand', subApplicantType: 'Brand Owner', plantUnit: 'Unit 1', eprCategory: 'EPR - Plastic Waste', servicesOffered: 'Annual Return Filling' },
+    { assignedServiceId: 'raw-importer', subApplicantType: 'Importer of Raw Material', plantUnit: 'Unit 2', eprCategory: 'EPR - Plastic Waste', servicesOffered: 'Annual Return Filling' },
+    { assignedServiceId: 'producer', subApplicantType: 'Producer', plantUnit: 'Unit 3', eprCategory: 'EPR - Plastic Waste', servicesOffered: 'New Registration' }
+  ];
+  const lead = {
+    _id: 'mongo-balaji-id', leadCode: 'ATPL-LEAD-0464', company: 'Balaji Plastic Finishing & Trading',
+    serviceSelections: services,
+    assignments: services.map(service => ({ assignedServiceId: service.assignedServiceId, assignedStaff: 'sonal', closedAt: '2026-10-01' }))
+  };
+  const draft = {
+    _id: 'balaji-draft', workflowStatus: 'draft', assignedServiceId: 'obsolete-importer-id', updatedAt: '2026-10-13',
+    data: {
+      assignedServiceId: 'obsolete-importer-id',
+      selectedLeadSnapshot: { leadCode: 'ATPL-LEAD-0464', assignedServiceId: 'obsolete-importer-id', subApplicantType: 'SIMP - Importer', plantUnit: 'Unit 2', eprCategory: 'EPR Plastic Waste', servicesOffered: 'Annual Return Filing' },
+      cpcbDataByAssignedServiceId: { 'obsolete-importer-id': { cpcb: { status: 'Approved' } } },
+      importMeta: { leadNumber: 'ATPL-LEAD-0464', clientStatus: 'draft' }
+    }
+  };
+  const aggregate = rows => () => ({ option: async () => rows });
+  const loaded = await loadDashboardAssignments({
+    Client: { aggregate: aggregate([draft]) },
+    Lead: { aggregate: aggregate([lead]) }
+  }, { testCase: 'balaji-lead-code' }, { testCase: 'balaji-lead-code' });
+  assert.equal(loaded.clients.length, 1);
+  assert.equal(loaded.clients[0].selectedLead._id, 'mongo-balaji-id');
+  const rows = mergeManagerStaffAllocations(loaded.clients.map(dashboardStatusClient), loaded.leads).filter(row => row.assignmentOnly);
+  assert.equal(rows.find(row => row.assignedServiceId === 'raw-importer').data.cpcb.status, 'Approved');
+  assert.equal(rows.find(row => row.assignedServiceId === 'brand').data.cpcb.status, undefined);
+  assert.equal(rows.find(row => row.assignedServiceId === 'producer').data.cpcb.status, undefined);
+  const { buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const [sonal] = buildApplicationPortfolio([...loaded.clients.map(dashboardStatusClient), ...rows], [{ _id: 'sonal', name: 'Sonal More', role: 'operation' }]);
+  const importer = sonal.records.find(record => record.category === 'Importer of Raw Material' && record.unit === 'Unit 2');
+  assert.equal(importer.cpcb, 'Approved');
 });
 
 test('dashboard reads coalesce concurrent loads and expire without sharing scope keys', async () => {

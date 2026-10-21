@@ -25,6 +25,8 @@ const HEADER_ALIASES = {
   financialYear: ['financialyear', 'financialyr', 'fy', 'year'],
   entityName: ['nameofentity', 'entityname', 'nameoftheentity', 'entity', 'companyname', 'suppliername'],
   registrationType: ['registrationtype', 'registertype', 'registrationstatus', 'registeredunregistered', 'typeofregistration'],
+  entityType: ['entitytype', 'typeofentity'],
+  recycled: ['recycled', 'recycledin', 'recycledcontent', 'recycledplastic', 'recycledplasticpercent', 'recycledpercentage', 'recycledcontentpercent'],
   gstin: ['gstin', 'sellergst', 'sellergstno', 'gstnumber', 'gstno'],
   invoiceNumber: ['invoicenumber', 'invoicenumbergsteinvoicenumber', 'gsteinvoicenumber', 'invoiceno'],
   invoiceDate: ['invoicedate', 'date'],
@@ -135,6 +137,8 @@ const missingHeaders = required.filter((field) => !headerMap[field]);
     // Some procurement exports use "Registration Type" for Producer/Importer.
     // In those files Seller GST is the reliable registered/unregistered signal.
     const registrationType = normalizeRegistrationType(read('registrationType')) || (gstin ? 'Registered' : 'Unregistered');
+    const entityType = text(read('entityType'));
+    const recycled = text(read('recycled'));
     const plasticCategory = normalizeCategory(read('plasticCategory'));
     const materialType = text(read('materialType'));
     const quantity = parseNumber(read(quantityField));
@@ -162,7 +166,7 @@ const missingHeaders = required.filter((field) => !headerMap[field]);
     else if (gstPaid < 0) add('gstPaid', `${gstLabel} cannot be negative.`);
     if (rawDate !== '' && !parsedDate) add(source === 'base' ? 'invoiceDate' : 'uploadDate', 'Date is invalid.');
     const row = {
-      rowNumber, financialYear, entityName, entityKey: normalizeEntityName(entityName), registrationType, gstin,
+      rowNumber, financialYear, entityName, entityKey: normalizeEntityName(entityName), registrationType, entityType, recycled, gstin,
       invoiceNumber: text(read('invoiceNumber')), invoiceDate: source === 'base' ? parsedDate : '',
       portalReferenceNumber: text(read('portalReferenceNumber')), plasticCategory, materialType, materialKey: normalizeMaterial(materialType),
       quantity: quantity ?? 0, gstPaid: gstPaid ?? 0, state: text(read('state')), uploadStatus: text(read('uploadStatus')),
@@ -288,8 +292,8 @@ function purchaseReadiness(purchase = {}) {
   const errors = [];
   requiredRows.forEach((row) => {
     if (row.yesNo !== 'Yes') errors.push(`${row.particular}: status must be Yes.`);
-    if (row.particular !== 'Client Approval on data' && !row.date) errors.push(`${row.particular}: date is required.`);
-    if (row.particular !== 'Client Approval on data' && !row.files?.length) errors.push(`${row.particular}: proof is required.`);
+    if (!row.date) errors.push(`${row.particular}: date is required.`);
+    if (!row.files?.length) errors.push(`${row.particular}: proof is required.`);
   });
   if (!nilUpload) {
     if (!purchase.baseUpload || purchase.baseUpload.importStatus !== 'Imported') errors.push('Purchase Base Data is required.');
@@ -316,8 +320,42 @@ function excelUploadComplete(data = {}) {
 }
 function checksum(value) { return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
 
+function originalValue(original = {}, aliases = []) {
+  const entry = Object.entries(original).find(([header]) => aliases.includes(normalizeHeader(header)));
+  return entry ? text(entry[1]) : '';
+}
+function buildClientConsoleRows(rows = []) {
+  const grouped = new Map();
+  for (const row of rows) {
+    const entityKey = row.entityKey || normalizeEntityName(row.entityName);
+    const category = text(row.plasticCategory) || 'Not Recorded';
+    if (!entityKey) continue;
+    const key = `${category}|${entityKey}`;
+    const current = grouped.get(key) || { category, entityName: text(row.entityName), registerTypes: new Set(), entityTypes: new Set(), recycledValues: new Set(), sourceRowCount: 0 };
+    const registerType = text(row.registrationType) || originalValue(row.original, HEADER_ALIASES.registrationType);
+    const entityType = text(row.entityType) || originalValue(row.original, HEADER_ALIASES.entityType);
+    const recycled = text(row.recycled) || originalValue(row.original, HEADER_ALIASES.recycled);
+    if (registerType) current.registerTypes.add(registerType);
+    if (entityType) current.entityTypes.add(entityType);
+    if (recycled) current.recycledValues.add(recycled);
+    current.sourceRowCount += 1;
+    grouped.set(key, current);
+  }
+  return [...grouped.values()].map((item) => ({
+    category: item.category,
+    entityName: item.entityName,
+    registerType: [...item.registerTypes].join(', '),
+    entityType: [...item.entityTypes].join(', '),
+    recycled: [...item.recycledValues].join(', '),
+    sourceRowCount: item.sourceRowCount
+  })).sort((left, right) => {
+    const categoryOrder = CATEGORIES.indexOf(left.category) - CATEGORIES.indexOf(right.category);
+    return categoryOrder || left.entityName.localeCompare(right.entityName);
+  });
+}
+
 module.exports = {
   PURCHASE_CHECKLIST_PARTICULARS, REQUIRED_NORMAL_CHECKLIST_ROWS, CATEGORIES, normalizeHeader, normalizeEntityName, normalizeMaterial, normalizeRegistrationType,
   normalizeCategory, parseNumber, parseDate, buildHeaderMap, normalizePurchaseRows, describePurchaseFinancialYearMismatch, reconcilePurchaseRows, defaultChecklist,
-  checklistRow, excelUploadComplete, purchaseReadiness, calculatePurchaseStatus, checksum
+  checklistRow, excelUploadComplete, purchaseReadiness, calculatePurchaseStatus, checksum, buildClientConsoleRows
 };

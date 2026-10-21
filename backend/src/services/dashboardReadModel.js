@@ -39,6 +39,7 @@ const clientProjection = Object.fromEntries([
   ...'clientLegalName tradeName piboCategory subApplicantType applicantType servicesOffered applicableService cpcbStatus plantUnit companyIndustry industryType eprCategory state firstAnnualReturnYear servicesForYear'.split(' ').map(field => `data.basic.${field}`),
   ...'companyName assignedTo user userName leadNumber clientCode uniqueId clientStatus visibilityStatus cpcbStatus state approvalOverride'.split(' ').map(field => `data.importMeta.${field}`),
   'data.cpcb.status', 'data.cpcb.approvalStatus', 'data.cpcb.applicationStatus', 'data.assignedServiceId',
+  'data.selectedLead',
   ...'id sourceLeadId leadCode assignedServiceId company plantUnit servicesOffered applicableService piboCategory subApplicantType applicantType industryType eprCategory assignedStaff assignedStaffText assignedStaffEmail closedAt closedBy closedByText closedByEmail permanentClosedAt'.split(' ').map(field => `data.selectedLeadSnapshot.${field}`),
   'data.address.state', 'data.addresses.state', 'data.registeredAddress.state', 'data.serviceAllocations', 'data.firstAnnualReturnYearApplicable',
   ...'compliancePoNo poNo poNumber compliancePoDate poDate compliancePoFileName poFileName poFinancialYear'.split(' ').map(field => `data.financials.${field}`),
@@ -65,7 +66,9 @@ function createDashboardCache(options = {}) {
   return (key, load) => read(key, load);
 }
 function invalidateDashboardReads() { for (const invalidate of caches) invalidate(); }
-const cachedAssignments = createDashboardCache({ name: 'dashboard-assignments-v2', maxEntries: 2 });
+// Version the shared snapshot whenever its identity/join semantics change so a
+// deployment cannot serve the previous Redis payload for otherwise-correct data.
+const cachedAssignments = createDashboardCache({ name: 'dashboard-assignments-v3', maxEntries: 2 });
 const staffFields = ['assignedStaff', 'assignedStaffText', 'assignedStaffEmail'];
 const legacyClosedOwnerFields = ['closedBy', 'closedByText', 'closedByEmail'];
 const present = field => ({ [field]: { $exists: true, $nin: [null, ''] } });
@@ -86,6 +89,20 @@ function hasPermanentOwner(record, includeLegacy = true) {
   const presentOwner = row => fields.some(field => row?.[field] != null && row[field] !== '');
   return presentOwner(record) || (includeLegacy && (Array.isArray(record.assignments) && record.assignments.some(presentOwner)));
 }
+const identity = value => {
+  if (value == null) return '';
+  if (typeof value === 'object') value = value._id || value.id || value.leadId || '';
+  return String(value).trim().toLowerCase();
+};
+const leadReferences = lead => [lead?._id, lead?.sourceLeadId, lead?.leadCode].map(identity).filter(Boolean);
+const clientLeadReferences = client => {
+  const data = client?.data || {};
+  const snapshot = data.selectedLeadSnapshot || {};
+  return [
+    client?.selectedLead, data.selectedLead, snapshot.id, snapshot.sourceLeadId,
+    snapshot.leadCode, data.importMeta?.leadNumber, data.importMeta?.uniqueId
+  ].map(identity).filter(Boolean);
+};
 async function loadDashboardAssignments({ Client, Lead }, clientFilter, leadFilter) {
   // The same compact snapshot serves all users; role filtering still happens
   // after loading it and no response is shared between authorization scopes.
@@ -103,14 +120,23 @@ async function loadDashboardAssignments({ Client, Lead }, clientFilter, leadFilt
     const missingIds = [...new Map(clients.filter(client => client.selectedLead && !byId.has(String(client.selectedLead))).map(client => [String(client.selectedLead), client.selectedLead])).values()];
     if (missingIds.length) {
       const linked = await Lead.aggregate([{ $match: { _id: { $in: missingIds } } }, { $project: leadProjection }]).option({ maxTimeMS: 12000 });
-      for (const lead of linked) byId.set(String(lead._id), lead);
+      for (const lead of linked) {
+        byId.set(String(lead._id), lead);
+        leads.push(lead);
+      }
     }
+    // Migrated Client Master drafts do not always retain the Mongo lead id.
+    // Index every stable identity so statuses saved against a lead code or
+    // source id survive the compact dashboard read and reach service matching.
+    const byReference = new Map();
+    for (const lead of leads) for (const reference of leadReferences(lead)) byReference.set(reference, lead);
+    const linkedLead = client => clientLeadReferences(client).map(reference => byReference.get(reference)).find(Boolean);
     const retained = clients.filter(client => {
       const snapshot = client.data?.selectedLeadSnapshot || {};
       return hasPermanentOwner(client, false) || hasPermanentOwner(snapshot)
-        || hasPermanentOwner(byId.get(String(client.selectedLead)));
+        || hasPermanentOwner(linkedLead(client));
     });
-    return { clients: retained.map(client => ({ ...client, selectedLead: byId.get(String(client.selectedLead)) || client.selectedLead })), leads };
+    return { clients: retained.map(client => ({ ...client, selectedLead: linkedLead(client) || client.selectedLead })), leads };
   });
 }
 module.exports = { leadProjection, clientProjection, compactPo, loadDashboardAssignments, createDashboardCache, invalidateDashboardReads, hasPermanentOwner };

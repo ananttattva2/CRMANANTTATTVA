@@ -9,6 +9,8 @@ const PurchaseImportRowSchema = new mongoose.Schema({
   entityName: String,
   entityKey: { type: String, index: true },
   registrationType: String,
+  entityType: String,
+  recycled: String,
   gstin: String,
   invoiceNumber: String,
   invoiceDate: String,

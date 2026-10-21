@@ -5,7 +5,6 @@ export const STATUS_COLUMNS = [
   ['total', 'Total'],
   ['annual:2025-26', '2025-26'], ['annual:2026-27', '2026-27'], ['annual:2027-28', '2027-28'], ['annual:unrecorded', 'Not Recorded'],
   ['annualActionRequired', 'AR Action Required'],
-  ['registrationApproved', 'Approved'],
   ['otherServicesApproved', 'Approved'],
   ['applied', 'Applied'], ['underReview', 'Under Review'],
   ['notStarted', 'Not Started'], ['rejected', 'Rejected']
@@ -19,7 +18,8 @@ export function applicationSummaryRecords(group) {
     const bucket = priority.find(status => statusServices.some(service => service.bucket === status))
     const labels = { rejected: 'Rejected', underReview: 'Under Review', applied: 'Applied', notStarted: 'Not Started', approved: 'Approved' }
     const annual = summaryService === 'Annual Return Filling' && bucket === 'approved' && statusServices.some(service => service.annualEligiblePo)
-    const recordedYears = annual ? [...new Set(statusServices.filter(service => service.closed && service.annual && service.annualWorkflowReady).flatMap(service => service.annualYears || []))].sort() : []
+    const recordedYears = annual ? [...new Set(statusServices.filter(service => service.closed && service.annual && service.annualWorkflowReady).flatMap(service => service.annualYears || []))]
+      .sort((left, right) => financialYearStart(left) - financialYearStart(right)) : []
     const annualYears = recordedYears.length ? [recordedYears[0]] : []
     return { ...record, bucket, cpcb: labels[bucket], summaryService, annual, annualYears,
       offered: summaryService === 'unclassified' ? 'Not Closed / Service Not Recorded' : summaryService }
@@ -64,23 +64,29 @@ export function matchesApplicationService(record, key) {
   if (key === 'total') return true
   return applicationSummaryService(record) === key
 }
+export function matchesDistributionSummary(record, key) {
+  return !isApprovedRegistration(record) && (key === 'total' || record.category === key)
+}
 export function matchesServiceSummary(record, key, date = new Date()) {
   const summary = record.annualYears ? record : applicationSummaryRecords({ records: [record] })[0]
+  // Completed Registration remains available in PO reporting, but must not
+  // appear in either the service Total or its visible breakdown.
+  if (isApprovedRegistration(summary)) return false
+  if (key === 'total') return true
   const representativeService = rawApplicationSummaryService(summary)
-  const annualForYear = summary.annual && summary.annualYears.includes(annualReturnYearForDate(date))
+  const annualForYear = summary.annual && summary.annualYears.length > 0
   if (key === 'Annual Return Filling') return annualForYear
   if (key === 'annualActionRequired') return representativeService === 'Annual Return Filling' && !annualForYear
-  if (key === 'total') return true
   return matchesApplicationService(summary, key)
 }
 export function matchesStatusSummary(record, key, date = new Date()) {
-  if (key === 'total') return true
+  // The status Total must reconcile with the visible status buckets. Completed
+  // Registration is intentionally hidden from this summary, so it must not be
+  // counted in Total either.
+  if (key === 'total') return !isApprovedRegistration(record)
   const actionRequired = matchesServiceSummary(record, 'annualActionRequired', date)
   if (key === 'annualActionRequired') return actionRequired
-  if (key === 'registrationApproved') return !actionRequired
-    && record.bucket === 'approved'
-    && ((record.services || []).some(service => isRegistrationService(service.offeredServices))
-      || isRegistrationService(rawApplicationSummaryService(record)))
+  if (key === 'registrationApproved') return false
   if (key === 'otherServicesApproved') return !actionRequired
     && record.bucket === 'approved'
     && (record.services || []).some(service => service.offeredServices?.some(offered => (
@@ -96,6 +102,19 @@ export function isRegistrationService(value) {
     const service = normalize(item)
     return service === 'registration' || service === 'newregistration'
   })
+}
+export function isApprovedRegistration(record) {
+  return record?.bucket === 'approved'
+    && ((record.services || []).some(service => isRegistrationService(service.offeredServices))
+      || isRegistrationService(rawApplicationSummaryService(record)))
+}
+export function isAnnualReturnOrRegistration(record) {
+  const service = rawApplicationSummaryService(record)
+  return isAnnualReturnService(service) || isRegistrationService(service)
+}
+export function matchesPortfolioSection(record, section) {
+  const annualOrRegistration = isAnnualReturnOrRegistration(record)
+  return section === 'otherServices' ? !annualOrRegistration : annualOrRegistration
 }
 export function annualActionReasons(record) {
   const services = (record.services || []).filter(service => service.offeredServices?.includes('Annual Return Filling'))
@@ -144,6 +163,22 @@ export function companyStatusRecord(rows) {
 }
 const text = (...values) => values.find(value => typeof value === 'string' && value.trim())?.trim() || ''
 const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+const scopedCpcbStatus = (data, assignedServiceId) => {
+  if (!assignedServiceId) return ''
+  const serviceScope = data.serviceDetailsByAssignedServiceId?.[assignedServiceId]
+  const cpcbScope = data.cpcbDataByAssignedServiceId?.[assignedServiceId]
+  const statusFrom = scope => text(
+    scope?.cpcb?.status,
+    scope?.cpcb?.approvalStatus,
+    scope?.cpcb?.applicationStatus,
+    scope?.status,
+    scope?.approvalStatus,
+    scope?.applicationStatus
+  )
+  // Match Client Master resolution order: the complete service scope is most
+  // specific, followed by the CPCB-only scope, then the legacy root section.
+  return statusFrom(serviceScope) || statusFrom(cpcbScope)
+}
 export function applicantCategory(value) {
   const key = normalize(value)
   if (key.includes('rawmaterial') && key.includes('import')) return 'Importer of Raw Material'
@@ -159,7 +194,7 @@ export function applicantCategory(value) {
 export function applicationRecord(client) {
   const data = client.data || {}, basic = data.basic || {}, meta = data.importMeta || {}, lead = client.selectedLead || {}
   const services = lead.serviceSelections || []
-  const selectedServiceId = String(client.assignedServiceId || '')
+  const selectedServiceId = String(client.assignedServiceId || data.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId || '')
   const serviceIndex = services.findIndex(item => selectedServiceId && String(item.assignedServiceId || item.serviceAssignmentId || '') === selectedServiceId)
   const service = serviceIndex >= 0 ? services[serviceIndex] : (services.length === 1 ? services[0] : {})
   const assignments = lead.assignments || []
@@ -191,24 +226,33 @@ export function applicationRecord(client) {
   const hasPoEvidence = po => [po.poNumber, po.poNo, po.poDate, po.poReceivedDate, po.poFileName, po.fileName, po.poFileUrl]
     .some(value => Boolean(String(value || '').trim()))
   const poReceived = String(assignment.poStatus || '').toLowerCase() === 'received' || poRows.some(hasPoEvidence)
-  const eligiblePoRows = annual && poReceived ? poRows
-    // The saved Annual Return year is independent of the PO financial year.
-    // Also retain current-FY rows so missing/year-specific details remain visible.
-    .filter(po => String(po.poFinancialYear || '').trim() === financialYearForDate()
-      || String(po.annualReturnYear || '').trim() === annualReturnYearForDate())
+  const annualPoRows = annual && poReceived ? poRows
     .filter(po => !po.services?.length || isAnnualReturnService(po.services))
     : []
-  const annualEligiblePo = eligiblePoRows.length > 0
-  const annualYears = [...new Set(eligiblePoRows.map(po => po.annualReturnYear).filter(Boolean))]
+  // PO financial year is commercial metadata. For dashboard placement, use the
+  // earliest Annual Return year listed on the received PO, regardless of the PO
+  // financial year. The summary layer reduces these years to that first year.
+  const poAnnualYears = [...new Set(annualPoRows.map(po => String(po.annualReturnYear || '').trim()).filter(Boolean))]
+  const dashboardAnnualYears = new Set(STATUS_COLUMNS.map(([key]) => key.startsWith('annual:') ? key.slice(7) : '').filter(year => year && year !== 'unrecorded'))
+  const annualYears = poAnnualYears.filter(year => dashboardAnnualYears.has(year))
+  const annualEligiblePo = annualYears.length > 0
   const category = applicantCategory(text(service.subApplicantType, service.piboCategory, lead.subApplicantType, lead.piboCategory, basic.piboCategory, basic.subApplicantType, service.applicantType, lead.applicantType, basic.applicantType))
-  const cpcb = text(data.cpcb?.status, data.cpcb?.approvalStatus, data.cpcb?.applicationStatus, basic.cpcbStatus, meta.cpcbStatus)
+  const scopedCpcb = scopedCpcbStatus(data, selectedServiceId)
+  const registrationConfirmed = data.cpcbOnboarding?.cpcbPortalRegistered === true && isRegistrationService(offered)
+  const rootCpcb = text(data.cpcb?.status, data.cpcb?.approvalStatus, data.cpcb?.applicationStatus, basic.cpcbStatus, meta.cpcbStatus, registrationConfirmed ? 'Registered' : '')
+  // Older saves sometimes changed the matching root value but retained a
+  // generated Not Started scope. A real scoped decision remains authoritative;
+  // only a default placeholder yields to a meaningful same-master root edit.
+  const cpcb = /^(notstarted|notrecorded|pending)?$/.test(normalize(scopedCpcb))
+    && rootCpcb && !/^(notstarted|notrecorded|pending)$/.test(normalize(rootCpcb))
+    ? rootCpcb : text(scopedCpcb, rootCpcb)
   const state = text(data.registeredAddress?.state, data.address?.state, data.addresses?.state, basic.state, meta.state)
   const clientStatus = text(meta.clientStatus, client.adminControls?.clientStatus, client.workflowStatus)
   const visibility = text(client.adminControls?.visibilityStatus, meta.visibilityStatus)
   const status = normalize(cpcb)
   const inactive = /suspend|discontinu|inactive/.test(normalize(`${clientStatus} ${visibility} ${cpcb}`))
   const bucket = cpcbStatusBucket(cpcb)
-  return { id: String(client._id), assignmentOnly: Boolean(client.assignmentOnly), statusSourceClientId: client.statusSourceClientId || '', leadId: String(lead._id || ''), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, lead.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, lead.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, lead.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), offeredServices: canonicalOfferedServices(offered), closed, bucket, live: !inactive, annual, annualEligiblePo, annualWorkflowReady, annualYears, sourceIds: [String(client._id)] }
+  return { id: String(client._id), assignmentOnly: Boolean(client.assignmentOnly), statusSourceClientId: client.statusSourceClientId || '', leadId: String(lead._id || ''), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, lead.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, lead.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, lead.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), offeredServices: canonicalOfferedServices(offered), closed, bucket, live: !inactive, annual, annualEligiblePo, annualWorkflowReady, annualYears, poAnnualYears, sourceIds: [String(client._id)] }
 }
 // Placeholders and blank drafts do not represent another application when
 // this lead already has a submitted master for the same applicant/unit/service.
@@ -242,6 +286,7 @@ export function effectiveApplicationServices(services) {
     existing.closed ||= service.closed
     existing.annualWorkflowReady ||= service.annualWorkflowReady
     existing.annualYears = [...new Set([...(existing.annualYears || []), ...(service.annualYears || [])])]
+    existing.poAnnualYears = [...new Set([...(existing.poAnnualYears || []), ...(service.poAnnualYears || [])])]
     return false
   })
   const saved = services.filter(service => !service.assignmentOnly)
@@ -255,6 +300,7 @@ export function effectiveApplicationServices(services) {
     if (!master) return true
     master.annualEligiblePo ||= service.annualEligiblePo
     master.annualYears = [...new Set([...(master.annualYears || []), ...(service.annualYears || [])])]
+    master.poAnnualYears = [...new Set([...(master.poAnnualYears || []), ...(service.poAnnualYears || [])])]
     return false
   })
 }
@@ -340,6 +386,11 @@ export function financialYearForDate(date = new Date()) {
 export function annualReturnYearForDate(date = new Date()) {
   const startYear = Number(financialYearForDate(date).slice(0, 4)) - 1
   return `${startYear}-${String(startYear + 1).slice(-2)}`
+}
+
+function financialYearStart(value) {
+  const match = String(value || '').trim().match(/^(20\d{2})-\d{2}$/)
+  return match ? Number(match[1]) : Number.NEGATIVE_INFINITY
 }
 
 

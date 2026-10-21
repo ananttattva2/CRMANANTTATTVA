@@ -19,7 +19,7 @@ test('popup details collapse duplicate snapshots while retaining distinct lead, 
 });
 
 test('SPOC reports count all 43 services instead of collapsing them into 41 applicant records', async () => {
-  const { buildApplicationPortfolio, applicationReportGroups, PIBO_CATEGORIES, matchesStatusSummary, matchesServiceSummary } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const { buildApplicationPortfolio, applicationReportGroups, PIBO_CATEGORIES, matchesStatusSummary, matchesServiceSummary, matchesDistributionSummary } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const rows = Array.from({ length: 41 }, (_, index) => {
     const row = client(`client-${index}`, 'sonal', 'Producer', 'Approved');
     row.selectedLead.company = `Company ${index}`;
@@ -39,10 +39,12 @@ test('SPOC reports count all 43 services instead of collapsing them into 41 appl
   assert.equal(groups[0].records.length, 41);
   const [report] = applicationReportGroups(groups);
   assert.equal(report.records.length, 43);
-  assert.equal(report.records.filter(row => matchesStatusSummary(row, 'total')).length, 43);
-  assert.equal(report.records.filter(row => matchesServiceSummary(row, 'total')).length, 43);
-  assert.equal(PIBO_CATEGORIES.reduce((total, category) => total + report.records.filter(row => row.category === category).length, 0), 43);
-  assert.equal(report.records.filter(row => matchesStatusSummary(row, 'registrationApproved')).length, 2);
+  assert.equal(report.records.filter(row => matchesStatusSummary(row, 'total')).length, 41);
+  assert.equal(report.records.filter(row => matchesServiceSummary(row, 'total')).length, 41);
+  assert.equal(report.records.filter(row => matchesDistributionSummary(row, 'total')).length, 41);
+  assert.equal(PIBO_CATEGORIES.reduce((total, category) => total + report.records.filter(row => matchesDistributionSummary(row, category)).length, 0), 41);
+  assert.equal(report.records.filter(row => matchesStatusSummary(row, 'registrationApproved')).length, 0);
+  assert.equal(report.records.filter(row => matchesServiceSummary(row, 'New Registration')).length, 0);
   assert.equal(report.records.filter(row => matchesStatusSummary(row, 'otherServicesApproved')).length, 41);
   assert.equal(new Set(report.records.map(row => row.id)).size, 43);
   const other = client('other-user', 'krishna', 'Importer', 'Approved');
@@ -74,6 +76,33 @@ test('saved CPCB statuses distinguish approved, applied, under review, pending, 
   discontinued.data.importMeta.visibilityStatus = 'DISCONTINUED';
   assert.equal(applicationRecord(discontinued).bucket, 'approved');
   assert.equal(applicationRecord(discontinued).live, false);
+});
+
+test('dashboard resolves CPCB status from the exact assigned service for every scoped Client Master', async () => {
+  const { applicationRecord } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const direct = client('balaji', 'sonal', 'Importer of Raw Material', 'Not Started');
+  direct.data.assignedServiceId = 'balaji-importer-unit-2';
+  direct.data.cpcbDataByAssignedServiceId = {
+    'balaji-importer-unit-2': { status: 'Approved' },
+    'balaji-producer-unit-1': { status: 'Rejected' }
+  };
+  assert.equal(applicationRecord(direct).cpcb, 'Approved');
+  assert.equal(applicationRecord(direct).bucket, 'approved');
+
+  const nested = client('other-client', 'sonal', 'Importer', 'Applied');
+  nested.assignedServiceId = 'importer-service';
+  nested.data.serviceDetailsByAssignedServiceId = {
+    'importer-service': { cpcb: { applicationStatus: 'Under Review' } },
+    'brand-owner-service': { cpcb: { status: 'Approved' } }
+  };
+  assert.equal(applicationRecord(nested).cpcb, 'Under Review');
+  assert.equal(applicationRecord(nested).bucket, 'underReview');
+
+  const legacyRootEdit = client('legacy-root-edit', 'sonal', 'Importer of Raw Material', 'Approved');
+  legacyRootEdit.assignedServiceId = 'matching-service';
+  legacyRootEdit.data.cpcbDataByAssignedServiceId = { 'matching-service': { status: 'Not Started' } };
+  assert.equal(applicationRecord(legacyRootEdit).cpcb, 'Approved');
+  assert.equal(applicationRecord(legacyRootEdit).bucket, 'approved');
 });
 
 test('annual eligibility follows assigned services offered and applicant labels resolve the assigned service', async () => {
@@ -320,7 +349,7 @@ test('submitted applicant replaces a matching draft whose unit was not recorded'
   assert.deepEqual(group.records.map(record => record.id).sort(), ['submitted-importer', 'submitted-producer']);
 });
 
-test('approved annual applications accept matching Annual Return years across PO financial years', async () => {
+test('approved annual applications use the first Annual Return year regardless of PO financial year', async () => {
   const {buildApplicationPortfolio, applicationSummaryRecords, financialYearForDate, annualReturnYearForDate, matchesServiceSummary, matchesStatusSummary, STATUS_COLUMNS} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   assert.equal(financialYearForDate(new Date('2026-10-08T12:00:00+05:30')), '2026-27');
   assert.equal(annualReturnYearForDate(new Date('2026-10-08T12:00:00+05:30')), '2025-26');
@@ -357,6 +386,34 @@ test('approved annual applications accept matching Annual Return years across PO
   result=applicationSummaryRecords(buildApplicationPortfolio([make('unrelated-year','Approved',[{poFinancialYear:'2025-26',annualReturnYear:'2024-25'}])],users)[0])[0];
   assert.equal(result.annual,false);
   assert.equal(matchesStatusSummary(result,'annualActionRequired'),true);
+
+  result=applicationSummaryRecords(buildApplicationPortfolio([make('po-2025-multiple','Approved',[
+    {poFinancialYear:'2025-26',annualReturnYear:'2027-28'},
+    {poFinancialYear:'2025-26',annualReturnYear:'2025-26'},
+    {poFinancialYear:'2025-26',annualReturnYear:'2026-27'}
+  ])],users)[0])[0];
+  assert.deepEqual(result.annualYears,['2025-26']);
+  assert.equal(matchesStatusSummary(result,'annual:2025-26'),true);
+  result=applicationSummaryRecords(buildApplicationPortfolio([make('po-2026-multiple','Approved',[
+    {poFinancialYear:'2026-27',annualReturnYear:'2027-28'},
+    {poFinancialYear:'2026-27',annualReturnYear:'2025-26'},
+    {poFinancialYear:'2026-27',annualReturnYear:'2026-27'}
+  ])],users)[0])[0];
+  assert.deepEqual(result.annualYears,['2025-26']);
+  assert.equal(matchesStatusSummary(result,'annual:2025-26'),true);
+  result=applicationSummaryRecords(buildApplicationPortfolio([make('po-2026-future','Approved',[
+    {poFinancialYear:'2026-27',annualReturnYear:'2027-28'},
+    {poFinancialYear:'2026-27',annualReturnYear:'2026-27'}
+  ])],users)[0])[0];
+  assert.equal(result.annual,true);
+  assert.deepEqual(result.annualYears,['2026-27']);
+  assert.equal(matchesStatusSummary(result,'annual:2026-27',new Date('2026-10-08T12:00:00+05:30')),true);
+  assert.equal(matchesStatusSummary(result,'annualActionRequired',new Date('2026-10-08T12:00:00+05:30')),false);
+  assert.equal(matchesStatusSummary(result,'notStarted',new Date('2026-10-08T12:00:00+05:30')),false);
+  assert.deepEqual(STATUS_COLUMNS.filter(([key])=>key!=='total'&&matchesStatusSummary(result,key)).map(([key])=>key),['annual:2026-27']);
+  assert.equal(matchesServiceSummary(result,'annualActionRequired',new Date('2026-10-08T12:00:00+05:30')),false);
+  assert.equal(matchesStatusSummary(result,'total',new Date('2026-10-08T12:00:00+05:30')),true);
+  assert.equal(matchesServiceSummary(result,'total',new Date('2026-10-08T12:00:00+05:30')),true);
 });
 
 test('portfolio excludes every draft and every service-not-recorded row', async () => {
@@ -470,7 +527,7 @@ test('Annual Return PO service objects qualify for all users and applicant types
   }
 });
 
-test('approved Registration and New Registration have a dedicated status-summary column', async () => {
+test('approved Registration and New Registration are excluded from status summary while other approved services remain', async () => {
   const { buildApplicationPortfolio, applicationServiceSummaryRecords, matchesStatusSummary } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const registration = client('registration', 'sonal', 'Producer', 'Approved');
   registration.workflowStatus = 'submitted';
@@ -483,10 +540,64 @@ test('approved Registration and New Registration have a dedicated status-summary
   consulting.workflowStatus = 'submitted';
   consulting.selectedLead.company = 'Consulting Client';
   const rows = applicationServiceSummaryRecords(buildApplicationPortfolio([registration, newRegistration, consulting], users)[0]);
-  assert.deepEqual(rows.filter((row) => matchesStatusSummary(row, 'registrationApproved')).map((row) => row.name).sort(), ['20 MICRONS LIMITED', 'New Registration Client']);
+  assert.deepEqual(rows.filter((row) => matchesStatusSummary(row, 'registrationApproved')).map((row) => row.name), []);
+  assert.deepEqual(rows.filter((row) => matchesStatusSummary(row, 'total')).map((row) => row.name), ['Consulting Client']);
   assert.equal(rows.find((row) => row.name === 'Consulting Client' && matchesStatusSummary(row, 'registrationApproved')), undefined);
   assert.deepEqual(rows.filter((row) => matchesStatusSummary(row, 'otherServicesApproved')).map((row) => row.name), ['Consulting Client']);
   assert.equal(rows.filter((row) => matchesStatusSummary(row, 'otherServicesApproved')).some((row) => ['Registration', 'New Registration'].includes(row.summaryService)), false);
+});
+
+test('approved Registration is excluded from service and PIBO totals and breakdowns', async () => {
+  const { buildApplicationPortfolio, applicationServiceSummaryRecords, matchesServiceSummary, isApprovedRegistration } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const registration = client('approved-registration-breakdown', 'sonal', 'Importer', 'Approved');
+  registration.workflowStatus = 'submitted';
+  registration.data.basic.servicesOffered = 'New Registration';
+  const [group] = buildApplicationPortfolio([registration], users);
+  const [row] = applicationServiceSummaryRecords(group);
+  assert.equal(matchesServiceSummary(row, 'total'), false);
+  assert.equal(matchesServiceSummary(row, 'New Registration'), false);
+  assert.equal(isApprovedRegistration(row), true);
+});
+
+test('portfolio sections split Annual Return and Registration from every other service', async () => {
+  const { buildApplicationPortfolio, applicationReportGroups, matchesPortfolioSection } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const annual = client('section-annual', 'sonal', 'Importer', 'Applied');
+  annual.data.basic.servicesOffered = 'Annual Return Filing';
+  const registration = client('section-registration', 'sonal', 'Producer', 'Not Started');
+  registration.data.basic.servicesOffered = 'New Registration';
+  const consulting = client('section-consulting', 'sonal', 'Brand Owner', 'Under Review');
+  consulting.data.basic.servicesOffered = 'Consulting';
+  for (const row of [annual, registration, consulting]) row.selectedLead.status = 'Closed';
+  const [group] = applicationReportGroups(buildApplicationPortfolio([annual, registration, consulting], users));
+  const annualRegistration = group.records.filter(row => matchesPortfolioSection(row, 'annualRegistration'));
+  const otherServices = group.records.filter(row => matchesPortfolioSection(row, 'otherServices'));
+  assert.deepEqual(annualRegistration.map(row => row.summaryService).sort(), ['Annual Return Filling', 'New Registration']);
+  assert.deepEqual(otherServices.map(row => row.summaryService), ['Consulting']);
+  assert.equal(annualRegistration.length + otherServices.length, group.records.length);
+});
+
+test('Yes Registered excludes approved New Registration when the same applicant also has Annual Return', async () => {
+  const { buildApplicationPortfolio, applicationServiceSummaryRecords, matchesStatusSummary } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const registration = client('registered-service', 'sonal', 'Importer', '');
+  registration.workflowStatus = 'submitted';
+  registration.assignedServiceId = 'registration';
+  registration.data.cpcb = {};
+  registration.data.cpcbOnboarding = { cpcbPortalRegistered: true };
+  registration.selectedLead.serviceSelections = [
+    { assignedServiceId: 'registration', subApplicantType: 'Importer', plantUnit: 'Unit 1', eprCategory: 'EPR - Plastic Waste', servicesOffered: 'New Registration' },
+    { assignedServiceId: 'annual', subApplicantType: 'Importer', plantUnit: 'Unit 1', eprCategory: 'EPR - Plastic Waste', servicesOffered: 'Annual Return Filling' }
+  ];
+  registration.selectedLead.assignments = [
+    { assignedServiceId: 'registration', assignedTo: 'manager', assignedStaff: 'sonal', closedAt: '2026-10-01' },
+    { assignedServiceId: 'annual', assignedTo: 'manager', assignedStaff: 'sonal', closedAt: '2026-10-01', poStatus: 'received', poYearRows: [{ poFinancialYear: '2026-27', annualReturnYear: '2026-27' }] }
+  ];
+  const rows = applicationServiceSummaryRecords(buildApplicationPortfolio([registration], users)[0]);
+  assert.equal(rows.filter(row => matchesStatusSummary(row, 'registrationApproved')).length, 0);
+  const registrationRow = rows.find(row => row.summaryService === 'New Registration');
+  assert.equal(registrationRow.cpcb, 'Approved');
+  assert.equal(registrationRow.services[0].cpcb, 'Registered');
+  assert.equal(matchesStatusSummary(registrationRow, 'total'), false);
+  assert.equal(rows.filter(row => row.summaryService === 'Annual Return Filling' && matchesStatusSummary(row, 'annual:2026-27')).length, 0);
 });
 
 test('legacy multi-service assignment rows preserve PO qualification by service position', async () => {

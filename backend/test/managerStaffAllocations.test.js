@@ -25,7 +25,9 @@ test('new staff assignments inherit matching Client Master CPCB status across al
   const lead={_id:'lead',company:'Client',serviceSelections:[{...base,assignedServiceId:'old'},{...base,assignedServiceId:'new'}],assignments:[{}, {assignedServiceId:'new',assignedTo:'manager',assignedStaff:'staff'}]};
   const client={_id:'master',assignedServiceId:'old',selectedLead:lead,workflowStatus:'submitted',data:{cpcb:{status:'Not Started'},cpcbDataByAssignedServiceId:{old:{cpcb:{status,ceprPassword:'private'}}}}};
   const sanitized=dashboardStatusClient(client);
-  assert.equal(sanitized.data.cpcb.status,status);assert.equal(sanitized.data.cpcb.ceprPassword,undefined);assert.equal(sanitized.data.cpcbDataByAssignedServiceId,undefined);
+  assert.equal(sanitized.data.cpcb.status,'Not Started');assert.equal(sanitized.data.cpcb.ceprPassword,undefined);
+  assert.equal(sanitized.data.cpcbDataByAssignedServiceId.old.cpcb.status,status);
+  assert.equal(sanitized.data.cpcbDataByAssignedServiceId.old.cpcb.ceprPassword,undefined);
   const placeholder=mergeManagerStaffAllocations([sanitized],[lead]).find(c=>c.assignmentOnly);
   assert.equal(placeholder.data.cpcb.status,status);assert.equal(placeholder.statusSourceClientId,'master');
   const unrelated={...lead,serviceSelections:[lead.serviceSelections[0],{...base,assignedServiceId:'new',subApplicantType:'Brand Owner'}]};
@@ -115,4 +117,91 @@ test('legacy multi-service drafts resolve CPCB status by canonical applicant, un
  assert.equal(placeholders.find(row=>row.assignedServiceId==='raw-importer').data.cpcb.status,'Approved');
  assert.equal(placeholders.find(row=>row.assignedServiceId==='brand').data.cpcb.status,undefined);
  assert.equal(placeholders.find(row=>row.assignedServiceId==='producer').data.cpcb.status,undefined);
+});
+
+test('a status scoped to Balaji Unit 2 importer overrides a different root service',()=>{
+ const {dashboardStatusClient}=require('../src/services/managerStaffAllocations');
+ const services=[
+  {assignedServiceId:'brand',subApplicantType:'Brand Owner',plantUnit:'Unit 1',servicesOffered:'Annual Return Filling'},
+  {assignedServiceId:'raw-importer',subApplicantType:'Importer of Raw Material',plantUnit:'Unit 2',servicesOffered:'Annual Return Filling'}
+ ];
+ const lead={_id:'balaji',leadCode:'ATPL-LEAD-0464',company:'Balaji Plastic Finishing & Trading',serviceSelections:services,assignments:services.map(service=>({assignedServiceId:service.assignedServiceId,assignedStaff:'sonal',closedAt:'2026-10-01'}))};
+ const master=dashboardStatusClient({_id:'multi-scope',selectedLead:lead,assignedServiceId:'brand',workflowStatus:'draft',updatedAt:'2026-10-12',data:{
+  assignedServiceId:'brand',selectedLeadSnapshot:{id:'balaji',assignedServiceId:'brand',subApplicantType:'Brand Owner',plantUnit:'Unit 1',servicesOffered:'Annual Return Filling'},
+  cpcb:{status:'Not Started'},cpcbDataByAssignedServiceId:{brand:{cpcb:{status:'Not Started'}},'raw-importer':{cpcb:{status:'Approved',ceprPassword:'private'}}}
+ }});
+ const newerInferred=dashboardStatusClient({_id:'newer-inferred',selectedLead:lead,assignedServiceId:'obsolete-importer',workflowStatus:'draft',updatedAt:'2026-10-13',data:{
+  assignedServiceId:'obsolete-importer',selectedLeadSnapshot:{id:'balaji',assignedServiceId:'obsolete-importer',subApplicantType:'SIMP - Importer',plantUnit:'Unit 2',servicesOffered:'Annual Return Filing'},
+  cpcbDataByAssignedServiceId:{'obsolete-importer':{cpcb:{status:'Not Started'}}}
+ }});
+ const rows=mergeManagerStaffAllocations([master,newerInferred],[lead]).filter(row=>row.assignmentOnly);
+ assert.equal(rows.find(row=>row.assignedServiceId==='raw-importer').data.cpcb.status,'Approved');
+ assert.equal(rows.find(row=>row.assignedServiceId==='brand').data.cpcb.status,'Not Started');
+ assert.equal(JSON.stringify(master).includes('private'),false);
+});
+
+test('a directly saved Approved edit repairs an older Not Started snapshot for the same service',()=>{
+ const {dashboardStatusClient}=require('../src/services/managerStaffAllocations');
+ const service={assignedServiceId:'raw-importer',subApplicantType:'Importer of Raw Material',plantUnit:'Unit 2',servicesOffered:'Annual Return Filling'};
+ const lead={_id:'balaji',leadCode:'ATPL-LEAD-0464',company:'Balaji Plastic Finishing & Trading',serviceSelections:[service],assignments:[{assignedServiceId:'raw-importer',assignedStaff:'sonal',closedAt:'2026-10-01'}]};
+ const master=dashboardStatusClient({_id:'legacy-conflict',selectedLead:lead,assignedServiceId:'raw-importer',workflowStatus:'draft',data:{
+  assignedServiceId:'raw-importer',selectedLeadSnapshot:{id:'balaji',assignedServiceId:'raw-importer',subApplicantType:'Importer of Raw Material',plantUnit:'Unit 2',servicesOffered:'Annual Return Filling'},
+  cpcb:{status:'Approved'},cpcbDataByAssignedServiceId:{'raw-importer':{cpcb:{status:'Not Started'}}}
+ }});
+ const row=mergeManagerStaffAllocations([master],[lead]).find(item=>item.assignmentOnly);
+ assert.equal(row.data.cpcb.status,'Approved');
+});
+
+test('newer directly saved CPCB status outranks an older exact Not Started duplicate',()=>{
+ const {dashboardStatusClient}=require('../src/services/managerStaffAllocations');
+ const service={assignedServiceId:'annual',subApplicantType:'Importer',plantUnit:'Unit 1',eprCategory:'EPR - Plastic Waste',servicesOffered:'Annual Return Filling'};
+ const lead={_id:'nuviashop',company:'NUVIASHOP PRIVATE LIMITED',serviceSelections:[service],assignments:[{assignedServiceId:'annual',assignedTo:'manager',assignedStaff:'prachi',closedAt:'2026-10-01'}]};
+ const older=dashboardStatusClient({_id:'older-scope',selectedLead:lead,assignedServiceId:'annual',workflowStatus:'submitted',updatedAt:'2026-09-09',data:{
+  assignedServiceId:'annual',selectedLeadSnapshot:{id:'nuviashop',assignedServiceId:'annual',subApplicantType:'Importer',plantUnit:'Unit 1',eprCategory:'EPR - Plastic Waste',servicesOffered:'Annual Return Filling'},
+  cpcb:{status:'Not Started'},cpcbDataByAssignedServiceId:{annual:{cpcb:{status:'Not Started'}}}
+ }});
+ const newer=dashboardStatusClient({_id:'newer-edit',selectedLead:lead,assignedServiceId:'annual',workflowStatus:'draft',updatedAt:'2026-10-15',data:{
+  assignedServiceId:'annual',selectedLeadSnapshot:{id:'nuviashop',assignedServiceId:'annual',subApplicantType:'Importer',plantUnit:'Unit 1',eprCategory:'EPR - Plastic Waste',servicesOffered:'Annual Return Filling'},
+  cpcb:{status:'Approved'}
+ }});
+ const row=mergeManagerStaffAllocations([older,newer],[lead]).find(item=>item._id==='older-scope');
+ assert.equal(row.data.cpcb.status,'Approved');
+});
+
+test('CPCB status is shared by registration and annual return for the same applicant unit',()=>{
+ const {dashboardStatusClient}=require('../src/services/managerStaffAllocations');
+ const registration={assignedServiceId:'registration',subApplicantType:'Importer',plantUnit:'Unit 1',eprCategory:'EPR - Plastic Waste',servicesOffered:'New Registration'};
+ const annual={assignedServiceId:'annual',subApplicantType:'Importer',plantUnit:'Unit 1',eprCategory:'EPR - Plastic Waste',servicesOffered:'Annual Return Filling'};
+ const lead={_id:'common-man',company:'Common Man Multiventures Pvt Ltd',serviceSelections:[registration,annual],assignments:[
+  {assignedServiceId:'registration',assignedStaff:'prachi',closedAt:'2026-10-01'},
+  {assignedServiceId:'annual',assignedStaff:'prachi',closedAt:'2026-10-01'}
+ ]};
+ const master=dashboardStatusClient({_id:'common-man-master',selectedLead:lead,assignedServiceId:'registration',workflowStatus:'submitted',updatedAt:'2026-10-14',data:{
+  assignedServiceId:'registration',selectedLeadSnapshot:{id:'common-man',assignedServiceId:'registration',subApplicantType:'Importer',plantUnit:'Unit 1',eprCategory:'EPR - Plastic Waste',servicesOffered:'New Registration'},
+  cpcb:{status:'Approved'}
+ }});
+ const rows=mergeManagerStaffAllocations([master],[lead]);
+ const annualRow=rows.find(row=>row.assignmentOnly && row.assignedServiceId==='annual');
+ assert.equal(annualRow.data.cpcb.status,'Approved');
+ const unrelatedLead={...lead,serviceSelections:[registration,{...annual,assignedServiceId:'other-unit',plantUnit:'Unit 2'}],assignments:[
+  lead.assignments[0],{assignedServiceId:'other-unit',assignedStaff:'prachi',closedAt:'2026-10-01'}
+ ]};
+ assert.equal(mergeManagerStaffAllocations([master],[unrelatedLead]).find(row=>row.assignmentOnly && row.assignedServiceId==='other-unit').data.cpcb.status,undefined);
+});
+
+test('Yes Registered counts New Registration without approving its Annual Return sibling',()=>{
+ const {dashboardStatusClient}=require('../src/services/managerStaffAllocations');
+ const registration={assignedServiceId:'registration',subApplicantType:'Importer',plantUnit:'Unit 1',eprCategory:'EPR - Plastic Waste',servicesOffered:'New Registration'};
+ const annual={assignedServiceId:'annual',subApplicantType:'Importer',plantUnit:'Unit 1',eprCategory:'EPR - Plastic Waste',servicesOffered:'Annual Return Filling'};
+ const lead={_id:'registered-client',company:'Registered Client',serviceSelections:[registration,annual],assignments:[
+  {assignedServiceId:'registration',assignedStaff:'prachi',closedAt:'2026-10-01'},
+  {assignedServiceId:'annual',assignedStaff:'prachi',closedAt:'2026-10-01'}
+ ]};
+ const annualMaster=dashboardStatusClient({_id:'annual-master',selectedLead:lead,assignedServiceId:'annual',workflowStatus:'submitted',data:{
+  assignedServiceId:'annual',selectedLeadSnapshot:{id:'registered-client',assignedServiceId:'annual',subApplicantType:'Importer',plantUnit:'Unit 1',eprCategory:'EPR - Plastic Waste',servicesOffered:'Annual Return Filling'},
+  cpcbOnboarding:{cpcbPortalRegistered:true}
+ }});
+ const rows=mergeManagerStaffAllocations([annualMaster],[lead]);
+ assert.equal(rows.find(row=>row.assignmentOnly && row.assignedServiceId==='registration').data.cpcb.status,'Registered');
+ assert.equal(rows.find(row=>row._id==='annual-master').data.cpcb?.status,undefined);
 });

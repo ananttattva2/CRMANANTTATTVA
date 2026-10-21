@@ -57,7 +57,9 @@ test('Sales UI provides two templates, preview, reconciliation and approval cont
   assert.match(checklist, /partialDataReceived/);
   assert.match(checklist, /completeDataReceived/);
   assert.match(checklist, /disabled=\{!editable \|\| !enabled\}/);
-  assert.match(checklist, /const SIMPLE = new Set\(\['Nil Upload', 'Client Approval on data'\]\)/);
+  assert.match(checklist, /const SIMPLE = new Set\(\['Nil Upload'\]\)/);
+  assert.doesNotMatch(checklist, /SIMPLE = new Set\([^\n]*Client Approval on data/);
+  assert.match(read('../src/controllers/salesDataController.js'), /const canEdit = \(user\) => isAdmin\(user\) \|\| !isCompliance\(user\)/);
 });
 
 test('Sales EML and Outlook MSG proofs use the same decoded mail viewer as Purchase', () => {
