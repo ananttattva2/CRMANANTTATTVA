@@ -1,3 +1,4 @@
+import '../styles/lead-review.css';
 import { downloadLeadReviewExcel } from '../utils/leadReviewExcel.mjs';
 import useTemporaryReviewLeads from '../hooks/useTemporaryReviewLeads';
 import { temporaryReviewRecords, closedLeadDate, leadReviewRows, matchesReviewSearch, COMMUNICATION_MODES } from '../utils/userOpenLeadReview.mjs';
@@ -262,13 +263,13 @@ export default function PendingLeads({ mode = 'open' }) {
   }
 
   return <DashboardShell currentUser={currentUser}>
-    <div className="p-6">
-      {<nav aria-label={mode === 'closed' ? 'Closed lead views' : 'Open lead views'} className="mb-5 flex gap-2 rounded-2xl border border-emerald-100 bg-white p-2 w-fit">{[['overall', mode === 'closed' ? 'Overall Lead Close' : 'Overall Open Lead'], ['users', mode === 'closed' ? 'User Lead Close' : 'User Open Lead']].map(([key, label]) => <button type="button" key={key} aria-pressed={openTab === key} onClick={() => setOpenTab(key)} className={`rounded-xl px-5 py-3 text-sm font-black ${openTab === key ? 'bg-emerald-700 text-white' : 'text-slate-600 hover:bg-emerald-50'}`}>{label}</button>)}</nav>}
+    <div className="lead-review-page">
+      {<nav aria-label={mode === 'closed' ? 'Closed lead views' : 'Open lead views'} className="review-tabs mb-5 flex gap-2 rounded-2xl border border-emerald-100 bg-white p-2 w-fit">{[['overall', mode === 'closed' ? 'Overall Lead Close' : 'Overall Open Lead'], ['users', mode === 'closed' ? 'User Lead Close' : 'User Open Lead']].map(([key, label]) => <button type="button" key={key} aria-pressed={openTab === key} onClick={() => setOpenTab(key)} className={`rounded-xl px-5 py-3 text-sm font-black ${openTab === key ? 'bg-emerald-700 text-white' : 'text-slate-600 hover:bg-emerald-50'}`}>{label}</button>)}</nav>}
       {openTab === 'users' ? <UserOpenLeads key={mode} mode={mode} leads={currentOpenLeads} temporary={mode === 'closed' ? [] : temporary.rows} loading={loading || (mode === 'open' && temporary.loading)} error={[error, temporary.error].filter(Boolean).join(' ')} onRefresh={() => { load(); temporary.refresh(); }} onView={view} /> : <>
 
-      <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="review-overall-head mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div><p className="text-xs font-black uppercase tracking-[.18em] text-emerald-700">Lead Review</p><h1 className="text-3xl font-black">{mode === 'closed' ? 'Overall Lead Close' : 'Overall Open Lead'}</h1><p className="mt-1 font-bold text-slate-500">{mode === 'closed' ? 'Closed leads visible within your assigned scope.' : 'Currently open leads are counted once. Select a month to review its month-end snapshot; Temp Lead shows current drafts.'}</p></div>
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="review-overall-actions flex flex-wrap items-end gap-3">
           <div className="flex h-11 items-center gap-3 rounded-xl border border-emerald-100 bg-emerald-50 px-4 text-emerald-800"><Users className="h-4 w-4" /><div><span className="block text-[9px] font-black uppercase tracking-wider">Total Leads</span><strong className="text-lg leading-none">{rows.length.toLocaleString('en-IN')}</strong></div></div>
           {mode === 'open' && <label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500">Lead Type<select value={typeFilter} onChange={event => { setTypeFilter(event.target.value); setMonthFilter('all'); }} className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><option value="lead">Lead</option><option value="temp">Temp Lead</option></select></label>}
           <label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500">User<select value={userFilter} onChange={(event) => setUserFilter(event.target.value)} className="h-11 min-w-44 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><option value="all">All Users</option>{userOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
@@ -280,7 +281,7 @@ export default function PendingLeads({ mode = 'open' }) {
         </div>
       </div>
       {(error || temporary.error) && <div role="alert" className="mb-4 rounded-xl bg-rose-50 p-4 font-bold text-rose-700">{[error, temporary.error].filter(Boolean).join(' ')}</div>}
-      <div className="overflow-auto rounded-2xl border border-slate-200 bg-white shadow-lg shadow-slate-900/5">
+      <div className="review-table review-overall-table overflow-auto rounded-2xl border border-slate-200 bg-white shadow-lg shadow-slate-900/5">
         <table className="w-full min-w-[1450px] text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['Sr. No.', mode === 'closed' ? 'Closed Date' : 'Lead Date', mode === 'closed' ? 'Lead Status' : 'Pending For', 'Lead Owner', 'Company', ...(mode === 'open' ? ['Type'] : []), 'Services', 'Service Added By', 'Financial Years', 'Quotation Basic Amount (INR)', ...(mode === 'closed' ? ['Note'] : [])].map((item) => <th className="px-4 py-4" key={item}>{item}</th>)}</tr></thead>
           <tbody>{paginatedRows.map((row, index) => {
