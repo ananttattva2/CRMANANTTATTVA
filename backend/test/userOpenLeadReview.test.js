@@ -42,3 +42,33 @@ test('all communication sources including Call have explicit counts and unknown 
   COMMUNICATION_MODES.forEach(mode => assert.equal(user.modes[mode], 1));
   assert.equal(leadReviewRows([lead('unknown', { communicationMode: 'custom source' })])[0].mode, 'Other / Not specified');
 });
+test('generated Lead Owner stays separate from creator and shared stale import identities', async () => {
+  const { leadReviewRows, summarizeReviewRows } = await load();
+  const gaurav = { _id: 'gaurav', name: 'GAURAV CHANDRA', email: 'gaurav@example.com', crmUserId: 'CRM-G' };
+  const mihir = { _id: 'mihir', name: 'MIHIRDEVSINH ZALA', email: 'mihir@example.com', crmUserId: 'CRM-M' };
+  const open = Array.from({ length: 121 }, (_, i) => lead(`g-${i}`, { createdBy: mihir, createdByCrmUserId: 'CRM-M', createdByEmail: mihir.email, importedCreatedBy: mihir.name, generatedForUser: gaurav, generatedForName: gaurav.name, generatedForEmail: gaurav.email }));
+  open.push(...Array.from({ length: 118 }, (_, i) => lead(`m-${i}`, { createdBy: mihir, createdByName: mihir.name, createdByEmail: mihir.email, generatedForUser: mihir })));
+  const temps = Array.from({ length: 20 }, (_, i) => lead(`t-${i}`, { createdBy: gaurav, createdByName: gaurav.name, createdByEmail: gaurav.email, status: 'DRAFT' }));
+  const rows = leadReviewRows(open, temps);
+  const summary = summarizeReviewRows(rows);
+  assert.equal(summary.length, 2);
+  const actual = summary.find(user => user.name === gaurav.name);
+  assert.equal(actual.open, 121); assert.equal(actual.temporary, 20); assert.equal(actual.total, 141);
+  const detail = rows.filter(row => row.ownerKey === actual.key);
+  assert.equal(detail.length, actual.total);
+  assert.equal(detail.filter(row => row.temporary).length, actual.temporary);
+  assert.equal(summary.find(user => user.name === mihir.name).open, 118);
+  assert.equal(summary.reduce((sum, user) => sum + user.total, 0), open.length + temps.length);
+});
+test('unknown generated owner never falls back to the editor account', async () => {
+  const { leadReviewRows, summarizeReviewRows } = await load();
+  const rows = leadReviewRows([lead('other', { createdBy: { _id: 'editor', name: 'Editor' }, generatedForName: 'GAURAV CHANDRA' }), lead('self', { createdBy: { _id: 'editor', name: 'Editor' }, createdByName: 'Editor', createdByEmail: '' })]);
+  assert.equal(summarizeReviewRows(rows).length, 2);
+  assert.equal(rows.find(row => row.lead._id === 'other').ownerName, 'GAURAV CHANDRA');
+});
+test('two accounts sharing a display name keep distinct IDs and totals', async () => {
+  const { leadReviewRows, summarizeReviewRows } = await load();
+  const rows = leadReviewRows([lead('one', { generatedForUser: { _id: 'one', name: 'Shared name' } }), lead('two', { generatedForUser: { _id: 'two', name: 'Shared name' } })]);
+  assert.equal(summarizeReviewRows(rows).length, 2);
+  assert.notEqual(rows[0].ownerKey, rows[1].ownerKey);
+});

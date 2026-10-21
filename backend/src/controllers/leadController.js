@@ -1276,7 +1276,7 @@ exports.listLeads = async (req, res) => {
         : '')
     .populate('assignedTo', req.query.view === 'review' ? 'name email role' : 'name email avatarUrl role')
     .populate('closedBy', req.query.view === 'review' ? 'name email role' : 'name email avatarUrl role')
-    .populate('createdBy', 'name email')
+    .populate('createdBy', 'name email crmUserId')
     .populate('generatedForUser', 'name email crmUserId')
       .sort({ leadCode: 1, createdAt: 1 })
       .maxTimeMS(20000).lean();

@@ -1,25 +1,60 @@
 export const COMMUNICATION_MODES = ['TeleCalling', 'Referral', 'Physical Visit', 'Campaign', 'Existing Client', 'Web Database', 'Webinar', 'Seminar', 'Exhibition', 'Associate Reference', 'Government', 'Call', 'Other / Not specified'];
-const identity = value => String(value || '').trim().toLowerCase();
+const identity = value => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
 const entityId = value => typeof value === 'object' ? value?._id || value?.id : value;
 export function communicationMode(value) {
   return COMMUNICATION_MODES.find(mode => identity(mode).replace(/\s/g, '') === identity(value).replace(/\s/g, '')) || 'Other / Not specified';
 }
+// Only account profiles establish aliases. Never union identity fields from a
+// lead: its owner, editor and legacy importer can be three different people.
 export function leadReviewRows(leads = [], temporaryLeads = []) {
+  const profiles = new Map();
+  const aliases = new Map();
+  const profileId = profile => identity(entityId(profile));
+  const addProfile = profile => {
+    if (!profile || typeof profile !== 'object' || !profileId(profile)) return;
+    const key = `user:${profileId(profile)}`;
+    profiles.set(key, { key, name: profile.name || profile.email || 'Unknown user' });
+    [profile._id, profile.id, profile.crmUserId, profile.email, profile.name].map(identity).filter(Boolean).forEach(alias => {
+      if (!aliases.has(alias)) aliases.set(alias, key);
+      else if (aliases.get(alias) !== key) aliases.set(alias, null);
+    });
+  };
+  [...leads, ...temporaryLeads].forEach(lead => { addProfile(lead.generatedForUser); addProfile(lead.createdBy); });
+  const ownerFor = (lead, temporary) => {
+    const generated = !temporary && [lead.generatedForUser, lead.generatedForName, lead.generatedForEmail].some(Boolean);
+    const profile = generated ? lead.generatedForUser : lead.createdBy;
+    const object = profile && typeof profile === 'object' ? profile : {};
+    const candidates = generated
+      ? [entityId(profile), object.crmUserId, lead.generatedForEmail, object.email, lead.generatedForName, object.name]
+      : [entityId(profile), lead.createdByCrmUserId, lead.createdByEmail, object.email, lead.createdByName, lead.importedCreatedBy, object.name];
+    // When no explicit owner exists, imported names can identify the real
+    // creator instead of the technical account used to upload old records.
+    const declaredName = !generated && (lead.importedCreatedBy || lead.createdByName);
+    const importedMismatch = declaredName && object.name && identity(declaredName) !== identity(object.name);
+    const effective = importedMismatch
+      ? [lead.createdByName, lead.importedCreatedBy, lead.createdByEmail]
+      : candidates;
+    for (const candidate of effective) {
+      const key = aliases.get(identity(candidate));
+      if (key) return profiles.get(key);
+    }
+    const name = generated
+      ? object.name || lead.generatedForName || object.email || lead.generatedForEmail
+      : lead.createdByName || lead.importedCreatedBy || object.name || lead.createdByEmail || object.email;
+    // An unresolved explicit owner still stays separate from its creator.
+    const id = !importedMismatch && entityId(profile);
+    const key = id ? `user:${identity(id)}` : `legacy:${identity(name || effective.find(Boolean) || 'Unknown user')}`;
+    return { key, name: String(name || 'Unknown user').trim() };
+  };
   const seen = new Set();
-  const owners = new Map();
   const rows = [];
   const add = (lead, temporary) => {
     if (temporary && lead.status !== 'DRAFT') return;
     const id = `${temporary ? 'temp' : 'lead'}:${lead._id || lead.id || lead.leadCode || lead.tempLeadCode}`;
     if (seen.has(id)) return;
     seen.add(id);
-    const creator = typeof lead.createdBy === 'object' ? lead.createdBy : {};
-    const name = String(lead.importedCreatedBy || lead.createdByName || creator?.name || lead.createdByEmail || creator?.email || 'Unknown user').trim();
-    const declaredName = lead.importedCreatedBy || lead.createdByName;
-    const creatorMatches = !declaredName || identity(creator?.name) === identity(declaredName);
-    const aliases = [creatorMatches ? entityId(lead.createdBy) : '', lead.createdByCrmUserId, lead.createdByEmail, creatorMatches ? creator?.email : '', name].map(identity).filter(Boolean);
-    // Resolve legacy text owners against populated creator identities.
-    rows.push({ id, lead, temporary, ownerName: name, aliases,
+    const owner = ownerFor(lead, temporary);
+    rows.push({ id, lead, temporary, ownerKey: owner.key, ownerName: owner.name,
       company: temporary ? lead.clientName : lead.company,
       code: temporary ? lead.tempLeadCode : lead.leadCode || lead.sourceLeadId,
       date: lead.createdAt || lead.importedCreatedAt || lead.leadDate || '',
@@ -29,16 +64,6 @@ export function leadReviewRows(leads = [], temporaryLeads = []) {
   };
   leads.forEach(lead => add(lead, false));
   temporaryLeads.forEach(lead => add(lead, true));
-  // Union aliases before grouping so name/email-only legacy rows join current users.
-  const parent = new Map();
-  const root = key => { if (!parent.has(key)) parent.set(key, key); if (parent.get(key) !== key) parent.set(key, root(parent.get(key))); return parent.get(key); };
-  rows.forEach(row => row.aliases.forEach(alias => parent.set(root(alias), root(row.aliases[0]))));
-  rows.forEach(row => {
-    const ownerKey = root(row.aliases[0]);
-    if (!owners.has(ownerKey)) owners.set(ownerKey, row.ownerName);
-    row.ownerKey = ownerKey;
-    row.ownerName = owners.get(ownerKey);
-  });
   return rows;
 }
 const indiaDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' });
