@@ -75,7 +75,31 @@ async function syncClientReviewReminderState({ client, status, now = new Date() 
   if (normalized === 'PENDING') {
     await PendingApproval.updateMany(
       { type: 'client', sourceClientId: identity.clientKey, approvalStatus: 'PENDING' },
-      { $set: { nextReminderAt: null, reminderFlag: 'GREEN', greenFlagAt: now }, $unset: { redFlagAt: 1, greenFlagDeadline: 1, reminderError: 1 } }
+      {
+        $set: {
+          nextReminderAt: null,
+          reminderFlag: 'GREEN',
+          greenFlagAt: now,
+          correctionStatus: 'NONE',
+          correctionDecision: '',
+          correctionResolvedAt: now
+        },
+        $unset: {
+          redFlagAt: 1,
+          greenFlagDeadline: 1,
+          reminderError: 1,
+          correctionStartedAt: 1,
+          correctionDeadlinePolicy: 1,
+          correctionReminderAt: 1,
+          correctionReminderSentAt: 1,
+          correctionDueAt: 1,
+          correctionBreachedAt: 1,
+          redRecoveryStartedAt: 1,
+          redRecoveryEmailSentAt: 1,
+          redRecoveryEmailNextAttemptAt: 1,
+          correctionEmailError: 1
+        }
+      }
     );
     await pauseReminder(reminder, now);
     await Promise.all(assignments.map((record) => pauseAssignment(record, now)));
@@ -109,7 +133,31 @@ async function pauseExistingPendingClientApprovalTimers(now = new Date()) {
   const clientIds = [...new Set(pending.map((row) => id(row.sourceClientId)).filter((value) => mongoose.isValidObjectId(value)))];
   const result = await PendingApproval.updateMany(
     { type: 'client', approvalStatus: 'PENDING' },
-    { $set: { nextReminderAt: null, reminderFlag: 'GREEN', greenFlagAt: now }, $unset: { redFlagAt: 1, greenFlagDeadline: 1, reminderError: 1 } }
+    {
+      $set: {
+        nextReminderAt: null,
+        reminderFlag: 'GREEN',
+        greenFlagAt: now,
+        correctionStatus: 'NONE',
+        correctionDecision: '',
+        correctionResolvedAt: now
+      },
+      $unset: {
+        redFlagAt: 1,
+        greenFlagDeadline: 1,
+        reminderError: 1,
+        correctionStartedAt: 1,
+        correctionDeadlinePolicy: 1,
+        correctionReminderAt: 1,
+        correctionReminderSentAt: 1,
+        correctionDueAt: 1,
+        correctionBreachedAt: 1,
+        redRecoveryStartedAt: 1,
+        redRecoveryEmailSentAt: 1,
+        redRecoveryEmailNextAttemptAt: 1,
+        correctionEmailError: 1
+      }
+    }
   );
   if (!clientIds.length) return Number(result.modifiedCount || 0);
   await ClientOnboardingReminder.updateMany(
