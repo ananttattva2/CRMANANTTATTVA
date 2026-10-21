@@ -72,3 +72,28 @@ test('two accounts sharing a display name keep distinct IDs and totals', async (
   assert.equal(summarizeReviewRows(rows).length, 2);
   assert.notEqual(rows[0].ownerKey, rows[1].ownerKey);
 });
+test('note search handles pasted whitespace, punctuation and words across full notes', async () => {
+  const { leadReviewRows, filterReviewRows } = await load();
+  const rows = leadReviewRows([
+    lead('one', { communicationModeNote: 'Looking for CTE/CTO: EPR registered\nRequested\u00a0for quote', notes: 'Importer + Seller Reg' }),
+    lead('two', { communicationModeNote: 'Need to have detailed information for applicability from concern person' })
+  ]);
+  assert.deepEqual(filterReviewRows(rows, { search: '  CTE CTO EPR  ' }).map(row => row.lead._id), ['one']);
+  assert.deepEqual(filterReviewRows(rows, { search: 'Requested for quote' }).map(row => row.lead._id), ['one']);
+  assert.deepEqual(filterReviewRows(rows, { search: 'importer seller reg' }).map(row => row.lead._id), ['one']);
+  assert.deepEqual(filterReviewRows(rows, { search: 'concern applicability' }).map(row => row.lead._id), ['two']);
+  assert.deepEqual(filterReviewRows(rows, { search: 'missing note text' }), []);
+});
+test('overall temporary rows include current drafts once, with readable owner and note', async () => {
+  const { temporaryReviewRecords } = await load();
+  const rows = temporaryReviewRecords([
+    { _id: 'draft', tempLeadCode: 'ATPL-TEMP-0199', clientName: 'Current draft', status: 'DRAFT', createdAt: '2026-10-21', createdBy: { _id: 'user', name: 'Gaurav' }, followUpRemarks: 'Follow up tomorrow' },
+    { _id: 'converted', status: 'CONVERTED' }
+  ]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].__temporary, true);
+  assert.equal(rows[0].company, 'Current draft');
+  assert.equal(rows[0].leadCode, 'ATPL-TEMP-0199');
+  assert.equal(rows[0].importedCreatedBy, 'Gaurav');
+  assert.equal(rows[0].notes, 'Follow up tomorrow');
+});

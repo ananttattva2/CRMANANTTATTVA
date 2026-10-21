@@ -73,6 +73,21 @@ export function reviewDate(value) {
   const parts = Object.fromEntries(indiaDate.formatToParts(date).map(part => [part.type, part.value]));
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
+export function matchesReviewSearch(row, query) {
+  // Match the same full note shown in the table, including pasted line breaks,
+  // non-breaking spaces and punctuation such as CTE/CTO or Importer + Seller.
+  const normalize = value => String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const tokens = normalize(query).split(/\s+/).filter(Boolean);
+  const text = [row.company, row.code, row.ownerName, row.mode, row.note, row.lead?.status].map(normalize).join(' ');
+  return tokens.every(token => text.includes(token));
+}
+export function temporaryReviewRecords(temporaryLeads = []) {
+  return temporaryLeads.filter(lead => lead.status === 'DRAFT').map(lead => ({
+    ...lead, company: lead.clientName, leadCode: lead.tempLeadCode,
+    importedCreatedBy: lead.createdBy?.name || lead.createdByName || lead.createdByEmail,
+    __temporary: true, notes: lead.followUpRemarks || ''
+  }));
+}
 export function filterReviewRows(rows, filters = {}, now = Date.now()) {
   return rows.filter(row => {
     if (filters.user && filters.user !== 'all' && row.ownerKey !== filters.user) return false;
@@ -86,8 +101,7 @@ export function filterReviewRows(rows, filters = {}, now = Date.now()) {
       if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed > Number(filters.days) * 86400000) return false;
     }
     if (filters.note === 'with' && !row.note.trim() || filters.note === 'without' && row.note.trim()) return false;
-    const search = identity(filters.search);
-    return !search || [row.company, row.code, row.ownerName, row.mode, row.note, row.lead.status].some(value => identity(value).includes(search));
+    return matchesReviewSearch(row, filters.search);
   });
 }
 export function summarizeReviewRows(rows) {
