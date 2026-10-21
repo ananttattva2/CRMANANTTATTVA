@@ -82,3 +82,19 @@
 @media(max-width:640px){.lead-review-page .review-heading h1,.lead-review-page .review-overall-head h1{font-size:22px}.lead-review-page .review-filter-disclosure{border:1px solid #dce6e8;border-radius:12px;background:#fff}.lead-review-page .review-filter-disclosure>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px;font-size:12px;font-weight:750;color:#365e66;cursor:pointer;list-style:none}.lead-review-page .review-filter-disclosure>summary span{font-size:10px;font-weight:500;color:#7f9499}.lead-review-page .review-filter-disclosure>summary::-webkit-details-marker{display:none}.lead-review-page .review-filter-disclosure .review-filters{border:0;border-top:1px solid #edf2f3;box-shadow:none}.lead-review-page .review-summary thead th:first-child,.lead-review-page .review-summary tbody th:first-child{min-width:200px}.lead-review-page .review-table tbody button{font-size:12px}.lead-review-page .review-table{max-height:65vh}}
 .lead-review-page .review-overview-closed{grid-template-columns:minmax(0,1fr)}
 .lead-review-page .review-table tbody button[data-zero=true]{color:#a1b2b7;font-weight:500}
+/* Three visual groups: lead volumes, pending age, and communication sources. */
+.lead-review-page .review-summary [data-tone=lead]{--group-head:#e4edff;--group-cell:#f5f8ff;--group-ink:#315bb5;--group-edge:#7c9ee1}
+.lead-review-page .review-summary [data-tone=temp]{--group-head:#eee5ff;--group-cell:#faf6ff;--group-ink:#8051ba;--group-edge:#b296db}
+.lead-review-page .review-summary [data-tone=total]{--group-head:#e7e8fc;--group-cell:#f5f5fe;--group-ink:#504b9f;--group-edge:#9793d4}
+.lead-review-page .review-summary [data-tone=age-0]{--group-head:#fff4ce;--group-cell:#fffdf4;--group-ink:#916917;--group-edge:#dcc16a}
+.lead-review-page .review-summary [data-tone=age-1]{--group-head:#ffeacb;--group-cell:#fffaf3;--group-ink:#a36a1f;--group-edge:#e2ad62}
+.lead-review-page .review-summary [data-tone=age-2]{--group-head:#ffe1ce;--group-cell:#fff8f3;--group-ink:#b35e2b;--group-edge:#df9a71}
+.lead-review-page .review-summary [data-tone=age-3]{--group-head:#fbdde0;--group-cell:#fff5f6;--group-ink:#ad4b59;--group-edge:#d98b98}
+.lead-review-page .review-summary [data-tone=source]{--group-head:#dff2ed;--group-cell:#f5fbf9;--group-ink:#287b6b;--group-edge:#80bbac}
+.lead-review-page .review-summary thead th[data-tone]{background:var(--group-head);color:var(--group-ink);border-top:3px solid var(--group-edge);border-bottom-color:var(--group-edge)}
+.lead-review-page .review-summary tbody td[data-tone]{background:var(--group-cell);color:var(--group-ink)}
+.lead-review-page .review-summary td[data-tone] button{color:var(--group-ink)}
+.lead-review-page .review-summary td[data-tone] button:hover{background:var(--group-head);color:var(--group-ink)}
+.lead-review-page .review-summary tbody td[data-tone] button[data-zero=true]{color:var(--group-ink);opacity:.48;font-weight:500}
+.lead-review-page .review-summary tfoot td[data-tone]{background:var(--group-head);color:var(--group-ink)}
+.lead-review-page .review-summary tr>*:nth-child(2),.lead-review-page .review-summary [data-tone=age-0],.lead-review-page .review-summary [data-tone=source]:nth-child(9){border-left:2px solid #fff}
