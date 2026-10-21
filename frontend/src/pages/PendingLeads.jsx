@@ -1,3 +1,4 @@
+import { downloadLeadReviewExcel } from '../utils/leadReviewExcel.mjs';
 import useTemporaryReviewLeads from '../hooks/useTemporaryReviewLeads';
 import { temporaryReviewRecords, closedLeadDate, leadReviewRows, matchesReviewSearch, COMMUNICATION_MODES } from '../utils/userOpenLeadReview.mjs';
 import UserOpenLeads from '../components/leads/UserOpenLeads';
@@ -187,12 +188,13 @@ export default function PendingLeads({ mode = 'open' }) {
   const [page, setPage] = useState(1);
   const [searchFilter, setSearchFilter] = useState('');
   const [communicationFilter, setCommunicationFilter] = useState('all');
-  const [typeFilter, setTypeFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('lead');
+  const [exporting, setExporting] = useState(false);
   const temporary = useTemporaryReviewLeads(mode === 'open');
   const [openTab, setOpenTab] = useState('overall');
   const currentOpenLeads = useMemo(() => leads.filter(row => servicesForMode(row, mode).length), [leads, mode]);
-  const reviewLeads = useMemo(() => mode === 'open' ? [...buildMonthEndReviewRows(leads), ...temporaryReviewRecords(temporary.rows)] : leads, [leads, temporary.rows, mode]);
-  const monthOptions = useMemo(() => [...new Set(reviewLeads.map((row) => row.__reviewMonth || monthKey(filterDateFor(row, mode))).filter(Boolean))].sort().reverse(), [reviewLeads, mode]);
+  const reviewLeads = useMemo(() => mode === 'open' ? [...(monthFilter === 'all' ? currentOpenLeads : buildMonthEndReviewRows(leads).filter(row => row.__reviewMonth === monthFilter)), ...temporaryReviewRecords(temporary.rows)] : leads, [leads, temporary.rows, mode, monthFilter, currentOpenLeads]);
+  const monthOptions = useMemo(() => [...new Set((mode === 'open' && typeFilter === 'lead' ? buildMonthEndReviewRows(leads).map(row => row.__reviewMonth) : reviewLeads.map(row => monthKey(filterDateFor(row, mode)))).filter(Boolean))].sort().reverse(), [leads, reviewLeads, mode, typeFilter]);
   const userOptions = useMemo(() => [...new Set(reviewLeads.map(leadOwner).filter((name) => name !== '-'))].sort((left, right) => left.localeCompare(right)), [reviewLeads]);
   const rows = useMemo(() => reviewLeads.filter((row) => {
     if (mode === 'open' && (typeFilter === 'temp' && !row.__temporary || typeFilter === 'lead' && row.__temporary)) return false;
@@ -235,6 +237,20 @@ export default function PendingLeads({ mode = 'open' }) {
   }
   useEffect(() => { load(); }, []);
 
+  async function exportOverall() {
+    setExporting(true);
+    try {
+      const headers = ['Lead Code', mode === 'closed' ? 'Closed Date' : 'Lead Date', mode === 'closed' ? 'Status' : 'Pending For', 'Lead Owner', 'Company', 'Type', 'Services', 'Service Added By', 'Communication Mode', 'Note', 'Financial Years', 'Quotation Basic Amount (INR)'];
+      const data = rows.map(row => {
+        const services = servicesForMode(row, mode);
+        const quotation = row.__temporary ? null : [...quotations].filter(item => quotationMatchesLead(item, row)).sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))[0];
+        return [row.leadCode || row.sourceLeadId || '', filterDateFor(row, mode) ? formatDisplayDate(filterDateFor(row, mode)) : '', mode === 'closed' ? 'Closed' : pendingFor(row), leadOwner(row), row.company || '', row.__temporary ? 'Temp Lead' : mode === 'closed' ? 'Closed Lead' : 'Lead', [...new Set(services.map(({ service }) => service.servicesOffered).filter(Boolean))].join(', '), [...new Set(services.map(({ service }) => service.createdByName || service.createdByEmail || row.importedCreatedBy || row.createdByName || row.createdByEmail).filter(Boolean))].join(', '), row.communicationMode || '', [row.communicationModeNote, row.notes].filter(Boolean).join('\n'), [...new Set(services.map(({ service }) => service.firstAnnualReturnYearApplicable).filter(Boolean))].join(', '), quotation ? quotationBasicAmount(quotation) : null];
+      });
+      await downloadLeadReviewExcel([{ name: 'Leads', headers, rows: data }], { View: mode === 'closed' ? 'Overall Lead Close' : 'Overall Open Lead', 'Lead Type': typeFilter === 'temp' ? 'Temp Lead' : 'Lead', User: userFilter, Month: monthFilter === 'all' ? 'Current open leads / all draft dates' : monthFilter, Days: dayFilter }, mode === 'closed' ? 'Overall_Lead_Close' : 'Overall_Open_Lead');
+    } catch { setError('Excel download failed. Please retry.'); }
+    finally { setExporting(false); }
+  }
+
   async function view(row) {
     setSelected(row);
     setHistory([]);
@@ -251,14 +267,15 @@ export default function PendingLeads({ mode = 'open' }) {
       {openTab === 'users' ? <UserOpenLeads key={mode} mode={mode} leads={currentOpenLeads} temporary={mode === 'closed' ? [] : temporary.rows} loading={loading || (mode === 'open' && temporary.loading)} error={[error, temporary.error].filter(Boolean).join(' ')} onRefresh={() => { load(); temporary.refresh(); }} onView={view} /> : <>
 
       <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div><p className="text-xs font-black uppercase tracking-[.18em] text-emerald-700">Lead Review</p><h1 className="text-3xl font-black">{mode === 'closed' ? 'Overall Lead Close' : 'Overall Open Lead'}</h1><p className="mt-1 font-bold text-slate-500">{mode === 'closed' ? 'Closed leads visible within your assigned scope.' : 'Lead month-end snapshots and current Temp Lead drafts. Completed monthly snapshots remain available.'}</p></div>
+        <div><p className="text-xs font-black uppercase tracking-[.18em] text-emerald-700">Lead Review</p><h1 className="text-3xl font-black">{mode === 'closed' ? 'Overall Lead Close' : 'Overall Open Lead'}</h1><p className="mt-1 font-bold text-slate-500">{mode === 'closed' ? 'Closed leads visible within your assigned scope.' : 'Currently open leads are counted once. Select a month to review its month-end snapshot; Temp Lead shows current drafts.'}</p></div>
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex h-11 items-center gap-3 rounded-xl border border-emerald-100 bg-emerald-50 px-4 text-emerald-800"><Users className="h-4 w-4" /><div><span className="block text-[9px] font-black uppercase tracking-wider">Total Leads</span><strong className="text-lg leading-none">{rows.length.toLocaleString('en-IN')}</strong></div></div>
-          {mode === 'open' && <label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500">Lead Type<select value={typeFilter} onChange={event => setTypeFilter(event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><option value="all">All Leads</option><option value="lead">Lead</option><option value="temp">Temp Lead</option></select></label>}
+          {mode === 'open' && <label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500">Lead Type<select value={typeFilter} onChange={event => { setTypeFilter(event.target.value); setMonthFilter('all'); }} className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><option value="lead">Lead</option><option value="temp">Temp Lead</option></select></label>}
           <label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500">User<select value={userFilter} onChange={(event) => setUserFilter(event.target.value)} className="h-11 min-w-44 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><option value="all">All Users</option>{userOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
-          <label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500">Month<select value={monthFilter} onChange={(event) => setMonthFilter(event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><option value="all">All Months</option>{monthOptions.map((month) => <option key={month} value={month}>{new Date(`${month}-01`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</option>)}</select></label>
+          <label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500">Month<select value={monthFilter} onChange={(event) => setMonthFilter(event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><option value="all">{mode === 'open' && typeFilter === 'lead' ? 'Current Open Leads' : 'All Months'}</option>{monthOptions.map((month) => <option key={month} value={month}>{new Date(`${month}-01`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}{mode === 'open' && typeFilter === 'lead' ? ' · Month-end' : ''}</option>)}</select></label>
           <label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500">Days<select value={dayFilter} onChange={(event) => setDayFilter(event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><option value="all">All Days</option><option value="7">Last 7 Days</option><option value="15">Last 15 Days</option></select></label>
           {mode === 'closed' && <><label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500">Communication Mode<select value={communicationFilter} onChange={event => setCommunicationFilter(event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold"><option value="all">All Modes</option>{COMMUNICATION_MODES.map(item => <option key={item}>{item}</option>)}</select></label><label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500">Search company, lead or note<input type="search" value={searchFilter} onChange={event => setSearchFilter(event.target.value)} placeholder="Search notes, company, lead…" className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold" /></label></>}
+          <button type="button" disabled={exporting || loading || (mode === 'open' && temporary.loading) || !rows.length} onClick={exportOverall} className="h-11 rounded-xl border border-emerald-700 bg-white px-4 font-bold text-emerald-800 disabled:opacity-40">{exporting ? 'Exporting…' : 'Download Excel'}</button>
           <button onClick={() => { load(); temporary.refresh(); }} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 font-black text-white"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Refresh</button>
         </div>
       </div>
