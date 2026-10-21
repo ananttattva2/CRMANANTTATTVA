@@ -430,7 +430,12 @@ function validateQuotationItemDates(items = []) {
 
 function cleanBody(body, user = null, existingItems = []) {
   const items = cleanItems(body.items, user, existingItems, body.quotationDate);
-  const terms = cleanTerms(body.terms);
+  const submittedTerms = cleanTerms(body.terms);
+  const paymentTerm = cleanPaymentTerm(body.paymentTerm, submittedTerms);
+  // Payment terms are a single-choice field. Older clients could submit the
+  // selected value alongside a previously selected preset, which caused both
+  // conditions to be printed on the quotation.
+  const terms = paymentTerm ? [paymentTerm] : [];
   const pricingMode = body.pricingMode === 'combined' ? 'combined' : 'individual';
   const individualTotal = roundMoney(items.reduce((sum, item) => sum + ((Number(item.unit) || 0) * (Number(item.basicAmount) || 0)), 0));
   const combinedPricingGroups = pricingMode === 'combined'
@@ -455,7 +460,7 @@ function cleanBody(body, user = null, existingItems = []) {
     quotationDate: body.quotationDate || undefined,
     items,
     terms,
-    paymentTerm: cleanPaymentTerm(body.paymentTerm, terms),
+    paymentTerm,
     scopeOfWork: cleanTerms(body.scopeOfWork),
     subtotal: roundMoney(body.subtotal || calculatedTotal),
     grandTotal: roundMoney(body.grandTotal || calculatedTotal),
@@ -545,6 +550,7 @@ function mapQuotationPendingApprovalRow(quotation, approvalType = 'CREATE') {
     combinedPricingGroups: Array.isArray(quotation.combinedPricingGroups) ? quotation.combinedPricingGroups : [],
     items: Array.isArray(quotation.items) ? quotation.items : [],
     terms: Array.isArray(quotation.terms) ? quotation.terms : [],
+    paymentTerm: quotation.paymentTerm || '',
     scopeOfWork: Array.isArray(quotation.scopeOfWork) ? quotation.scopeOfWork : [],
     status: quotation.status || 'draft',
     createdAt: quotation.createdAt,

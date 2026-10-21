@@ -367,6 +367,12 @@ function quotationPaymentTerm(row = {}) {
   const legacySelections = terms.filter((term) => PAYMENT_TERM_OPTIONS.includes(term));
   return legacySelections.length === 1 ? legacySelections[0] : '';
 }
+
+function quotationSelectedTerms(row = {}) {
+  const terms = Array.isArray(row.terms) ? row.terms.map((term) => String(term ?? '').trim()).filter(Boolean) : [];
+  const selected = quotationPaymentTerm(row);
+  return selected ? [selected] : terms;
+}
 const ANANT_TATTVA_GST_NUMBER = '27AAZCA6657R1ZB';
 const ANANT_TATTVA_ADDRESS = '1st Floor, A/25, Technocraft House, Road No. 3, MIDC, Andheri East, Mumbai, Maharashtra 400093';
 
@@ -824,7 +830,7 @@ function normalizeQuotationSnapshot(row) {
           unit: row.unit || '1',
           basicAmount: row.basicAmount || ''
         }],
-    terms: Array.isArray(row.terms) ? row.terms : [],
+    terms: quotationSelectedTerms(row),
     paymentTerm: quotationPaymentTerm(row),
     scopeOfWork: Array.isArray(row.scopeOfWork) ? row.scopeOfWork : [],
     status: row.status || 'draft'
@@ -1228,9 +1234,7 @@ export default function Quotations() {
       items: Array.isArray(savedQuotation.items)
         ? savedQuotation.items.map((item) => ({ ...emptyItem, ...item, basicAmount: item.basicAmount ?? '' }))
         : current.items,
-      terms: Array.isArray(savedQuotation.terms)
-        ? savedQuotation.terms.map((term) => String(term ?? ''))
-        : current.terms,
+      terms: quotationSelectedTerms(savedQuotation),
       paymentTerm: quotationPaymentTerm(savedQuotation),
       scopeOfWork: Array.isArray(savedQuotation.scopeOfWork) ? savedQuotation.scopeOfWork.map(String) : current.scopeOfWork,
       status: savedQuotation.status || current.status
@@ -1457,7 +1461,7 @@ export default function Quotations() {
       combinedBasicAmount: row.combinedBasicAmount ?? '',
       combinedPricingGroups: normalizeCombinedPricingGroups(row, syncedItems || []),
       items: Array.isArray(syncedItems) ? syncedItems.map((item) => ({ ...emptyItem, ...item, basicAmount: item.basicAmount ?? '' })) : [],
-      terms: Array.isArray(row.terms) ? row.terms.map((term) => String(term ?? '')) : [],
+      terms: quotationSelectedTerms(row),
       paymentTerm: quotationPaymentTerm(row),
       scopeOfWork: Array.isArray(row.scopeOfWork) ? row.scopeOfWork.map((item) => String(item ?? '')) : [],
       status: row.status || 'draft'
@@ -1879,10 +1883,13 @@ export default function Quotations() {
   function setCustomTerm(termIndex, value) {
     setQuotation((current) => {
       const previous = current.terms[termIndex];
+      const nextPaymentTerm = String(value || '').trim()
+        ? value
+        : current.paymentTerm === previous ? '' : current.paymentTerm;
       return {
         ...current,
         terms: current.terms.map((term, index) => index === termIndex ? value : term),
-        paymentTerm: current.paymentTerm === previous ? value : current.paymentTerm
+        paymentTerm: nextPaymentTerm
       };
     });
   }
@@ -2039,6 +2046,7 @@ export default function Quotations() {
     try {
       const payload = {
         ...quotation,
+        terms: [String(quotation.paymentTerm || '').trim()],
         serviceState: quotation.serviceState || 'open',
         combinedBasicAmount: quotation.pricingMode === 'combined' ? combinedQuotationTotal(quotation, quotation.items) : 0,
         combinedPricingGroups: quotation.pricingMode === 'combined' ? quotation.combinedPricingGroups : [],
@@ -2882,7 +2890,7 @@ function QuotationDetailModal({ quotation, revisionCount = 0, onClose, onRevise 
             </div>
           </DetailSection>
           <div className="mt-4 ml-auto max-w-sm rounded-lg border border-slate-200 bg-slate-50 p-4"><div className="flex justify-between text-sm font-bold text-slate-600"><span>Subtotal</span><span>{formatInr(quotation.subtotal || totalAmount)}</span></div><div className="mt-3 flex justify-between border-t border-slate-200 pt-3 text-base font-black text-slate-950"><span>Grand Total</span><span className="text-orange-600">{formatInr(totalAmount)}</span></div></div>
-          <DetailSection title="Terms & Conditions"><ol className="list-decimal space-y-2 pl-5 text-sm font-bold text-slate-700">{(quotation.terms || []).length ? quotation.terms.map((term, index) => <li key={`${term}-${index}`}>{term}</li>) : <li className="list-none text-slate-400">No terms added.</li>}</ol></DetailSection>
+          <DetailSection title="Terms & Conditions"><ol className="list-decimal space-y-2 pl-5 text-sm font-bold text-slate-700">{quotationSelectedTerms(quotation).length ? quotationSelectedTerms(quotation).map((term, index) => <li key={`${term}-${index}`}>{term}</li>) : <li className="list-none text-slate-400">No terms added.</li>}</ol></DetailSection>
           <DetailSection title="Scope of Work"><ol className="list-decimal space-y-2 pl-5 text-sm font-bold text-slate-700">{(quotation.scopeOfWork || []).length ? quotation.scopeOfWork.map((item, index) => <li key={`${item}-${index}`}>{item}</li>) : <li className="list-none text-slate-400">No scope of work added.</li>}</ol></DetailSection>
         </div>
       </div>
@@ -2906,7 +2914,7 @@ function QuotationDetailPage({ quotation, onBack, onRevise }) {
   const combined = isCombinedQuotation(quotation);
   const combinedTotal = combinedQuotationTotal(quotation, items);
   const displayRows = combined ? combinedPricingRows(quotation, items) : items.map((item, index) => ({ item, index }));
-  const terms = Array.isArray(quotation.terms) ? quotation.terms : [];
+  const terms = quotationSelectedTerms(quotation);
   const firstItem = items[0] || {};
   const createdDate = formatDisplayDate(quotation.createdAt);
   const revisable = canReviseQuotation(quotation);
@@ -3220,7 +3228,7 @@ function QuotationPreviewDrawer({ quotation, currentUser, onClose, onBackToPendi
               </div>
               <div className="mt-5 text-[10px] font-bold leading-5 text-slate-950">
                 <p className="font-black">Terms & Conditions:</p>
-                {(quotation.terms || []).length ? quotation.terms.map((term, index) => <p key={index}>{index + 1}. {term}</p>) : <p>No terms added.</p>}
+                {quotationSelectedTerms(quotation).length ? quotationSelectedTerms(quotation).map((term, index) => <p key={index}>{index + 1}. {term}</p>) : <p>No terms added.</p>}
               </div>
               <div className="mt-5 text-[10px] font-bold leading-5 text-slate-950">
                 <p className="font-black text-red-600">Important Note:</p>
@@ -3316,8 +3324,9 @@ export function buildQuotationPrintHtml(quotation) {
       ${!combined || firstInGroup ? `<td class="amount${combined ? ' combined-amount' : ''}"${combined ? ` rowspan="${groupSize}"` : ''}>${escapeHtml(formatInr(combined ? group.basicAmount : item.basicAmount))}</td>` : ''}
     </tr>
   `).join('');
-  const terms = (quotation.terms || []).length
-    ? quotation.terms.map((term, index) => `<p>${index + 1}. ${escapeHtml(term)}</p>`).join('')
+  const selectedTerms = quotationSelectedTerms(quotation);
+  const terms = selectedTerms.length
+    ? selectedTerms.map((term, index) => `<p>${index + 1}. ${escapeHtml(term)}</p>`).join('')
     : '<p>No terms added.</p>';
   const scopeOfWork = (quotation.scopeOfWork || []).length
     ? `<div class="scope-list">${quotation.scopeOfWork.map((item, index) => `<div class="scope-row"><span class="scope-number">${index + 1}.</span><span class="scope-text">${escapeHtml(item)}</span></div>`).join('')}</div>`
