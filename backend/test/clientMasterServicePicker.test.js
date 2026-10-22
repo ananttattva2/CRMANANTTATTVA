@@ -5,13 +5,13 @@ const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/ClientMaster.jsx'), 'utf8');
 
-test('service picker groups registration and annual return by applicant and sub-applicant only', () => {
+test('service picker groups offerings within a plant unit and creates a separate card for another unit', () => {
   const context = vm.createContext({ readAssignedServiceId: row => row.assignedServiceId, clientMasterServiceFingerprint: row => row.servicesOffered || '' });
   vm.runInContext(source.slice(source.indexOf('function clientMasterGroupingIdentity'), source.indexOf('function legacyServiceFingerprintCompatible')), context);
   vm.runInContext(source.slice(source.indexOf('function uniqueClientMasterServices'), source.indexOf('function activateAssignedService')), context);
   const base = { applicantType:'PIBO', subApplicantType:'Brand Owner', plantUnit:'Unit 1', eprCategory:'EPR - Plastic Waste' };
   const rows = [{...base,assignedServiceId:'registration',servicesOffered:'New Registration'}, {...base,assignedServiceId:'annual',servicesOffered:'Annual Return Filling'}, {...base,assignedServiceId:'annual-duplicate',servicesOffered:'Annual Filling'}, {...base,plantUnit:'Unit 2',assignedServiceId:'unit2',servicesOffered:'Annual Return Filling'}];
-  assert.deepEqual(Array.from(context.uniqueClientMasterServices(rows), row => row.assignedServiceId), ['registration']);
+  assert.deepEqual(Array.from(context.uniqueClientMasterServices(rows), row => row.assignedServiceId), ['registration', 'unit2']);
 });
 
 test('service picker collapses identical assigned services even when the plant unit is missing', () => {
