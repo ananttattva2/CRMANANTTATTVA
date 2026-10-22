@@ -40,6 +40,8 @@ const ApplicationPortfolio = forwardRef(function ApplicationPortfolio({ mode, re
   const [query, setQuery] = useState('')
   const [selection, setSelection] = useState(null)
   const [section, setSection] = useState('annualRegistration')
+  const [exportingExcel, setExportingExcel] = useState(false)
+  const [exportError, setExportError] = useState('')
   const reducedMotion = useReducedMotion()
   useEffect(() => {
     const controller = new AbortController()
@@ -67,6 +69,7 @@ const ApplicationPortfolio = forwardRef(function ApplicationPortfolio({ mode, re
     : [['total', 'Total'], ['otherServicesApproved', 'Approved'], ...STATUS_COLUMNS.filter(([key]) => ['applied', 'underReview', 'notStarted', 'rejected'].includes(key))]
   const columns = distribution ? [['total', 'Total'], ...categories.map(category => [category, category])] : serviceSummary ? [['total', 'Total'], ...serviceColumns.flatMap(service => service === 'Annual Return Filling' ? [[service, 'Annual Return Filling (First PO Year)'], ['annualActionRequired', 'AR Action Required']] : [[service, service]]), ...(scopedGroups.some(group => group.records.some(row => matchesApplicationService(row, 'unclassified'))) ? [['unclassified', 'Not Closed / Service Not Recorded']] : [])] : statusColumns
   const matches = (row, key) => distribution ? matchesDistributionSummary(row, key) : serviceSummary ? matchesServiceSummary(row, key) : matchesStatusSummary(row, key)
+  const excelRecords = allRecords.filter(row => matches(row, 'total'))
   const open = (name, records, label = 'All categories', key = '') => setSelection({ name, records, label, key })
   const sectionLabel = annualRegistrationSection ? 'Annual Return & Registration' : 'Other Services'
   const title = `${distribution ? 'Application Distribution by SPOC & PIBo' : serviceSummary ? 'Application Service Summary' : 'Application Status Summary'} - ${sectionLabel}`
@@ -81,6 +84,18 @@ const ApplicationPortfolio = forwardRef(function ApplicationPortfolio({ mode, re
   const leadingStatusColumns = otherStatusColumns.filter(([key]) => columns.findIndex(([columnKey]) => columnKey === key) < firstApprovedColumnIndex)
   const trailingStatusColumns = otherStatusColumns.filter(([key]) => columns.findIndex(([columnKey]) => columnKey === key) > otherServicesColumnIndex)
   const popupLabel = (key, label) => key === 'registrationApproved' ? 'Registration Approved' : key === 'otherServicesApproved' ? 'Other Services Approved' : label
+  async function downloadExcel() {
+    if (exportingExcel || !excelRecords.length) return
+    setExportingExcel(true); setExportError('')
+    try {
+      const { downloadApplicationPortfolioExcel } = await import('../../utils/applicationPortfolioExport.mjs')
+      await downloadApplicationPortfolioExcel(excelRecords, 'All SPOCs', title)
+    } catch {
+      setExportError('Excel download failed. Please retry.')
+    } finally {
+      setExportingExcel(false)
+    }
+  }
   useEffect(() => {
     onPdfAvailabilityChange?.(!loading && !error && shown.length > 0)
     return () => onPdfAvailabilityChange?.(false)
@@ -97,7 +112,8 @@ const ApplicationPortfolio = forwardRef(function ApplicationPortfolio({ mode, re
     <div className="portfolio-section-tabs" role="tablist" aria-label={`${title} section`}>
       {[['annualRegistration', 'Summary for Annual Return & Registration'], ['otherServices', 'Summary for Other Services']].map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={section === key} onClick={() => setSection(key)}>{label}</button>)}
     </div>
-    <div className="portfolio-toolbar"><label className="portfolio-search"><Search size={17} /><input aria-label="Search SPOC or client" placeholder="Search SPOC or client" value={query} onChange={event => setQuery(event.target.value)} /></label><span>Click a SPOC or count to explore clients <ArrowUpRight size={14} /><button type="button" className="portfolio-icon-button" aria-label="Refresh applications" disabled={loading} onClick={() => setRefresh(value => value + 1)}><RefreshCw size={18} className={loading ? 'animate-spin' : ''} /></button></span></div>
+    <div className="portfolio-toolbar"><label className="portfolio-search"><Search size={17} /><input aria-label="Search SPOC or client" placeholder="Search SPOC or client" value={query} onChange={event => setQuery(event.target.value)} /></label><span>Click a SPOC or count to explore clients <ArrowUpRight size={14} /><button type="button" onClick={downloadExcel} disabled={exportingExcel || loading || !excelRecords.length} className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-700 px-4 text-xs font-black text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50" aria-label="Download application summary Excel">{exportingExcel ? <Loader2 size={17} className="animate-spin" /> : <FileSpreadsheet size={17} />}{exportingExcel ? 'Preparing Excel...' : 'Download Excel'}</button><button type="button" className="portfolio-icon-button" aria-label="Refresh applications" disabled={loading} onClick={() => setRefresh(value => value + 1)}><RefreshCw size={18} className={loading ? 'animate-spin' : ''} /></button></span></div>
+    {exportError && <div role="alert" className="portfolio-error">{exportError}</div>}
     {error && <div role="alert" className="portfolio-error">{error}<button type="button" onClick={() => setRefresh(value => value + 1)}>Retry</button></div>}
     {loading && !payload ? <div className="portfolio-empty" role="status"><Loader2 className="animate-spin" />Loading assigned applications…</div> : <div className="portfolio-matrix"><table><thead>{distribution || serviceSummary ? <tr><th>AnantTattva SPOC</th>{columns.map(([key, label]) => <th key={key} className={key === 'total' ? 'portfolio-live-column' : key === 'annualActionRequired' ? 'portfolio-action-column' : undefined}>{label}</th>)}</tr> : <><tr><th rowSpan={2}>AnantTattva SPOC</th><th rowSpan={2} className="portfolio-live-column">Total</th>{annualStatusColumns.length > 0 && <th colSpan={annualStatusColumns.length}>Annual Return Applicable</th>}{leadingStatusColumns.map(([key, label]) => <th key={key} rowSpan={2} className={key === 'annualActionRequired' ? 'portfolio-action-column' : undefined}>{label}</th>)}{registrationStatusColumns.length > 0 && <th colSpan={registrationStatusColumns.length}>Registration</th>}{otherServicesStatusColumns.length > 0 && <th colSpan={otherServicesStatusColumns.length}>Other Services</th>}{trailingStatusColumns.map(([key, label]) => <th key={key} rowSpan={2}>{label}</th>)}</tr><tr>{annualStatusColumns.map(([key, label]) => <th key={key}>{label}</th>)}{registrationStatusColumns.map(([key, label]) => <th key={key}>{label}</th>)}{otherServicesStatusColumns.map(([key, label]) => <th key={key}>{label}</th>)}</tr></>}</thead><tbody>{shown.map((group, index) => <tr key={group.id}><td><button type="button" className="portfolio-person" onClick={() => open(group.name, group.records)}><span className={`portfolio-avatar portfolio-avatar-${index % 4}`}>{group.name.split(' ').map(part => part[0]).slice(0, 2).join('')}</span><strong>{group.name}</strong><ArrowUpRight size={14} /></button></td>{columns.map(([key, label]) => { const records = group.records.filter(row => matches(row, key)); return <td key={key} className={key === 'total' ? 'portfolio-live-column' : key === 'annualActionRequired' ? 'portfolio-action-column' : undefined}><button type="button" className={`portfolio-count ${records.length ? 'has-records' : ''}`} aria-label={`${group.name}: ${records.length} ${popupLabel(key, label)}`} onClick={() => open(group.name, records, popupLabel(key, label), key)}>{records.length}</button></td> })}</tr>)}</tbody><tfoot><tr><th>Grand Total</th>{columns.map(([key, label]) => <td key={key} className={key === 'total' ? 'portfolio-live-column' : key === 'annualActionRequired' ? 'portfolio-action-column' : undefined}><button type="button" onClick={() => open('All SPOCs', allRecords.filter(row => matches(row, key)), popupLabel(key, label), key)}>{allRecords.filter(row => matches(row, key)).length}</button></td>)}</tr></tfoot></table>{!shown.length && <p className="portfolio-empty">No assigned applications match this search.</p>}</div>}
     <footer>{annualRegistrationSection ? 'This view includes only Annual Return and Registration applications.' : 'This view includes only services other than Annual Return and Registration.'} {distribution ? 'Approved Registration and New Registration are excluded from this SPOC & PIBo summary and remain available in PO reporting.' : serviceSummary ? 'Approved Registration and New Registration are excluded from this service summary and remain available in PO reporting. Annual Return Filing uses the first Annual Return year recorded on the received PO.' : 'Approved Registration and New Registration are excluded from this status summary and remain available in PO reporting. Registration records in Applied, Under Review, Not Started or Rejected remain visible.'}</footer>
