@@ -1,7 +1,7 @@
 import useCrmRefresh from '../hooks/useCrmRefresh';
 import { canApprovePo, canReviewPoDecision } from '../utils/poDecision.mjs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Diamond, Edit3, Eye, FileCheck2, FileText, RefreshCw, RotateCcw, Search, X, XCircle, Users, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Diamond, Edit3, Eye, FileCheck2, FileSpreadsheet, FileText, Loader2, RefreshCw, RotateCcw, Search, X, XCircle, Users, Trash2 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { DeactivationApprovals } from '../features/clientMaster/ClientDeactivation';
 import DashboardShell from '../components/dashboard/DashboardShell';
@@ -19,6 +19,7 @@ import { uploadMedia } from '../services/mediaUpload';
 import { resolvePoApplicantDetails } from '../utils/poApplicantDetails.mjs';
 import { resolveQuotationBasicAmount } from '../utils/leadClosureQuotation';
 import { formatDisplayDate, formatDisplayDateTime } from '../utils/dateFormat';
+import { buildPendingClientApprovalExportRows, buildPendingClientApprovalSummary } from '../utils/pendingClientApprovalExport.mjs';
 
 const rowsPerPage = 5;
 const PENDING_APPROVAL_CACHE_KEY = 'crm.pendingApproval.cache.v7';
@@ -720,6 +721,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
   const [loading, setLoading] = useState(() => !cachedApprovalData);
   const [profileSaving, setProfileSaving] = useState(false);
   const [savingId, setSavingId] = useState('');
+  const [exportingClients, setExportingClients] = useState(false);
   const [removePoRow, setRemovePoRow] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -810,6 +812,31 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
   const visiblePoApprovals = useMemo(() => (
     filteredPoApprovals.slice((poPage - 1) * rowsPerPage, poPage * rowsPerPage)
   ), [filteredPoApprovals, poPage]);
+
+  async function downloadClientApprovalExcel() {
+    const rows = buildPendingClientApprovalExportRows(companyClients);
+    if (!rows.length || exportingClients) return;
+    setExportingClients(true);
+    setError('');
+    try {
+      const XLSX = await import('xlsx');
+      const workbook = XLSX.utils.book_new();
+      const detailSheet = XLSX.utils.json_to_sheet(rows);
+      detailSheet['!cols'] = [8, 34, 22, 24, 24, 24, 25, 16, 22, 22].map((wch) => ({ wch }));
+      const summarySheet = XLSX.utils.json_to_sheet(buildPendingClientApprovalSummary(companyClients));
+      summarySheet['!cols'] = [{ wch: 24 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(workbook, detailSheet, 'Client Approvals');
+      XLSX.utils.book_append_sheet(workbook, summarySheet, 'Status Summary');
+      const dateParts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit'
+      }).formatToParts(new Date()).reduce((parts, part) => ({ ...parts, [part.type]: part.value }), {});
+      XLSX.writeFile(workbook, `Pending-Clients-Approval-Status-${dateParts.year}-${dateParts.month}-${dateParts.day}.xlsx`);
+    } catch (exportError) {
+      setError(exportError?.message || 'Unable to download the Pending Clients Excel file.');
+    } finally {
+      setExportingClients(false);
+    }
+  }
 
   const approvalTabs = useMemo(() => {
     if (companyOnly) return [{ id: 'clients', icon: Clock3, label: 'Pending Clients', count: filteredClients.length }];
@@ -1711,12 +1738,12 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                 total={filteredClients.length}
                 onPrev={() => setClientPage((value) => Math.max(1, value - 1))}
                 onNext={() => setClientPage((value) => Math.min(clientTotalPages, value + 1))}
-                actions={<div className="flex flex-wrap gap-2" aria-label="Client approval status tabs">{[
+                actions={<div className="flex flex-wrap items-center gap-2"><button type="button" onClick={downloadClientApprovalExcel} disabled={exportingClients || !companyClients.length} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 text-xs font-black text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">{exportingClients ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}{exportingClients ? 'Preparing Excel...' : 'Download Excel'}</button><div className="flex flex-wrap gap-2" aria-label="Client approval status tabs">{[
                   ['PENDING', 'Pending'],
                   ['PARTIALLY_APPROVED', 'Partially Approved'],
                   ['APPROVED', 'Approved'],
                   ['REJECTED', 'Rejected']
-                ].map(([status, label]) => { const count = companyClients.filter((client) => getApprovalStatus(client) === status).length; return <button type="button" key={status} onClick={() => setStatusFilter(status)} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-black transition ${statusFilter === status ? status === 'APPROVED' ? 'border-emerald-600 bg-emerald-600 text-white' : status === 'PARTIALLY_APPROVED' ? 'border-amber-500 bg-amber-500 text-white' : 'border-rose-200 bg-rose-100 text-rose-700' : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-300'}`}><span className="client-status-tab-label">{label}</span><b className={`rounded-full px-2 py-0.5 ${statusFilter === status ? status === 'PENDING' ? 'bg-rose-200 text-rose-800' : 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'}`}>{count}</b></button> })}</div>}
+                ].map(([status, label]) => { const count = companyClients.filter((client) => getApprovalStatus(client) === status).length; return <button type="button" key={status} onClick={() => setStatusFilter(status)} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-black transition ${statusFilter === status ? status === 'APPROVED' ? 'border-emerald-600 bg-emerald-600 text-white' : status === 'PARTIALLY_APPROVED' ? 'border-amber-500 bg-amber-500 text-white' : 'border-rose-200 bg-rose-100 text-rose-700' : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-300'}`}><span className="client-status-tab-label">{label}</span><b className={`rounded-full px-2 py-0.5 ${statusFilter === status ? status === 'PENDING' ? 'bg-rose-200 text-rose-800' : 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'}`}>{count}</b></button> })}</div></div>}
               >
                 {visibleClients.map((client) => {
                   const approvalState = getApprovalStatus(client);
