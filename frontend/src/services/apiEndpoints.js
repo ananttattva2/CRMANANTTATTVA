@@ -45,6 +45,7 @@ const API_ENDPOINTS = {
     ,serviceCatalogServices: (category) => `/leads/service-catalog/categories/${encodePathValue(category)}/services`
     ,temporaryAssignment: (id) => `/leads/${encodePathValue(id)}/temporary-assignments`
     ,staffAssignment: (id, rowIndex) => `/leads/${encodePathValue(id)}/assignments/${encodePathValue(rowIndex)}/staff`
+    ,reassignPurchaseOrder: (id) => `/leads/${encodePathValue(id)}/purchase-orders/reassign`
     ,permanentClosure: (id) => `/leads/${encodePathValue(id)}/permanent-closure`
     ,temporaryAssignmentDecision: (approvalId) => `/leads/temporary-assignments/${encodePathValue(approvalId)}`
     ,temporaryLeads: '/leads/temporary'

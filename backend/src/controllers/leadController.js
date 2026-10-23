@@ -35,6 +35,7 @@ const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope')
 const { userHasAnyRole } = require('../utils/userRoles');
 const { normalizeParent, inferPiboParent, validatePiboSelection } = require('../utils/piboCategories');
 const { ADMIN_ROLES } = require('../constants/roles');
+const { reassignPurchaseOrderAssignments, poProofManifest } = require('../services/purchaseOrderReassignment');
 
 async function leadAccessFilter(user) {
   const scope = await getVisibleUserScope(user);
@@ -1788,6 +1789,97 @@ exports.updateLead = async (req, res) => {
     res.json({ ok: true, lead, introductionEmail });
   } catch (err) {
     res.status(err.statusCode || 500).json({ error: err.message || 'Unable to update lead' });
+  }
+};
+
+exports.reassignPurchaseOrder = async (req, res) => {
+  const leadId = String(req.params.id || '').trim();
+  const poNumber = String(req.body?.poNumber || '').trim();
+  const targetAssignmentIndex = Number(req.body?.targetAssignmentIndex);
+  if (!mongoose.isValidObjectId(leadId)) return res.status(400).json({ error: 'Invalid Lead ID.' });
+
+  const session = await mongoose.startSession();
+  try {
+    let savedLead;
+    let savedApproval;
+    await session.withTransaction(async () => {
+      const lead = await Lead.findById(leadId).session(session);
+      if (!lead) {
+        const error = new Error('Lead not found.');
+        error.statusCode = 404;
+        throw error;
+      }
+      const result = reassignPurchaseOrderAssignments({
+        assignments: lead.assignments || [],
+        serviceSelections: lead.serviceSelections || [],
+        poNumber,
+        targetAssignmentIndex
+      });
+      const sourceAssignment = lead.assignments[result.sourceIndex] || {};
+      const targetAssignment = result.nextAssignments[result.targetIndex] || {};
+      const sourceClientId = `${lead._id}:po:${sourceAssignment.assignedServiceId || result.sourceIndex}`;
+      const targetClientId = `${lead._id}:po:${targetAssignment.assignedServiceId || result.targetIndex}`;
+
+      const conflictingApproval = await PendingApproval.findOne({
+        type: 'purchase_order', source: 'crm', sourceClientId: targetClientId,
+        _id: { $ne: null }
+      }).session(session);
+      const sourceApproval = await PendingApproval.findOne({
+        type: 'purchase_order', source: 'crm',
+        $or: [
+          { sourceClientId },
+          { 'payload.leadId': String(lead._id), 'payload.poYearRows.poNumber': poNumber }
+        ]
+      }).session(session);
+      if (conflictingApproval && (!sourceApproval || String(conflictingApproval._id) !== String(sourceApproval._id))) {
+        const error = new Error('The destination service already has a separate PO approval record.');
+        error.statusCode = 409;
+        throw error;
+      }
+
+      lead.assignments = result.nextAssignments;
+      lead.updatedBy = req.user?.name || req.user?.email || String(req.user?._id || '');
+      lead.markModified('assignments');
+      await lead.save({ session });
+
+      if (sourceApproval) {
+        const targetRows = targetAssignment.poYearRows || [];
+        sourceApproval.sourceClientId = targetClientId;
+        sourceApproval.piboCategory = result.targetService.subApplicantType || result.targetService.piboCategory || result.targetService.applicantType || '';
+        sourceApproval.eprCategory = result.targetService.eprCategory || '';
+        sourceApproval.payload = {
+          ...(sourceApproval.payload || {}),
+          leadId: String(lead._id),
+          assignmentIndex: result.targetIndex,
+          assignedServiceId: targetAssignment.assignedServiceId || '',
+          service: result.targetService,
+          poYearRows: targetRows,
+          poProofManifest: poProofManifest(targetRows),
+          reassignedFromService: result.sourceService,
+          reassignedAt: new Date().toISOString(),
+          reassignedBy: req.user?.name || req.user?.email || ''
+        };
+        sourceApproval.markModified('payload');
+        await sourceApproval.save({ session });
+        savedApproval = sourceApproval;
+      }
+
+      await LeadActivity.create([{
+        lead: lead._id,
+        type: 'lead_updated',
+        title: 'Purchase Order reassigned',
+        description: `PO ${poNumber} moved from ${result.sourceService.subApplicantType || result.sourceService.piboCategory || `service ${result.sourceIndex + 1}`} to ${result.targetService.subApplicantType || result.targetService.piboCategory || `service ${result.targetIndex + 1}`}`,
+        actor: req.user?._id,
+        metadata: { poNumber, sourceAssignmentIndex: result.sourceIndex, targetAssignmentIndex: result.targetIndex }
+      }], { session });
+      savedLead = lead;
+    });
+    await require('../services/crmCache').invalidateCrmCache().catch(() => null);
+    return res.json({ ok: true, lead: savedLead, approval: savedApproval || null });
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({ error: error.message || 'Unable to reassign Purchase Order.' });
+  } finally {
+    await session.endSession();
   }
 };
 
