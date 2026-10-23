@@ -9,6 +9,15 @@ const PO_WORKFLOW_FIELDS = [
   'permanentClosedByText'
 ];
 
+// A PO reassignment represents moving the commercial ownership of that
+// service row as well. Preserve an existing destination assignment, but fill
+// any missing manager/staff metadata from the source row so the Assign Lead
+// table and downstream trackers stay aligned with the moved PO.
+const SERVICE_ASSIGNMENT_FIELDS = [
+  'assignedTo', 'assignedToText', 'assignedToEmail',
+  'assignedStaff', 'assignedStaffText', 'assignedStaffEmail', 'assignedBy'
+];
+
 const EMPTY_FIELD_VALUE = {
   closureFinalizedByManager: false,
   provisionalCloseDeadlineBusinessDays: 0,
@@ -66,6 +75,11 @@ function reassignPurchaseOrderAssignments({ assignments = [], serviceSelections 
 
   for (const field of PO_WORKFLOW_FIELDS) {
     if (target[field] === undefined || target[field] === null || target[field] === '' || target[field] === false) {
+      target[field] = source[field];
+    }
+  }
+  for (const field of SERVICE_ASSIGNMENT_FIELDS) {
+    if (target[field] === undefined || target[field] === null || target[field] === '') {
       target[field] = source[field];
     }
   }
