@@ -48,12 +48,13 @@ test('Pending Approval starts the special/PO feed alongside primary reads and pr
   assert.deepEqual(resets, []);
 });
 
-test('sidebar Lead Open/Close requests only review data and price fields, and preserves rows on a failed refresh', async () => {
+test('sidebar Lead Open/Close renders from review leads without waiting for quotation prices', async () => {
   const source = page('PendingLeads');
   const code = source.slice(source.indexOf('  async function load('), source.indexOf('  useEffect(() => { load(); }'));
   const calls = [];
   let assignedRows, error;
   const context = {
+    loadRequestRef: { current: 0 }, quotationRequestRef: { current: 0 },
     API_ENDPOINTS: { auth: { me: 'me' }, leads: { list: 'leads' }, quotations: { list: 'quotes' } },
     api: { get(url, config) { calls.push({ url, config }); return url === 'leads'
       ? Promise.reject(new Error('timeout')) : Promise.resolve({ data: { user: {}, quotations: [] } }); } },
@@ -62,7 +63,18 @@ test('sidebar Lead Open/Close requests only review data and price fields, and pr
   vm.createContext(context); vm.runInContext(code, context);
   await context.load({ silent: true });
   assert.equal(calls.find(row => row.url === 'leads').config.params.view, 'review');
-  assert.equal(calls.find(row => row.url === 'quotes').config.params.view, 'lead-review');
+  assert.equal(calls.some(row => row.url === 'quotes'), false);
   assert.equal(assignedRows, undefined);
   assert.ok(error.includes('Unable to refresh'));
+  await context.loadQuotations();
+  assert.equal(calls.find(row => row.url === 'quotes').config.params.view, 'lead-review');
+});
+
+test('temporary lead review uses one lightweight snapshot request instead of serial pages', () => {
+  const hook = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/hooks/useTemporaryReviewLeads.js'), 'utf8');
+  const controller = fs.readFileSync(path.resolve(__dirname, '../src/controllers/temporaryLeadController.js'), 'utf8');
+  assert.match(hook, /view: 'review', snapshot: 'true'/);
+  assert.doesNotMatch(hook, /do \{/);
+  assert.match(controller, /req\.query\.view === 'review' && req\.query\.snapshot === 'true'/);
+  assert.match(controller, /tempLeadCode clientName status createdAt createdBy createdByName createdByEmail followUpRemarks/);
 });

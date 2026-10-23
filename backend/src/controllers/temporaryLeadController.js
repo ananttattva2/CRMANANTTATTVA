@@ -122,6 +122,15 @@ exports.list = async (req, res) => {
   if (['DRAFT', 'CONVERTED'].includes(status)) filter.status = status;
   const accessFilter = await temporaryLeadAccessFilter(req.user);
   const scopedFilter = combineFilters(filter, accessFilter);
+  if (req.query.view === 'review' && req.query.snapshot === 'true') {
+    const rows = await TemporaryLead.find(scopedFilter)
+      .select('tempLeadCode clientName status createdAt createdBy createdByName createdByEmail followUpRemarks')
+      .populate('createdBy', 'name email')
+      .sort({ createdAt: -1 })
+      .maxTimeMS(15000)
+      .lean();
+    return res.json({ ok: true, temporaryLeads: rows, pagination: { page: 1, limit: rows.length, total: rows.length, pages: 1 } });
+  }
   const [rows, total, draftCount, convertedCount] = await Promise.all([
     TemporaryLead.find(scopedFilter).populate('createdBy', 'name email').sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
     TemporaryLead.countDocuments(scopedFilter),
