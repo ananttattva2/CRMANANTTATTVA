@@ -35,6 +35,7 @@ router.post('/:id/history/email', requireAuth, leadCtrl.recordIntroductionEmail)
 router.post('/:id/royalty-claims', requireAuth, leadCtrl.claimLeadRoyalty);
 router.post('/:id/temporary-assignments', requireAuth, temporaryAssignmentCtrl.requestTemporaryAssignment);
 router.patch('/:id/assignments/:rowIndex/staff', requireAuth, leadCtrl.assignLeadStaff);
+router.patch('/:id/purchase-orders/reassign', requireAuth, requireRoles(ADMIN_ROLES), leadCtrl.reassignPurchaseOrder);
 router.post('/:id/permanent-closure', requireAuth, leadCtrl.permanentlyCloseProvisionalLead);
 router.patch('/temporary-assignments/:approvalId', requireAuth, temporaryAssignmentCtrl.decideTemporaryAssignment);
 router.get('/purchase-order-approvals/:id', requireAuth, requireRoles(ADMIN_ROLES), cacheRead, leadCtrl.getPurchaseOrderApproval);

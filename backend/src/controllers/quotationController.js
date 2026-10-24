@@ -246,6 +246,11 @@ function cleanItems(items, user = null, existingItems = [], systemStartDate = ''
       const rawBusinessCategory = cleanString(item.businessCategory) || cleanString(existingItem.businessCategory) || undefined;
       const isEprCredit = String(rawBusinessCategory || '').toLowerCase().replace(/[^a-z0-9]+/g, '') === 'eprcredit';
       const businessCategory = isEprCredit ? 'EPR Credit' : rawBusinessCategory;
+      const isOtherConsultancy = String(businessCategory || '').toLowerCase().replace(/[^a-z0-9]+/g, '') === 'otherconsultancy';
+      const registrationYear = cleanString(item.registrationYear ?? existingItem.registrationYear);
+      if (isOtherConsultancy && !EPR_CREDIT_YEAR_OPTIONS.has(registrationYear)) {
+        throw new Error(`Quotation item ${index + 1}: select a Registration Year from 2022-23 to 2029-30.`);
+      }
       let periodUnit;
       let servicePeriod;
       try {
@@ -315,6 +320,7 @@ function cleanItems(items, user = null, existingItems = [], systemStartDate = ''
         serviceAddedBy: cleanString(item.serviceAddedBy),
         industryType: cleanString(item.industryType),
         financialYear: cleanString(item.financialYear),
+        registrationYear: isOtherConsultancy ? registrationYear : undefined,
         validityPeriod: Math.max(1, Math.min(50, Number(item.validityPeriod) || 1)),
         servicePeriod,
         periodUnit,

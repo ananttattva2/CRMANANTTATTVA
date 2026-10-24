@@ -6,8 +6,16 @@ const { CLIENT_CORRECTION_DEADLINE_POLICY, addClientCorrectionHours } = require(
 
 const HOUR_MS = 60 * 60 * 1000;
 const SCAN_MS = Math.max(60 * 1000, Number(process.env.COMPLIANCE_CORRECTION_SCAN_MS) || HOUR_MS);
+const ACTIVE_CORRECTION_DECISIONS = ['PARTIALLY_APPROVED', 'REJECTED'];
 let started = false;
 let running = false;
+
+function activeCorrectionFilter() {
+  return {
+    approvalStatus: { $in: ACTIVE_CORRECTION_DECISIONS },
+    correctionDecision: { $in: ACTIVE_CORRECTION_DECISIONS }
+  };
+}
 
 function escapeHtml(value) {
   return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -71,8 +79,29 @@ async function runClientComplianceCorrectionReminders(now = new Date()) {
   running = true;
   const result = { reminders: 0, breached: 0, legacyRecoveryGrants: 0, redFlags: 0, permanentRedFlags: 0, errors: 0 };
   try {
+    // Cancel stale correction timers left on records whose current compliance
+    // decision is Pending or Approved. These records must never send an SLA
+    // email merely because an older correctionStatus remained OPEN.
+    await PendingApproval.updateMany(
+      {
+        type: 'client',
+        approvalStatus: 'PENDING',
+        correctionStatus: { $in: ['OPEN', 'BREACHED'] },
+      },
+      {
+        $set: { correctionStatus: 'NONE', correctionDecision: '', correctionResolvedAt: now, reminderFlag: 'GREEN' },
+        $unset: {
+          correctionStartedAt: 1, correctionDeadlinePolicy: 1, correctionReminderAt: 1,
+          correctionReminderSentAt: 1, correctionDueAt: 1, correctionBreachedAt: 1,
+          redRecoveryStartedAt: 1, redRecoveryEmailSentAt: 1,
+          redRecoveryEmailNextAttemptAt: 1, greenFlagDeadline: 1, redFlagAt: 1,
+          correctionEmailError: 1
+        }
+      }
+    );
+
     const legacyDeadlines = await PendingApproval.find({
-      type: 'client', correctionDecision: { $in: ['PARTIALLY_APPROVED', 'REJECTED'] },
+      type: 'client', ...activeCorrectionFilter(),
       correctionStatus: { $in: ['OPEN', 'BREACHED'] },
       correctionDeadlinePolicy: { $ne: CLIENT_CORRECTION_DEADLINE_POLICY },
       correctionStartedAt: { $ne: null }
@@ -111,8 +140,7 @@ async function runClientComplianceCorrectionReminders(now = new Date()) {
     }
 
     const legacyRedFlags = await PendingApproval.find({
-      type: 'client', reminderFlag: { $in: ['RED', 'PERMANENT_RED'] }, correctionDecision: { $in: ['PARTIALLY_APPROVED', 'REJECTED'] },
-      approvalStatus: { $in: ['PARTIALLY_APPROVED', 'REJECTED'] },
+      type: 'client', reminderFlag: { $in: ['RED', 'PERMANENT_RED'] }, ...activeCorrectionFilter(),
       redRecoveryStartedAt: null,
       $or: [{ greenFlagDeadline: { $lte: now } }, { greenFlagDeadline: null }]
     }).limit(100);
@@ -137,11 +165,12 @@ async function runClientComplianceCorrectionReminders(now = new Date()) {
 
     const dueReminders = await PendingApproval.find({
       type: 'client', correctionStatus: 'OPEN', correctionReminderSentAt: null,
+      ...activeCorrectionFilter(),
       correctionReminderAt: { $lte: now }, correctionDueAt: { $gt: now }
     }).limit(100);
     for (const record of dueReminders) {
       const claimed = await PendingApproval.findOneAndUpdate(
-        { _id: record._id, correctionStatus: 'OPEN', correctionReminderSentAt: null, correctionReminderAt: { $lte: now }, correctionDueAt: { $gt: now } },
+        { _id: record._id, correctionStatus: 'OPEN', correctionReminderSentAt: null, ...activeCorrectionFilter(), correctionReminderAt: { $lte: now }, correctionDueAt: { $gt: now } },
         { $set: { correctionReminderSentAt: now } },
         { new: true }
       );
@@ -161,11 +190,11 @@ async function runClientComplianceCorrectionReminders(now = new Date()) {
     }
 
     const breaches = await PendingApproval.find({
-      type: 'client', correctionStatus: 'OPEN', correctionDueAt: { $lte: now }, greenFlagDeadline: { $gt: now }
+      type: 'client', correctionStatus: 'OPEN', ...activeCorrectionFilter(), correctionDueAt: { $lte: now }, greenFlagDeadline: { $gt: now }
     }).limit(100);
     for (const record of breaches) {
       const claimed = await PendingApproval.findOneAndUpdate(
-        { _id: record._id, correctionStatus: 'OPEN', correctionDueAt: { $lte: now }, greenFlagDeadline: { $gt: now } },
+        { _id: record._id, correctionStatus: 'OPEN', ...activeCorrectionFilter(), correctionDueAt: { $lte: now }, greenFlagDeadline: { $gt: now } },
         { $set: {
           correctionStatus: 'BREACHED',
           correctionBreachedAt: now,
@@ -186,6 +215,7 @@ async function runClientComplianceCorrectionReminders(now = new Date()) {
     // client can still recover instead of silently losing the notification.
     const recoveryNotices = await PendingApproval.find({
       type: 'client', reminderFlag: 'RED', redRecoveryStartedAt: { $ne: null },
+      ...activeCorrectionFilter(),
       redRecoveryEmailSentAt: null, greenFlagDeadline: { $gt: now },
       $or: [{ redRecoveryEmailNextAttemptAt: { $lte: now } }, { redRecoveryEmailNextAttemptAt: null }]
     }).limit(100);
@@ -194,6 +224,7 @@ async function runClientComplianceCorrectionReminders(now = new Date()) {
       const claimed = await PendingApproval.findOneAndUpdate(
         {
           _id: record._id, reminderFlag: 'RED', redRecoveryEmailSentAt: null,
+          ...activeCorrectionFilter(),
           greenFlagDeadline: { $gt: now },
           $or: [{ redRecoveryEmailNextAttemptAt: { $lte: now } }, { redRecoveryEmailNextAttemptAt: null }]
         },
@@ -215,11 +246,12 @@ async function runClientComplianceCorrectionReminders(now = new Date()) {
 
     const permanentBreaches = await PendingApproval.find({
       type: 'client', correctionStatus: { $in: ['OPEN', 'BREACHED'] },
+      ...activeCorrectionFilter(),
       reminderFlag: { $ne: 'PERMANENT_RED' }, correctionDueAt: { $lte: now }, greenFlagDeadline: { $lte: now }
     }).limit(100);
     for (const record of permanentBreaches) {
       const claimed = await PendingApproval.findOneAndUpdate(
-        { _id: record._id, correctionStatus: { $in: ['OPEN', 'BREACHED'] }, reminderFlag: { $ne: 'PERMANENT_RED' }, greenFlagDeadline: { $lte: now } },
+        { _id: record._id, correctionStatus: { $in: ['OPEN', 'BREACHED'] }, ...activeCorrectionFilter(), reminderFlag: { $ne: 'PERMANENT_RED' }, greenFlagDeadline: { $lte: now } },
         { $set: { correctionStatus: 'BREACHED', correctionBreachedAt: record.correctionBreachedAt || now, reminderFlag: 'PERMANENT_RED', redFlagAt: record.redFlagAt || now } },
         { new: true }
       );
@@ -249,4 +281,4 @@ function startClientComplianceCorrectionReminderScheduler() {
   setInterval(run, SCAN_MS);
 }
 
-module.exports = { correctionEmail, runClientComplianceCorrectionReminders, startClientComplianceCorrectionReminderScheduler };
+module.exports = { activeCorrectionFilter, correctionEmail, runClientComplianceCorrectionReminders, startClientComplianceCorrectionReminderScheduler };

@@ -662,7 +662,7 @@ function dedupeClientServiceChooserOptions(services = []) {
     const groupedIdentity = clientMasterGroupingIdentity({
       applicantType: data.selectedLeadSnapshot?.applicantType || data.selectedLeadSnapshot?.piboParent || data.selectedLeadSnapshot?.piboCategoryParent,
       subApplicantType: data.basic?.piboCategory || data.selectedLeadSnapshot?.subApplicantType || data.selectedLeadSnapshot?.piboCategory,
-      plantUnit: data.selectedLeadSnapshot?.plantUnit
+      plantUnit: data.basic?.plantUnit || data.selectedLeadSnapshot?.plantUnit || service.plantUnit
     });
     const applicant = String(data.basic?.piboCategory || data.selectedLeadSnapshot?.subApplicantType || data.selectedLeadSnapshot?.piboCategory || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
     const category = data.basic?.eprCategory || data.selectedLeadSnapshot?.eprCategory || '';
@@ -1030,8 +1030,9 @@ function clientMasterGroupingIdentity(service = {}) {
   const normalize = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   const applicantType = normalize(service.applicantType || service.piboParent || service.piboCategoryParent);
   const subApplicantType = normalize(service.subApplicantType || service.piboCategory || 'not-applicable') || 'notapplicable';
+  const plantUnit = normalize(service.plantUnit);
   if (!applicantType) return '';
-  return `${applicantType}:${subApplicantType}`;
+  return `${applicantType}:${subApplicantType}:${plantUnit || 'notrecorded'}`;
 }
 
 function clientMasterLogicalServiceIdentity(service = {}) {
@@ -1086,7 +1087,7 @@ function uniqueClientMasterServices(services = []) {
   const groups = new Map();
   services.forEach((service, index) => {
     const groupingIdentity = clientMasterGroupingIdentity(service);
-    const key = groupingIdentity || service.clientMasterId || readAssignedServiceId(service) || `service-${index}`;
+    const key = groupingIdentity ? `client-master-group:${groupingIdentity}` : service.clientMasterId || readAssignedServiceId(service) || `service-${index}`;
     const current = groups.get(key);
     const offerings = new Map();
     const labels = [...(current?._chooserServiceOfferings || []), ...(service._chooserServiceOfferings || []),

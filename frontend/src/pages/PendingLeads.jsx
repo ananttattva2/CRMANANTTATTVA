@@ -4,7 +4,7 @@ import useTemporaryReviewLeads from '../hooks/useTemporaryReviewLeads';
 import { temporaryReviewRecords, closedLeadDate, leadReviewRows, matchesReviewSearch, COMMUNICATION_MODES } from '../utils/userOpenLeadReview.mjs';
 import UserOpenLeads from '../components/leads/UserOpenLeads';
 import useCrmRefresh from '../hooks/useCrmRefresh';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, CheckCircle2, ChevronLeft, ChevronRight, Clock3, FilePlus2, RefreshCw, UserRound, Users, X } from 'lucide-react';
 import DashboardShell from '../components/dashboard/DashboardShell';
 import api from '../services/api';
@@ -191,6 +191,8 @@ export default function PendingLeads({ mode = 'open' }) {
   const [communicationFilter, setCommunicationFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('lead');
   const [exporting, setExporting] = useState(false);
+  const loadRequestRef = useRef(0);
+  const quotationRequestRef = useRef(0);
   const temporary = useTemporaryReviewLeads(mode === 'open');
   const [openTab, setOpenTab] = useState('overall');
   const currentOpenLeads = useMemo(() => leads.filter(row => servicesForMode(row, mode).length), [leads, mode]);
@@ -226,17 +228,32 @@ export default function PendingLeads({ mode = 'open' }) {
 
   useCrmRefresh(() => load({ silent: true }));
   async function load({ silent = false } = {}) {
+    const requestId = ++loadRequestRef.current;
     if (!silent) setLoading(true);
     setError('');
-    const [me, result, quotationResult] = await Promise.allSettled([api.get(API_ENDPOINTS.auth.me), api.get(API_ENDPOINTS.leads.list, { params: { view: 'review' } }), api.get(API_ENDPOINTS.quotations.list, { params: { compact: 'true', view: 'lead-review' } })]);
-    if (me.status === 'fulfilled') setCurrentUser(me.value.data?.user);
-    if (result.status === 'fulfilled') setLeads(result.value.data?.leads || []);
-    else setError(result.reason?.response?.data?.error || 'Unable to refresh leads. Please retry.');
-    if (quotationResult.status === 'fulfilled') setQuotations(quotationResult.value.data?.quotations || []);
-    else if (result.status === 'fulfilled') setError('Unable to refresh quotation prices. Please retry.');
-    setLoading(false);
+    api.get(API_ENDPOINTS.auth.me).then((response) => {
+      if (requestId === loadRequestRef.current) setCurrentUser(response.data?.user);
+    }).catch(() => {});
+    try {
+      const result = await api.get(API_ENDPOINTS.leads.list, { params: { view: 'review' } });
+      if (requestId === loadRequestRef.current) setLeads(result.data?.leads || []);
+    } catch (failure) {
+      if (requestId === loadRequestRef.current) setError(failure?.response?.data?.error || 'Unable to refresh leads. Please retry.');
+    } finally {
+      if (requestId === loadRequestRef.current) setLoading(false);
+    }
+  }
+  async function loadQuotations() {
+    const requestId = ++quotationRequestRef.current;
+    try {
+      const result = await api.get(API_ENDPOINTS.quotations.list, { params: { compact: 'true', view: 'lead-review' } });
+      if (requestId === quotationRequestRef.current) setQuotations(result.data?.quotations || []);
+    } catch {
+      // Quotation prices enrich the Overall table but must never block lead review.
+    }
   }
   useEffect(() => { load(); }, []);
+  useEffect(() => { if (openTab === 'overall') loadQuotations(); }, [openTab]);
 
   async function exportOverall() {
     setExporting(true);
@@ -265,7 +282,7 @@ export default function PendingLeads({ mode = 'open' }) {
   return <DashboardShell currentUser={currentUser}>
     <div className="lead-review-page">
       {<nav aria-label={mode === 'closed' ? 'Closed lead views' : 'Open lead views'} className="review-tabs mb-5 flex gap-2 rounded-2xl border border-emerald-100 bg-white p-2 w-fit">{[['overall', mode === 'closed' ? 'Overall Lead Close' : 'Overall Open Lead'], ['users', mode === 'closed' ? 'User Lead Close' : 'User Open Lead']].map(([key, label]) => <button type="button" key={key} aria-pressed={openTab === key} onClick={() => setOpenTab(key)} className={`rounded-xl px-5 py-3 text-sm font-black ${openTab === key ? 'bg-emerald-700 text-white' : 'text-slate-600 hover:bg-emerald-50'}`}>{label}</button>)}</nav>}
-      {openTab === 'users' ? <UserOpenLeads key={mode} mode={mode} leads={currentOpenLeads} temporary={mode === 'closed' ? [] : temporary.rows} loading={loading || (mode === 'open' && temporary.loading)} error={[error, temporary.error].filter(Boolean).join(' ')} onRefresh={() => { load(); temporary.refresh(); }} onView={view} /> : <>
+      {openTab === 'users' ? <UserOpenLeads key={mode} mode={mode} leads={currentOpenLeads} temporary={mode === 'closed' ? [] : temporary.rows} loading={loading || (mode === 'open' && temporary.loading && !temporary.rows.length)} error={[error, temporary.error].filter(Boolean).join(' ')} onRefresh={() => { load(); temporary.refresh(); }} onView={view} /> : <>
 
       <div className="review-overall-head mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div><p className="text-xs font-black uppercase tracking-[.18em] text-emerald-700">Lead Review</p><h1 className="text-3xl font-black">{mode === 'closed' ? 'Overall Lead Close' : 'Overall Open Lead'}</h1><p className="mt-1 font-bold text-slate-500">{mode === 'closed' ? 'Closed leads visible within your assigned scope.' : 'Currently open leads are counted once. Select a month to review its month-end snapshot; Temp Lead shows current drafts.'}</p></div>

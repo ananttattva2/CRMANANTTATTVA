@@ -277,6 +277,12 @@ test('service breakdown counts each application once and agrees with the Clients
   assert.equal(loaded.getWorksheet('Clients').getCell('L5').value, 'Annual Return Filling');
   assert.equal(loaded.getWorksheet('Clients').getCell('N4').value, 'Sonal');
   assert.equal(loaded.getWorksheet('Service Statuses').getCell('N4').value, 'Sonal');
+  assert.equal(loaded.getWorksheet('Clients').getCell('O3').value, 'Annual Return Year');
+  assert.equal(loaded.getWorksheet('Clients').getCell('P3').value, 'AR Action Required');
+  const actionRowNumber = [4, 5].find(rowNumber => loaded.getWorksheet('Clients').getCell(`P${rowNumber}`).value === 'Yes');
+  assert.ok(actionRowNumber);
+  assert.match(loaded.getWorksheet('Clients').getCell(`Q${actionRowNumber}`).value, /Action|PO|status|assignment|closure|year/i);
+  assert.equal(loaded.getWorksheet('AR Action Required').getCell('N4').value, 'Sonal');
   assert.equal(loaded.getWorksheet('Service Statuses').rowCount, 6);
   assert.equal(rows[0].services.length, 2);
 });

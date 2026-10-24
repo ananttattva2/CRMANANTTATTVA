@@ -27,5 +27,6 @@ const TemporaryLeadSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 TemporaryLeadSchema.index({ createdBy: 1, createdAt: -1 });
+TemporaryLeadSchema.index({ status: 1, createdAt: -1 });
 
 module.exports = mongoose.model('TemporaryLead', TemporaryLeadSchema);

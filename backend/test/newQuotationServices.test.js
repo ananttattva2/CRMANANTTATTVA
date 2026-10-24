@@ -24,7 +24,7 @@ function prepare() {
     mapLeadToDetails: () => ({ companyName: 'Company' }),
     findLeadForQuotation: () => lead, syncQuotationItemsWithLead: items => items,
     normalizeCombinedPricingGroups: () => [], quotationOwnerName: () => 'Owner', quotationPreparedByName: () => 'Owner',
-    quotationPaymentTerm: row => row.paymentTerm || '', canReviseQuotation: () => true
+    quotationPaymentTerm: row => row.paymentTerm || '', quotationSelectedTerms: row => row.terms || [], canReviseQuotation: () => true
   };
   for (const [, name] of source.matchAll(/\b(set\w+)\(/g)) context[name] = value => {
     state[name] = typeof value === 'function' ? value(state[name] || {}) : value;
@@ -49,6 +49,11 @@ test('Add Quotation starts a new record with all eight services despite an exist
   assert.ok(state.setQuotation.items.every(item => item.basicAmount === ''));
   assert.equal(state.setQuotation.terms.length, 0);
   assert.equal(state.setQuotation.scopeOfWork.length, 0);
+});
+
+test('explicit Add navigation cannot auto-resume an existing quotation', () => {
+  assert.match(source, /const isExplicitAddQuotation = new URLSearchParams\(location\.search\)\.get\('mode'\) === 'add'/);
+  assert.match(source, /if \(isExplicitAddQuotation \|\| !quotationContext \|\| viewMode !== 'form'/);
 });
 
 test('explicit Revise keeps the selected quotation ID and its two saved items', () => {

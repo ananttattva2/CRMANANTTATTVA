@@ -121,7 +121,10 @@ exports.completeReview = async (req, res) => {
     && existingRecoveryDeadline && !Number.isNaN(existingRecoveryDeadline.getTime()) && existingRecoveryDeadline <= decidedAt;
   const permanentRed = existingPendingRecord?.reminderFlag === 'PERMANENT_RED' || recoveryWindowExpired;
   const recoverableRed = existingPendingRecord?.reminderFlag === 'RED' && !recoveryWindowExpired;
-  const correctionRequired = decision === 'PARTIALLY_APPROVED' || decision === 'CHANGES_REQUIRED' || decision === 'REJECTED';
+  // The correction SLA starts only after an explicit final Partial Approval or
+  // Rejection. Draft section feedback / Changes Required remains Pending and
+  // must not start a timer or become eligible for reminder emails.
+  const correctionRequired = decision === 'PARTIALLY_APPROVED' || decision === 'REJECTED';
   const correctionFields = correctionRequired && (recoverableRed || permanentRed) ? {
     correctionStatus: 'BREACHED',
     correctionDecision: decision === 'REJECTED' ? 'REJECTED' : 'PARTIALLY_APPROVED',
@@ -156,9 +159,17 @@ exports.completeReview = async (req, res) => {
     greenFlagDeadline: addClientCorrectionHours(decidedAt, 96)
   } : {
     correctionStatus: 'RESOLVED',
+    correctionDecision: '',
+    correctionStartedAt: null,
+    correctionDeadlinePolicy: '',
     correctionResolvedAt: decidedAt,
     correctionReminderAt: null,
+    correctionReminderSentAt: null,
     correctionDueAt: null,
+    correctionBreachedAt: null,
+    redRecoveryStartedAt: null,
+    redRecoveryEmailSentAt: null,
+    redRecoveryEmailNextAttemptAt: null,
     correctionEmailError: '',
     reminderFlag: permanentRed ? 'PERMANENT_RED' : 'GREEN',
     greenFlagAt: permanentRed ? existingPendingRecord?.greenFlagAt || null : decidedAt,
