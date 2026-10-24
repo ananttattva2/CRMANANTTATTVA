@@ -24,6 +24,7 @@ const QuoteItemSchema = new mongoose.Schema({
   serviceAddedBy: { type: String, trim: true },
   industryType: { type: String, trim: true },
   financialYear: { type: String, trim: true },
+  registrationYear: { type: String, trim: true, enum: ['2022-23', '2023-24', '2024-25', '2025-26', '2026-27', '2027-28', '2028-29', '2029-30'] },
   validityPeriod: { type: Number, min: 1, max: 50 },
   servicePeriod: { type: Number, min: 0, max: 3650 },
   periodUnit: { type: String, trim: true, enum: ['days', 'months', 'annual'], default: 'annual' },

@@ -115,9 +115,23 @@ test('quotation updates preserve business category and assigned service identity
 
 test('quotation accepts a custom business category from Lead Generation', () => {
   const body = quotationController._test.cleanBody({
-    items: [{ businessCategory: 'Other Consultancy', serviceCategory: 'Solid Waste Management', servicePeriod: 1, periodUnit: 'annual' }]
+    items: [{ businessCategory: 'Other Consultancy', registrationYear: '2026-27', serviceCategory: 'Solid Waste Management', servicePeriod: 1, periodUnit: 'annual' }]
   });
   assert.equal(body.items[0].businessCategory, 'Other Consultancy');
+  assert.equal(body.items[0].registrationYear, '2026-27');
+});
+
+test('Other Consultancy requires a supported registration year and clears it for other categories', () => {
+  assert.throws(
+    () => quotationController._test.cleanBody({ items: [{ businessCategory: 'Other Consultancy', serviceCategory: 'Solid Waste Management', servicePeriod: 1, periodUnit: 'annual' }] }),
+    /select a Registration Year from 2022-23 to 2029-30/
+  );
+  assert.throws(
+    () => quotationController._test.cleanBody({ items: [{ businessCategory: 'Other Consultancy', registrationYear: '2030-31', serviceCategory: 'Solid Waste Management', servicePeriod: 1, periodUnit: 'annual' }] }),
+    /select a Registration Year from 2022-23 to 2029-30/
+  );
+  const regular = quotationController._test.cleanBody({ items: [{ businessCategory: 'EPR Consultancy', registrationYear: '2026-27', serviceCategory: 'EPR - Execution', servicePeriod: 1, periodUnit: 'annual' }] });
+  assert.equal(regular.items[0].registrationYear, undefined);
 });
 
 test('EPR Credit years are required, validated, persisted, and cleared for consultancy items', () => {
@@ -185,10 +199,21 @@ test('period controls appear in the mapping popup and not in the main quotation 
   assert.match(page, /const financialYearEprYearHeading = financialYearIsRegistration \? 'Registration EPR Year' : 'Annual Return EPR Year'/);
   assert.match(page, /'Service Period', 'Select Period', 'Transition Period', \.\.\.\(financialYearNeedsEprData \? \[financialYearEprYearHeading\]/);
   assert.match(page, /\[financialYearEprYearHeading\]\s*:\s*\[\]\), \.\.\.\(financialYearNeedsEprCreditYears \? \['Annual Return EPR Credit Years'\]/);
-  assert.match(page, /'Annual Return EPR Credit Years'\]\s*:\s*\[\]\), 'Applicant Type', 'Service Category', 'Business Category'/);
+  assert.match(page, /'Annual Return EPR Credit Years'\]\s*:\s*\[\]\), 'Applicant Type', \.\.\.\(financialYearNeedsRegistrationYear \? \['Registration Year'\]/);
   assert.match(page, /financialYearDraft\.transitionPeriod \|\| 'No'.*TRANSITION_PERIOD_OPTIONS/s);
   assert.doesNotMatch(page, /'EPR \/ Service Period', 'Select Period', 'Transition Period', 'Industry Type'/);
   assert.match(page, /periodDisplay\(financialYearDraft\.servicePeriod, financialYearDraft\.periodUnit\)/);
+});
+
+test('Other Consultancy exposes a required Registration Year after Applicant Type in both screens', () => {
+  const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
+  const model = fs.readFileSync(path.resolve(__dirname, '../src/models/Quotation.js'), 'utf8');
+  assert.match(page, /function isOtherConsultancyItem\(item = \{\}\)/);
+  assert.match(page, /'Applicant Type', 'Registration Year', 'Added By'/);
+  assert.match(page, /'Applicant Type', \.\.\.\(financialYearNeedsRegistrationYear \? \['Registration Year'\] : \[\]\), 'Service Category'/);
+  assert.match(page, /placeholder="Select registration year" categoryLabel="Registration Year"/);
+  assert.match(page, /Select a Registration Year for the Other Consultancy quotation item/);
+  assert.match(model, /registrationYear: \{ type: String[\s\S]*2022-23[\s\S]*2029-30/);
 });
 
 test('EPR Credit period controls are disabled and validity notes use business category and quotation validity', () => {
