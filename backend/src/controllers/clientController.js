@@ -1590,6 +1590,25 @@ function clientMasterReviewServiceScore(item = {}, preferredClientMasterId = '')
     + (String(item.clientMasterId) === String(preferredClientMasterId) ? 0.5 : 0);
 }
 
+function enrichClientMasterReviewServiceFromLead(item = {}, lead = {}) {
+  const services = Array.isArray(lead?.serviceSelections) ? lead.serviceSelections : [];
+  const assignedServiceId = String(item.assignedServiceId || '').trim();
+  if (!assignedServiceId || !services.length) return item;
+  const service = services.find((candidate) => String(
+    candidate?.assignedServiceId || candidate?.serviceAssignmentId || candidate?.assignmentId || ''
+  ).trim() === assignedServiceId);
+  if (!service) return item;
+  return {
+    ...item,
+    piboCategory: item.piboCategory || service.subApplicantType || service.piboCategory || '',
+    eprCategory: item.eprCategory || service.eprCategory || service.serviceCategory || '',
+    servicesOffered: item.servicesOffered || service.servicesOffered || service.applicableService || service.serviceName || '',
+    plantUnit: item.plantUnit || service.plantUnit || '',
+    industryType: item.industryType || service.industryType || '',
+    applicantType: item.applicantType || service.applicantType || service.piboParent || ''
+  };
+}
+
 function mergeClientMasterReviewServices(primary = {}, secondary = {}) {
   const merged = { ...primary };
   Object.entries(secondary).forEach(([key, value]) => {
@@ -1657,13 +1676,20 @@ exports.listClientMasterServices = async (req, res, options = {}) => {
   // Keep ordinary Client Master discovery restricted to ownership visibility.
   const reviewerDiscovery = options.clientReview === true && userHasAnyRole(req.user, CLIENT_APPROVAL_ROLES);
   const clientVisibility = reviewerDiscovery ? {} : await clientAccessFilter(req.user);
-  const leadVisibility = reviewerDiscovery ? { _id: { $exists: false } } : await leadAccessFilter(req.user);
+  // Review access is anchored to the explicitly selected Client Master above.
+  // Its linked Lead is used only to restore service identity fields omitted by
+  // older Client Master snapshots.
+  const leadVisibility = reviewerDiscovery ? {} : await leadAccessFilter(req.user);
   const baseClient = mongoose.Types.ObjectId.isValid(explicitClientId)
     ? await Client.findOne(combineAccessFilters({ _id: explicitClientId }, clientVisibility)).select(clientDiscoveryProjection()).lean()
     : null;
   const baseIdentity = baseClient ? normalizeClientMaster(baseClient) : null;
   const leadId = String(baseIdentity?.selectedLead || (mongoose.Types.ObjectId.isValid(identity) && !explicitClientId ? identity : '')).trim();
-  const lead = mongoose.Types.ObjectId.isValid(leadId) ? await Lead.findOne(combineAccessFilters({ _id: leadId }, leadVisibility)).lean() : null;
+  const lead = mongoose.Types.ObjectId.isValid(leadId)
+    ? await Lead.findOne(combineAccessFilters({ _id: leadId }, leadVisibility))
+      .select('leadCode sourceLeadId company serviceSelections')
+      .lean()
+    : null;
   const leadCode = String(lead?.leadCode || lead?.sourceLeadId || baseIdentity?.leadCode || '').trim();
   const companyName = String(lead?.company || baseIdentity?.companyName || '').trim();
   const candidates = [];
@@ -1712,7 +1738,10 @@ exports.listClientMasterServices = async (req, res, options = {}) => {
       } }).sort({ workflowStatus: -1, updatedAt: -1 }).toArray()
     : [];
   const services = uniqueClientMasterReviewServices(
-    records.map(normalizeClientMaster).filter((item) => item.clientMasterId),
+    records
+      .map(normalizeClientMaster)
+      .map((item) => enrichClientMasterReviewServiceFromLead(item, lead))
+      .filter((item) => item.clientMasterId),
     explicitClientId
   );
   if (lead && !isLeadEligibleForClientMaster(lead) && !services.length) {
@@ -3427,5 +3456,6 @@ exports.__test = {
   normalizeClientMaster,
   resolveClientMasterData,
   clientMasterReviewServiceIdentity,
+  enrichClientMasterReviewServiceFromLead,
   uniqueClientMasterReviewServices
 };

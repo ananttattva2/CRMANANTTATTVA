@@ -166,3 +166,32 @@ test('review applicant list keeps identical services separate when plant units d
   assert.equal(services.length, 2);
   assert.deepEqual(services.map(item => item.plantUnit).sort(), ['Unit 1', 'Unit 2']);
 });
+
+test('review applicant service restores a missing offering from the exact linked Lead service', () => {
+  const result = __test.enrichClientMasterReviewServiceFromLead({
+    clientMasterId: 'producer-master',
+    assignedServiceId: 'producer-registration',
+    piboCategory: 'Producer',
+    eprCategory: 'EPR - Plastic Waste',
+    servicesOffered: ''
+  }, {
+    serviceSelections: [
+      { assignedServiceId: 'producer-registration', subApplicantType: 'Producer', servicesOffered: 'New Registration' },
+      { assignedServiceId: 'brand-owner-annual', subApplicantType: 'Brand Owner', servicesOffered: 'Annual Return Filling' }
+    ]
+  });
+
+  assert.equal(result.servicesOffered, 'New Registration');
+  assert.equal(result.piboCategory, 'Producer');
+});
+
+test('review applicant service never overwrites an offering already saved on Client Master', () => {
+  const result = __test.enrichClientMasterReviewServiceFromLead({
+    assignedServiceId: 'producer-registration',
+    servicesOffered: 'Saved Service'
+  }, {
+    serviceSelections: [{ assignedServiceId: 'producer-registration', servicesOffered: 'New Registration' }]
+  });
+
+  assert.equal(result.servicesOffered, 'Saved Service');
+});
