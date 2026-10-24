@@ -580,7 +580,7 @@ function mapQuotationPendingApprovalRow(quotation, approvalType = 'CREATE') {
     adminApprovalStatus: quotation.managementApproval?.adminApprovalStatus || '',
     managementApprovalStatus: quotation.managementApproval?.status || '',
     managementApproverId: quotation.managementApproval?.approverId || quotation.managementApproval?.approver || '',
-    managementApproverName: quotation.managementApproval?.approverName || '',
+    managementApproverName: quotation.managementApproval?.priceApprovedByName || quotation.managementApproval?.approverName || '',
     managementApprovalSource: quotation.managementApproval?.source || '',
     managementApprovalNote: quotation.managementApproval?.note || '',
     managementApprovalRequestedBy: quotation.managementApproval?.requestedByName || '',
@@ -906,6 +906,15 @@ exports.updateQuotationApproval = async (req, res) => {
   const remarks = String(req.body.remarks || '').trim();
   const proofUrl = String(req.body.proofUrl || '').trim();
   const proofName = String(req.body.proofName || '').trim();
+  const priceApprovedByName = String(req.body.priceApprovedByName || '').trim();
+  const approvalSource = String(req.body.source || '').trim().toUpperCase();
+  const hasApprovalDetails = req.body.priceApprovedByName !== undefined || req.body.source !== undefined;
+  if (hasApprovalDetails && (!['KRUNAL GODA', 'ANAND PADHYA'].includes(priceApprovedByName) || !['WHATSAPP', 'TEAMS', 'OUTLOOK'].includes(approvalSource))) {
+    return res.status(400).json({ error: 'Select a valid price approver and approval source.' });
+  }
+  if (hasApprovalDetails && remarks.length > 500) {
+    return res.status(400).json({ error: 'Approval note cannot exceed 500 characters.' });
+  }
   if (status === 'REJECTED' && !remarks) {
     return res.status(400).json({ error: 'Please enter a rejection reason.' });
   }
@@ -939,6 +948,18 @@ exports.updateQuotationApproval = async (req, res) => {
     return res.status(409).json({ error: 'This quotation already has a final decision. Refresh Pending Approval.' });
   }
   quotation.$where = { status: quotation.status };
+  if (status === 'APPROVED' && hasApprovalDetails) {
+    quotation.managementApproval = {
+      ...(quotation.managementApproval || {}), priceApprovedByName,
+      source: approvalSource, note: remarks, proofUrl, proofName
+    };
+    Object.assign(update, {
+      managementApproverName: priceApprovedByName, managementApprovalSource: approvalSource, managementApprovalNote: remarks,
+      'payload.managementApproverName': priceApprovedByName,
+      'payload.managementApprovalSource': approvalSource,
+      'payload.managementApprovalNote': remarks
+    });
+  }
   if (status === 'APPROVED' && String(quotation.managementApproval?.status || '').toUpperCase() === 'PENDING' && !isSuperAdminReviewer) {
     const actionAt = update.actionAt;
     const adminName = req.user?.name || req.user?.email || 'CRM Admin';
@@ -973,6 +994,10 @@ exports.updateQuotationApproval = async (req, res) => {
         ]
       },
       { $set: {
+        ...(hasApprovalDetails ? {
+          managementApproverName: priceApprovedByName, managementApprovalSource: approvalSource, managementApprovalNote: remarks,
+          'payload.managementApproverName': priceApprovedByName, 'payload.managementApprovalSource': approvalSource, 'payload.managementApprovalNote': remarks
+        } : {}),
         actionBy: req.user?._id, actionAt, remarks, decisionProofUrl: proofUrl, decisionProofName: proofName,
         'payload.adminApprovalStatus': 'APPROVED',
         'payload.adminApprovedByName': adminName,

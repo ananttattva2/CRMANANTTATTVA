@@ -275,6 +275,7 @@ function quotationServicePeriodYears(item = {}) {
 
 function quotationAnnualReturnRegistrationYear(item = {}) {
   if (isEprCreditItem(item)) return '';
+  if (String(item.registrationYear || '').trim()) return String(item.registrationYear).trim();
   const selectedYears = quotationAnnualReturnOrCreditYears(item);
   const displayedYears = selectedYears.length ? selectedYears : quotationServicePeriodYears(item);
   if (isPwpQuotationApplicant(item)) return displayedYears.join(', ') || item.financialYear || '-';
@@ -317,6 +318,7 @@ function quotationYearMappingHeader(items = []) {
     if (hasRegistration && !hasAnnualReturn) return 'Registration EPR Year';
     return 'EPR Year';
   }
+  if (items.some((item) => String(item.registrationYear || '').trim())) return 'Registration EPR Year';
   return 'Annual Return EPR Year / Credit Year';
 }
 
@@ -2151,7 +2153,8 @@ export default function Quotations() {
     try {
       const response = await api.patch(API_ENDPOINTS.quotations.approval(approvalDecision.row._id || approvalDecision.row.id), {
         status: 'APPROVED', remarks: approvalDecision.remarks.trim(),
-        proofUrl: approvalDecision.proofUrl, proofName: approvalDecision.proofName
+        proofUrl: approvalDecision.proofUrl, proofName: approvalDecision.proofName,
+        priceApprovedByName: approvalDecision.priceApprovedByName, source: approvalDecision.source
       });
       setApprovalDecision(null);
       try {
@@ -2340,15 +2343,13 @@ export default function Quotations() {
             <div><dt>Quotation No.</dt><dd>{approvalDecision.row.quotationNumber || '-'}</dd></div>
             <div><dt>Company</dt><dd>{approvalDecision.row.companyName || approvalDecision.row.leadDetails?.companyName || '-'}</dd></div>
             <div><dt>Date</dt><dd>{formatDisplayDate(approvalDecision.row.quotationDate || approvalDecision.row.createdAt)}</dd></div>
-            <div><dt>Price approved by</dt><dd>{approvalDecision.row.managementApproval?.approverName || '-'}</dd></div>
+            <label className="pending-decision-field"><span>Price approved by *</span><select required disabled={approvalDecisionSaving} value={approvalDecision.priceApprovedByName || ''} onChange={(event) => setApprovalDecision((current) => ({ ...current, priceApprovedByName: event.target.value }))}><option value="">Select name</option><option>KRUNAL GODA</option><option>ANAND PADHYA</option></select></label>
             <div><dt>Amount (₹)</dt><dd>{formatInr(Number(approvalDecision.row.grandTotal) || 0)}</dd></div>
-            <div><dt>Approval Source</dt><dd>{approvalDecision.row.managementApproval?.source || '-'}</dd></div>
-            <div><dt>Note</dt><dd>{approvalDecision.row.managementApproval?.note || '-'}</dd></div>
             <div><dt>Requested By</dt><dd>{approvalDecision.row.managementApproval?.requestedByName || approvalDecision.row.createdBy?.name || '-'}</dd></div>
+            <label className="pending-decision-field"><span>Approval Source *</span><select required disabled={approvalDecisionSaving} value={approvalDecision.source || ''} onChange={(event) => setApprovalDecision((current) => ({ ...current, source: event.target.value }))}><option value="">Select source</option><option value="WHATSAPP">WhatsApp</option><option value="TEAMS">Teams</option><option value="OUTLOOK">Outlook</option></select></label>
+            <label className="pending-decision-field"><span>Proof (optional)</span><span className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-emerald-300 bg-emerald-50 p-3 text-emerald-700"><UploadCloud className="h-4 w-4 shrink-0" />{approvalDecision.proofName || 'Upload proof'}<input type="file" accept="image/*,.pdf" className="sr-only" disabled={approvalDecisionSaving} onChange={uploadApprovalProof} /></span></label>
+            <label className="pending-decision-field" style={{ gridColumn: '1 / -1' }}><span>Note</span><textarea rows={3} maxLength={500} disabled={approvalDecisionSaving} value={approvalDecision.remarks} onChange={(event) => setApprovalDecision((current) => ({ ...current, remarks: event.target.value }))} placeholder="Enter note..." /></label>
           </dl>
-          <p className="pending-decision-help">Approval unlocks the quotation PDF. Super Admin can give final approval directly, even before Admin approval.</p>
-          <label className="mt-4 flex min-h-16 cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50 px-4 font-black text-emerald-700"><UploadCloud className="mr-2 h-5 w-5" />{approvalDecision.proofName || 'Upload approval proof (optional)'}<input type="file" accept="image/*,.pdf" className="sr-only" disabled={approvalDecisionSaving} onChange={uploadApprovalProof} /></label>
-          <label className="pending-decision-field mt-4"><span>Approval note</span><textarea rows={4} disabled={approvalDecisionSaving} value={approvalDecision.remarks} onChange={(event) => setApprovalDecision((current) => ({ ...current, remarks: event.target.value }))} placeholder="Add an optional approval note..." /></label>
           <div className="pending-decision-actions"><button type="button" disabled={approvalDecisionSaving} onClick={() => setApprovalDecision(null)}>Cancel</button><button type="submit" disabled={approvalDecisionSaving}>{approvalDecisionSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Confirm Approval</button></div>
         </form></div>}
         {managementApproval && (
@@ -3161,7 +3162,7 @@ function QuotationPreviewDrawer({ quotation, currentUser, onClose, onBackToPendi
   const combined = isCombinedQuotation(quotation);
   const combinedTotal = combinedQuotationTotal(quotation, items);
   const displayRows = combined ? combinedPricingRows(quotation, items) : items.map((item, index) => ({ item, index }));
-  const hasReturnYearItems = items.some(isEprConsultancyItem);
+  const hasReturnYearItems = items.some((item) => isEprConsultancyItem(item) || String(item.registrationYear || '').trim());
   const normalizedRole = String(currentUser?.role || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
   const isAdminUser = normalizedRole === 'admin' || normalizedRole === 'superadmin';
   const approvalStatus = String(quotation.approvalStatus || quotation.adminApproval || quotation.status || '').trim().toLowerCase();
@@ -3410,7 +3411,7 @@ export function buildQuotationPrintHtml(quotation) {
   const items = meaningfulQuotationItems(quotation.items);
   const combined = isCombinedQuotation(quotation);
   const combinedTotal = combinedQuotationTotal(quotation, items);
-  const hasReturnYearItems = items.some(isEprConsultancyItem);
+  const hasReturnYearItems = items.some((item) => isEprConsultancyItem(item) || String(item.registrationYear || '').trim());
   const yearMappingHeader = quotationYearMappingHeader(items);
   const createdDate = quotation.createdAt ? new Date(quotation.createdAt).toLocaleDateString('en-GB').replace(/\//g, '-') : new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
   const displayRows = combined ? combinedPricingRows(quotation, items) : items.map((item, index) => ({ item, index }));

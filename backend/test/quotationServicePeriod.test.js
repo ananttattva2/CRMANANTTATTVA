@@ -318,7 +318,7 @@ test('quotation year mapping shows selected or service-period EPR years, includi
   assert.match(page, /if \(isPwpQuotationApplicant\(item\)\) return displayedYears\.join\(', '\) \|\| item\.financialYear \|\| '-'/);
   assert.match(page, /if \(isEprConsultancyItem\(item\)\) \{\s*return displayedYears\.join\(', '\) \|\| item\.financialYear \|\| '-'/);
   assert.match(page, /if \(!isAnnualReturnRegistrationApplicant\(item\)\) return '-'/);
-  assert.equal((page.match(/const hasReturnYearItems = items\.some\(isEprConsultancyItem\)/g) || []).length, 2);
+  assert.equal((page.match(/const hasReturnYearItems = items\.some\(\(item\) => isEprConsultancyItem\(item\) \|\| String\(item\.registrationYear \|\| ''\)\.trim\(\)\)/g) || []).length, 2);
   assert.doesNotMatch(page, /hidePwpRegistrationYearColumn/);
 });
 

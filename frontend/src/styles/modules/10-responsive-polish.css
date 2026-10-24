@@ -2269,6 +2269,8 @@
 .pending-decision-field > span b { color: #dc2626; }
 .pending-decision-field textarea { width: 100%; resize: vertical; border: 1px solid #cbd5e1; border-radius: 16px; background: rgba(255,255,255,.9); padding: 15px; color: #0f172a; font-size: 14px; font-weight: 700; outline: none; transition: border-color 160ms ease, box-shadow 160ms ease; }
 .pending-decision-field textarea:focus { border-color: #14b8a6; box-shadow: 0 0 0 4px rgba(20,184,166,.13); }
+.quotation-decision-modal .pending-decision-field select { width: 100%; min-height: 44px; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; padding: 10px 12px; color: #0f172a; font-size: 13px; font-weight: 700; }
+.quotation-decision-modal .pending-decision-field select:focus { outline: 2px solid #14b8a6; outline-offset: 2px; }
 .is-rejected .pending-decision-field textarea:focus { border-color: #f87171; box-shadow: 0 0 0 4px rgba(248,113,113,.13); }
 .pending-decision-field small { display: flex; justify-content: flex-end; color: #94a3b8; font-size: 11px; font-weight: 850; }
 .pending-decision-field small span { color: #475569; }
