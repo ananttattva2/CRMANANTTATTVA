@@ -382,7 +382,7 @@ function createServiceSelection(source = {}) {
 }
 
 const SERVICE_DUPLICATE_FIELDS = ['industryType', 'eprCategory', 'businessCategory', 'applicantType', 'piboCategory', 'servicesOffered', 'plantUnit', 'firstAnnualReturnYearApplicable'];
-const PLANT_UNIT_OPTIONS = Array.from({ length: 10 }, (_, index) => `Unit ${index + 1}`);
+const PLANT_UNIT_OPTIONS = Array.from({ length: 15 }, (_, index) => `Unit ${index + 1}`);
 
 function serviceSelectionIdentity(row = {}) {
   return SERVICE_DUPLICATE_FIELDS.map((field) => String(row[field] || '').trim().toLowerCase()).join('|');

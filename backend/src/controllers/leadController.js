@@ -314,7 +314,7 @@ function cleanBody(body) {
           subApplicantType: String(row?.subApplicantType || row?.piboCategory || '').trim(),
           servicesOffered: String(row?.servicesOffered || '').trim(),
           applicableService: String(row?.applicableService || '').trim(),
-          plantUnit: /^Unit (?:[1-9]|10)$/.test(String(row?.plantUnit || '').trim()) ? String(row.plantUnit).trim() : '',
+          plantUnit: /^Unit (?:[1-9]|1[0-5])$/.test(String(row?.plantUnit || '').trim()) ? String(row.plantUnit).trim() : '',
           firstAnnualReturnYearApplicable: String(row?.firstAnnualReturnYearApplicable || '').trim(),
           nextFollowUpDate: String(row?.nextFollowUpDate || '').trim(),
           nextFollowUpTime: String(row?.nextFollowUpTime || '').trim(),

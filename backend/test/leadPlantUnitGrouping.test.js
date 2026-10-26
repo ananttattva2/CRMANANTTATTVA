@@ -53,6 +53,13 @@ test('Address and Contact count follows distinct Plant Units', () => {
   assert.equal(leadController._test.validateSubmittedLead(payload(['Unit 1', 'Unit 2', 'Unit 3'])), '');
 });
 
+test('Plant Unit options and backend sanitization support Unit 15', () => {
+  const leadPage = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/LeadGeneration.jsx'), 'utf8');
+  assert.match(leadPage, /PLANT_UNIT_OPTIONS = Array\.from\(\{ length: 15 \}/);
+  const cleaned = leadController._test.cleanBody({ serviceSelections: [service('service-15', 'Unit 15')] });
+  assert.equal(cleaned.serviceSelections[0].plantUnit, 'Unit 15');
+});
+
 test('frontend groups shared lead data by Plant Unit and Client Master fetches by unit', () => {
   const leadPage = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/LeadGeneration.jsx'), 'utf8');
   const clientMaster = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/ClientMaster.jsx'), 'utf8');
