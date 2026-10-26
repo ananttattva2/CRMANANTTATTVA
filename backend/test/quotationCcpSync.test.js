@@ -37,11 +37,10 @@ test('revised quotation falls back to its latest revision date for approval disp
   assert.equal(row.requestDate, '15/10/2026');
 });
 
-test('bulk approval stays admin-only while a visible quotation can record named Admin approval', () => {
+test('quotation approval endpoints are restricted to admin roles', () => {
   const routes = fs.readFileSync(path.join(__dirname, '../src/routes/quotations.js'), 'utf8');
   assert.match(routes, /approve-all[^\n]+requireRoles\(ADMIN_ROLES\)/);
-  assert.match(routes, /:id\/approval[^\n]+requireAuth[^\n]+quotationCtrl\.updateQuotationApproval/);
-  assert.doesNotMatch(routes, /:id\/approval[^\n]+requireRoles\(ADMIN_ROLES\)/);
+  assert.match(routes, /:id\/approval[^\n]+requireRoles\(ADMIN_ROLES\)/);
 });
 
 test('company normalization treats common legal suffix variants consistently', () => {
