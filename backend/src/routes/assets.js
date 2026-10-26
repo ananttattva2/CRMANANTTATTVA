@@ -33,15 +33,30 @@ router.post('/upload-confirm', requireAuth, async (req, res) => {
 });
 // Stable capability links preserve existing preview UI; possession of a link grants access.
 router.get('/file', async (req, res) => {
+  const controller = new AbortController();
+  let object;
+  const cancel = () => {
+    controller.abort();
+    object?.Body?.destroy();
+  };
+  res.once('close', cancel);
   try {
     const key = String(req.query.key || '');
     if (!spaces.validLink(key, String(req.query.signature || ''))) return res.status(403).json({ error: 'Invalid file link.' });
     res.set({ 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer' });
-    const object = await spaces.get(key);
+    object = await spaces.get(key, { abortSignal: controller.signal });
+    if (res.destroyed) { object.Body?.destroy(); return; }
     res.set({ 'Content-Type': object.ContentType || 'application/octet-stream', 'Content-Disposition': object.ContentDisposition || 'attachment', 'X-Content-Type-Options': 'nosniff' });
     if (Number.isFinite(object.ContentLength)) res.set('Content-Length', String(object.ContentLength));
     await pipeline(object.Body, res);
-  } catch { if (res.headersSent) return res.destroy(); return res.status(503).json({ error: 'File storage is unavailable.' }); }
+  } catch {
+    if (res.destroyed) return;
+    if (res.headersSent) return res.destroy();
+    return res.status(503).json({ error: 'File storage is unavailable.' });
+  } finally {
+    res.off('close', cancel);
+    object?.Body?.destroy();
+  }
 });
 
 router.get('/brand-logo', async (req, res) => {
