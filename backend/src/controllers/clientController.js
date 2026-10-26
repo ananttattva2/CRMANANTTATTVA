@@ -1006,6 +1006,33 @@ function mapClientPendingApprovalRow(client, createdByLabel = 'CRM User') {
   };
 }
 
+function hasAssignmentIdentity(value) {
+  if (!value) return false;
+  if (typeof value === 'object') return Boolean(value._id || value.id || value.name || value.email);
+  return Boolean(String(value).trim());
+}
+
+function pendingClientWorkflowReady(client = {}) {
+  const lead = client.selectedLead && typeof client.selectedLead === 'object' ? client.selectedLead : {};
+  const assignments = Array.isArray(lead.assignments) ? lead.assignments : [];
+  const assignedServiceId = String(
+    client.assignedServiceId
+    || client.data?.assignedServiceId
+    || client.data?.selectedLeadSnapshot?.assignedServiceId
+    || ''
+  ).trim();
+  const assignment = assignments.find((row) => assignedServiceId && String(row?.assignedServiceId || '').trim() === assignedServiceId)
+    || (assignments.length === 1 ? assignments[0] : null);
+  if (!assignment) return false;
+
+  const poClosed = String(assignment.poStatus || '').trim().toLowerCase() === 'received'
+    && String(assignment.poApprovalStatus || '').trim().toUpperCase() === 'APPROVED'
+    && Boolean(assignment.closedAt || hasAssignmentIdentity(assignment.closedBy) || assignment.closureFinalizedByManager);
+  const managerAssignedStaff = hasAssignmentIdentity(assignment.assignedTo)
+    && hasAssignmentIdentity(assignment.assignedStaff);
+  return poClosed && managerAssignedStaff;
+}
+
 async function queueCreatedClientApproval(client, user, { resubmission = false, previousStatus = '' } = {}) {
   const createdByLabel = user?.name || user?.email || 'CRM User';
   if (resubmission) {
@@ -1076,8 +1103,11 @@ async function loadStoredPendingApprovals() {
 
   const clientRecords = records.filter((record) => record.type === 'client');
   const sourceClientIds = clientRecords.map((record) => record.sourceClientId).filter((id) => mongoose.Types.ObjectId.isValid(String(id)));
-  const submittedClients = await Client.find({ _id: { $in: sourceClientIds }, workflowStatus: 'submitted' }).select('_id').lean();
-  const submittedIds = new Set(submittedClients.map((client) => String(client._id)));
+  const submittedClients = await Client.find({ _id: { $in: sourceClientIds }, workflowStatus: 'submitted' })
+    .select('_id assignedServiceId data.assignedServiceId data.selectedLeadSnapshot.assignedServiceId selectedLead')
+    .populate('selectedLead', 'assignments.assignedServiceId assignments.poStatus assignments.poApprovalStatus assignments.closedAt assignments.closedBy assignments.closureFinalizedByManager assignments.assignedTo assignments.assignedStaff')
+    .lean();
+  const submittedIds = new Set(submittedClients.filter(pendingClientWorkflowReady).map((client) => String(client._id)));
   const clientRows = clientRecords
     .filter((record) => submittedIds.has(String(record.sourceClientId)))
     .map(mapPendingApprovalRecord);
@@ -3457,5 +3487,6 @@ exports.__test = {
   resolveClientMasterData,
   clientMasterReviewServiceIdentity,
   enrichClientMasterReviewServiceFromLead,
-  uniqueClientMasterReviewServices
+  uniqueClientMasterReviewServices,
+  pendingClientWorkflowReady
 };
