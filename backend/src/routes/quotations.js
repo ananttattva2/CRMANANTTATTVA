@@ -19,7 +19,7 @@ router.post('/', requireAuth, quotationCtrl.createQuotation);
 router.get('/:id', requireAuth, cacheRead, quotationCtrl.getQuotation);
 router.patch('/:id/management-approval', requireAuth, quotationCtrl.submitManagementApproval);
 router.patch('/:id/management-approval/finalize', requireAuth, requireRoles(['superadmin']), quotationCtrl.finalizeManagementApproval);
-router.patch('/:id/approval', requireAuth, requireRoles(ADMIN_ROLES), quotationCtrl.updateQuotationApproval);
+router.patch('/:id/approval', requireAuth, quotationCtrl.updateQuotationApproval);
 router.put('/:id', requireAuth, quotationCtrl.updateQuotation);
 
 module.exports = router;

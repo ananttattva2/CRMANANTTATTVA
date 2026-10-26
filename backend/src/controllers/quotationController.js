@@ -903,6 +903,7 @@ exports.updateQuotationApproval = async (req, res) => {
   const reviewerRole = String(req.user?.role || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
   const isSuperAdminReviewer = reviewerRole === 'superadmin'
     || userHasAnyRole(req.user, ['superadmin']);
+  const isAdminReviewer = isSuperAdminReviewer || userHasAnyRole(req.user, ['admin']);
   const remarks = String(req.body.remarks || '').trim();
   const proofUrl = String(req.body.proofUrl || '').trim();
   const proofName = String(req.body.proofName || '').trim();
@@ -917,6 +918,9 @@ exports.updateQuotationApproval = async (req, res) => {
   }
   if (status === 'REJECTED' && !remarks) {
     return res.status(400).json({ error: 'Please enter a rejection reason.' });
+  }
+  if (!isAdminReviewer && (status !== 'APPROVED' || !hasApprovalDetails)) {
+    return res.status(403).json({ error: 'Users may only record a valid Admin approval with approver and source details.' });
   }
 
   const approvalRecordId = String(req.body.approvalRecordId || '').trim();
@@ -938,7 +942,10 @@ exports.updateQuotationApproval = async (req, res) => {
     ? requestedId
     : String(approvalRecord?.sourceClientId || approvalRecord?.payload?.quotationId || '').trim();
   const quotation = require('mongoose').Types.ObjectId.isValid(resolvedQuotationId)
-    ? await Quotation.findById(resolvedQuotationId).populate('createdBy', 'name email')
+    ? await Quotation.findOne(combineFilters(
+      { _id: resolvedQuotationId },
+      isAdminReviewer ? {} : await quotationAccessFilter(req.user)
+    )).populate('createdBy', 'name email')
     : null;
 
   if (!quotation) {
@@ -946,6 +953,9 @@ exports.updateQuotationApproval = async (req, res) => {
   }
   if (['approved', 'rejected'].includes(quotation.status)) {
     return res.status(409).json({ error: 'This quotation already has a final decision. Refresh Pending Approval.' });
+  }
+  if (!isAdminReviewer && String(quotation.managementApproval?.status || '').toUpperCase() !== 'PENDING') {
+    return res.status(403).json({ error: 'Admin approval can only be recorded after Management Approval is requested.' });
   }
   quotation.$where = { status: quotation.status };
   if (status === 'APPROVED' && hasApprovalDetails) {
@@ -962,7 +972,7 @@ exports.updateQuotationApproval = async (req, res) => {
   }
   if (status === 'APPROVED' && String(quotation.managementApproval?.status || '').toUpperCase() === 'PENDING' && !isSuperAdminReviewer) {
     const actionAt = update.actionAt;
-    const adminName = req.user?.name || req.user?.email || 'CRM Admin';
+    const adminName = priceApprovedByName || req.user?.name || req.user?.email || 'CRM Admin';
     quotation.status = 'admin_approved';
     quotation.approvalDecision = {
       status: 'APPROVED', approvalKind: 'ADMIN', remarks, proofUrl, proofName,
@@ -974,6 +984,7 @@ exports.updateQuotationApproval = async (req, res) => {
       adminApprovalStatus: 'APPROVED',
       adminApprovedBy: req.user?._id,
       adminApprovedByName: adminName,
+      adminApprovalRecordedByName: req.user?.name || req.user?.email || '',
       adminApprovedAt: actionAt,
       adminApprovalRemarks: remarks,
       adminApprovalProofUrl: proofUrl,

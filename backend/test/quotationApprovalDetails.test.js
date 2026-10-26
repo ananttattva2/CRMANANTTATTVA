@@ -14,7 +14,8 @@ async function approve(role, details = {}) {
     exports: {}, normalizeApprovalStatus: (value) => value,
     userHasAnyRole: (user, roles) => roles.includes(user.role),
     require: () => ({ Types: { ObjectId: { isValid: (value) => Boolean(value) } } }),
-    Quotation: { findById: () => ({ populate: async () => quotation }) },
+    combineFilters: (...filters) => Object.assign({}, ...filters), quotationAccessFilter: async () => ({ createdBy: 'reviewer' }),
+    Quotation: { findOne: () => ({ populate: async () => quotation }) },
     PendingApproval: { updateMany: async (filter, update) => updates.push(update) },
     sendQuotationLifecycleEmail: async () => {}, console
   };
@@ -38,6 +39,14 @@ for (const role of ['admin', 'superadmin']) {
     assert.equal(updates[0].$set.managementApprovalSource, 'OUTLOOK');
   });
 }
+
+test('quotation user can record a named Admin approval for a visible pending quotation', async () => {
+  const { result, quotation } = await approve('sales', { priceApprovedByName: 'ANAND PADHYA', source: 'TEAMS', remarks: 'Confirmed in Teams' });
+  assert.equal(result.code, 200);
+  assert.equal(quotation.status, 'admin_approved');
+  assert.equal(quotation.managementApproval.adminApprovedByName, 'ANAND PADHYA');
+  assert.equal(quotation.managementApproval.adminApprovalRecordedByName, 'Reviewer');
+});
 
 test('approval rejects unknown names and sources', async () => {
   assert.equal((await approve('admin', { priceApprovedByName: 'Unknown', source: 'TEAMS' })).result.code, 400);

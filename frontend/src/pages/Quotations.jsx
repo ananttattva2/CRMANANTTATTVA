@@ -2135,7 +2135,7 @@ export default function Quotations() {
     }
   }
 
-  const canApproveQuotation = [currentUser?.role, ...(currentUser?.roles || [])].some((role) => ['admin', 'superadmin'].includes(String(role || '').toLowerCase().replace(/[\s_-]+/g, '')));
+  const canRecordAdminApproval = Boolean(currentUser);
 
   async function uploadApprovalProof(event) {
     const file = event.target.files?.[0];
@@ -2154,7 +2154,7 @@ export default function Quotations() {
 
   async function confirmQuotationApproval(event) {
     event.preventDefault();
-    if (!approvalDecision || !canApproveQuotation || approvalDecisionSaving) return;
+    if (!approvalDecision || !canRecordAdminApproval || approvalDecisionSaving) return;
     setApprovalDecisionSaving(true);
     setError('');
     try {
@@ -2183,7 +2183,7 @@ export default function Quotations() {
     if (requestStatus === 'PENDING') {
       const adminApproved = isQuotationAdminApproved(row);
       const superAdmin = [currentUser?.role, ...(currentUser?.roles || [])].some((role) => String(role || '').toLowerCase().replace(/[\s_-]+/g, '') === 'superadmin');
-      return <><span className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700"><Users className="h-3.5 w-3.5" /> Approval Requested</span>{adminApproved && <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-600 px-3 py-2 text-xs font-black text-white"><Check className="h-3.5 w-3.5" /> Admin Approved</span>}{canApproveQuotation && (!adminApproved || superAdmin) && <button type="button" onClick={() => setApprovalDecision({ row, remarks: '', proofUrl: '', proofName: '' })} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white"><Check className="h-3.5 w-3.5" />{superAdmin ? 'Super Admin Approve' : 'Admin Approve'}</button>}</>;
+      return <><span className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700"><Users className="h-3.5 w-3.5" /> Approval Requested</span>{adminApproved && <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-600 px-3 py-2 text-xs font-black text-white"><Check className="h-3.5 w-3.5" /> Admin Approved</span>}{canRecordAdminApproval && (!adminApproved || superAdmin) && <button type="button" onClick={() => setApprovalDecision({ row, remarks: '', proofUrl: '', proofName: '', priceApprovedByName: '', source: '' })} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white"><Check className="h-3.5 w-3.5" />{superAdmin ? 'Super Admin Approve' : 'Admin Approve'}</button>}</>;
     }
     if (requestStatus === 'APPROVED' || String(row?.status || '').toLowerCase() === 'approved') {
       return <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700"><Check className="h-3.5 w-3.5" /> Final Approved</span>;

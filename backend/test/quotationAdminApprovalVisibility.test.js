@@ -9,4 +9,6 @@ test('quotation list shows Admin approval to regular users while final approval 
   assert.match(page, /isQuotationAdminApproved\(row\).*Admin Approved/s);
   assert.match(page, /managementApproval\?\.adminApprovalStatus/);
   assert.match(page, /approvalDecision\?\.approvalKind/);
+  assert.match(page, /const canRecordAdminApproval = Boolean\(currentUser\)/);
+  assert.match(page, /canRecordAdminApproval.*Admin Approve/s);
 });
