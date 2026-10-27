@@ -109,6 +109,8 @@ test('PO approval list defers proof enrichment, preserves amounts/status, and de
   const projections = [];
   const context = { exports: {}, require: name => require(name.replace('../services/', '../src/services/')), userHasAnyRole: () => true, ADMIN_ROLES: ['admin'],
     Lead: { collection: { collectionName: 'leads' }, find() { assert.fail('List must not fetch every related lead/proof'); } },
+    Quotation: { find() { return { select() { return this; }, sort() { return this; }, lean: async () => [] }; } },
+    enrichPoRowsWithLatestQuotation: rows => rows,
     mongoose: { isValidObjectId: () => true },
     PendingApproval: { collection: { collectionName: 'pendingapprovals' },
       find(filter) { let selected = ''; return { select(value) { selected = value; projections.push(value); return this; }, populate() { return this; }, sort() { return this; }, limit() { return this; }, lean: async () => {
