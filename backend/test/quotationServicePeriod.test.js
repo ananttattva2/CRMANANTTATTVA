@@ -226,12 +226,19 @@ test('EPR Credit period controls are disabled and validity notes use business ca
   assert.doesNotMatch(page, /item\.serviceCategory \? ` for \$\{item\.serviceCategory\}`/);
 });
 
-test('quotation items rehydrate business category from their assigned lead service', () => {
+test('quotation items rehydrate current lead service fields without replacing quotation pricing', () => {
   const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
   assert.match(page, /function syncQuotationItemsWithLead\(items = \[\], lead = \{\}\)/);
   assert.match(page, /service\.assignedServiceId \|\| assignedServiceId/);
-  assert.match(page, /businessCategory: service\.businessCategory \|\| item\.businessCategory \|\| ''/);
-  assert.match(page, /items: syncQuotationItemsWithLead\(savedQuotation\.items, lead\)/);
+  assert.match(page, /applicantType: service\.applicantType \|\| ''/);
+  assert.match(page, /subApplicantType: service\.subApplicantType \|\| service\.piboCategory \|\| ''/);
+  assert.match(page, /servicesOffered: service\.servicesOffered \|\| ''/);
+  assert.match(page, /businessCategory: service\.businessCategory \|\| ''/);
+  assert.doesNotMatch(page.match(/function syncQuotationItemsWithLead[\s\S]*?\n\}/)?.[0] || '', /basicAmount:/);
+  assert.match(page, /function syncQuotationWithLead\(quotation = \{\}, lead = \{\}\)/);
+  assert.match(page, /leadDetails: mapLeadToDetails\(lead\)/);
+  assert.match(page, /items: syncQuotationItemsWithLead\(quotation\.items, lead\)/);
+  assert.match(page, /syncQuotationWithLead\(saved, lead\)/);
 });
 
 test('quotation UI shares applicant fallback logic and conditionally renders EPR Credit years', () => {

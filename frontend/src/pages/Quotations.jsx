@@ -484,13 +484,35 @@ function syncQuotationItemsWithLead(items = [], lead = {}) {
       || services[sourceIndex]
       || services.find((row) => quotationItemIdentity(row) === quotationItemIdentity(item));
     if (!service) return item;
+    const applicant = quotationApplicantSelection(service);
     return {
       ...item,
       assignedServiceId: service.assignedServiceId || assignedServiceId,
       sourceServiceIndex: services.indexOf(service),
-      businessCategory: service.businessCategory || item.businessCategory || ''
+      industryType: service.industryType || '',
+      financialYear: service.financialYear || item.financialYear || '',
+      registrationYear: service.registrationYear || item.registrationYear || '',
+      servicesOffered: service.servicesOffered || '',
+      applicableService: service.applicableService || '',
+      serviceCategory: service.eprCategory || '',
+      servicesForYear: service.firstAnnualReturnYearApplicable || item.servicesForYear || '',
+      eprCategory: service.eprCategory || '',
+      businessCategory: service.businessCategory || '',
+      applicantType: service.applicantType || '',
+      subApplicantType: service.subApplicantType || service.piboCategory || '',
+      piboParent: applicant.parent || '',
+      piboCategory: applicant.child || ''
     };
   });
+}
+
+function syncQuotationWithLead(quotation = {}, lead = {}) {
+  return {
+    ...quotation,
+    companyName: lead.company || quotation.companyName || '',
+    leadDetails: mapLeadToDetails(lead),
+    items: syncQuotationItemsWithLead(quotation.items, lead)
+  };
 }
 
 function findLeadForQuotation(quotation = {}, leads = []) {
@@ -588,7 +610,8 @@ function mapLeadServiceRows(lead = {}, savedItems = [], serviceState = 'open', c
     .filter(({ owned }) => serviceState === 'all' || owned)
     .filter(({ closed }) => serviceState === 'all' || (serviceState === 'closed' ? closed : !closed))
     .map(({ row, index }) => {
-    const saved = savedItems.find((item) => Number(item.sourceServiceIndex) === index)
+    const saved = savedItems.find((item) => row.assignedServiceId && String(item.assignedServiceId || '') === String(row.assignedServiceId))
+      || savedItems.find((item) => Number(item.sourceServiceIndex) === index)
       || savedItems.find((item) => quotationItemIdentity(item) === quotationItemIdentity(row))
       || {};
     const applicant = quotationApplicantSelection(row);
@@ -1288,7 +1311,7 @@ export default function Quotations() {
         setLeads(liveLeads);
         setQuotations(rows => rows.map(saved => {
           const lead = findLeadForQuotation(saved, liveLeads);
-          return lead ? { ...saved, items: syncQuotationItemsWithLead(saved.items, lead) } : saved;
+          return lead ? syncQuotationWithLead(saved, lead) : saved;
         }));
       }
       if (categories.status === 'fulfilled') setCustomServiceCategories(categories.value.data.categories || []);
@@ -1304,7 +1327,7 @@ export default function Quotations() {
       setCurrentUser(meResponse.data.user);
       setQuotations((quotationsResponse.data.quotations || []).map(saved => {
         const lead = findLeadForQuotation(saved, refreshedLeads || leads);
-        return lead ? { ...saved, items: syncQuotationItemsWithLead(saved.items, lead) } : saved;
+        return lead ? syncQuotationWithLead(saved, lead) : saved;
       }));
     } catch (err) {
       if (sequence === listRequestRef.current) setError(err?.response?.data?.error || 'Unable to load quotations.');
