@@ -15,3 +15,10 @@ test('PO approval review opens the linked CRM quotation inside the current dialo
   assert.doesNotMatch(source.match(/async function openPoQuotation[\s\S]*?\n  \}/)?.[0] || '', /navigate\(/)
   assert.match(source, /onViewQuotation=\{openPoQuotation\}/)
 })
+
+test('quotation preview displays services offered separately from service and EPR categories', () => {
+  const modal = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/components/PremiumQuotationModal.jsx'), 'utf8')
+  assert.match(modal, /'Services Offered'/)
+  assert.match(modal, /item\.servicesOffered \|\| item\.applicableService/)
+  assert.match(modal, /'EPR Category'/)
+})
