@@ -36,6 +36,7 @@ const { userHasAnyRole } = require('../utils/userRoles');
 const { normalizeParent, inferPiboParent, validatePiboSelection } = require('../utils/piboCategories');
 const { ADMIN_ROLES } = require('../constants/roles');
 const { reassignPurchaseOrderAssignments, poProofManifest } = require('../services/purchaseOrderReassignment');
+const { enrichPoRowsWithLatestQuotation } = require('../services/poQuotationResolver');
 
 async function leadAccessFilter(user) {
   const scope = await getVisibleUserScope(user);
@@ -2808,6 +2809,27 @@ exports.getPurchaseOrderApproval = async (req, res) => {
   try {
     const approval = await PendingApproval.findOne({ _id: req.params.id, type: 'purchase_order' }).lean();
     if (!approval) return res.status(404).json({ error: 'PO approval not found.' });
+    const payload = approval.payload || {};
+    const rows = Array.isArray(payload.poYearRows) ? payload.poYearRows
+      : Array.isArray(payload.poRows) ? payload.poRows
+        : Array.isArray(payload.purchaseOrders) ? payload.purchaseOrders : [];
+    const quotationIds = rows.map((row) => String(row?.quotationId || '').trim()).filter((value) => mongoose.isValidObjectId(value));
+    const quotationNumbers = rows.map((row) => String(row?.quotationNumber || row?.quotationNo || '').trim()).filter(Boolean);
+    const leadId = String(payload.leadId || approval.sourceClientId || '').split(':po:')[0].trim();
+    const leadCode = String(payload.leadCode || approval.uniqueId || '').trim();
+    const quotationLookup = [];
+    if (quotationIds.length) quotationLookup.push({ _id: { $in: quotationIds } });
+    if (quotationNumbers.length) quotationLookup.push({ quotationNumber: { $in: quotationNumbers } });
+    if (mongoose.isValidObjectId(leadId)) quotationLookup.push({ leadRef: leadId });
+    if (leadId) quotationLookup.push({ leadId });
+    if (leadCode) quotationLookup.push({ leadCode }, { businessLeadCode: leadCode });
+    if (rows.length && quotationLookup.length) {
+      const quotations = await Quotation.find({ status: { $ne: 'rejected' }, $or: quotationLookup })
+        .select('_id quotationNumber pricingMode combinedBasicAmount subtotal grandTotal items status quotationDate createdAt updatedAt')
+        .sort({ updatedAt: -1, createdAt: -1 })
+        .lean();
+      approval.payload = { ...payload, poYearRows: enrichPoRowsWithLatestQuotation(rows, quotations, payload) };
+    }
     return res.json({ ok: true, approval });
   } catch (error) {
     return res.status(500).json({ error: 'Unable to load submitted PO details. Please retry.' });
