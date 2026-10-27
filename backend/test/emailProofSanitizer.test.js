@@ -12,6 +12,13 @@ test('browser sanitizer removes EML attachment payload and retains the email bod
   assert.doesNotMatch(sanitized, /huge\.pdf|VERY_LARGE_ATTACHMENT_PAYLOAD/);
 });
 
+test('MSG reader supports the nested CommonJS export produced in the browser bundle', async () => {
+  const { msgReaderConstructor } = await import('../../frontend/src/features/clientMaster/emailProofSanitizer.mjs');
+  function Reader() {}
+  assert.equal(msgReaderConstructor({ default: { default: Reader } }), Reader);
+  assert.equal(msgReaderConstructor({ default: Reader }), Reader);
+});
+
 test('both Purchase and Sales uploads sanitize email files before creating multipart data', () => {
   const purchase = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/PurchaseDataWorkspace.jsx'), 'utf8');
   const sales = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/SalesDataPanel.jsx'), 'utf8');

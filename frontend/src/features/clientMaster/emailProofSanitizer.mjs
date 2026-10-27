@@ -75,8 +75,14 @@ function recipients(items = []) {
   return (items || []).map((item) => item?.email || item?.name || '').filter(Boolean).join(', ');
 }
 
+export function msgReaderConstructor(moduleValue) {
+  const candidate = moduleValue?.default?.default || moduleValue?.default || moduleValue?.MsgReader || moduleValue;
+  if (typeof candidate !== 'function') throw new Error('The Outlook email reader could not be loaded.');
+  return candidate;
+}
+
 async function msgToMailOnlyEml(file) {
-  const { default: MsgReader } = await import('@kenjiuno/msgreader');
+  const MsgReader = msgReaderConstructor(await import('@kenjiuno/msgreader'));
   const reader = new MsgReader(await file.arrayBuffer());
   const mail = reader.getFileData();
   if (mail?.error) throw new Error('The Outlook email could not be read.');
