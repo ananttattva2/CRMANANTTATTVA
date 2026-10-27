@@ -709,6 +709,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
   const [serviceApprovalDetail, setServiceApprovalDetail] = useState(null);
   const [serviceRejection, setServiceRejection] = useState(null);
   const [clientDecision, setClientDecision] = useState(null);
+  const [clientDecisionView, setClientDecisionView] = useState(null);
   const [royaltyApprovals, setRoyaltyApprovals] = useState([]);
   const [temporaryApprovals, setTemporaryApprovals] = useState([]);
   const [temporaryDecision, setTemporaryDecision] = useState(null);
@@ -750,6 +751,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
   const isServiceParticipantView = !canApprove && !isComplianceApprovalView;
   const canApproveClients = canApprove || isComplianceApprovalView;
   const companyClients = useMemo(() => groupPendingClientsByCompany(pendingClients), [pendingClients]);
+  const canViewClients = canApproveClients || companyClients.length > 0;
 
   useEffect(() => {
     if (location.state?.approvalNotice) setNotice(location.state.approvalNotice);
@@ -758,7 +760,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
   const allApprovalRows = useMemo(() => isComplianceApprovalView
     ? companyClients
     : isServiceParticipantView
-      ? serviceApprovals
+      ? [...companyClients, ...serviceApprovals]
       : [...companyClients, ...pendingQuotations, ...duplicateLeadApprovals, ...serviceApprovals, ...royaltyApprovals, ...temporaryApprovals, ...poApprovals], [isComplianceApprovalView, isServiceParticipantView, companyClients, pendingQuotations, duplicateLeadApprovals, serviceApprovals, royaltyApprovals, temporaryApprovals, poApprovals]);
   const piboOptions = useMemo(() => {
     const values = allApprovalRows
@@ -842,10 +844,11 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
     if (companyOnly) return [{ id: 'clients', icon: Clock3, label: 'Pending Clients', count: filteredClients.length }];
     const list = [{ id: 'deactivation', icon: Users, label: 'Client Deactivation', count: deactivationCount }];
     if (isServiceParticipantView) {
+      if (canViewClients) list.push({ id: 'clients', icon: Clock3, label: 'Client Decisions', count: filteredClients.length });
       list.push({ id: 'services', icon: FileText, label: 'Pending Service Approvals', count: filteredServices.length });
       return list;
     }
-    if (canApproveClients) {
+    if (canViewClients) {
       list.push({ id: 'clients', icon: Clock3, label: 'Pending Clients', count: filteredClients.length });
     }
     if (canApproveTemporary) {
@@ -859,7 +862,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
       list.push({ id: 'duplicates', icon: Users, label: 'Special Approvals', count: filteredDuplicateLeads.length });
     }
     return list;
-  }, [companyOnly, deactivationCount, canApproveClients, canApproveTemporary, isComplianceApprovalView, isServiceParticipantView, filteredClients.length, filteredTemporary.length, filteredPoApprovals.length, filteredQuotations.length, filteredRoyalty.length, filteredServices.length, filteredDuplicateLeads.length]);
+  }, [companyOnly, deactivationCount, canViewClients, canApproveTemporary, isComplianceApprovalView, isServiceParticipantView, filteredClients.length, filteredTemporary.length, filteredPoApprovals.length, filteredQuotations.length, filteredRoyalty.length, filteredServices.length, filteredDuplicateLeads.length]);
 
   useEffect(() => {
     let mounted = true;
@@ -889,14 +892,14 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
       return;
     }
     if (isServiceParticipantView) {
-      setActiveTab('services');
-      setTypeFilter('services');
+      setActiveTab(canViewClients ? 'clients' : 'services');
+      setTypeFilter(canViewClients ? 'clients' : 'services');
       setStatusFilter('all');
       return;
     }
     if (tab === 'clients' || tab === 'quotations' || tab === 'duplicates' || tab === 'royalty' || tab === 'services' || tab === 'po') setActiveTab(tab);
     else setActiveTab('quotations');
-  }, [isComplianceApprovalView, isServiceParticipantView, location.search, normalizedRole]);
+  }, [isComplianceApprovalView, isServiceParticipantView, canViewClients, location.search, normalizedRole]);
 
   useEffect(() => {
     setClientPage(1);
@@ -910,14 +913,14 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
 
   function resetFilters() {
     setSearchTerm('');
-    setTypeFilter(isComplianceApprovalView ? 'clients' : isServiceParticipantView ? 'services' : 'all');
+    setTypeFilter(isComplianceApprovalView ? 'clients' : isServiceParticipantView ? (canViewClients ? 'clients' : 'services') : 'all');
     setStatusFilter(isComplianceApprovalView ? 'PENDING' : 'all');
     setPiboFilter('all');
     setUserFilter('all');
   }
 
   function openMetric(type, status = 'PENDING') {
-    const preferredTab = type || (canApproveClients ? 'clients' : 'quotations');
+    const preferredTab = type || (canViewClients ? 'clients' : 'quotations');
     setActiveTab(preferredTab);
     setTypeFilter(preferredTab);
     setStatusFilter(status);
@@ -1553,11 +1556,11 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
           {loading && <div className="page-inline-loader">Refreshing approval data...</div>}
 
           {!embedded && <div className="pending-metrics">
-            {canApproveClients && <Metric icon={Users} label="Pending Clients" value={companyClients.filter((client) => getApprovalStatus(client) === 'PENDING').length} hint="Needs your review" tone="mint" onClick={() => openMetric('clients')} />}
+            {canViewClients && <Metric icon={Users} label={canApproveClients ? 'Pending Clients' : 'Client Decisions'} value={companyClients.length} hint={canApproveClients ? 'Needs your review' : 'Compliance results'} tone="mint" onClick={() => openMetric('clients', 'all')} />}
             {!isComplianceApprovalView && <Metric icon={FileText} label="Pending Quotations" value={pendingQuotations.filter((row) => getApprovalStatus(row) === 'PENDING').length} hint="Needs your review" tone="blue" onClick={() => openMetric('quotations')} />}
             {!isComplianceApprovalView && <Metric icon={Users} label="Special Approvals" value={duplicateLeadApprovals.filter((row) => getApprovalStatus(row) === 'PENDING').length} hint="Lead review" tone="mint" onClick={() => openMetric('duplicates')} />}
             {!isComplianceApprovalView && <Metric icon={Users} label="Royalty Claims" value={royaltyApprovals.filter((row) => getApprovalStatus(row) === 'PENDING').length} hint="Ratio review" tone="blue" onClick={() => openMetric('royalty')} />}
-            <Metric icon={CheckCircle2} label="Approved" value={approvedTodayCount} hint="Saved approval history" tone="teal" onClick={() => openMetric(isComplianceApprovalView ? 'clients' : 'quotations', 'APPROVED')} />
+            <Metric icon={CheckCircle2} label="Approved" value={approvedTodayCount} hint="Saved approval history" tone="teal" onClick={() => openMetric(isComplianceApprovalView || (isServiceParticipantView && canViewClients) ? 'clients' : 'quotations', 'APPROVED')} />
             <Metric icon={XCircle} label="Rejected" value={rejectedCount} hint="Since midnight" tone="rose" onClick={() => openMetric(null, 'REJECTED')} />
           </div>}
 
@@ -1729,9 +1732,9 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
               </ApprovalTable>
             ) : activeTab === 'clients' ? (
               <ApprovalTable
-                title="Pending Clients"
-                columns={['Client Name', 'Approval Status', 'Decision By', 'Applicant Type', 'Service Category', 'Created By', 'Request Date', 'Actions']}
-                emptyText="No pending clients found."
+                title={canApproveClients ? 'Pending Clients' : 'Client Compliance Decisions'}
+                columns={['Client Name', 'Approval Status', 'Decision By', 'Decision Remarks', 'Applicant Type', 'Service Category', 'Created By', 'Request Date', 'Actions']}
+                emptyText={canApproveClients ? 'No pending clients found.' : 'No client compliance decisions found.'}
                 page={clientPage}
                 totalPages={clientTotalPages}
                 showing={visibleClients.length}
@@ -1749,15 +1752,17 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                   const approvalState = getApprovalStatus(client);
                   const complianceApproved = approvalState === 'APPROVED';
                   const partiallyApproved = approvalState === 'PARTIALLY_APPROVED';
+                  const openClientAction = () => canApproveClients ? openClientMaster(client) : setClientDecisionView(client);
                   return <tr key={client.id} className="transition-colors hover:bg-slate-50">
-                    <Cell strong><span className="flex items-center gap-2">{complianceApproved ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-label="Compliance approved" /> : partiallyApproved ? <AlertTriangle className="h-4 w-4 shrink-0 fill-amber-100 text-amber-500" aria-label="Compliance partially approved" /> : <AlertTriangle className="h-4 w-4 shrink-0 fill-rose-100 text-rose-600" aria-label="Compliance approval pending" />}<button type="button" onClick={() => openClientMaster(client)} className="font-black text-emerald-700 underline decoration-emerald-300 underline-offset-4 hover:text-emerald-900">{client.clientName}</button></span></Cell>
+                    <Cell strong><span className="flex items-center gap-2">{complianceApproved ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-label="Compliance approved" /> : partiallyApproved ? <AlertTriangle className="h-4 w-4 shrink-0 fill-amber-100 text-amber-500" aria-label="Compliance partially approved" /> : <AlertTriangle className="h-4 w-4 shrink-0 fill-rose-100 text-rose-600" aria-label="Compliance approval pending" />}<button type="button" onClick={openClientAction} className="font-black text-emerald-700 underline decoration-emerald-300 underline-offset-4 hover:text-emerald-900">{client.clientName}</button></span></Cell>
                     <Cell><div className="flex flex-col items-start gap-1">{statusBadge(client.approvalStatus)}{['RED', 'PERMANENT_RED'].includes(client.reminderFlag) && <><span className="rounded-full bg-red-100 px-2 py-1 text-[9px] font-black text-red-700">{client.reminderFlag === 'PERMANENT_RED' ? 'PERMANENT RED FLAG' : 'RED FLAG - 24H RECOVERY'}</span>{client.reminderFlag === 'RED' && client.greenFlagDeadline && <small className="font-bold text-red-600">Recover by {formatDisplayDateTime(client.greenFlagDeadline)}</small>}</>}</div></Cell>
                     <Cell>{approvalState === 'PENDING' ? '-' : <span className="font-black text-slate-700">{formatApprovalValue(client.decisionBy)}{client.decisionAt && <small className="mt-1 block font-semibold text-slate-400">{new Date(client.decisionAt).toLocaleString('en-IN')}</small>}</span>}</Cell>
+                    <Cell><p className="max-w-72 whitespace-pre-wrap text-xs font-semibold text-slate-600">{client.remarks || (approvalState === 'PENDING' ? 'Awaiting compliance decision.' : 'No decision remarks recorded.')}</p></Cell>
                     <Cell><span>{client.piboCategory}</span>{client.applicantCount > 1 && <small className="mt-1 block font-semibold text-slate-400">{client.applicantCount} applicants — open Review to select</small>}</Cell>
                     <Cell>{client.eprCategory}</Cell>
                     <Cell>{formatApprovalValue(client.createdBy)}</Cell>
                     <Cell>{[formatApprovalValue(client.requestDate), formatApprovalValue(client.requestTime)].filter((item) => item !== '-').join(' ')}</Cell>
-                    <Cell><button type="button" onClick={() => openClientMaster(client)} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-black text-white"><FileCheck2 className="h-4 w-4" />Review</button></Cell>
+                    <Cell><button type="button" onClick={openClientAction} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-black text-white">{canApproveClients ? <FileCheck2 className="h-4 w-4" /> : <Eye className="h-4 w-4" />}{canApproveClients ? 'Review' : 'View Decision'}</button></Cell>
                   </tr>
                 })}
               </ApprovalTable>
@@ -1929,6 +1934,34 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
         </div>
       )}
 
+      {clientDecisionView && (
+        <div className="pending-decision-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setClientDecisionView(null); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="client-decision-view-title" className="pending-decision-modal">
+            <div className="pending-decision-icon"><Eye className="h-7 w-7" /></div>
+            <button type="button" onClick={() => setClientDecisionView(null)} className="pending-decision-close" aria-label="Close client decision"><X className="h-5 w-5" /></button>
+            <p className="pending-decision-kicker">Compliance Team decision</p>
+            <h2 id="client-decision-view-title">{clientDecisionView.clientName}</h2>
+            <div className="mt-4 grid gap-3">
+              {(clientDecisionView._clientApprovalRows || [clientDecisionView]).map((row, index) => (
+                <article key={row.approvalRecordId || row.id || index} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <strong className="text-sm text-slate-900">{row.piboCategory || 'Client Master'}</strong>
+                    {statusBadge(row.approvalStatus)}
+                  </div>
+                  <p className="mt-2 text-xs font-semibold text-slate-500">{row.eprCategory || '-'}</p>
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+                    <small className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Decision remarks (read-only)</small>
+                    <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-slate-700">{row.remarks || (getApprovalStatus(row) === 'PENDING' ? 'Awaiting compliance decision.' : 'No decision remarks recorded.')}</p>
+                  </div>
+                  {getApprovalStatus(row) !== 'PENDING' && <p className="mt-3 text-xs font-semibold text-slate-500">Decision by {formatApprovalValue(row.decisionBy)}{row.decisionAt ? ` on ${formatDisplayDateTime(row.decisionAt)}` : ''}</p>}
+                </article>
+              ))}
+            </div>
+            <p className="pending-decision-help">Compliance remarks are visible for reference and cannot be edited by users.</p>
+            <div className="pending-decision-actions"><button type="button" onClick={() => setClientDecisionView(null)}>Close</button></div>
+          </section>
+        </div>
+      )}
       {clientDecision && (
         <div className="pending-decision-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingId) setClientDecision(null); }}>
           <form onSubmit={submitClientDecision} className={`pending-decision-modal ${clientDecision.status === 'APPROVED' ? 'is-approved' : 'is-rejected'}`}>

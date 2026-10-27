@@ -977,6 +977,7 @@ function mapPendingApprovalRecord(record) {
     requestTime: record.requestTime || payload.requestTime || '-',
     decisionBy: record.actionBy?.name || record.actionBy?.email || '-',
     decisionAt: record.actionAt || null,
+    remarks: record.remarks || '',
     managementApproverId: record.managementApprover || payload.managementApproverId || '',
     managementApproverName: record.managementApproverName || payload.managementApproverName || '',
     managementApprovalSource: record.managementApprovalSource || payload.managementApprovalSource || '',
@@ -1965,6 +1966,20 @@ exports.listPendingApprovals = async (req, res) => {
   const missingQuotationRows = liveQuotationRows.filter((row) => !storedQuotationIds.has(String(row.quotationId || row.id || '')));
   const responseQuotations = [...missingQuotationRows, ...storedFallback.pendingQuotations];
   if (missingQuotationRows.length) backgroundSyncPendingApprovals([], missingQuotationRows);
+  let responseClients = storedFallback.pendingClients;
+  if (!isClientReviewer && responseClients.length) {
+    const sourceClientIds = responseClients
+      .map((row) => String(row.id || row.sourceClientId || '').trim())
+      .filter((id) => mongoose.Types.ObjectId.isValid(id));
+    const visibleClients = sourceClientIds.length
+      ? await Client.find(combineAccessFilters(
+          { _id: { $in: sourceClientIds } },
+          await clientAccessFilter(req.user)
+        )).select('_id').lean()
+      : [];
+    const visibleClientIds = new Set(visibleClients.map((client) => String(client._id)));
+    responseClients = responseClients.filter((row) => visibleClientIds.has(String(row.id || row.sourceClientId || '')));
+  }
   const compact = req.query.compact === 'true';
   const compactRow = (row = {}) => ({
     approvalRecordId: row.approvalRecordId,
@@ -1983,12 +1998,13 @@ exports.listPendingApprovals = async (req, res) => {
     requestDate: row.requestDate,
     requestTime: row.requestTime,
     decisionBy: row.decisionBy,
-    decisionAt: row.decisionAt
+    decisionAt: row.decisionAt,
+    remarks: row.remarks
   });
 
   res.json({
     ok: true,
-    pendingClients: isClientReviewer ? (compact ? storedFallback.pendingClients.map(compactRow) : storedFallback.pendingClients) : [],
+    pendingClients: compact ? responseClients.map(compactRow) : responseClients,
     pendingQuotations: isAdministrativeReviewer ? (compact ? responseQuotations.map(compactRow) : responseQuotations) : [],
     debug: {
       source: missingQuotationRows.length ? 'indexed-with-live-reconciliation' : 'indexed-pending-approvals',
