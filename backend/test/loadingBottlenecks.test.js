@@ -85,6 +85,7 @@ test('quotation list renders before slow lead/editor references and later receiv
     setLoading: value => { loading = value; }, setError() {}, setCurrentUser() {}, setLeads() {}, setCustomServiceCategories() {}, setPiboCategories() {}, setCustomDropdownOptions() {}, setPiboCategoriesLoading() {},
     mergeLeadLists: rows => rows, findLeadForQuotation: (quote, rows) => rows.find(row => row._id === quote.leadId),
     syncQuotationItemsWithLead: items => items.map(item => ({ ...item, businessCategory: 'updated' })),
+    syncQuotationWithLead: quotation => ({ ...quotation, items: quotation.items.map(item => ({ ...item, businessCategory: 'updated' })) }),
     setQuotations: value => { savedRows = typeof value === 'function' ? value(savedRows) : value; }
   };
   vm.createContext(context); vm.runInContext(source.slice(start, end), context);
