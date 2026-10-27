@@ -27,3 +27,10 @@ test('both Purchase and Sales uploads sanitize email files before creating multi
     assert.match(source, /form\.append\('file', mailOnlyFile\)/);
   }
 });
+
+test('proof drop zone allows large emails to reach the sanitizer while retaining the normal proof limit', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/PurchaseProofDropzone.jsx'), 'utf8');
+  assert.match(source, /EMAIL_MAX_BYTES = 100 \* 1024 \* 1024/);
+  assert.match(source, /!isEmailFile\(file\) && file\.size > STANDARD_MAX_BYTES/);
+  assert.match(source, /role="alert"/);
+});
