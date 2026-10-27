@@ -1461,6 +1461,18 @@ export default function ClientMaster() {
   }, [clientSearchQuery]);
 
   useEffect(() => {
+    const requestedClientId = String(location.state?.openClientMasterId || '').trim();
+    if (!requestedClientId) return;
+    const requestedAssignedServiceId = String(location.state?.openClientMasterAssignedServiceId || '').trim();
+    setViewMode('list');
+    openClientView({
+      _id: requestedClientId,
+      assignedServiceId: requestedAssignedServiceId
+    });
+    navigate('/sales/client-master', { replace: true, state: null });
+  }, [location.state, navigate]);
+
+  useEffect(() => {
     if (loading || !location.state?.fromPendingApproval) return;
     const requestedLead = String(location.state.selectedLeadId || '').trim();
     const requestedCompany = String(location.state.companyName || '').trim().toLowerCase();

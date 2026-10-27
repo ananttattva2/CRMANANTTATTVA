@@ -1468,6 +1468,16 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
     setClientReviewSelection(row);
   }
 
+  function openClientMasterPage(row) {
+    if (!row?.id) return;
+    navigate('/sales/client-master', {
+      state: {
+        openClientMasterId: row.id,
+        openClientMasterAssignedServiceId: row.assignedServiceId || ''
+      }
+    });
+  }
+
   async function approveAllPendingQuotations() {
     if (!canApprove) return;
     if (!pendingQuotations.length) return;
@@ -1762,7 +1772,12 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                     <Cell>{client.eprCategory}</Cell>
                     <Cell>{formatApprovalValue(client.createdBy)}</Cell>
                     <Cell>{[formatApprovalValue(client.requestDate), formatApprovalValue(client.requestTime)].filter((item) => item !== '-').join(' ')}</Cell>
-                    <Cell><button type="button" onClick={openClientAction} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-black text-white">{canApproveClients ? <FileCheck2 className="h-4 w-4" /> : <Eye className="h-4 w-4" />}{canApproveClients ? 'Review' : 'View Decision'}</button></Cell>
+                    <Cell>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button type="button" onClick={openClientAction} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-black text-white">{canApproveClients ? <FileCheck2 className="h-4 w-4" /> : <Eye className="h-4 w-4" />}{canApproveClients ? 'Review' : 'View Decision'}</button>
+                        <button type="button" onClick={() => openClientMasterPage(client)} className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-50"><Eye className="h-4 w-4" />Client Master</button>
+                      </div>
+                    </Cell>
                   </tr>
                 })}
               </ApprovalTable>
