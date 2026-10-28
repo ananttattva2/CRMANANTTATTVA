@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, ChevronDown, Download, Eye, FileCheck2, Plus, Printer, RefreshCw, Save, Search, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Download, Eye, FileCheck2, Plus, RefreshCw, Save, Search, Trash2, Upload, X } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import jsPDF from 'jspdf'
+import { buildInvoicePdf, invoiceFields } from '../utils/proformaPdf'
 import DashboardShell from '../components/dashboard/DashboardShell'
 import api, { readApiError, storeSessionUser } from '../services/api'
 import { API_ENDPOINTS } from '../services/apiEndpoints'
@@ -12,7 +12,7 @@ import { formatDisplayDate } from '../utils/dateFormat'
 const blankLead = { referredBy: '', salutation: '', contactPerson: '', designation: '', mobileNo1: '', mobileNo2: '', companyName: '', addressLine1: '', addressLine2: '', addressLine3: '', state: '', city: '', pinCode: '', gstNumber: '' }
 const blankItem = { serviceCategory: '', servicesForYear: '', eprCategory: '', piboParent: '', piboCategory: '', unit: '1', basicAmount: '', financialYear: '', validityPeriod: '', annualReturnYears: [], servicesOffered: '', applicableService: '', serviceStartDate: '', serviceEndDate: '', periodUnit: 'annual', transitionPeriod: 'No' }
 const blankPoYearRow = { fy: '', poNumber: '', annualReturnYear: '', quotationNo: '', compliancePoDate: '', compliancePoFile: '', serviceCategory: [], value: '' }
-const blankForm = { quotationId: '', quotationNumber: '', poNumber: '', leadId: '', leadCode: '', leadDetails: { ...blankLead }, invoiceDate: new Date().toISOString().slice(0, 10), validUntil: '', pricingMode: '', combinedBasicAmount: '', items: [{ ...blankItem }], poYearCount: 1, poYearRows: [{ ...blankPoYearRow }], terms: [''], scopeOfWork: [''], status: 'issued' }
+const blankForm = { invoiceDetails: {}, quotationId: '', quotationNumber: '', poNumber: '', leadId: '', leadCode: '', leadDetails: { ...blankLead }, invoiceDate: new Date().toISOString().slice(0, 10), validUntil: '', pricingMode: '', combinedBasicAmount: '', items: [{ ...blankItem }], poYearCount: 1, poYearRows: [{ ...blankPoYearRow }], terms: [''], scopeOfWork: [''], status: 'issued' }
 const leadFields = [['referredBy', 'Referred By'], ['salutation', 'Salutation'], ['contactPerson', 'Contact Person'], ['designation', 'Designation'], ['mobileNo1', 'Mobile No. 1'], ['mobileNo2', 'Mobile No. 2'], ['companyName', 'Company Name'], ['addressLine1', 'Address Line 1'], ['addressLine2', 'Address Line 2'], ['addressLine3', 'Address Line 3'], ['state', 'State'], ['city', 'City'], ['pinCode', 'Pincode'], ['gstNumber', 'GST Number']]
 
 function amount(items = []) { return items.reduce((sum, item) => sum + ((Number(item.unit) || 1) * (Number(item.basicAmount) || 0)), 0) }
@@ -166,268 +166,17 @@ function ProformaPoYearTable({ form, setForm }) {
   </section>
 }
 
-function downloadProformaLegacy(row) {
-  const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
-  const left = 48; let y = 52
-  pdf.setTextColor(249, 115, 22); pdf.setFontSize(20); pdf.setFont('helvetica', 'bold'); pdf.text('ANANT TATTVA PRIVATE LIMITED', left, y)
-  pdf.text('PROFORMA INVOICE', 360, y); y += 12; pdf.setDrawColor(15, 23, 42); pdf.setLineWidth(1.2); pdf.line(left, y, 548, y)
-  y += 28; pdf.setTextColor(15, 23, 42); pdf.setFontSize(10)
-  y += 28; pdf.setFontSize(10); pdf.setFont('helvetica', 'normal')
-  ;[[`Proforma No.: ${row.proformaNumber || '-'}`, `Date: ${displayDate(row.invoiceDate)}`], [`Quotation No.: ${row.quotationNumber || '-'}`, `PO No.: ${row.poNumber || '-'}`]].forEach(([a, b]) => { pdf.text(a, left, y); pdf.text(b, 340, y); y += 18 })
-  y += 10; pdf.setFont('helvetica', 'bold'); pdf.text(`Bill To: ${row.companyName || row.leadDetails?.companyName || '-'}`, left, y); y += 17
-  pdf.setFont('helvetica', 'normal'); const address = [row.leadDetails?.addressLine1, row.leadDetails?.addressLine2, row.leadDetails?.addressLine3, row.leadDetails?.city, row.leadDetails?.state, row.leadDetails?.pinCode].filter(Boolean).join(', ')
-  pdf.text(pdf.splitTextToSize(address || 'Address not provided', 490), left, y); y += 34
-  pdf.setFillColor(249, 115, 22); pdf.rect(left, y, 500, 24, 'F'); pdf.setTextColor(255); pdf.setFont('helvetica', 'bold'); pdf.text('Service', left + 8, y + 16); pdf.text('Select Period', 210, y + 16); pdf.text('Trans Period', 300, y + 16); pdf.text('Qty', 380, y + 16); pdf.text('Amount', 440, y + 16); y += 38; pdf.setTextColor(15, 23, 42)
-  ;(row.items || []).forEach((item, index) => { if (y > 720) { pdf.addPage(); y = 55 } pdf.setFont('helvetica', 'normal'); pdf.text(pdf.splitTextToSize(`${index + 1}. ${item.serviceCategory || item.piboCategory || 'Service'}`, 150), left + 8, y); pdf.text(String(item.periodUnit || 'annual') === 'days' ? 'Days' : String(item.periodUnit || 'annual') === 'months' ? 'Month' : 'Annual', 210, y); pdf.text(item.transitionPeriod || 'No', 300, y); pdf.text(String(item.unit || '1'), 380, y); pdf.text(row.pricingMode === 'combined' && index > 0 ? '' : money(row.pricingMode === 'combined' ? invoiceTotal(row) : item.basicAmount).replace('₹', 'INR '), 440, y); y += 32 })
-  pdf.setDrawColor(203, 213, 225); pdf.line(left, y, 548, y); y += 24; pdf.setFont('helvetica', 'bold'); pdf.setFontSize(13); pdf.text(`Grand Total: INR ${Number(row.grandTotal || amount(row.items)).toLocaleString('en-IN')}`, 330, y)
-  y += 30; pdf.setFontSize(9); pdf.setFont('helvetica', 'normal'); pdf.text(pdf.splitTextToSize((row.terms || []).join(' | ') || 'Terms and conditions as per quotation.', 500), left, y)
-  y += 28; pdf.setFont('helvetica', 'bold'); pdf.text('Scope of Work:', left, y); y += 14; pdf.setFont('helvetica', 'normal'); pdf.text(pdf.splitTextToSize((row.scopeOfWork || []).join(' | ') || 'As per quotation.', 500), left, y)
-  pdf.save(`${row.proformaNumber || 'proforma-invoice'}.pdf`)
-}
-
-function inr(value) {
-  return `INR ${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
-}
-
-async function loadPdfLogo() {
-  try {
-    const response = await fetch('/ananttattva-logo.png')
-    if (!response.ok) return ''
-    const blob = await response.blob()
-    return await new Promise((resolve) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result)
-      reader.onerror = () => resolve('')
-      reader.readAsDataURL(blob)
-    })
-  } catch {
-    return ''
-  }
-}
-
-async function downloadProforma(row) {
-  const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
-  const page = { width: 595.28, height: 841.89, left: 32, right: 32, top: 34, bottom: 48 }
-  const contentWidth = page.width - page.left - page.right
-  const details = row.leadDetails || {}
-  const items = row.items?.length ? row.items : [{ ...blankItem }]
-  const logo = await loadPdfLogo()
-  let y = page.top
-
-  const setText = (options = {}) => {
-    pdf.setFont('helvetica', options.bold ? 'bold' : 'normal')
-    pdf.setFontSize(options.size || 8)
-    pdf.setTextColor(...(options.color || [15, 23, 42]))
-  }
-  const text = (value, x, lineY, options = {}) => {
-    setText(options)
-    const config = options.align ? { align: options.align } : undefined
-    pdf.text(value || '-', x, lineY, config)
-  }
-  const wrapped = (value, x, lineY, width, options = {}) => {
-    const lines = pdf.splitTextToSize(String(value || '-'), width)
-    text(lines, x, lineY, options)
-    return lineY + (lines.length * (options.lineHeight || 10))
-  }
-  const ensurePage = (needed = 80) => {
-    if (y + needed <= page.height - page.bottom) return
-    pdf.addPage()
-    y = page.top
-  }
-  const drawDarkLine = (lineY) => {
-    pdf.setDrawColor(15, 23, 42)
-    pdf.setLineWidth(1)
-    pdf.line(page.left, lineY, page.width - page.right, lineY)
-  }
-
-  if (logo) {
-    pdf.addImage(logo, 'PNG', page.left, y - 4, 70, 30)
-  } else {
-    text('ANANT TATTVA', page.left, y + 16, { bold: true, size: 11, color: [249, 115, 22] })
-  }
-  text('PROFORMA INVOICE', page.width - page.right, y + 18, { bold: true, size: 13, color: [249, 115, 22], align: 'right' })
-  y += 42
-  drawDarkLine(y)
-  y += 20
-
-  text('From:', page.left, y, { bold: true, size: 7 })
-  text('Proforma Details', page.width - page.right, y, { bold: true, size: 7, align: 'right' })
-  y += 12
-  ;[
-    row.createdBy?.name || 'KRISHNA Yadav',
-    'Anant Tattva Private Limited',
-    'Office No.12 & 614, Midas Building, Sahar Plaza, JB Nagar, Andheri East,',
-    'Mumbai - 400059'
-  ].forEach((lineValue, index) => text(lineValue, page.left, y + (index * 10), { bold: index < 2, size: 7 }))
-  ;[
-    ['Proforma Date', displayDate(row.invoiceDate)],
-    ['Proforma No.', row.proformaNumber || '-'],
-    ['Quotation No.', row.quotationNumber || '-'],
-    ['PO Number', row.poNumber || '-'],
-    ['Valid Until', displayDate(row.validUntil)],
-    ['Prepared By', row.createdBy?.name || '-']
-  ].forEach(([label, value], index) => text(`${label}: ${value}`, page.width - page.right, y + (index * 10), { size: 7, align: 'right' }))
-  y += 76
-  pdf.setDrawColor(203, 213, 225)
-  pdf.line(page.left, y, page.width - page.right, y)
-  y += 18
-
-  text('To:', page.left, y, { bold: true, size: 7 })
-  y += 12
-  text([details.salutation, details.contactPerson, details.designation].filter(Boolean).join(' ') || 'Client Contact', page.left, y, { bold: true, size: 7 })
-  y += 11
-  text(`Mobile No.: ${details.mobileNo1 || '-'}`, page.left, y, { size: 7 })
-  y += 11
-  text(row.companyName || details.companyName || '-', page.left, y, { bold: true, size: 7 })
-  y += 11
-  y = wrapped([details.addressLine1, details.addressLine2, details.addressLine3].filter(Boolean).join(', ') || 'Address not provided', page.left, y, 240, { size: 7, lineHeight: 9 })
-  ;[['State', details.state], ['City', details.city], ['Pincode', details.pinCode], ['GST Number', details.gstNumber]].forEach(([label, value]) => {
-    text(`${label}: ${value || '-'}`, page.left, y, { size: 7 })
-    y += 11
-  })
-  y += 8
-
-  const columns = [
-    { label: 'Business Category', x: page.left, width: 88 },
-    { label: 'Service Category', x: page.left + 88, width: 100 },
-    { label: 'Service Period', x: page.left + 188, width: 86 },
-    { label: 'Select Period', x: page.left + 274, width: 62 },
-    { label: 'Transition Period', x: page.left + 336, width: 76 },
-    { label: 'Services Offered', x: page.left + 412, width: 86 },
-    { label: 'Unit', x: page.left + 498, width: 36 },
-    { label: 'Basic Amount (INR)', x: page.left + 534 - 95, width: 92 }
-  ]
-  const drawTableHeader = () => {
-    pdf.setFillColor(249, 115, 22)
-    pdf.rect(page.left, y, contentWidth, 24, 'F')
-    columns.forEach((column) => text(column.label, column.x + 5, y + 15, { bold: true, size: 6, color: [255, 255, 255] }))
-    y += 24
-  }
-
-  if (row.pricingMode === 'combined') {
-    text('BULK PRODUCT PACKAGE SERVICE', page.left, y, { bold: true, size: 8 })
-    y += 14
-  }
-  drawTableHeader()
-  items.forEach((item, itemIndex) => {
-    const displayedAmount = row.pricingMode === 'combined'
-      ? (itemIndex === 0 ? invoiceTotal(row) : '')
-      : ((Number(item.unit) || 1) * Number(item.basicAmount || 0))
-    const values = [item.businessCategory || '-', item.eprCategory || item.serviceCategory || '-', eprOrServicePeriod(item), selectPeriodLabel(item.periodUnit || 'annual'), item.transitionPeriod || 'No', item.servicesOffered || '-', item.unit || '1', displayedAmount === '' ? '' : inr(displayedAmount)]
-    const lines = values.map((value, index) => pdf.splitTextToSize(String(value), columns[index].width - 10))
-    const rowHeight = Math.max(24, ...lines.map((lineList) => lineList.length * 8 + 12))
-    ensurePage(rowHeight + 40)
-    if (y === page.top) drawTableHeader()
-    pdf.setDrawColor(15, 23, 42)
-    columns.forEach((column, index) => {
-      pdf.rect(column.x, y, column.width, rowHeight)
-      text(lines[index], column.x + (index === 7 ? column.width - 6 : 5), y + 12, { size: 6.5, bold: index === 1 || index === 7, align: index === 7 ? 'right' : undefined })
-    })
-    y += rowHeight
-  })
-  ;[
-    ['SUBTOTAL', invoiceTotal(row), false],
-    ['GST (18%)', gstAmount(row), false],
-    ['GRAND TOTAL', totalWithGst(row), true]
-  ].forEach(([label, value, highlight]) => {
-    pdf.rect(page.left, y, contentWidth - 95, 22)
-    pdf.rect(page.left + contentWidth - 95, y, 95, 22)
-    text(label, page.left + contentWidth - 101, y + 14, { bold: true, size: 6.5, align: 'right' })
-    text(inr(value), page.left + contentWidth - 6, y + 14, { bold: true, size: 6.5, color: highlight ? [249, 115, 22] : [15, 23, 42], align: 'right' })
-    y += 22
-  })
-  y += 20
-
-  ensurePage(120)
-  text('Terms & Conditions:', page.left, y, { bold: true, size: 7 })
-  y += 13
-  ;(row.terms || ['Terms and conditions as per quotation.']).filter(Boolean).forEach((term, index) => {
-    ensurePage(28)
-    y = wrapped(`${index + 1}. ${term}`, page.left + 8, y, contentWidth - 16, { size: 6.6, lineHeight: 9 })
-    y += 2
-  })
-  y += 8
-  pdf.addPage()
-  y = page.top
-
-  text('Scope of Work', page.left, y, { bold: true, size: 10, color: [249, 115, 22] })
-  y += 18
-  text('Scope of Work:', page.left, y, { bold: true, size: 7 })
-  y += 13
-  const scopeItems = (row.scopeOfWork || []).filter(Boolean)
-  ;(scopeItems.length ? scopeItems : ['No scope of work added.']).forEach((item, index) => {
-    ensurePage(28)
-    y = wrapped(`${index + 1}. ${item}`, page.left + 8, y, contentWidth - 16, { size: 6.6, lineHeight: 9 })
-    y += 2
-  })
-  y += 8
-  ensurePage(65)
-  text('Important Note:', page.left, y, { bold: true, size: 7, color: [220, 38, 38] })
-  y += 13
-  ;['GST will be extra @ 18%.', 'Any Government Charges to be paid by Client directly.'].forEach((note, index) => {
-    text(`${index + 1}. ${note}`, page.left + 8, y, { size: 6.6 })
-    y += 10
-  })
-
-  if (y > page.height - 100) {
-    pdf.addPage()
-    y = page.top
-  }
-  const footerY = page.height - 58
-  drawDarkLine(footerY)
-  text('For more details please contact us on : info@ananttattva.com | +91 8169727341 / 9004005520', page.width / 2, footerY + 20, { bold: true, size: 6.5, align: 'center' })
-  text('This is a computer-generated proforma invoice and does not require a signature.', page.width / 2, footerY + 38, { bold: true, size: 6.5, align: 'center' })
-  pdf.save(`${row.proformaNumber || 'proforma-invoice'}.pdf`)
-}
-
+function downloadProforma(row) { buildInvoicePdf(row).save(`${row.proformaNumber || 'proforma-invoice'}.pdf`) }
 function ProformaDetail({ row, onClose, onEdit }) {
+  const [url, setUrl] = useState('')
+  useEffect(() => {
+    if (!row) return
+    const next = URL.createObjectURL(buildInvoicePdf(row).output('blob'))
+    setUrl(next)
+    return () => URL.revokeObjectURL(next)
+  }, [row])
   if (!row) return null
-  const details = row.leadDetails || {}
-  const address = [details.addressLine1, details.addressLine2, details.addressLine3].filter(Boolean).join(', ')
-  const scopeItems = (row.scopeOfWork || []).filter(Boolean)
-  return <div className="fixed inset-0 z-[90] flex items-center justify-center p-3 sm:p-6">
-    <button type="button" aria-label="Close Proforma Invoice preview" onClick={onClose} className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm" />
-    <div className="relative flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-[28px] border border-white/40 bg-slate-100 shadow-[0_30px_100px_rgba(15,23,42,.35)]">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b bg-white px-5 py-4">
-        <div><p className="text-[11px] font-black uppercase tracking-[.22em] text-orange-500">Proforma Invoice Preview</p><h2 className="mt-1 text-xl font-black text-slate-950">{row.proformaNumber}</h2></div>
-        <div className="flex flex-wrap gap-2"><button type="button" onClick={() => window.print()} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 font-black text-slate-600 transition hover:bg-slate-50"><Printer className="h-4 w-4" /> Print</button><button type="button" onClick={() => downloadProforma(row)} className="inline-flex h-10 items-center gap-2 rounded-xl bg-orange-500 px-5 font-black text-white shadow-lg shadow-orange-200 transition hover:bg-orange-600"><Download className="h-4 w-4" /> Download PDF</button><button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-red-50 hover:text-red-500"><X className="h-5 w-5" /></button></div>
-      </header>
-      <div className="overflow-y-auto p-3 sm:p-6">
-        <article className="mx-auto min-h-[900px] w-full max-w-[850px] bg-white px-7 py-7 text-[11px] leading-relaxed text-slate-950 shadow-xl sm:px-10 sm:py-9">
-          <div className="flex items-center justify-between border-b-2 border-slate-900 pb-4"><img src="/ananttattva-logo.png" alt="Anant Tattva" className="h-14 w-auto object-contain" /><h1 className="text-2xl font-black uppercase tracking-[.22em] text-orange-500">Proforma Invoice</h1></div>
-          <div className="grid gap-7 border-b border-slate-300 py-5 md:grid-cols-2">
-            <section><p className="mb-2 font-black">From:</p><p className="font-bold">{row.createdBy?.name || 'Anant Tattva Team'}</p><p className="font-bold">Anant Tattva Private Limited</p><p>Office No.12 & 614, Midas Building, Sahar Plaza, JB Nagar, Andheri East, Mumbai - 400059</p></section>
-            <section className="space-y-1 md:text-right"><p>Proforma Date: {displayDate(row.invoiceDate)}</p><p>Proforma No.: {row.proformaNumber || '-'}</p><p>Quotation No.: {row.quotationNumber || '-'}</p><p>PO Number: {row.poNumber || '-'}</p><p>Valid Until: {displayDate(row.validUntil)}</p><p>Prepared By: {row.createdBy?.name || '-'}</p></section>
-          </div>
-          <section className="py-5"><p className="mb-2 font-black">To:</p><p className="font-black">{[details.salutation, details.contactPerson, details.designation].filter(Boolean).join(' ') || 'Client Contact'}</p><p>Mobile No.: {details.mobileNo1 || '-'}</p><p className="font-black">{row.companyName || details.companyName || '-'}</p><p>{address || 'Address not provided'}</p><p>State: {details.state || '-'}</p><p>City: {details.city || '-'}</p><p>Pincode: {details.pinCode || '-'}</p><p>GST Number: {details.gstNumber || '-'}</p></section>
-          {row.pricingMode === 'combined' && <div className="px-1 py-2.5 text-[11px] font-black uppercase tracking-[0.12em] text-slate-950">Bulk Product Package Service</div>}
-          <div className="overflow-x-auto"><table className="w-full min-w-[1020px] border-collapse text-left text-[10px]"><thead><tr className="bg-orange-500 text-white">{['Business Category', 'Service Category', 'Service Period', 'Select Period', 'Transition Period', 'Services Offered', 'Unit', 'Basic Amount (INR)'].map((heading) => <th key={heading} className="border border-slate-950 p-2 font-black uppercase">{heading}</th>)}</tr></thead><tbody>{(row.items || []).map((item, index) => <tr key={index}><td className="border border-slate-950 p-2 font-black">{item.businessCategory || '-'}</td><td className="border border-slate-950 p-2 font-black">{item.eprCategory || item.serviceCategory || '-'}</td><td className="border border-slate-950 p-2 font-bold">{eprOrServicePeriod(item)}</td><td className="border border-slate-950 p-2 font-bold">{selectPeriodLabel(item.periodUnit || 'annual')}</td><td className="border border-slate-950 p-2 font-bold">{item.transitionPeriod || 'No'}</td><td className="break-words border border-slate-950 p-2 font-bold">{item.servicesOffered || '-'}</td><td className="border border-slate-950 p-2 text-center font-black">{item.unit || 1}</td>{(row.pricingMode !== 'combined' || index === 0) && <td rowSpan={row.pricingMode === 'combined' ? row.items.length : undefined} className="border border-slate-950 p-2 text-center align-middle font-black">{money(row.pricingMode === 'combined' ? invoiceTotal(row) : ((Number(item.unit) || 1) * Number(item.basicAmount || 0)))}</td>}</tr>)}</tbody><tfoot><tr><td colSpan="7" className="border border-slate-950 p-2 text-right font-black uppercase">Subtotal</td><td className="border border-slate-950 p-2 text-right font-black">{money(invoiceTotal(row))}</td></tr><tr><td colSpan="7" className="border border-slate-950 p-2 text-right font-black uppercase">GST (18%)</td><td className="border border-slate-950 p-2 text-right font-black">{money(gstAmount(row))}</td></tr><tr><td colSpan="7" className="border border-slate-950 p-2 text-right font-black uppercase">Grand Total</td><td className="border border-slate-950 p-2 text-right font-black text-orange-600">{money(totalWithGst(row))}</td></tr></tfoot></table></div>
-          <section className="mt-5 overflow-hidden bg-white"><h3 className="px-1 py-2 text-[11px] font-black uppercase tracking-widest text-slate-950">EPR / Service Period Mapping</h3><div className="overflow-x-auto"><table className="w-full min-w-[920px] table-fixed text-left text-[10px] font-bold text-slate-950"><thead className="bg-orange-500 text-white"><tr>{['Sr.No', 'Business Category', 'Service Category', 'Service Period', 'Select Period', 'Transition Period', 'Services Offered'].map((heading) => <th key={heading} className="border border-slate-950 px-3 py-3">{heading}</th>)}</tr></thead><tbody>{(row.items || []).map((item, index) => <tr key={index} className="bg-white"><td className="border border-slate-950 px-3 py-3 text-center font-black">{index + 1}</td><td className="border border-slate-950 px-3 py-3">{item.businessCategory || '-'}</td><td className="border border-slate-950 px-3 py-3">{item.eprCategory || item.serviceCategory || '-'}</td><td className="border border-slate-950 px-3 py-3">{eprOrServicePeriod(item)}</td><td className="border border-slate-950 px-3 py-3">{selectPeriodLabel(item.periodUnit || 'annual')}</td><td className="border border-slate-950 px-3 py-3">{item.transitionPeriod || 'No'}</td><td className="border border-slate-950 px-3 py-3">{item.servicesOffered || '-'}</td></tr>)}</tbody></table></div></section>
-          <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[10px] font-bold leading-5 text-slate-700"><p className="font-black uppercase tracking-wider text-emerald-700">Validity Note</p><p className="mt-1 text-[11px] font-black text-slate-950">Your services are valid for {Math.max(1, ...(row.items || []).map((item) => Number(item.validityPeriod) || 1))} year(s).</p><p>Annual Return EPR years follow each service validity period. Service Start Date and Service End Date are manually selected in the quotation.</p></div>
-          <section className="mt-6"><p className="font-black">Terms & Conditions:</p><ol className="mt-2 list-decimal space-y-1 pl-5">{(row.terms || []).filter(Boolean).map((term, index) => <li key={index}>{term}</li>)}</ol></section>
-          <section className="mt-6"><p className="font-black text-red-600">Important Note:</p><ol className="mt-2 list-decimal space-y-1 pl-5"><li>GST will be extra @ 18%.</li><li>Any Government Charges to be paid by Client directly.</li></ol></section>
-          <footer className="mt-8 border-t-2 border-slate-900 pt-4 text-center"><p className="font-black">For more details please contact us on : info@ananttattva.com | +91 8169727341 / 9004005520</p><p className="mt-4 font-black">This is a computer-generated proforma invoice and does not require a signature.</p></footer>
-        </article>
-        <article className="mx-auto mt-8 flex min-h-[900px] w-full max-w-[850px] flex-col rounded-[28px] border border-slate-200 bg-white px-7 py-7 text-[11px] leading-relaxed text-slate-950 shadow-xl sm:px-10 sm:py-9" style={{ pageBreakBefore: 'always', breakBefore: 'page' }}>
-          <div className="border-b-2 border-slate-900 pb-4">
-            <p className="text-lg font-black uppercase tracking-[.22em] text-orange-500">Scope of Work</p>
-          </div>
-          <section className="mt-6">
-            <p className="font-black">Scope of Work:</p>
-            {scopeItems.length ? (
-              <ol className="mt-2 list-decimal space-y-1 pl-5">
-                {scopeItems.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
-              </ol>
-            ) : (
-              <p className="mt-3">No scope of work added.</p>
-            )}
-          </section>
-          <footer className="mt-auto border-t-2 border-slate-900 pt-4 text-center"><p className="font-black">For more details please contact us on : info@ananttattva.com | +91 8169727341 / 9004005520</p><p className="mt-4 font-black">This is a computer-generated proforma invoice and does not require a signature.</p></footer>
-        </article>
-      </div>
-      <footer className="flex justify-end gap-2 border-t bg-white px-5 py-4"><button type="button" onClick={() => onEdit(row)} className="rounded-xl border border-orange-200 bg-orange-50 px-5 py-3 font-black text-orange-600 transition hover:bg-orange-100">Edit Invoice</button><button type="button" onClick={() => downloadProforma(row)} className="rounded-xl bg-orange-500 px-6 py-3 font-black text-white shadow-lg transition hover:bg-orange-600">Download Proforma Invoice</button></footer>
-    </div>
-  </div>
+  return <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/60 p-4"><div className="flex h-[94vh] w-full max-w-5xl flex-col rounded-2xl bg-white p-4"><header className="mb-3 flex items-center justify-between gap-3"><strong>{row.proformaNumber} · Proforma Invoice</strong><div className="flex gap-3"><button onClick={() => onEdit(row)}>Edit</button><button onClick={() => downloadProforma(row)} className="rounded-lg bg-emerald-700 px-4 py-2 text-white">Download PDF</button><button aria-label="Close preview" onClick={onClose}><X /></button></div></header>{url && <iframe title="Proforma Invoice PDF preview" src={url} className="min-h-0 w-full flex-1 border-0" />}</div></div>
 }
 
 export default function ProformaInvoices() {
@@ -545,6 +294,7 @@ export default function ProformaInvoices() {
       <div className="px-5"><ProformaPoYearTable form={form} setForm={setForm} /></div>
       <div className="p-5"><div className="mt-2 grid gap-4 lg:grid-cols-4"><label className="lg:col-span-2"><span className="mb-2 block text-sm font-black">Select Quotation</span><QuotationPicker value={form.quotationId || ''} quotations={quotations} onChange={selectQuotation} /></label><label className="lg:col-span-2"><span className="mb-2 block text-sm font-black">Quotation Number *</span><input value={form.quotationNumber} readOnly={Boolean(form.quotationId)} onChange={(e) => setForm((c) => ({ ...c, quotationNumber: e.target.value }))} className="h-14 w-full rounded-2xl border px-4 font-black read-only:bg-slate-100" placeholder="AT/26-27/001" /></label><label><span className="mb-2 block text-sm font-black">Invoice Date</span><input type="date" value={form.invoiceDate} onChange={(e) => setForm((c) => ({ ...c, invoiceDate: e.target.value }))} className="h-12 w-full rounded-xl border px-4 font-bold" /></label><label><span className="mb-2 block text-sm font-black">Valid Until</span><input type="date" value={form.validUntil} onChange={(e) => setForm((c) => ({ ...c, validUntil: e.target.value }))} className="h-12 w-full rounded-xl border px-4 font-bold" /></label></div>
       <h3 className="mb-3 mt-7 text-lg font-black">Client & Quotation Details</h3><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{leadFields.map(([key, label]) => <label key={key}><span className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500">{label}</span><input value={form.leadDetails[key] || ''} onChange={(e) => setLead(key, e.target.value)} className="h-11 w-full rounded-xl border border-slate-200 px-3 font-bold outline-none focus:border-emerald-400" placeholder={`Enter ${label.toLowerCase()}`} /></label>)}</div>
+      <section className="mt-6 rounded-2xl border p-5"><h3 className="mb-4 text-lg font-black">Invoice, Delivery & Bank Details</h3><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{invoiceFields.map(([key, label, fallback]) => <label key={key}><span className="mb-2 block text-xs font-bold">{label}</span><textarea rows={2} value={form.invoiceDetails?.[key] ?? fallback ?? ''} onChange={(e) => setForm((c) => ({ ...c, invoiceDetails: { ...Object.fromEntries(invoiceFields.map(([k, , v]) => [k, v || ''])), ...c.invoiceDetails, [key]: e.target.value } }))} className="w-full rounded-xl border p-3 text-sm" /></label>)}</div></section>
       <div className="mb-3 mt-7 flex items-center justify-between"><div><h3 className="text-lg font-black">Invoice Items</h3><p className="text-xs font-bold text-slate-500">{form.pricingMode ? `${form.pricingMode === 'combined' ? 'Combined' : 'Individual'} pricing selected` : 'Choose pricing type first.'}</p></div>{form.pricingMode && <button onClick={() => setForm((c) => ({ ...c, items: [...c.items, { ...blankItem }] }))} className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-2 font-black text-emerald-700"><Plus className="h-4 w-4" /> Add Item</button>}</div>
       {!form.pricingMode ? <div className="grid gap-4 rounded-2xl border p-5 sm:grid-cols-2"><button type="button" onClick={() => setForm((c) => ({ ...c, pricingMode: 'combined', combinedBasicAmount: '', items: c.items.map((item) => ({ ...item, basicAmount: '' })) }))} className="rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-5 text-left"><strong className="text-emerald-800">Combined Price</strong><span className="mt-1 block text-sm font-bold text-emerald-700">One total amount for all invoice rows.</span></button><button type="button" onClick={() => setForm((c) => ({ ...c, pricingMode: 'individual', combinedBasicAmount: '' }))} className="rounded-2xl border-2 border-blue-200 bg-blue-50 p-5 text-left"><strong className="text-blue-800">Individual Price</strong><span className="mt-1 block text-sm font-bold text-blue-700">Separate amount for every invoice row.</span></button></div> : <><div className="mb-3 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3"><span className={`rounded-full px-3 py-1 text-xs font-black uppercase ${form.pricingMode === 'combined' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'}`}>{form.pricingMode} Price</span><button type="button" onClick={() => setForm((c) => ({ ...c, pricingMode: '', combinedBasicAmount: '' }))} className="text-xs font-black text-slate-500">Change pricing type</button></div><div className="overflow-x-auto rounded-2xl border"><table className="w-full min-w-[1420px] text-left text-sm"><thead className="bg-emerald-800 text-white"><tr>{['Business Category', 'Service Category', 'Services Year', 'Select Period', 'Transition Period', 'Applicant Type', 'Sub Applicant Type', 'Qty / Unit', 'Basic Amount', ''].map((h) => <th key={h} className="p-3">{h}</th>)}</tr></thead><tbody>{form.items.map((item, index) => <tr key={index} className="border-b"><td className="p-2"><input value={item.businessCategory || ''} onChange={(e) => setItem(index, 'businessCategory', e.target.value)} className="h-10 w-full rounded-lg border px-2 font-bold" /></td><td className="p-2"><input value={item.serviceCategory || ''} onChange={(e) => setItem(index, 'serviceCategory', e.target.value)} className="h-10 w-full rounded-lg border px-2 font-bold" /></td><td className="p-2"><input value={item.servicesForYear || ''} onChange={(e) => setItem(index, 'servicesForYear', e.target.value)} className="h-10 w-full rounded-lg border px-2" /></td><td className="p-2"><select value={item.periodUnit || 'annual'} onChange={(e) => setItem(index, 'periodUnit', e.target.value)} className="h-10 w-full rounded-lg border px-2 font-bold"><option value="days">Days</option><option value="months">Month</option><option value="annual">Annual</option></select></td><td className="p-2"><select value={item.transitionPeriod || 'No'} onChange={(e) => setItem(index, 'transitionPeriod', e.target.value)} className="h-10 w-full rounded-lg border px-2 font-bold"><option value="Yes">Yes</option><option value="No">No</option></select></td><td className="p-2"><input value={item.piboParent || ''} onChange={(e) => setItem(index, 'piboParent', e.target.value)} className="h-10 w-full rounded-lg border px-2" /></td><td className="p-2"><input value={item.piboCategory || ''} onChange={(e) => setItem(index, 'piboCategory', e.target.value)} className="h-10 w-full rounded-lg border px-2" /></td><td className="p-2"><input value={item.unit || ''} onChange={(e) => setItem(index, 'unit', e.target.value)} className="h-10 w-24 rounded-lg border px-2" /></td>{form.pricingMode === 'individual' && <td className="p-2"><input type="number" value={item.basicAmount ?? ''} onChange={(e) => setItem(index, 'basicAmount', e.target.value)} className="h-10 w-36 rounded-lg border px-2 font-black" /></td>}{form.pricingMode === 'combined' && index === 0 && <td rowSpan={form.items.length} className="bg-emerald-50 p-3 align-middle"><label className="text-[10px] font-black uppercase text-emerald-700">Combined Amount</label><input type="number" value={form.combinedBasicAmount ?? ''} onChange={(e) => setForm((c) => ({ ...c, combinedBasicAmount: e.target.value }))} className="mt-2 h-11 w-40 rounded-lg border border-emerald-300 px-3 font-black" placeholder="50000" /></td>}<td className="p-2"><button disabled={form.items.length === 1} onClick={() => setForm((c) => ({ ...c, items: c.items.filter((_, i) => i !== index) }))} className="grid h-9 w-9 place-items-center rounded-lg text-red-500 hover:bg-red-50 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button></td></tr>)}</tbody></table></div></>}
       <div className="mt-6 grid gap-5 lg:grid-cols-2"><label><span className="mb-2 block text-sm font-black">Terms & Conditions</span><textarea value={form.terms.join('\n')} onChange={(e) => setForm((c) => ({ ...c, terms: e.target.value.split(/\r?\n/) }))} rows={6} className="w-full rounded-2xl border p-4 font-semibold outline-none" placeholder="One term per line" /></label><label><span className="mb-2 block text-sm font-black">Scope of Work</span><textarea value={(form.scopeOfWork || []).join('\n')} onChange={(e) => setForm((c) => ({ ...c, scopeOfWork: e.target.value.split(/\r?\n/) }))} rows={6} className="w-full rounded-2xl border p-4 font-semibold outline-none" placeholder="One scope item per line" /></label></div><div className="mt-5 ml-auto max-w-sm rounded-2xl bg-gradient-to-br from-emerald-800 to-teal-700 p-5 text-white"><span className="text-xs font-black uppercase tracking-wider text-emerald-200">Grand Total</span><strong className="mt-2 block text-3xl">{money(total)}</strong><p className="mt-2 text-sm text-emerald-100">Calculated automatically from quantity × basic amount.</p><button disabled={saving} onClick={save} className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-orange-500 font-black shadow-lg transition hover:bg-orange-400 disabled:opacity-50"><Save className="h-5 w-5" /> {saving ? 'Saving…' : editingId ? 'Update Invoice' : 'Save Proforma Invoice'}</button></div></div>

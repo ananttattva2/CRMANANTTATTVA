@@ -67,6 +67,7 @@ function cleanPayload(body = {}) {
     value: money(row.value)
   }));
   return {
+    invoiceDetails: Object.fromEntries(['deliveryNote','paymentTerms','reference','otherReferences','buyerOrder','buyerOrderDate','dispatchDocument','deliveryDate','dispatchedThrough','destination','deliveryTerms','consignee','consigneeAddress','consigneeGst','consigneeState','buyerStateCode','hsn','bankName','accountName','accountNumber','ifsc','pan','declaration'].filter((key) => Object.prototype.hasOwnProperty.call(body.invoiceDetails || {}, key)).map((key) => [key, text(body.invoiceDetails[key]).slice(0, 2000)])),
     quotationId: body.quotationId || undefined, quotationNumber: text(body.quotationNumber), poNumber: text(body.poNumber),
     leadId: text(body.leadId), leadCode: text(body.leadCode), companyName: text(body.companyName || leadDetails.companyName),
     leadDetails, invoiceDate: body.invoiceDate || new Date(), validUntil: text(body.validUntil), pricingMode, combinedBasicAmount, items, poYearCount, poYearRows,

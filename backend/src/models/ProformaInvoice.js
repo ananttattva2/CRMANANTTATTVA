@@ -44,6 +44,7 @@ const ProformaInvoiceSchema = new mongoose.Schema({
   companyName: { type: String, required: true, trim: true, index: true },
   leadDetails: { type: mongoose.Schema.Types.Mixed, default: {} },
   invoiceDate: { type: Date, default: Date.now },
+  invoiceDetails: { type: Map, of: String, default: {} },
   validUntil: { type: String, trim: true },
   pricingMode: { type: String, enum: ['combined', 'individual'], default: 'individual' },
   combinedBasicAmount: { type: Number, default: 0 },

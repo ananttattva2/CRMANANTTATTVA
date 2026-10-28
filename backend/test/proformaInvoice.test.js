@@ -35,3 +35,10 @@ test('proforma routes require CRM authentication and are mounted', () => {
   assert.match(routes, /router\.post\('\/', requireAuth/);
   assert.match(app, /app\.use\('\/api\/proforma-invoices', proformaInvoiceRoutes\)/);
 });
+
+
+test('invoice delivery, consignee and bank fields survive cleaning with explicit blanks', () => {
+  const payload = _test.cleanPayload({ invoiceDetails: { paymentTerms: '', consignee: ' Ship To Ltd ', bankName: 'IDFC', accountNumber: '001234', hsn: '998311', unexpected: 'discard' } });
+  assert.deepEqual(payload.invoiceDetails, { paymentTerms: '', consignee: 'Ship To Ltd', bankName: 'IDFC', accountNumber: '001234', hsn: '998311' });
+  assert.deepEqual(_test.cleanPayload({}).invoiceDetails, {});
+});
