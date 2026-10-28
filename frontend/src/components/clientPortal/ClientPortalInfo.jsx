@@ -38,6 +38,7 @@ export function ComplianceFields({
 export default function ClientPortalInfo({
   client,
   initialTab = 'overview',
+  onViewFile,
   Table,
   Section
 }) {
@@ -122,7 +123,7 @@ export default function ClientPortalInfo({
           key,
           ...collectDetails(value)
         })).filter(section => section.fields.length || section.documents.length);
-        return <details className="cp-registration" key={master.id || index} open={index === 0}><summary><span><strong>{master.basic?.piboCategory || master.basic?.subApplicantType || `Service profile ${index + 1}`}</strong><small>{[master.basic?.eprCategory, master.basic?.servicesOffered].filter(Boolean).join(' · ') || 'Company registration details'}</small></span><span className="cp-badge">{master.cpcb?.status || 'View details'}</span></summary><div className="cp-registration-body">{sections.map(section => <section key={section.key}><h3 className="cp-subtitle">{fieldLabel(section.key)}</h3><ComplianceFields fields={section.fields} Table={Table} />{section.documents.length > 0 && <div className="cp-tag-list">{section.documents.map((doc, index) => <a className="cp-document-link" key={index} href={doc.url} target="_blank" rel="noopener noreferrer"><FileText size={14} />{doc.category || doc.name} ↗</a>)}</div>}</section>)}</div></details>;
+        return <details className="cp-registration" key={master.id || index} open={index === 0}><summary><span><strong>{master.basic?.piboCategory || master.basic?.subApplicantType || `Service profile ${index + 1}`}</strong><small>{[master.basic?.eprCategory, master.basic?.servicesOffered].filter(Boolean).join(' · ') || 'Company registration details'}</small></span><span className="cp-badge">{master.cpcb?.status || 'View details'}</span></summary><div className="cp-registration-body">{sections.map(section => <section key={section.key}><h3 className="cp-subtitle">{fieldLabel(section.key)}</h3><ComplianceFields fields={section.fields} Table={Table} />{section.documents.length > 0 && <div className="cp-tag-list">{section.documents.map((doc, index) => <button className="cp-document-link" key={index} onClick={() => onViewFile?.(doc)}><FileText size={14} />{doc.category || doc.name}</button>)}</div>}</section>)}</div></details>;
       })}{!masters.length && <Section title="Registration & compliance"><p className="cp-muted">No registration records have been added yet.</p></Section>}</div>}
   {tab === 'documents' && <Section title="Company documents" description="Open certificates and uploaded documents without technical file metadata."><Table columns={[{
         label: 'Document',
@@ -135,7 +136,7 @@ export default function ClientPortalInfo({
         render: row => row.uploadedAt ? new Date(row.uploadedAt).toLocaleDateString('en-IN') : '—'
       }, {
         label: 'Action',
-        render: row => <a className="cp-action" href={row.url} target="_blank" rel="noopener noreferrer">View document ↗</a>
+        render: row => <button className="cp-action" onClick={() => onViewFile?.(row)}>View document</button>
       }]} rows={docs} empty="No company documents have been uploaded yet." /></Section>}
   </div>;
 }

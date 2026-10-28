@@ -48,3 +48,15 @@ test('services tab shows assigned user contact number next to the name',()=>{
  assert.ok(html.includes('tel:+919876543210'));
  assert.ok(html.includes('+91 98765 43210'));
 });
+
+
+test('company file view delegates to popup action rather than opening a new tab',()=>{
+ let table;
+ const doc={name:'gst.pdf',url:'https://example.com/gst.pdf'};
+ const client={company:'Example',clientMaster:[{compliance:{gstFile:doc}}],contacts:[]};
+ let selected;
+ const Section=({children})=>React.createElement('section',null,children);
+ renderToStaticMarkup(React.createElement(Info,{client,initialTab:'documents',Section,onViewFile:file=>{selected=file},Table:props=>{table=props;return null}}));
+ const action=table.columns.find(column=>column.label==='Action').render(table.rows[0]);
+ assert.equal(action.type,'button');assert.equal(action.props.target,undefined);action.props.onClick();assert.equal(selected.url,doc.url);
+});
