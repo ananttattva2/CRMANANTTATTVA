@@ -26,3 +26,13 @@ npm run build --prefix frontend
 Tests cover exact email matching, record-ID document scoping, credential filtering, client/staff token separation, OTP expiry/attempt filters/replay, resend throttling, mail-failure cleanup, PO counts and deduplication, nested Client Master details and service allocations. OTP delivery is mocked; no email is sent during tests.
 
 For a live acceptance check after deployment, enter a registered contact email, inspect all five sidebar sections, open an uploaded PO and PI PDF, then sign out. Unregistered emails are rejected. Both OTP endpoints are disabled in temporary mode. A staff token must not open the client overview and a client token must not open staff CRM endpoints.
+
+## Client portal presentation
+
+The portal uses scoped compact styles and full-width workspace layout. Client Info separates Company overview, Contacts & locations, Services & SPOC, Registration & compliance, and Documents. Blank profile values are omitted, repeated handlers are grouped with their services, company documents are deduplicated, and file URLs/metadata are presented as document actions. Production/product arrays render as tables.
+
+Presentation checks (without browser or computer access):
+
+```
+node --test frontend/test/clientPortalPresentation.test.mjs frontend/test/clientPortalRender.test.cjs
+```
