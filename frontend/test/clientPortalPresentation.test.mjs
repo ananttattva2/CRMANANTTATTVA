@@ -12,10 +12,11 @@ test('nested company data becomes labelled fields and document actions without f
 })
 test('documents and repeated account managers are deduplicated without losing services',()=>{
  const file={name:'gst.pdf',url:'https://example.com/gst.pdf'}
- const client={clientMaster:[{compliance:{gstFile:file}},{compliance:{gstFile:file}}],assignments:[{spoc:{name:'Manager',email:'manager@example.com'}},{spoc:{name:'Manager',email:'manager@example.com'}}],services:[{eprCategory:'Plastic',servicesOffered:'Registration',subApplicantType:'Producer'},{eprCategory:'Plastic',servicesOffered:'Registration',subApplicantType:'Importer'}]}
+ const client={clientMaster:[{compliance:{gstFile:file}},{compliance:{gstFile:file}}],assignments:[{spoc:{name:'Manager',email:'manager@example.com',contactNumber:'9000000000'}},{spoc:{name:'Manager',email:'manager@example.com',contactNumber:'9000000000'}}],services:[{eprCategory:'Plastic',servicesOffered:'Registration',subApplicantType:'Producer'},{eprCategory:'Plastic',servicesOffered:'Registration',subApplicantType:'Importer'}]}
  assert.equal(companyDocuments(client).length,1)
  const team=handlingTeam(client)
  assert.equal(team.length,1)
+ assert.equal(team[0].contactNumber,'9000000000')
  assert.equal(team[0].services.length,2)
  assert.ok(team[0].services[0].includes('Producer'))
 })

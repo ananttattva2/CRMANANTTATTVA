@@ -455,7 +455,9 @@ exports.createUserByAdmin = async (req, res) => {
   if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
   let existing = await User.findOne({ email });
   if (existing) return res.status(400).json({ error: 'User already exists' });
-  const user = new User({ name, email, password: await bcrypt.hash(password, 10), role, roles, team, teamId, managerId, operationHeadId, isActive, avatarUrl, createdBy: req.user?._id });
+  const contactNumber = String(req.body.contactNumber || '').trim();
+  if (contactNumber && !/^[+0-9 ()-]{7,24}$/.test(contactNumber)) return res.status(400).json({ error: 'Enter a valid contact number (7 to 24 characters).' });
+  const user = new User({ name, email, contactNumber, password: await bcrypt.hash(password, 10), role, roles, team, teamId, managerId, operationHeadId, isActive, avatarUrl, createdBy: req.user?._id });
   await user.save();
   await ensureCrmUserId(user);
   res.status(201).json({ ok: true, user: publicUser(user) });
@@ -489,6 +491,11 @@ exports.updateUserByAdmin = async (req, res) => {
   const duplicate = await User.findOne({ email, _id: { $ne: userId } });
   if (duplicate) return res.status(400).json({ error: 'Email already exists' });
  
+  if (req.body.contactNumber !== undefined) {
+    const contactNumber = String(req.body.contactNumber || '').trim();
+    if (contactNumber && !/^[+0-9 ()-]{7,24}$/.test(contactNumber)) return res.status(400).json({ error: 'Enter a valid contact number (7 to 24 characters).' });
+    user.contactNumber = contactNumber;
+  }
   user.name = name;
   user.email = email;
   user.role = role;
@@ -780,7 +787,7 @@ exports.listAuditLogs = async (req, res) => {
 exports.listActiveUsers = async (req, res) => {
   const scope = await getVisibleUserScope(req.user);
   const users = await User.find({ isActive: true, ...(scope === null ? {} : { _id: { $in: scope.ids } }) })
-    .select('crmUserId source name email avatarUrl role roles team teamId managerId operationHeadId isActive lastLogin createdAt updatedAt')
+    .select('crmUserId source name email contactNumber avatarUrl role roles team teamId managerId operationHeadId isActive lastLogin createdAt updatedAt')
     .sort({ name: 1, email: 1 });
   res.json({ ok: true, users });
 };
@@ -792,6 +799,7 @@ function publicUser(user) {
     source: user.source,
     name: user.name,
     email: user.email,
+    contactNumber: user.contactNumber || '',
     avatarUrl: user.avatarUrl,
     role: user.role,
     roles: getUserRoles(user),

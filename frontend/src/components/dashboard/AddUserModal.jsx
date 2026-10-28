@@ -109,6 +109,12 @@ export default function AddUserModal({ form, saving, error, teams: savedTeams = 
         </div>
 
         <div className="mt-5">
+          <Field label="Contact Number">
+            <input type="tel" autoComplete="tel" maxLength={24} pattern="[+0-9 ()-]{7,24}" value={form.contactNumber || ''} onChange={(event) => onChange({ ...form, contactNumber: event.target.value })} placeholder="e.g. +91 98765 43210" className="form-input" />
+          </Field>
+          <p className="mt-2 text-xs text-slate-500">Shown beside the handling user in the client portal.</p>
+        </div>
+        <div className="mt-5">
           <Field label="Email">
             <input type="email" value={form.email} onChange={(event) => onChange({ ...form, email: event.target.value })} required className="form-input" />
           </Field>

@@ -1,33 +1,47 @@
 import React, { useState } from 'react';
-import { Building2, FileText, Mail, MapPin, Users } from 'lucide-react';
+import { Building2, FileText, Mail, Phone, MapPin, Users } from 'lucide-react';
 import { collectDetails, companyDocuments, fieldLabel, handlingTeam, hasValue, uniqueRows } from '../../utils/clientPortalPresentation.mjs';
 export function InfoGrid({
   rows
 }) {
   return <dl className="cp-info-grid">{rows.filter(row => hasValue(row.value)).map((row, index) => <div key={index}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl>;
 }
-export function ComplianceFields({ fields, Table }) {
-  const repeated = new Map()
+export function ComplianceFields({
+  fields,
+  Table
+}) {
+  const repeated = new Map();
   for (const field of fields) {
-    const match = field.group.match(/^(.*) \/ (\d+)$/)
-    if (!match) continue
-    const group = repeated.get(match[1]) || new Map()
-    const row = group.get(match[2]) || {}
-    row[field.label] = field.value
-    group.set(match[2], row)
-    repeated.set(match[1], group)
+    const match = field.group.match(/^(.*) \/ (\d+)$/);
+    if (!match) continue;
+    const group = repeated.get(match[1]) || new Map();
+    const row = group.get(match[2]) || {};
+    row[field.label] = field.value;
+    group.set(match[2], row);
+    repeated.set(match[1], group);
   }
-  const tables = [...repeated.entries()].filter(([name, rows]) => rows.size > 1 || /Products|Production/.test(name))
-  const tableNames = new Set(tables.map(([name]) => name))
-  const scalar = fields.filter(field => !tableNames.has(field.group.replace(/ \/ \d+$/, '')))
-  return <div className="cp-stack"><InfoGrid rows={scalar.map(field => ({ label: field.group ? `${field.group} / ${field.label}` : field.label, value: field.value }))}/>{tables.map(([name, records]) => { const rows = [...records.values()]; const keys = [...new Set(rows.flatMap(Object.keys))]; return <div key={name}><h4 className="cp-subtitle">{name}</h4><Table columns={keys.map(key => ({ label: key, key }))} rows={rows}/></div> })}</div>
+  const tables = [...repeated.entries()].filter(([name, rows]) => rows.size > 1 || /Products|Production/.test(name));
+  const tableNames = new Set(tables.map(([name]) => name));
+  const scalar = fields.filter(field => !tableNames.has(field.group.replace(/ \/ \d+$/, '')));
+  return <div className="cp-stack"><InfoGrid rows={scalar.map(field => ({
+      label: field.group ? `${field.group} / ${field.label}` : field.label,
+      value: field.value
+    }))} />{tables.map(([name, records]) => {
+      const rows = [...records.values()];
+      const keys = [...new Set(rows.flatMap(Object.keys))];
+      return <div key={name}><h4 className="cp-subtitle">{name}</h4><Table columns={keys.map(key => ({
+          label: key,
+          key
+        }))} rows={rows} /></div>;
+    })}</div>;
 }
 export default function ClientPortalInfo({
   client,
+  initialTab = 'overview',
   Table,
   Section
 }) {
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useState(['overview', 'contacts', 'services', 'compliance', 'documents'].includes(initialTab) ? initialTab : 'overview');
   const masters = client.clientMaster || [],
     docs = companyDocuments(client);
   const contacts = uniqueRows(client.contacts || [], row => `${row.plantUnit}|${row.emails || row.email}|${row.contactPerson}`);
@@ -49,19 +63,7 @@ export default function ClientPortalInfo({
   {tab === 'overview' && <div className="cp-two-columns"><Section title="Company details" description="Your business profile and identifiers."><InfoGrid rows={[['Legal name', basic.clientLegalName || client.company], ['Trade name', basic.tradeName], ['Industry', client.industryType || basic.companyIndustry], ['Company type', basic.companyType], ['Lead code', client.leadCode], ['GST Number', compliance.gstNumber || compliance.gst], ['CIN', compliance.cinNumber || compliance.cin], ['PAN', compliance.panNumber || compliance.pan], ['Website', client.website || basic.website]].map(([label, value]) => ({
           label,
           value
-        }))} /></Section><Section title="Registered address"><div className="cp-address"><MapPin size={18} /><div><p>{[client.addressLine1, client.addressLine2, client.addressLine3].filter(Boolean).join(' ').replace(/,\s*,/g, ',')}</p><strong>{[client.city, client.state, client.pinCode].filter(Boolean).join(' · ')}</strong></div></div><div className="cp-section-divider" /><h3 className="cp-subtitle">Primary contact</h3><InfoGrid rows={[{
-          label: 'Name',
-          value: contacts[0]?.contactPerson
-        }, {
-          label: 'Designation',
-          value: contacts[0]?.designation
-        }, {
-          label: 'Email',
-          value: contacts[0]?.emails || contacts[0]?.email
-        }, {
-          label: 'Mobile',
-          value: contacts[0]?.mobileNo1
-        }]} /></Section></div>}
+        }))} /></Section><div className="cp-profile-side"><Section title="Registered address"><div className="cp-address"><MapPin size={22} /><div><p>{[client.addressLine1, client.addressLine2, client.addressLine3].filter(Boolean).join(' ').replace(/,\s*,/g, ',')}</p><strong>{[client.city, client.state, client.pinCode].filter(Boolean).join(' · ')}</strong></div></div></Section><Section title="Primary contact"><div className="cp-primary-name"><span className="cp-avatar">{(contacts[0]?.contactPerson || 'Client').split(' ').map(word => word[0]).slice(0, 2).join('')}</span><strong>{contacts[0]?.contactPerson || 'Not provided'}</strong>{contacts[0]?.designation && <span className="cp-badge">{contacts[0].designation}</span>}</div>{(contacts[0]?.emails || contacts[0]?.email) && <div className="cp-contact-line"><Mail size={21} /><a href={`mailto:${contacts[0].emails || contacts[0].email}`}>{contacts[0].emails || contacts[0].email}</a></div>}{contacts[0]?.mobileNo1 && <div className="cp-contact-line"><Phone size={21} /><a href={`tel:${contacts[0].mobileNo1}`}>{contacts[0].mobileNo1}</a></div>}</Section></div></div>}
   {tab === 'contacts' && <div className="cp-stack"><Section title="Company contacts" description="Contact people for each unit."><Table columns={[{
           label: 'Contact',
           render: row => <div className="cp-cell-main">{row.contactPerson}<small>{row.designation}</small></div>
@@ -114,13 +116,13 @@ export default function ClientPortalInfo({
         }, {
           label: 'Unit',
           key: 'plantUnit'
-        }]} rows={client.services || []} /></Section><Section title="Your account team" description="Who handles your account and their assigned services."><div className="cp-team-grid">{handlingTeam(client).map((person, index) => <article className="cp-person" key={index}><span className="cp-avatar">{(person.name || 'AT').split(' ').map(word => word[0]).slice(0, 2).join('')}</span><div><h3>{person.name || 'Not assigned'}</h3>{person.email && <a href={`mailto:${person.email}`}><Mail size={13} />{person.email}</a>}<div className="cp-tag-list">{person.services.map(service => <span key={service}>{service}</span>)}</div></div></article>)}</div></Section></div>}
+        }]} rows={client.services || []} /></Section><Section title="Your account team" description="Who handles your account and their assigned services."><div className="cp-team-grid">{handlingTeam(client).map((person, index) => <article className="cp-person" key={index}><span className="cp-avatar">{(person.name || 'AT').split(' ').map(word => word[0]).slice(0, 2).join('')}</span><div><h3>{person.name || 'Not assigned'}{person.contactNumber && <a className="cp-phone" href={`tel:${person.contactNumber.replace(/[^+0-9]/g, '')}`}>{person.contactNumber}</a>}</h3>{person.email && <a href={`mailto:${person.email}`}><Mail size={13} />{person.email}</a>}<div className="cp-tag-list">{person.services.map(service => <span key={service}>{service}</span>)}</div></div></article>)}</div></Section></div>}
   {tab === 'compliance' && <div className="cp-stack">{masters.map((master, index) => {
         const sections = Object.entries(master).filter(([key]) => !['id', 'registeredAddress', 'communicationAddress'].includes(key)).map(([key, value]) => ({
           key,
           ...collectDetails(value)
         })).filter(section => section.fields.length || section.documents.length);
-        return <details className="cp-registration" key={master.id || index} open={index === 0}><summary><span><strong>{master.basic?.piboCategory || master.basic?.subApplicantType || `Service profile ${index + 1}`}</strong><small>{[master.basic?.eprCategory, master.basic?.servicesOffered].filter(Boolean).join(' · ') || 'Company registration details'}</small></span><span className="cp-badge">{master.cpcb?.status || 'View details'}</span></summary><div className="cp-registration-body">{sections.map(section => <section key={section.key}><h3 className="cp-subtitle">{fieldLabel(section.key)}</h3><ComplianceFields fields={section.fields} Table={Table}/>{section.documents.length > 0 && <div className="cp-tag-list">{section.documents.map((doc, index) => <a className="cp-document-link" key={index} href={doc.url} target="_blank" rel="noopener noreferrer"><FileText size={14} />{doc.category || doc.name} ↗</a>)}</div>}</section>)}</div></details>;
+        return <details className="cp-registration" key={master.id || index} open={index === 0}><summary><span><strong>{master.basic?.piboCategory || master.basic?.subApplicantType || `Service profile ${index + 1}`}</strong><small>{[master.basic?.eprCategory, master.basic?.servicesOffered].filter(Boolean).join(' · ') || 'Company registration details'}</small></span><span className="cp-badge">{master.cpcb?.status || 'View details'}</span></summary><div className="cp-registration-body">{sections.map(section => <section key={section.key}><h3 className="cp-subtitle">{fieldLabel(section.key)}</h3><ComplianceFields fields={section.fields} Table={Table} />{section.documents.length > 0 && <div className="cp-tag-list">{section.documents.map((doc, index) => <a className="cp-document-link" key={index} href={doc.url} target="_blank" rel="noopener noreferrer"><FileText size={14} />{doc.category || doc.name} ↗</a>)}</div>}</section>)}</div></details>;
       })}{!masters.length && <Section title="Registration & compliance"><p className="cp-muted">No registration records have been added yet.</p></Section>}</div>}
   {tab === 'documents' && <Section title="Company documents" description="Open certificates and uploaded documents without technical file metadata."><Table columns={[{
         label: 'Document',

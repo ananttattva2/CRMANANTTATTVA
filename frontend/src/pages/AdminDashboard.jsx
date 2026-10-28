@@ -5994,6 +5994,7 @@ export default function AdminDashboard() {
       const response = await api.post(API_ENDPOINTS.auth.createUser, {
         name,
         email: form.email,
+        contactNumber: form.contactNumber,
         password: form.password,
         avatarUrl: form.avatarUrl,
         role: form.role,
@@ -6055,6 +6056,7 @@ export default function AdminDashboard() {
       const response = await api.put(API_ENDPOINTS.auth.adminUser(id), {
         name,
         email: editForm.email,
+        contactNumber: editForm.contactNumber,
         avatarUrl: editForm.avatarUrl,
         role: editForm.role,
         roles: editForm.roles,
@@ -6129,6 +6131,7 @@ export default function AdminDashboard() {
       firstName: name.firstName === '-' ? '' : name.firstName,
       lastName: name.lastName === '-' ? '' : name.lastName,
       email: user.email || '',
+      contactNumber: user.contactNumber || '',
       avatarUrl: user.avatarUrl || '',
       role: user.role || 'operation',
       roles: getUserRoles(user),

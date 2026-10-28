@@ -78,7 +78,7 @@ function allocationRows(client) {
   }));
 }
 function buildPortalData(email, leads, clients, quotations, invoices, users = []) {
-  const userMap = new Map(users.map(user => [id(user), pick(user, 'name email role')]));
+  const userMap = new Map(users.map(user => [id(user), pick(user, 'name email role contactNumber')]));
   const spoc = (source = {}, lead = {}) => {
     if (!source.assignedStaff && !source.assignedTo && !source.assignedStaffText && !source.assignedToText) {
       source = array(lead.assignments).find(assignment => assignment.assignedStaff || assignment.assignedStaffText) || array(lead.assignments).find(assignment => assignment.assignedTo || assignment.assignedToText) || source;
@@ -177,7 +177,7 @@ async function loadPortalData(email) {
     _id: {
       $in: [...new Set([...leads.flatMap(lead => [lead.assignedStaff, lead.assignedTo, lead.generatedForUser, lead.createdBy, ...array(lead.assignments).flatMap(a => [a.assignedStaff, a.assignedTo])]), ...clients.flatMap(allocationRows).map(a => a.assignedStaff)].filter(Boolean).map(id).filter(value => mongoose.Types.ObjectId.isValid(value)))]
     }
-  }).select('name email role').lean()]);
+  }).select('name email role contactNumber').lean()]);
   return buildPortalData(email, leads, clients, quotations, invoices, users);
 }
 module.exports = {

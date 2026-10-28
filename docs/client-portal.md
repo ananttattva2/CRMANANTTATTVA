@@ -36,3 +36,9 @@ Presentation checks (without browser or computer access):
 ```
 node --test frontend/test/clientPortalPresentation.test.mjs frontend/test/clientPortalRender.test.cjs
 ```
+
+## Reference layout and staff contact numbers
+
+Client login uses the welcome layout with CSS document illustrations and retains temporary email-only login. Portal lists include search, PO financial-year filtering and 10-row pagination. The dashboard PO value banner is removed; PO page summary cards remain. Help actions open Client Info > Services & SPOC.
+
+Admin Add User and Edit User now support an optional Contact Number. It is persisted on User.contactNumber, returned in staff directory/edit responses and read from the assigned user for the client portal. The number appears beside the handling user's name on dashboard and service-team cards. Existing users have no invented number; edit their user record to populate it.

@@ -20,10 +20,10 @@ export function uniqueRows(rows, key) { return [...new Map(rows.map(row => [key(
 export function companyDocuments(client) {
   return uniqueRows((client.clientMaster || []).flatMap(master => collectDetails(master).documents), row => row.url)
 }
-export function serviceName(service = {}) { return [service.serviceCategory || service.eprCategory, service.servicesOffered, service.subApplicantType || service.piboCategory].filter(Boolean).join(' Â· ') || 'Account support' }
+export function serviceName(service = {}) { return [service.serviceCategory || service.eprCategory, service.servicesOffered, service.subApplicantType || service.piboCategory].filter(Boolean).join(' · ') || 'Account support' }
 export function handlingTeam(client) {
   const rows = (client.assignments?.length ? client.assignments : [{ spoc: client.spoc }]).map((row, index) => ({ ...row.spoc, service: serviceName(row.serviceCategory || row.eprCategory || row.servicesOffered ? row : client.services?.[index]), status: row.poStatus }))
   const grouped = new Map()
-  rows.forEach(row => { const key = `${row.name}|${row.email}`; const saved = grouped.get(key) || { name: row.name, email: row.email, services: [] }; if (!saved.services.includes(row.service)) saved.services.push(row.service); grouped.set(key, saved) })
+  rows.forEach(row => { const key = `${row.name}|${row.email}`; const saved = grouped.get(key) || { name: row.name, email: row.email, contactNumber: row.contactNumber, services: [] }; if (!saved.services.includes(row.service)) saved.services.push(row.service); grouped.set(key, saved) })
   return [...grouped.values()]
 }

@@ -8,6 +8,7 @@ const MilestoneAcknowledgementSchema = new mongoose.Schema({
 const UserSchema = new mongoose.Schema({
   name: { type: String, trim: true },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  contactNumber: { type: String, trim: true, default: '', maxlength: 24 },
   crmUserId: { type: String, unique: true, sparse: true, trim: true },
   source: { type: String, trim: true, default: 'crm' },
   password: { type: String }, // used for seeded admin only

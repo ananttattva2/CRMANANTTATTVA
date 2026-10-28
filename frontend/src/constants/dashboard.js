@@ -47,6 +47,7 @@ export const defaultUserForm = {
   firstName: '',
   lastName: '',
   email: '',
+  contactNumber: '',
   password: '',
   avatarUrl: '',
   role: 'operation',

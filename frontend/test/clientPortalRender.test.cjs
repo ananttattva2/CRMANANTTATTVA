@@ -38,3 +38,13 @@ test('repeated production data renders as product rows instead of a long concate
  assert.ok(html.includes('<table>'));
  assert.ok(html.includes('Process water'));
 });
+
+
+test('services tab shows assigned user contact number next to the name',()=>{
+ const client={company:'Example',clientMaster:[],contacts:[],services:[],assignments:[{spoc:{name:'Account Manager',email:'manager@example.com',contactNumber:'+91 98765 43210'}}]};
+ const Section=({title,children})=>React.createElement('section',null,React.createElement('h2',null,title),children);
+ const html=renderToStaticMarkup(React.createElement(Info,{client,initialTab:'services',Section,Table:()=>null}));
+ assert.ok(html.includes('Account Manager'));
+ assert.ok(html.includes('tel:+919876543210'));
+ assert.ok(html.includes('+91 98765 43210'));
+});
