@@ -9,6 +9,7 @@ import { downloadCsv, downloadPurchaseTemplate, formatMetric, getPurchaseFinanci
 import OutlookMsgViewer from './OutlookMsgViewer';
 import SalesDataPanel from './SalesDataPanel';
 import ClientConsoleData from './ClientConsoleData';
+import { emailProofWithoutAttachments } from './emailProofSanitizer.mjs';
 
 const WORKSPACE_TABS = ['Purchase Data', 'Sales Data', 'Client Console Data', 'Pre Consumer / State / Annual', 'EPR Target', 'EPR CREDIT'];
 const REQUIRED_NORMAL_ROWS = new Set(['Received from client', 'Ready to upload', 'Client Approval on data', 'Upload Complete']);
@@ -121,7 +122,8 @@ export default function PurchaseDataWorkspace({ clientId, financialYear, current
       const ordinaryFiles = selected.filter((file) => !emailFiles.includes(file));
       let working = purchase;
       for (const emailFile of emailFiles) {
-        const form = new FormData(); form.append('file', emailFile); form.append('financialYear', financialYear); form.append('section', 'purchase'); form.append('progressParticular', purchase.checklist[index].particular);
+        const mailOnlyFile = await emailProofWithoutAttachments(emailFile);
+        const form = new FormData(); form.append('file', mailOnlyFile); form.append('financialYear', financialYear); form.append('section', 'purchase'); form.append('progressParticular', purchase.checklist[index].particular);
         const { data } = await api.post(API_ENDPOINTS.clients.purchaseEmailProof(clientId), form, { headers: { 'Content-Type': 'multipart/form-data' } });
         if (data.purchaseData) working = data.purchaseData;
         else if (data.proof && !working.checklist[index].files.some((file) => String(file.proofId || '') === String(data.proof.proofId || ''))) working = { ...working, checklist: working.checklist.map((row, rowIndex) => rowIndex === index ? { ...row, files: [...(row.files || []), data.proof].slice(0, 20) } : row) };

@@ -4,7 +4,7 @@ const PurchaseData = require('../models/PurchaseData');
 const SalesData = require('../models/SalesData');
 const PurchaseProof = require('../models/PurchaseProof');
 const { PURCHASE_CHECKLIST_PARTICULARS, defaultChecklist, purchaseReadiness, calculatePurchaseStatus } = require('../services/purchaseDataService');
-const { safeName, sha256, validateFile, decodeEmail, uploadBuffer, deleteStored, publicEmailData } = require('../services/purchaseEmailProofService');
+const { safeName, sha256, validateFile, decodeEmail, emailBodyOnlyBuffer, uploadBuffer, deleteStored, publicEmailData } = require('../services/purchaseEmailProofService');
 const { logActivity } = require('../services/activityLogService');
 const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
 const { userHasAnyRole } = require('../utils/userRoles');
@@ -47,25 +47,21 @@ exports.uploadEmailProof = async (req, res) => {
     if (!PURCHASE_CHECKLIST_PARTICULARS.includes(particular)) return res.status(400).json({ success: false, message: `Unknown ${sectionLabel} Progress Tracker row.` });
     const client = await findClient(req.params.clientId, req.user); if (!client) return res.status(404).json({ success: false, message: 'Client not found or not accessible.' });
     let format; try { format = validateFile(req.file); } catch (error) { return res.status(422).json({ success: false, message: error.message, code: error.code }); }
-    const checksum = section === 'sales' ? sha256(Buffer.concat([Buffer.from('sales:'), req.file.buffer])) : sha256(req.file.buffer);
-    const duplicate = await PurchaseProof.findOne({ clientId: client._id, financialYear, section, progressParticular: particular, checksum });
-    if (duplicate) return res.json({ success: true, duplicate: true, message: 'This email proof is already uploaded.', proof: proofReference(duplicate) });
     const folder = `crm/${section}-email-proofs/${client._id}/${financialYear}`;
-    originalStorage = await uploadBuffer(req.file.buffer, req.file.originalname, req.file.mimetype, `${folder}/originals`);
     let emailData; let decodeErrorCode = '';
     try { emailData = await decodeEmail(req.file, format); } catch (error) { decodeErrorCode = error.code || 'EMAIL_DECODE_FAILED'; emailData = { format, messageId: '', subject: '', from: { name: '', email: '' }, to: [], cc: [], bcc: [], replyTo: [], sentAt: null, receivedAt: null, textBody: '', sanitizedHtmlBody: '', headers: [], attachments: [], decodeStatus: 'Failed', decodeWarnings: [error.message || 'Email decoding failed.'] }; }
+    const mailOnlyBuffer = emailBodyOnlyBuffer(emailData);
+    const checksumInput = section === 'sales' ? Buffer.concat([Buffer.from('sales:'), mailOnlyBuffer]) : mailOnlyBuffer;
+    const checksum = sha256(checksumInput);
+    const duplicate = await PurchaseProof.findOne({ clientId: client._id, financialYear, section, progressParticular: particular, checksum });
+    if (duplicate) return res.json({ success: true, duplicate: true, message: 'This email proof is already uploaded.', proof: proofReference(duplicate) });
     const messageDuplicate = emailData.messageId ? await PurchaseProof.findOne({ clientId: client._id, financialYear, section, progressParticular: particular, 'emailData.messageId': emailData.messageId }) : null;
-    if (messageDuplicate) { await deleteStored(originalStorage.storageKey).catch(() => {}); return res.json({ success: true, duplicate: true, message: 'This email proof is already uploaded.', proof: proofReference(messageDuplicate) }); }
+    if (messageDuplicate) return res.json({ success: true, duplicate: true, message: 'This email proof is already uploaded.', proof: proofReference(messageDuplicate) });
+    const storedName = safeName(req.file.originalname).replace(/\.(eml|msg)$/i, '') + '-mail-only.eml';
+    originalStorage = await uploadBuffer(mailOnlyBuffer, storedName, 'message/rfc822', `${folder}/originals`);
     const storedAttachments = [];
-    if (emailData.decodeStatus !== 'Failed') {
-      for (const attachment of emailData.attachments) {
-        try { const stored = await uploadBuffer(attachment.content, attachment.fileName, attachment.contentType, `${folder}/attachments`); storedAttachments.push({ ...attachment, ...stored, checksum: sha256(attachment.content) }); }
-        catch { emailData.decodeWarnings.push(`${attachment.fileName}: attachment could not be stored.`); }
-      }
-      if (storedAttachments.length !== emailData.attachments.length) emailData.decodeStatus = 'PartiallyDecoded';
-    }
     const normalizedEmail = publicEmailData(emailData, storedAttachments);
-    const proof = await PurchaseProof.create({ clientId: client._id, financialYear, section, progressParticular: particular, name: safeName(req.file.originalname), originalName: safeName(req.file.originalname), fileType: format, mimeType: req.file.mimetype, size: req.file.size, storageKey: originalStorage.storageKey, storageUrl: originalStorage.storageUrl, checksum, emailData: normalizedEmail, attachments: storedAttachments.map(({ content, ...item }) => item), uploadedBy: req.user._id, uploadedByName: req.user.name || req.user.email, decodeErrorCode });
+    const proof = await PurchaseProof.create({ clientId: client._id, financialYear, section, progressParticular: particular, name: storedName, originalName: safeName(req.file.originalname), fileType: 'eml', mimeType: 'message/rfc822', size: mailOnlyBuffer.length, storageKey: originalStorage.storageKey, storageUrl: originalStorage.storageUrl, checksum, emailData: normalizedEmail, attachments: [], uploadedBy: req.user._id, uploadedByName: req.user.name || req.user.email, decodeErrorCode });
     if (emailData.decodeStatus === 'Failed') { await audit(req, 'PURCHASE_EMAIL_DECODE_FAILED', proof, 422); return res.status(422).json({ success: false, message: `${format.toUpperCase()} email could not be decoded.`, code: decodeErrorCode || 'EMAIL_DECODE_FAILED', details: emailData.decodeWarnings, proof: proofReference(proof) }); }
     const record = await DataModel.findOne({ clientId: client._id, financialYear }) || new DataModel({ clientId: client._id, financialYear, checklist: defaultChecklist(), createdBy: req.user._id });
     record.checklist = defaultChecklist(record.checklist).map((row) => row.particular === particular ? { ...row, files: [...(row.files || []), proofReference(proof, false)].slice(0, 20) } : row);

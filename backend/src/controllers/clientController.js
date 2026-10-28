@@ -977,6 +977,7 @@ function mapPendingApprovalRecord(record) {
     requestTime: record.requestTime || payload.requestTime || '-',
     decisionBy: record.actionBy?.name || record.actionBy?.email || '-',
     decisionAt: record.actionAt || null,
+    remarks: record.remarks || '',
     managementApproverId: record.managementApprover || payload.managementApproverId || '',
     managementApproverName: record.managementApproverName || payload.managementApproverName || '',
     managementApprovalSource: record.managementApprovalSource || payload.managementApprovalSource || '',
@@ -1004,6 +1005,33 @@ function mapClientPendingApprovalRow(client, createdByLabel = 'CRM User') {
     requestDate: parts.date,
     requestTime: parts.time
   };
+}
+
+function hasAssignmentIdentity(value) {
+  if (!value) return false;
+  if (typeof value === 'object') return Boolean(value._id || value.id || value.name || value.email);
+  return Boolean(String(value).trim());
+}
+
+function pendingClientWorkflowReady(client = {}) {
+  const lead = client.selectedLead && typeof client.selectedLead === 'object' ? client.selectedLead : {};
+  const assignments = Array.isArray(lead.assignments) ? lead.assignments : [];
+  const assignedServiceId = String(
+    client.assignedServiceId
+    || client.data?.assignedServiceId
+    || client.data?.selectedLeadSnapshot?.assignedServiceId
+    || ''
+  ).trim();
+  const assignment = assignments.find((row) => assignedServiceId && String(row?.assignedServiceId || '').trim() === assignedServiceId)
+    || (assignments.length === 1 ? assignments[0] : null);
+  if (!assignment) return false;
+
+  const poClosed = String(assignment.poStatus || '').trim().toLowerCase() === 'received'
+    && String(assignment.poApprovalStatus || '').trim().toUpperCase() === 'APPROVED'
+    && Boolean(assignment.closedAt || hasAssignmentIdentity(assignment.closedBy) || assignment.closureFinalizedByManager);
+  const managerAssignedStaff = hasAssignmentIdentity(assignment.assignedTo)
+    && hasAssignmentIdentity(assignment.assignedStaff);
+  return poClosed && managerAssignedStaff;
 }
 
 async function queueCreatedClientApproval(client, user, { resubmission = false, previousStatus = '' } = {}) {
@@ -1076,8 +1104,11 @@ async function loadStoredPendingApprovals() {
 
   const clientRecords = records.filter((record) => record.type === 'client');
   const sourceClientIds = clientRecords.map((record) => record.sourceClientId).filter((id) => mongoose.Types.ObjectId.isValid(String(id)));
-  const submittedClients = await Client.find({ _id: { $in: sourceClientIds }, workflowStatus: 'submitted' }).select('_id').lean();
-  const submittedIds = new Set(submittedClients.map((client) => String(client._id)));
+  const submittedClients = await Client.find({ _id: { $in: sourceClientIds }, workflowStatus: 'submitted' })
+    .select('_id assignedServiceId data.assignedServiceId data.selectedLeadSnapshot.assignedServiceId selectedLead')
+    .populate('selectedLead', 'assignments.assignedServiceId assignments.poStatus assignments.poApprovalStatus assignments.closedAt assignments.closedBy assignments.closureFinalizedByManager assignments.assignedTo assignments.assignedStaff')
+    .lean();
+  const submittedIds = new Set(submittedClients.filter(pendingClientWorkflowReady).map((client) => String(client._id)));
   const clientRows = clientRecords
     .filter((record) => submittedIds.has(String(record.sourceClientId)))
     .map(mapPendingApprovalRecord);
@@ -1935,6 +1966,20 @@ exports.listPendingApprovals = async (req, res) => {
   const missingQuotationRows = liveQuotationRows.filter((row) => !storedQuotationIds.has(String(row.quotationId || row.id || '')));
   const responseQuotations = [...missingQuotationRows, ...storedFallback.pendingQuotations];
   if (missingQuotationRows.length) backgroundSyncPendingApprovals([], missingQuotationRows);
+  let responseClients = storedFallback.pendingClients;
+  if (!isClientReviewer && responseClients.length) {
+    const sourceClientIds = responseClients
+      .map((row) => String(row.id || row.sourceClientId || '').trim())
+      .filter((id) => mongoose.Types.ObjectId.isValid(id));
+    const visibleClients = sourceClientIds.length
+      ? await Client.find(combineAccessFilters(
+          { _id: { $in: sourceClientIds } },
+          await clientAccessFilter(req.user)
+        )).select('_id').lean()
+      : [];
+    const visibleClientIds = new Set(visibleClients.map((client) => String(client._id)));
+    responseClients = responseClients.filter((row) => visibleClientIds.has(String(row.id || row.sourceClientId || '')));
+  }
   const compact = req.query.compact === 'true';
   const compactRow = (row = {}) => ({
     approvalRecordId: row.approvalRecordId,
@@ -1953,12 +1998,13 @@ exports.listPendingApprovals = async (req, res) => {
     requestDate: row.requestDate,
     requestTime: row.requestTime,
     decisionBy: row.decisionBy,
-    decisionAt: row.decisionAt
+    decisionAt: row.decisionAt,
+    remarks: row.remarks
   });
 
   res.json({
     ok: true,
-    pendingClients: isClientReviewer ? (compact ? storedFallback.pendingClients.map(compactRow) : storedFallback.pendingClients) : [],
+    pendingClients: compact ? responseClients.map(compactRow) : responseClients,
     pendingQuotations: isAdministrativeReviewer ? (compact ? responseQuotations.map(compactRow) : responseQuotations) : [],
     debug: {
       source: missingQuotationRows.length ? 'indexed-with-live-reconciliation' : 'indexed-pending-approvals',
@@ -3457,5 +3503,6 @@ exports.__test = {
   resolveClientMasterData,
   clientMasterReviewServiceIdentity,
   enrichClientMasterReviewServiceFromLead,
-  uniqueClientMasterReviewServices
+  uniqueClientMasterReviewServices,
+  pendingClientWorkflowReady
 };

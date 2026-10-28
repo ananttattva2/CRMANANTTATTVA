@@ -197,10 +197,10 @@ export default function PremiumQuotationModal({
                   <span className="text-xs font-black uppercase tracking-[0.1em] text-slate-500"><AnimatedInteger value={items.length} duration={1.2} /> item{items.length === 1 ? '' : 's'}</span>
                 </div>
                 <div className="overflow-auto rounded-lg border border-slate-200">
-                  <table className="w-full min-w-[1280px] border-collapse text-left text-sm">
+                  <table className="w-full min-w-[1420px] border-collapse text-left text-sm">
                     <thead className="bg-slate-50 text-[11px] font-black uppercase tracking-[0.06em] text-slate-600">
                       <tr>
-                        {['Sr.No', 'Business Category', 'Service Category', 'Service Period', 'Select Period', 'Transition Period', 'Service Category', 'Applicant Type', 'Unit', ...(groupedPricing ? ['Pricing Group'] : []), groupedPricing ? 'Group Amount (INR)' : 'Basic Amount (INR)'].map((header) => (
+                        {['Sr.No', 'Business Category', 'Service Category', 'Services Offered', 'Service Period', 'Select Period', 'Transition Period', 'EPR Category', 'Applicant Type', 'Unit', ...(groupedPricing ? ['Pricing Group'] : []), groupedPricing ? 'Group Amount (INR)' : 'Basic Amount (INR)'].map((header) => (
                           <th key={header} className="border-r border-slate-200 px-3 py-3 last:border-r-0">{header}</th>
                         ))}
                       </tr>
@@ -217,6 +217,7 @@ export default function PremiumQuotationModal({
                           <td className="px-3 py-3 text-center font-black text-slate-800">{index + 1}</td>
                           <td className="px-3 py-3 font-black uppercase text-slate-800">{item.businessCategory || '-'}</td>
                           <td className="px-3 py-3 font-black uppercase text-slate-800">{item.serviceCategory || '-'}</td>
+                          <td className="px-3 py-3 font-black uppercase text-teal-700">{item.servicesOffered || item.applicableService || '-'}</td>
                           <td className="px-3 py-3 font-black text-slate-700">{periodDisplay(item.servicePeriod, item.periodUnit)}</td>
                           <td className="px-3 py-3 font-black text-slate-700">{String(item.periodUnit || 'annual') === 'days' ? 'Days' : String(item.periodUnit || 'annual') === 'months' ? 'Month' : 'Annual'}</td>
                           <td className="px-3 py-3 font-black text-slate-700">{item.transitionPeriod || 'No'}</td>
@@ -227,7 +228,7 @@ export default function PremiumQuotationModal({
                           {(!groupedPricing || firstInGroup) && <td rowSpan={groupedPricing ? groupSize : undefined} className="px-3 py-3 text-right align-middle font-black text-orange-500"><AnimatedCurrency value={groupedPricing ? group.basicAmount : item.basicAmount} duration={2} /></td>}
                         </motion.tr>
                       )) : (
-                        <tr><td colSpan={groupedPricing ? 11 : 10} className="px-4 py-8 text-center font-black text-slate-400">No quotation items added.</td></tr>
+                        <tr><td colSpan={groupedPricing ? 12 : 11} className="px-4 py-8 text-center font-black text-slate-400">No quotation items added.</td></tr>
                       )}
                     </tbody>
                   </table>

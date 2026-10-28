@@ -21,11 +21,17 @@ async function getVisibleUserScope(user) {
   if (roleFamilies.some((role) => ['admin', 'superadmin'].includes(role))) return null;
 
   const visibleUsers = [user];
-  if (roleFamilies.includes('manager')) {
-    const managedTeams = await Team.find({ manager: user._id }).select('_id members').lean();
+  const hasManagerScope = roleFamilies.some((role) => ['manager', 'teammanager', 'operationhead', 'operationshead', 'management'].includes(role));
+  if (hasManagerScope) {
+    const managedTeams = await Team.find({
+      $or: [
+        { manager: user._id },
+        { operationHead: user._id }
+      ]
+    }).select('_id members').lean();
     const teamIds = managedTeams.map((team) => team._id).filter(Boolean);
     const memberIds = managedTeams.flatMap((team) => team.members || []).filter(Boolean);
-    const assignmentConditions = [{ managerId: user._id }];
+    const assignmentConditions = [{ managerId: user._id }, { operationHeadId: user._id }];
     if (teamIds.length) assignmentConditions.push({ teamId: { $in: teamIds } });
     if (memberIds.length) assignmentConditions.push({ _id: { $in: memberIds } });
     const reports = await User.find({

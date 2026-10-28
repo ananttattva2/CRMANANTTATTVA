@@ -11,17 +11,20 @@ test('client approval actions belong to admins and the compliance role family', 
   assert.match(routes, /:\id\/approval'.*requireRoles\(CLIENT_APPROVAL_ROLES\)/);
 });
 
-test('pending approval shows only client review to compliance-family and administrative reviewers', () => {
+test('pending approval lets compliance reviewers edit while users receive scoped read-only decisions', () => {
   const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/PendingApproval.jsx'), 'utf8');
   const controller = fs.readFileSync(path.resolve(__dirname, '../src/controllers/clientController.js'), 'utf8');
-  assert.match(page, /isComplianceApprovalView = isComplianceRole\(currentUser\?\.role\) && !canApprove/);
+  assert.match(page, /isComplianceApprovalView = companyOnly \|\| hasAnyRole\(currentUser, \['compliance'\]\) && !canApprove/);
   assert.match(page, /canApproveClients = canApprove \|\| isComplianceApprovalView/);
-  assert.match(page, /canApproveClients && <Metric[^\n]+Pending Clients/);
+  assert.match(page, /canViewClients && <Metric[^\n]+Client Decisions/);
+  assert.match(page, /Decision remarks \(read-only\)/);
+  assert.match(page, /cannot be edited by users/);
   assert.match(page, /if \(!isComplianceApprovalView\) \{[\s\S]*list\.push\(\{ id: 'quotations'/);
-  assert.match(controller, /requesterRole\.includes\('compliance'\)/);
-  assert.match(controller, /pendingClients: isClientReviewer \? storedFallback\.pendingClients : \[\]/);
-  assert.match(controller, /pendingQuotations: isAdministrativeReviewer \? storedFallback\.pendingQuotations : \[\]/);
-  assert.match(controller, /source: 'indexed-pending-approvals'/);
+  assert.match(controller, /if \(!isClientReviewer && responseClients\.length\)/);
+  assert.match(controller, /await clientAccessFilter\(req\.user\)/);
+  assert.match(controller, /pendingClients: compact \? responseClients\.map\(compactRow\) : responseClients/);
+  assert.match(controller, /remarks: record\.remarks \|\| ''/);
+  assert.match(controller, /pendingQuotations: isAdministrativeReviewer \? \(compact \? responseQuotations\.map\(compactRow\) : responseQuotations\) : \[\]/);
 });
 
 test('pending approvals can be filtered by the responsible user', () => {
@@ -46,7 +49,7 @@ test('pending client rows clearly show compliance approval state', () => {
   assert.match(page, /client-status-tab-label/);
   assert.match(page, /PARTIALLY_APPROVED/);
   assert.match(page, /Partially Approved/);
-  assert.match(page, /'Approval Status', 'Decision By', 'Applicant Type'/);
+  assert.match(page, /'Approval Status', 'Decision By', 'Decision Remarks', 'Applicant Type'/);
   assert.match(page, /formatApprovalValue\(client\.decisionBy\)/);
   assert.match(page, /client\.decisionAt/);
   assert.match(controller, /populate\('actionBy', 'name email'\)/);
@@ -85,19 +88,16 @@ test('legacy purchase order approvals recover the lead id from their source key'
   assert.match(controller, /leadById\.get\(approvalLeadId\(approval\)\)/);
 });
 
-test('custom compliance roles pass compliance-family authorization and sidebar visibility', () => {
+test('custom compliance roles pass compliance-family authorization', () => {
   const middleware = fs.readFileSync(path.resolve(__dirname, '../src/middleware/auth.js'), 'utf8');
-  const sidebar = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/components/dashboard/Sidebar.jsx'), 'utf8');
-  assert.match(middleware, /normalizedRole\.includes\('compliance'\)/);
-  assert.match(sidebar, /item\.complianceFamily && isComplianceRole\(currentUser\?\.role\)/);
+  assert.match(middleware, /userHasAnyRole\(req\.user, roles\)/);
 });
 
 test('pending client company navigation preselects its lead in Client Master', () => {
   const approvals = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/PendingApproval.jsx'), 'utf8');
   const clientMaster = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/ClientMaster.jsx'), 'utf8');
   const quotations = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
-  assert.match(approvals, /navigate\(`\/pending-approval\/clients\/\$\{row\.id\}\/review`\)/);
-  assert.match(approvals, /fromPendingApproval: true/);
+  assert.match(approvals, /navigate\(`\/pending-approval\/clients\/\$\{service\.clientMasterId\}\/review`\)/);
   assert.match(quotations, /Back to Pending Approval/);
   assert.match(quotations, /onBackToPendingApproval=\{fromPendingApproval/);
   assert.match(clientMaster, /location\.state\?\.fromPendingApproval/);

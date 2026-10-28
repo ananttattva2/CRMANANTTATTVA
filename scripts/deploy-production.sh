@@ -21,6 +21,7 @@ CODE_UPDATED=false
 BACKEND_CHANGED=false
 BACKEND_DEPS_CHANGED=false
 PM2_TOUCHED=false
+SERVER_STASH_SHA=""
 
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then
@@ -63,6 +64,13 @@ rollback_deployment() {
     fi
   fi
 
+  if [[ -n "$SERVER_STASH_SHA" ]]; then
+    echo "Restoring pre-deployment tracked server changes from stash ${SERVER_STASH_SHA:0:12}."
+    if ! git stash apply --index "$SERVER_STASH_SHA"; then
+      echo "Automatic stash restore needs manual attention; the recovery stash was preserved: $SERVER_STASH_SHA"
+    fi
+  fi
+
   exit "$exit_code"
 }
 
@@ -79,9 +87,15 @@ if [[ ! "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
 fi
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo "Tracked server files have local changes. Deployment stopped to protect them."
+  echo "Tracked server files have local changes; preserving them before deployment."
   git status --short
-  exit 1
+  git stash push --message "production pre-deploy $(date -u +%Y-%m-%dT%H:%M:%SZ) ${EXPECTED_SHA:0:12}"
+  SERVER_STASH_SHA="$(git rev-parse --verify refs/stash)"
+  if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo "Tracked server files could not be preserved cleanly. Deployment stopped."
+    false
+  fi
+  echo "Tracked changes preserved in recovery stash ${SERVER_STASH_SHA:0:12}."
 fi
 
 git fetch --prune origin
@@ -200,6 +214,10 @@ if [[ "$DEPLOY_DRIVER_PATH" =~ ^/tmp/crm-deploy-[0-9]+-[0-9]+\.sh$ ]]; then
 fi
 if [[ -n "$BACKUP_DIST" && -d "$BACKUP_DIST" ]]; then
   rm -rf -- "$BACKUP_DIST" || echo "Warning: could not remove previous frontend backup."
+fi
+
+if [[ -n "$SERVER_STASH_SHA" ]]; then
+  echo "Pre-deployment server edits remain recoverable in Git stash ${SERVER_STASH_SHA:0:12}."
 fi
 
 echo "CRM production deployment completed: ${EXPECTED_SHA:0:12}"

@@ -75,7 +75,15 @@ function enforceAttachmentLimits(attachments) {
   if (total > limits.maxTotal) { const error = new Error('Extracted attachments exceed the total size limit.'); error.code = 'ATTACHMENTS_TOTAL_TOO_LARGE'; throw error; }
 }
 
-async function decodeEmail(file, format) { const parsed = format === 'eml' ? await parseEml(file.buffer) : await parseMsg(file.buffer); enforceAttachmentLimits(parsed.attachments); return validateDecoded(parsed); }
+async function decodeEmail(file, format) {
+  const parsed = format === 'eml' ? await parseEml(file.buffer) : await parseMsg(file.buffer);
+  const removedCount = parsed.attachments.length;
+  return validateDecoded({
+    ...parsed,
+    attachments: [],
+    decodeWarnings: [...(parsed.decodeWarnings || []), ...(removedCount ? [`${removedCount} email attachment(s) were intentionally ignored.`] : [])]
+  });
+}
 
 async function uploadBuffer(buffer, name, mimeType, folder) {
   return require('./spacesStorage').uploadBuffer(buffer, safeName(name), mimeType, folder);
@@ -88,4 +96,21 @@ async function deleteStored(storageKey) {
 
 function publicEmailData(data, attachments) { return { ...data, attachments: attachments.map(({ content, storageUrl, ...item }) => item) }; }
 
-module.exports = { LIMITS, safeName, sha256, validateFile, decodeEmail, uploadBuffer, deleteStored, publicEmailData };
+function emailBodyOnlyBuffer(data = {}) {
+  const cleanHeader = (value) => String(value || '').replace(/[\r\n]+/g, ' ').trim();
+  const address = (item = {}) => item.email ? `${cleanHeader(item.name)}${item.name ? ' ' : ''}<${cleanHeader(item.email)}>` : cleanHeader(item.name);
+  const lines = [
+    ['From', address(data.from)],
+    ['To', (data.to || []).map(address).filter(Boolean).join(', ')],
+    ['Cc', (data.cc || []).map(address).filter(Boolean).join(', ')],
+    ['Subject', cleanHeader(data.subject)],
+    ['Message-ID', cleanHeader(data.messageId)],
+    ['Date', data.sentAt ? new Date(data.sentAt).toUTCString() : '']
+  ].filter(([, value]) => value).map(([name, value]) => `${name}: ${value}`);
+  const html = String(data.sanitizedHtmlBody || '').trim();
+  const body = String(data.textBody || html || '').slice(0, 500000);
+  lines.push('MIME-Version: 1.0', `Content-Type: ${data.textBody ? 'text/plain' : 'text/html'}; charset=utf-8`, 'Content-Transfer-Encoding: 8bit', 'X-CRM-Attachments-Removed: true');
+  return Buffer.from(`${lines.join('\r\n')}\r\n\r\n${body}`, 'utf8');
+}
+
+module.exports = { LIMITS, safeName, sha256, validateFile, decodeEmail, emailBodyOnlyBuffer, uploadBuffer, deleteStored, publicEmailData };
