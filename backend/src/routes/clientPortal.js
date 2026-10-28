@@ -5,7 +5,7 @@ router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store');
   next();
 });
-router.post('/request-otp', controller.requestOtp);
-router.post('/verify-otp', controller.verifyOtp);
+// Temporary email-only login; OTP routes are intentionally not exposed.
+router.post('/login', controller.emailLogin);
 router.get('/overview', controller.requireClient, controller.overview);
 module.exports = router;

@@ -34,6 +34,20 @@ async function rateLimit(key, limit) {
   });
   return record.count <= limit;
 }
+// Temporary email-only entry point. OTP handlers remain available for restoration.
+exports.emailLogin = async (req, res) => {
+  const email = normalizeEmail(req.body.email);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) return res.status(400).json({ error: 'Enter a valid contact email address.' });
+  try {
+    secret();
+    if (!(await rateLimit(`login-ip:${req.ip}`, 100))) return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
+    if (!await Lead.exists(contactEmailFilter(email))) return res.status(401).json({ error: 'This email is not registered in company Contact information. Please contact your account manager.' });
+    const token = jwt.sign({ email, type: 'client' }, secret(), { audience: 'client-portal', issuer: 'crm-client-portal', expiresIn: '2h' });
+    return res.json({ token, email, expiresIn: 7200 });
+  } catch (error) {
+    return res.status(503).json({ error: 'Client login is temporarily unavailable. Please try again.' });
+  }
+};
 exports.requestOtp = async (req, res) => {
   const email = normalizeEmail(req.body.email);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) return res.status(400).json({

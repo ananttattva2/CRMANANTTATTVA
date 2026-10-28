@@ -117,9 +117,34 @@ test('public HTTP routes reject unauthenticated access and malformed OTPs', asyn
     const overview = await fetch(`${base}/overview?email=other@example.com`);
     assert.equal(overview.status, 401);
     assert.equal(overview.headers.get('cache-control'), 'no-store');
-    const malformed = await fetch(`${base}/request-otp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: { $ne: null } }) });
+    const malformed = await fetch(`${base}/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: { $ne: null } }) });
     assert.equal(malformed.status, 400);
     const invalidCode = await fetch(`${base}/verify-otp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'client@example.com', code: 'bad' }) });
-    assert.equal(invalidCode.status, 400);
+    assert.equal(invalidCode.status, 404);
+    const otpRequest = await fetch(`${base}/request-otp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'client@example.com' }) });
+    assert.equal(otpRequest.status, 404);
   } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
+test('temporary email login opens only registered contact sessions and never sends an OTP', async () => {
+  const previous = process.env.JWT_SECRET; process.env.JWT_SECRET = 'test-only-client-secret';
+  const mailer = require('../src/utils/mailer');
+  const saved = { rate: Rate.findOneAndUpdate, exists: Lead.exists, send: mailer.sendMail };
+  try {
+    Rate.findOneAndUpdate = async () => ({ count: 1 });
+    mailer.sendMail = async () => assert.fail('Email-only login must not send OTP mail');
+    Lead.exists = async filter => { assert.ok(filter.$or[0]['contacts.emails'].test('client@example.com')); return { _id: 'l1' }; };
+    const res = response(); await ctrl.emailLogin({ body: { email: ' CLIENT@example.com ' }, ip: '127.0.0.1' }, res);
+    assert.equal(res.code, 200);
+    const payload = jwt.verify(res.body.token, process.env.JWT_SECRET, { audience: 'client-portal', issuer: 'crm-client-portal' });
+    assert.equal(payload.email, 'client@example.com'); assert.equal(payload.type, 'client');
+    Lead.exists = async () => null;
+    const unknown = response(); await ctrl.emailLogin({ body: { email: 'unknown@example.com' }, ip: '127.0.0.1' }, unknown); assert.equal(unknown.code, 401);
+    const malformed = response(); await ctrl.emailLogin({ body: { email: { $ne: null } } }, malformed); assert.equal(malformed.code, 400);
+    Rate.findOneAndUpdate = async () => ({ count: 101 });
+    const blocked = response(); await ctrl.emailLogin({ body: { email: 'client@example.com' }, ip: '127.0.0.1' }, blocked); assert.equal(blocked.code, 429);
+  } finally {
+    Rate.findOneAndUpdate = saved.rate; Lead.exists = saved.exists; mailer.sendMail = saved.send;
+    if (previous === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = previous;
+  }
 });

@@ -38,68 +38,23 @@ function Section({
   return <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7"><h2 className="text-lg font-bold text-slate-900">{title}</h2>{description && <p className="mt-1 text-sm text-slate-500">{description}</p>}<div className="mt-5">{children}</div></section>;
 }
 export function ClientLogin() {
-  const navigate = useNavigate();
-  const [email, setEmail] = useState(''),
-    [code, setCode] = useState(''),
-    [sent, setSent] = useState(false),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState(''),
-    [message, setMessage] = useState(''),
-    [remaining, setRemaining] = useState(0);
-  useEffect(() => {
-    if (!remaining) return;
-    const timer = setTimeout(() => setRemaining(value => value - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [remaining]);
-  async function requestCode() {
-    setBusy(true);
-    setError('');
-    setMessage('');
-    try {
-      const {
-        data
-      } = await clientApi.post('/request-otp', {
-        email
-      });
-      setSent(true);
-      setCode('');
-      setRemaining(60);
-      setMessage(data.message);
-    } catch (error) {
-      setError(errorText(error));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const navigate = useNavigate()
+  const [email, setEmail] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
   async function submit(event) {
-    event.preventDefault();
-    if (!sent) return requestCode();
-    setBusy(true);
-    setError('');
+    event.preventDefault()
+    setBusy(true); setError('')
     try {
-      const {
-        data
-      } = await clientApi.post('/verify-otp', {
-        email,
-        code
-      });
-      sessionStorage.setItem(sessionKey, data.token);
-      navigate('/client/dashboard', {
-        replace: true
-      });
-    } catch (error) {
-      setError(errorText(error));
-    } finally {
-      setBusy(false);
-    }
+      const { data } = await clientApi.post('/login', { email })
+      sessionStorage.setItem(sessionKey, data.token)
+      navigate('/client/dashboard', { replace: true })
+    } catch (error) { setError(errorText(error)) }
+    finally { setBusy(false) }
   }
-  return <div className="min-h-screen bg-[#f3faf9]"><header className="flex flex-wrap items-center justify-between gap-4 border-b bg-white px-6 py-4"><Brand /><Link to="/login" className="text-sm font-semibold text-slate-600">Staff Login</Link></header><main className="mx-auto grid max-w-6xl gap-12 px-6 py-16 lg:grid-cols-2 lg:items-center"><div><span className="inline-flex items-center gap-2 rounded-full bg-teal-100 px-4 py-2 text-xs font-bold uppercase tracking-widest text-teal-800"><ShieldCheck className="h-4 w-4" />Secure client access</span><h1 className="mt-6 text-4xl font-bold leading-tight text-slate-900 sm:text-5xl">Your business.<br /><span className="text-teal-700">One clear view.</span></h1><p className="mt-5 max-w-md text-lg leading-relaxed text-slate-500">See your company details, purchase orders, quotations and invoices. Connect with the team member handling your account.</p><div className="mt-8 flex flex-wrap gap-3">{['Email OTP login', 'Your documents', 'Your account SPOC'].map(value => <span key={value} className="rounded-xl border bg-white px-4 py-3 text-sm text-slate-600">{value}</span>)}</div></div><form onSubmit={submit} className="rounded-3xl border border-teal-100 bg-white p-8 shadow-xl shadow-teal-900/5"><div className="mb-5 grid h-12 w-12 place-items-center rounded-2xl bg-teal-50 text-teal-700"><UserRound /></div><h2 className="text-2xl font-bold">Client Login</h2><p className="mt-2 text-sm leading-relaxed text-slate-500">Use the email registered in your company’s Contact information. We’ll send you a one-time code. No password needed.</p><label className="mt-7 block text-sm font-semibold">Contact email<input type="email" required maxLength={254} disabled={sent || busy} autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="you@company.com" className="mt-2 h-12 w-full rounded-xl border border-slate-200 px-4 disabled:bg-slate-50" /></label>{sent && <label className="mt-5 block text-sm font-semibold">One-time code<input autoFocus required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={event => setCode(event.target.value.replace(/\D/g, ''))} placeholder="Enter 6-digit code" className="mt-2 h-12 w-full rounded-xl border border-slate-200 px-4 text-xl tracking-widest" /></label>}{error && <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}{message && <p role="status" className="mt-4 rounded-xl bg-teal-50 p-3 text-sm leading-relaxed text-teal-800">{message}</p>}<button disabled={busy} className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-teal-700 font-bold text-white hover:bg-teal-800 disabled:opacity-50">{busy ? 'Please wait…' : sent ? 'Verify & Open Dashboard' : 'Send Login Code'}<ArrowRight className="h-4 w-4" /></button>{sent && <div className="mt-5 flex justify-between gap-3 text-sm"><button type="button" disabled={busy || remaining > 0} onClick={requestCode} className="font-semibold text-teal-700 disabled:text-slate-400">{remaining ? `Resend in ${remaining}s` : 'Resend code'}</button><button type="button" disabled={busy} onClick={() => {
-            setSent(false);
-            setCode('');
-            setError('');
-            setMessage('');
-          }} className="text-slate-500">Change email</button></div>}</form></main></div>;
+  return <div className="min-h-screen bg-[#f3faf9]"><header className="flex flex-wrap items-center justify-between gap-4 border-b bg-white px-6 py-4"><Brand /><Link to="/login" className="text-sm font-semibold text-slate-600">Staff Login</Link></header><main className="mx-auto grid max-w-6xl gap-12 px-6 py-16 lg:grid-cols-2 lg:items-center"><div><span className="inline-flex items-center gap-2 rounded-full bg-teal-100 px-4 py-2 text-xs font-bold uppercase tracking-widest text-teal-800"><Building2 className="h-4 w-4" />Client workspace</span><h1 className="mt-6 text-4xl font-bold leading-tight text-slate-900 sm:text-5xl">Your business.<br /><span className="text-teal-700">One clear view.</span></h1><p className="mt-5 max-w-md text-lg leading-relaxed text-slate-500">See your company details, purchase orders, quotations and invoices. Connect with the team member handling your account.</p><div className="mt-8 flex flex-wrap gap-3">{['Email login', 'Your documents', 'Your account SPOC'].map(value => <span key={value} className="rounded-xl border bg-white px-4 py-3 text-sm text-slate-600">{value}</span>)}</div></div><form onSubmit={submit} className="rounded-3xl border border-teal-100 bg-white p-8 shadow-xl shadow-teal-900/5"><div className="mb-5 grid h-12 w-12 place-items-center rounded-2xl bg-teal-50 text-teal-700"><UserRound /></div><h2 className="text-2xl font-bold">Client Login</h2><p className="mt-2 text-sm leading-relaxed text-slate-500">Enter the email registered in your company’s Contact information to open your dashboard.</p><label className="mt-7 block text-sm font-semibold">Contact email<input type="email" required maxLength={254} disabled={busy} autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="you@company.com" className="mt-2 h-12 w-full rounded-xl border border-slate-200 px-4 disabled:bg-slate-50" /></label>{error && <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}<button disabled={busy} className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-teal-700 font-bold text-white hover:bg-teal-800 disabled:opacity-50">{busy ? 'Signing in…' : 'Login & Open Dashboard'}<ArrowRight className="h-4 w-4" /></button></form></main></div>
 }
+
 function DocumentPreview({
   row,
   onClose
