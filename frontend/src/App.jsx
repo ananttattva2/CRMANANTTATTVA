@@ -1,8 +1,10 @@
 const ArComplianceList = lazy(() => import('./pages/ArCompliance'))
 import React, { Suspense, lazy, useEffect } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
 import ScrollToTop from './components/ScrollToTop'
+const ClientPortal = lazy(() => import('./pages/ClientPortal'))
+const ClientLogin = lazy(() => import('./pages/ClientPortal').then(module => ({ default: module.ClientLogin })))
 const Login = lazy(() => import('./pages/Login'))
 const LandingPage = lazy(() => import('./pages/LandingPage'))
 const VerifyOtp = lazy(() => import('./pages/VerifyOtp'))
@@ -102,14 +104,16 @@ function ActiveCrmTracker() {
 }
 
 function App(){
+  const clientPage = useLocation().pathname.startsWith('/client')
   return (
     <div className="min-h-screen bg-emerald-50">
       <ScrollToTop />
-      <ActiveCrmTracker />
-      <SupportTicketMilestoneCelebration />
+      {!clientPage && <><ActiveCrmTracker /><SupportTicketMilestoneCelebration /></>}
       <Suspense fallback={<div role="status" className="grid min-h-[60vh] place-items-center text-teal-700">Loading page…</div>}>
       <Routes>
         <Route path="/" element={<LandingPage/>} />
+        <Route path="/client-login" element={<ClientLogin />} />
+        <Route path="/client/*" element={<ClientPortal />} />
         <Route path="/login" element={<Login/>} />
         <Route path="/verify" element={<VerifyOtp/>} />
         <Route path="/forgot-password" element={<ForgotPassword/>} />

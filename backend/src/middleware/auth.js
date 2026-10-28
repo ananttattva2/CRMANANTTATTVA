@@ -16,6 +16,7 @@ async function requireAuth(req, res, next) {
     }
 
     const payload = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+    if (payload.type === 'client' || payload.aud === 'client-portal' || !payload.sub) return res.status(401).json({ error: 'Staff authorization required' });
     const user = await User.findById(payload.sub).select('-otp -otpExpires -password').maxTimeMS(10000);
 
     if (!user || !user.isActive) {

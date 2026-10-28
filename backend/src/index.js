@@ -183,6 +183,7 @@ app.get('/api/cache/revision', require('./middleware/auth').requireAuth, async (
   res.json({ revision: await getCrmCache().revision(), ...cacheStatus() });
 });
 
+  app.use('/api/client-portal', require('./routes/clientPortal'));
   app.use('/api/auth', authRoutes);
   app.use('/api/assets', assetRoutes);
 app.use('/api/leads', leadRoutes);

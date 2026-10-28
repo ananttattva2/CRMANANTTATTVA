@@ -232,7 +232,7 @@ function DashboardPreview() {
 
 export default function LandingPage() {
   return <div className="landing-page">
-    <header className="lp-header"><div className="lp-shell lp-header-inner"><Link to="/" aria-label="Anant Tattva home"><Wordmark /></Link><Link className="lp-login" to="/login"><UserRound />Login</Link></div></header>
+    <header className="lp-header"><div className="lp-shell lp-header-inner"><Link to="/" aria-label="Anant Tattva home"><Wordmark /></Link><div className="lp-header-actions flex items-center gap-3"><Link className="lp-login" to="/client-login"><UserRound />Client Login</Link><Link className="lp-login" to="/login"><UserRound />Staff Login</Link></div></div></header>
     <main>
       <section className="lp-hero"><div className="lp-hero-orb orb-left" /><div className="lp-hero-orb orb-right" />
         <div className="lp-shell lp-hero-grid"><div className="lp-hero-copy"><span className="lp-kicker"><Leaf />Built for responsible growth</span><h1>The CRM that turns complex work into <span>clear progress.</span></h1><p>Connect sales, EPR compliance and daily operations in one intelligent workspace — built around the way your team actually works.</p><div className="lp-hero-actions"><Link className="lp-outline-button" to="/login">Login to CRM</Link></div><div className="lp-proof"><span><LockKeyhole />Secure OTP access</span><span><UsersRound />Role-based workflows</span><span><Zap />Real-time visibility</span></div></div><DashboardPreview /></div>
