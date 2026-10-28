@@ -24,6 +24,11 @@ test('pending approval lets compliance reviewers edit while users receive scoped
   assert.match(controller, /await clientAccessFilter\(req\.user\)/);
   assert.match(controller, /pendingClients: compact \? responseClients\.map\(compactRow\) : responseClients/);
   assert.match(controller, /remarks: record\.remarks \|\| ''/);
+  assert.match(controller, /complianceReview: reviewByClient\.get/);
+  assert.match(controller, /complianceReview: row\.complianceReview \|\| null/);
+  assert.match(page, /Completed \/ Approved Tabs/);
+  assert.match(page, /Pending \/ Action Required Tabs/);
+  assert.match(page, /section\.remarks \|\| 'No tab remark recorded\.'/);
   assert.match(controller, /pendingQuotations: isAdministrativeReviewer \? \(compact \? responseQuotations\.map\(compactRow\) : responseQuotations\) : \[\]/);
 });
 

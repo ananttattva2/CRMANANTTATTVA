@@ -1951,7 +1951,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
 
       {clientDecisionView && (
         <div className="pending-decision-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setClientDecisionView(null); }}>
-          <section role="dialog" aria-modal="true" aria-labelledby="client-decision-view-title" className="pending-decision-modal">
+          <section role="dialog" aria-modal="true" aria-labelledby="client-decision-view-title" className="pending-decision-modal max-h-[90vh] max-w-3xl overflow-y-auto">
             <div className="pending-decision-icon"><Eye className="h-7 w-7" /></div>
             <button type="button" onClick={() => setClientDecisionView(null)} className="pending-decision-close" aria-label="Close client decision"><X className="h-5 w-5" /></button>
             <p className="pending-decision-kicker">Compliance Team decision</p>
@@ -1968,6 +1968,26 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                     <small className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Decision remarks (read-only)</small>
                     <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-slate-700">{row.remarks || (getApprovalStatus(row) === 'PENDING' ? 'Awaiting compliance decision.' : 'No decision remarks recorded.')}</p>
                   </div>
+                  {(() => {
+                    const sections = Array.isArray(row.complianceReview?.sections) ? row.complianceReview.sections.filter((section) => section?.label || section?.remarks) : [];
+                    const completed = sections.filter((section) => ['VERIFIED', 'NOT_APPLICABLE'].includes(String(section.status || '').toUpperCase()));
+                    const pending = sections.filter((section) => !['VERIFIED', 'NOT_APPLICABLE'].includes(String(section.status || '').toUpperCase()));
+                    const renderSections = (items, tone) => items.length ? (
+                      <ul className="mt-2 space-y-2">
+                        {items.map((section) => <li key={section.key || section.label} className="flex items-start gap-2 text-sm leading-5"><span aria-hidden="true" className={`mt-1 h-2 w-2 shrink-0 rounded-full ${tone === 'complete' ? 'bg-emerald-500' : 'bg-amber-500'}`} /><span><strong>{section.label || section.key}</strong><span className="whitespace-pre-wrap"> — {section.remarks || 'No tab remark recorded.'}</span></span></li>)}
+                      </ul>
+                    ) : <p className="mt-2 text-xs font-semibold text-slate-500">None</p>;
+                    return sections.length ? <div className="mt-3 space-y-3">
+                      <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-950">
+                        <h3 className="text-xs font-black uppercase tracking-wider text-emerald-700">Completed / Approved Tabs ({completed.length})</h3>
+                        {renderSections(completed, 'complete')}
+                      </section>
+                      <section className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-950">
+                        <h3 className="text-xs font-black uppercase tracking-wider text-amber-700">Pending / Action Required Tabs ({pending.length})</h3>
+                        {renderSections(pending, 'pending')}
+                      </section>
+                    </div> : null;
+                  })()}
                   {getApprovalStatus(row) !== 'PENDING' && <p className="mt-3 text-xs font-semibold text-slate-500">Decision by {formatApprovalValue(row.decisionBy)}{row.decisionAt ? ` on ${formatDisplayDateTime(row.decisionAt)}` : ''}</p>}
                 </article>
               ))}

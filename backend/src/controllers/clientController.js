@@ -1068,7 +1068,7 @@ async function syncPendingApprovalRows(rows, type = 'client') {
 }
 
 async function readStoredPendingApprovals() {
-  return require('../services/crmCache').getCrmCache().remember('pending-approval-index-v2', loadStoredPendingApprovals);
+  return require('../services/crmCache').getCrmCache().remember('pending-approval-index-v3', loadStoredPendingApprovals);
 }
 
 async function loadStoredPendingApprovals() {
@@ -1104,14 +1104,23 @@ async function loadStoredPendingApprovals() {
 
   const clientRecords = records.filter((record) => record.type === 'client');
   const sourceClientIds = clientRecords.map((record) => record.sourceClientId).filter((id) => mongoose.Types.ObjectId.isValid(String(id)));
-  const submittedClients = await Client.find({ _id: { $in: sourceClientIds }, workflowStatus: 'submitted' })
-    .select('_id assignedServiceId data.assignedServiceId data.selectedLeadSnapshot.assignedServiceId selectedLead')
-    .populate('selectedLead', 'assignments.assignedServiceId assignments.poStatus assignments.poApprovalStatus assignments.closedAt assignments.closedBy assignments.closureFinalizedByManager assignments.assignedTo assignments.assignedStaff')
-    .lean();
+  const [submittedClients, complianceReviews] = await Promise.all([
+    Client.find({ _id: { $in: sourceClientIds }, workflowStatus: 'submitted' })
+      .select('_id assignedServiceId data.assignedServiceId data.selectedLeadSnapshot.assignedServiceId selectedLead')
+      .populate('selectedLead', 'assignments.assignedServiceId assignments.poStatus assignments.poApprovalStatus assignments.closedAt assignments.closedBy assignments.closureFinalizedByManager assignments.assignedTo assignments.assignedStaff')
+      .lean(),
+    ClientComplianceReview.find({ client: { $in: sourceClientIds } })
+      .select('client status sections finalRemarks updatedAt')
+      .lean()
+  ]);
   const submittedIds = new Set(submittedClients.filter(pendingClientWorkflowReady).map((client) => String(client._id)));
+  const reviewByClient = new Map(complianceReviews.map((review) => [String(review.client), review]));
   const clientRows = clientRecords
     .filter((record) => submittedIds.has(String(record.sourceClientId)))
-    .map(mapPendingApprovalRecord);
+    .map((record) => ({
+      ...mapPendingApprovalRecord(record),
+      complianceReview: reviewByClient.get(String(record.sourceClientId)) || null
+    }));
 
   return {
     pendingClients: clientRows,
@@ -1999,7 +2008,8 @@ exports.listPendingApprovals = async (req, res) => {
     requestTime: row.requestTime,
     decisionBy: row.decisionBy,
     decisionAt: row.decisionAt,
-    remarks: row.remarks
+    remarks: row.remarks,
+    complianceReview: row.complianceReview || null
   });
 
   res.json({
