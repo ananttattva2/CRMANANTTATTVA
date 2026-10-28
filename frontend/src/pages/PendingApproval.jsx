@@ -1951,7 +1951,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
 
       {clientDecisionView && (
         <div className="pending-decision-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setClientDecisionView(null); }}>
-          <section role="dialog" aria-modal="true" aria-labelledby="client-decision-view-title" className="pending-decision-modal max-h-[90vh] max-w-3xl overflow-y-auto">
+          <section role="dialog" aria-modal="true" aria-labelledby="client-decision-view-title" className="pending-decision-modal client-decision-view-modal">
             <div className="pending-decision-icon"><Eye className="h-7 w-7" /></div>
             <button type="button" onClick={() => setClientDecisionView(null)} className="pending-decision-close" aria-label="Close client decision"><X className="h-5 w-5" /></button>
             <p className="pending-decision-kicker">Compliance Team decision</p>

@@ -2242,6 +2242,19 @@
   box-shadow: 0 30px 90px rgba(15, 23, 42, 0.34);
 }
 
+/* The decision preview can contain remarks for every compliance tab. Keep the
+   complete dialog inside the viewport and scroll its content instead of
+   clipping the pending tabs and footer behind the backdrop. */
+.pending-decision-modal.client-decision-view-modal {
+  width: min(100%, 760px);
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
 .pending-decision-modal.is-rejected {
   background: linear-gradient(145deg, #ffffff 62%, #fff1f2);
 }
@@ -2283,6 +2296,10 @@
 
 @media (max-width: 560px) {
   .pending-decision-modal { border-radius: 22px; padding: 25px 20px; }
+  .pending-decision-modal.client-decision-view-modal {
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+  }
   .pending-decision-actions { flex-direction: column-reverse; }
   .pending-decision-actions button { width: 100%; }
 }

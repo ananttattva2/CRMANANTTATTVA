@@ -29,6 +29,9 @@ test('pending approval lets compliance reviewers edit while users receive scoped
   assert.match(page, /Completed \/ Approved Tabs/);
   assert.match(page, /Pending \/ Action Required Tabs/);
   assert.match(page, /section\.remarks \|\| 'No tab remark recorded\.'/);
+  assert.match(page, /client-decision-view-modal/);
+  const styles = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/styles/modules/10-responsive-polish.css'), 'utf8');
+  assert.match(styles, /\.pending-decision-modal\.client-decision-view-modal \{[\s\S]*?max-height: calc\(100dvh - 40px\);[\s\S]*?overflow-y: auto;/);
   assert.match(controller, /pendingQuotations: isAdministrativeReviewer \? \(compact \? responseQuotations\.map\(compactRow\) : responseQuotations\) : \[\]/);
 });
 
