@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, ChevronDown, Download, Eye, FileCheck2, Plus, RefreshCw, Save, Search, Trash2, Upload, X } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { buildInvoicePdf, invoiceFields } from '../utils/proformaPdf'
+import { validateProformaPoYears } from '../utils/proformaValidation.mjs'
 import DashboardShell from '../components/dashboard/DashboardShell'
 import api, { readApiError, storeSessionUser } from '../services/api'
 import { API_ENDPOINTS } from '../services/apiEndpoints'
@@ -155,7 +156,7 @@ function ProformaPoYearTable({ form, setForm }) {
   }
 
   return <section className="mt-7 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-    <header className="flex flex-wrap items-center justify-between gap-4 px-5 py-5"><div><p className="text-[11px] font-black uppercase tracking-[.2em] text-slate-500">PO Received For No Of Year</p><strong className="mt-2 block text-2xl text-slate-950">{count}</strong>{uploadError && <p className="mt-2 text-xs font-black text-red-600">{uploadError}</p>}</div><div className="flex gap-2"><button type="button" onClick={() => resize(count + 1)} disabled={count >= 50} className="rounded-xl bg-[#416c5a] px-5 py-3 text-sm font-black text-white disabled:opacity-40">+ Add Next Year</button><button type="button" onClick={() => resize(count - 1)} disabled={!count} className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-black text-slate-600 disabled:opacity-40">Remove Last Year</button></div></header>
+    <header className="flex flex-wrap items-center justify-between gap-4 px-5 py-5"><div><p className="text-[11px] font-black uppercase tracking-[.2em] text-slate-500">PO Received For No Of Year</p><strong className="mt-2 block text-2xl text-slate-950">{count}</strong>{count === 0 && <p className="mt-2 text-xs font-bold text-slate-500">No PO received yet. You can save this invoice without a PO. Add a year when a PO is available.</p>}{uploadError && <p className="mt-2 text-xs font-black text-red-600">{uploadError}</p>}</div><div className="flex gap-2"><button type="button" onClick={() => resize(count + 1)} disabled={count >= 50} className="rounded-xl bg-[#416c5a] px-5 py-3 text-sm font-black text-white disabled:opacity-40">+ Add Next Year</button><button type="button" onClick={() => resize(count - 1)} disabled={!count} className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-black text-slate-600 disabled:opacity-40">Remove Last Year</button></div></header>
     {count > 0 && <div className="mx-5 mb-5 overflow-x-auto rounded-2xl border border-slate-200"><table className="w-full min-w-[1050px] text-left text-sm"><thead className="bg-gradient-to-r from-emerald-50 to-cyan-50 text-[11px] uppercase tracking-[.14em] text-teal-900"><tr>{['Sr. No', 'FY Year', 'PO Number', 'PO Upload', 'Services'].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index} className="border-t border-slate-100 align-top">
       <td className="p-5"><span className="grid h-9 w-9 place-items-center rounded-xl bg-slate-100 font-black">{index + 1}</span></td>
       <td className="p-5"><select value={row.fy || ''} onChange={(event) => updateRow(index, 'fy', event.target.value)} className="h-12 min-w-40 rounded-xl border border-slate-200 bg-white px-4 font-black"><option value="">Select FY Year</option>{financialYears.map((fy) => <option key={fy} value={fy}>{fy}</option>)}</select></td>
@@ -272,13 +273,14 @@ export default function ProformaInvoices() {
     if (!form.quotationNumber.trim() || !form.leadDetails.companyName.trim()) { setError('Quotation Number and Company Name are required.'); return }
     if (!form.pricingMode) { setError('Select Combined Price or Individual Price.'); return }
     if (!form.items.length || form.items.some((item) => !item.serviceCategory)) { setError('Every item requires Service Category.'); return }
-    if (!form.poYearCount || (form.poYearRows || []).slice(0, form.poYearCount).some((row) => !String(row.fy || '').trim() || !String(row.poNumber || '').trim() || !row.compliancePoFile || !(row.serviceCategory || []).length)) { setError('FY Year, PO Number, PO Upload and Services are required for every PO year.'); return }
+    const poError = validateProformaPoYears(form)
+    if (poError) { setError(poError); return }
     if (form.pricingMode === 'combined' && !(Number(form.combinedBasicAmount) > 0)) { setError('Enter a valid Combined Basic Amount.'); return }
     if (form.pricingMode === 'individual' && form.items.some((item) => !(Number(item.basicAmount) > 0))) { setError('Every item requires a valid Basic Amount.'); return }
     setSaving(true); setError(''); setNotice('')
     try {
       const tax = Math.round(total * 18) / 100
-      const payload = { ...form, poNumber: form.poYearRows?.[0]?.poNumber || '', items: form.items.map((item) => ({ ...item, basicAmount: form.pricingMode === 'combined' ? 0 : item.basicAmount })), companyName: form.leadDetails.companyName, subtotal: total, gstRate: 18, gstAmount: tax, grandTotal: total + tax }
+      const payload = { ...form, poNumber: Number(form.poYearCount) > 0 ? form.poYearRows?.[0]?.poNumber || '' : '', poYearRows: (form.poYearRows || []).slice(0, Math.max(0, Number(form.poYearCount) || 0)), items: form.items.map((item) => ({ ...item, basicAmount: form.pricingMode === 'combined' ? 0 : item.basicAmount })), companyName: form.leadDetails.companyName, subtotal: total, gstRate: 18, gstAmount: tax, grandTotal: total + tax }
       const response = editingId ? await api.put(API_ENDPOINTS.proformaInvoices.detail(editingId), payload) : await api.post(API_ENDPOINTS.proformaInvoices.create, payload)
       setNotice(`${response.data.proformaInvoice?.proformaNumber || 'Proforma Invoice'} saved successfully.`)
       setForm({ ...blankForm, leadDetails: { ...blankLead }, items: [{ ...blankItem }], terms: [''] }); setEditingId(''); await load()
