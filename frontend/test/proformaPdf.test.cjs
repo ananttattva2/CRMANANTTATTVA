@@ -4,8 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 async function renderer() {
-  const file = path.join(__dirname, '../../frontend/src/utils/proformaPdf.js');
-  const jspdf = pathToFileURL(require.resolve('../../frontend/node_modules/jspdf/dist/jspdf.node.min.js')).href;
+  const file = path.join(__dirname, '../src/utils/proformaPdf.js');
+  const jspdf = pathToFileURL(require.resolve('../node_modules/jspdf/dist/jspdf.node.min.js')).href;
   const source = fs.readFileSync(file, 'utf8').replace("from 'jspdf'", `from '${jspdf}'`);
   return (await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'))).buildInvoicePdf;
 }
