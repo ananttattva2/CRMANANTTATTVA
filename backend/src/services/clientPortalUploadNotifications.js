@@ -2,6 +2,7 @@ const Lead = require('../models/Lead');
 const { loadPortalData } = require('./clientPortal');
 const User = require('../models/User');
 const mailer = require('../utils/mailer');
+const { closedServices } = require('./clientPortalApplicantTypes');
 const escape = value => String(value || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 async function notifyUpload(row) {
@@ -13,8 +14,10 @@ async function notifyUpload(row) {
   const add = value => { const email = String(value || '').trim().toLowerCase(); if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) recipients.add(email); };
   add(company?.spoc?.email);
   for (const assignment of company?.assignments || []) add(assignment.spoc?.email);
-  add(lead.closedByEmail); add(lead.closedOnBehalfOfEmail);
-  const ids = [lead.closedBy, lead.closedOnBehalfOfUser].filter(Boolean);
+  const closures = closedServices(lead).filter(service => service.applicantType === row.applicantType);
+  const closingPeople = lead.serviceSelections?.length > 1 ? closures : [lead, ...closures];
+  for (const person of closingPeople) { add(person.closedByEmail); add(person.closedOnBehalfOfEmail); }
+  const ids = closingPeople.flatMap(person => [person.closedBy, person.closedOnBehalfOfUser]).filter(Boolean);
   if (ids.length) for (const user of await User.find({ _id: { $in: ids } }).select('email').lean()) add(user.email);
   if (!recipients.size) throw new Error('No account team email is configured');
   const subject = `${row.applicantType} data received — ${lead.company || 'Client company'}`;

@@ -7,7 +7,8 @@ const { applicantTypes } = require('../services/clientPortalApplicantTypes');
 const { notifyUpload } = require('../services/clientPortalUploadNotifications');
 const publicFile = row => ({ _id: row._id, lead: row.lead, kind: row.kind, applicantType: row.applicantType, notificationStatus: row.notificationStatus, name: row.name, url: row.url, size: row.size, uploadedAt: row.createdAt });
 exports.options = async (req, res) => {
-  try { res.json(await applicantTypes()); }
+  try { if (!mongoose.isValidObjectId(req.query.lead)) return res.status(400).json({ error: 'Choose a valid company.' });
+    res.json(await applicantTypes(req.clientEmail, req.query.lead)); }
   catch { res.status(503).json({ error: 'Applicant types could not be loaded. Please retry.' }); }
 };
 exports.list = async (req, res) => {
@@ -25,7 +26,7 @@ exports.create = async (req, res) => {
     if (!lead) return res.status(403).json({ error: 'This company is not linked to your account.' });
     const kind = req.params.kind;
     const applicantType = String(req.body?.applicantType || '').trim();
-    if (kind === 'excel' && !(await applicantTypes()).includes(applicantType)) return res.status(422).json({ error: 'Select a valid Applicant Type before uploading your Excel file.' });
+    if (kind === 'excel' && !(await applicantTypes(req.clientEmail, req.params.lead)).includes(applicantType)) return res.status(422).json({ error: 'Select a valid Applicant Type before uploading your Excel file.' });
     const file = req.file;
     const ext = String(file?.originalname || '').split('.').pop().toLowerCase();
     const types = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xls: 'application/vnd.ms-excel' };

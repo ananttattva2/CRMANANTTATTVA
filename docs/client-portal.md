@@ -53,6 +53,15 @@ Client Info accepts Excel `.xlsx` and `.xls` files. Purchase Orders accepts PDF,
 
 ## Applicant Type and upload receipt emails
 
-Excel submissions require one Applicant Type selected from the portal catalog. The catalog includes the existing built-in PIBO/SIMP/PWP categories, direct applicant options used in lead generation, and custom CRM categories. The selected type is validated on the server and retained with the upload and submission history.
+Excel submissions require one Applicant Type selected from the portal catalog. Options are restricted to closed services belonging to the authenticated contact and selected company record. Open services and other companies are excluded on both read and upload validation. The selected type is validated on the server and retained with the upload and submission history.
 
 After the file and metadata are saved, the portal sends an English receipt email to the company's assigned SPOCs and the recorded lead closing user (including on-behalf-of closure references). Recipients are resolved server-side and deduplicated. The email contains the company, lead reference, Applicant Type, submitting contact and file link. Existing SMTP/Microsoft Graph configuration is used. Delivery status is recorded as sent, partial or failed. Email failures do not remove the saved file or prompt the client to upload it again; the client sees a delivery warning. There is no automatic email retry in this version.
+
+
+## Closed-service popup, support messages and staff upload desk
+
+Clicking the Excel file chooser opens an Applicant Type dialog before the operating system file picker. Dragging a file opens the same dialog. The upload row has no permanent Applicant Type dropdown. Types are resolved using closed service/assignment evidence and stable service IDs; top-level closure applies only to a single-service legacy record.
+
+Client sidebar > Chat & Support lets a client select their company and a closing salesperson, assigned SPOC, IT Support (`it_support@ananttattva.com`) or IT Admin (`it_admin@ananttattva.com`). Contacts are resolved on the server from company relationships. Messages are stored in ClientPortalMessage, and only the selected recipient receives the email. Message content is escaped in email. The client sees history and delivery status; replies are followed up by email rather than a live chat connection. There is a limit of 30 submissions per contact per hour. Failed email delivery does not remove the message.
+
+Staff sidebar > Customer Hub > Client Data Uploads opens `/client-data-uploads`. The paginated table lists Excel submissions with company, Applicant Type, file, submitting contact, upload date and download link. Admins see all records; other staff are scoped by company lead ownership, closure and assignments using the existing visible team scope. `/api/client-portal/staff/uploads` requires a staff token and rejects client sessions.

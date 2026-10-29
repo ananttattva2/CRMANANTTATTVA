@@ -11,6 +11,7 @@ const VerifyOtp = lazy(() => import('./pages/VerifyOtp'))
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'))
 const LeadGeneration = lazy(() => import('./pages/LeadGeneration'))
+const ClientDataUploads = lazy(() => import('./pages/ClientDataUploads'))
 const ClientMaster = lazy(() => import('./pages/ClientMaster'))
 const ClientMasterAllocate = lazy(() => import('./pages/ClientMasterAllocate'))
 const LeadAllocate = lazy(() => import('./pages/LeadAllocate'))
@@ -146,6 +147,7 @@ function App(){
         <Route path="/sales/lead-generation/temporary" element={<Navigate to="/sales/lead-generation?tab=temporary" replace />} />
         <Route path="/sales/compliance-health-report/:leadId" element={<ProtectedRoute><LeadGeneration/></ProtectedRoute>} />
         <Route path="/compliance/health-report" element={<ProtectedRoute><ComplianceHealthDashboard/></ProtectedRoute>} />
+        <Route path="/client-data-uploads" element={<ProtectedRoute><ClientDataUploads/></ProtectedRoute>} />
         <Route path="/sales/client-master" element={<ProtectedRoute><ClientMaster/></ProtectedRoute>} />
         <Route path="/sales/client-master-allocate" element={<ProtectedRoute><ClientMasterAllocate/></ProtectedRoute>} />
         <Route path="/sales/health-report-check" element={<ProtectedRoute><HealthReportCheck/></ProtectedRoute>} />

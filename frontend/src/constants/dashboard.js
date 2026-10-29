@@ -106,6 +106,7 @@ export const navSections = [
           { label: 'Lead Generation', icon: ClipboardList, path: '/sales/lead-generation' },
           { label: 'Lead Allocate', icon: UserPlus, path: '/sales/lead-allocate', roles: adminRoles },
           { label: 'Client Master', icon: UserRound, path: '/sales/client-master' },
+          { label: 'Client Data Uploads', icon: FileText, path: '/client-data-uploads' },
           { label: 'Client Master Allocate', icon: Users, path: '/sales/client-master-allocate', roles: [...adminRoles, 'manager'] },
           { label: 'Health Report Check', icon: ClipboardList, path: '/sales/health-report-check' },
           { label: 'Add Quotation', icon: FileText, path: '/sales/quotations?mode=add' },
