@@ -24,7 +24,7 @@ test('client login renders reference welcome form and keeps email-only entry wit
 
  const html=renderToStaticMarkup(React.createElement(MemoryRouter,null,React.createElement(compiled.exports.ClientLogin)));
 
- for(const value of ['Welcome back','Open Dashboard','Contact email','All your documents','Dedicated support','Contact support'])assert.ok(html.includes(value),value);
+ for(const value of ['Welcome back','Open Dashboard','Contact email','Company overview','Documents &amp; invoices','Your account team','Secure client access','Contact support'])assert.ok(html.includes(value),value);
 
  assert.ok(!html.includes('one-time-code'));
  assert.ok(!html.includes('Staff Login'));

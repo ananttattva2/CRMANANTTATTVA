@@ -40,7 +40,9 @@ export default function ClientPortalInfo({
   initialTab = 'overview',
   onViewFile,
   Table,
-  Section
+  Section,
+  upload,
+  action
 }) {
   const [tab, setTab] = useState(['overview', 'contacts', 'services', 'compliance', 'documents'].includes(initialTab) ? initialTab : 'overview');
   const masters = client.clientMaster || [],
@@ -60,7 +62,7 @@ export default function ClientPortalInfo({
   const basic = primary.basic || {},
     compliance = primary.compliance || {};
   const tabs = [['overview', 'Company overview', Building2], ['contacts', 'Contacts & locations', MapPin], ['services', 'Services & SPOC', Users], ['compliance', 'Registration & compliance', FileText], ['documents', `Documents (${docs.length})`, FileText]];
-  return <div className="cp-company"><div className="cp-company-heading"><span className="cp-company-icon"><Building2 /></span><div><h2>{client.company}</h2><p>{client.leadCode} <span>•</span> {[client.city, client.state].filter(Boolean).join(', ')}</p></div><span className="cp-badge">Client account</span></div><nav className="cp-detail-tabs" aria-label={`${client.company} information`}>{tabs.map(([key, title, Icon]) => <button key={key} aria-pressed={tab === key} onClick={() => setTab(key)} className={tab === key ? 'active' : ''}><Icon size={15} />{title}</button>)}</nav>
+  return <div className="cp-company"><div className="cp-company-heading"><span className="cp-company-icon"><Building2 /></span><div><h2>{client.company}</h2><p>{client.leadCode} <span>•</span> {[client.city, client.state].filter(Boolean).join(', ')}</p></div><span className="cp-badge">Client account</span>{action}</div>{upload}<nav className="cp-detail-tabs" aria-label={`${client.company} information`}>{tabs.map(([key, title, Icon]) => <button key={key} aria-pressed={tab === key} onClick={() => setTab(key)} className={tab === key ? 'active' : ''}><Icon size={15} />{title}</button>)}</nav>
   {tab === 'overview' && <div className="cp-two-columns"><Section title="Company details" description="Your business profile and identifiers."><InfoGrid rows={[['Legal name', basic.clientLegalName || client.company], ['Trade name', basic.tradeName], ['Industry', client.industryType || basic.companyIndustry], ['Company type', basic.companyType], ['Lead code', client.leadCode], ['GST Number', compliance.gstNumber || compliance.gst], ['CIN', compliance.cinNumber || compliance.cin], ['PAN', compliance.panNumber || compliance.pan], ['Website', client.website || basic.website]].map(([label, value]) => ({
           label,
           value
