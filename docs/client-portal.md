@@ -44,3 +44,9 @@ Client login uses the welcome layout with CSS document illustrations and retains
 Admin Add User and Edit User now support an optional Contact Number. It is persisted on User.contactNumber, returned in staff directory/edit responses and read from the assigned user for the client portal. The number appears beside the handling user's name on dashboard and service-team cards. Existing users have no invented number; edit their user record to populate it.
 
 Client document actions (PO, compliance certificates and company documents) open in a shared in-page popup with PDF/image/text/media previews and a download option. Formats without native preview remain in the popup with a download action. The desktop sidebar is anchored from the header to the bottom of the viewport. Staff Login is hidden from the client login header; the staff login route is unchanged.
+
+## Client file submissions
+
+Client Info accepts Excel `.xlsx` and `.xls` files. Purchase Orders accepts PDF, PNG, JPEG and WebP. Both provide a company selector, drag-and-drop, upload progress and saved submission history. Each file is limited to 15 MB. Uploads are submissions; spreadsheets are not automatically imported into company records, and uploaded PO files do not create financial order rows or change order totals.
+
+`GET /api/client-portal/uploads` lists submissions for leads currently linked to the registered contact email. `POST /api/client-portal/uploads/:lead/:kind` accepts a single multipart `file` (`kind`: `excel` or `po`). Both require a client bearer token. The server rechecks company ownership, file extension and file signatures. Files use the existing Spaces storage service, and metadata is saved in the ClientPortalUpload collection. Existing Spaces runtime configuration is required. Purchase order submissions open in the existing file preview.
