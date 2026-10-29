@@ -65,3 +65,12 @@ Clicking the Excel file chooser opens an Applicant Type dialog before the operat
 Client sidebar > Chat & Support lets a client select their company and a closing salesperson, assigned SPOC, IT Support (`it_support@ananttattva.com`) or IT Admin (`it_admin@ananttattva.com`). Contacts are resolved on the server from company relationships. Messages are stored in ClientPortalMessage, and only the selected recipient receives the email. Message content is escaped in email. The client sees history and delivery status; replies are followed up by email rather than a live chat connection. There is a limit of 30 submissions per contact per hour. Failed email delivery does not remove the message.
 
 Staff sidebar > Customer Hub > Client Data Uploads opens `/client-data-uploads`. The paginated table lists Excel submissions with company, Applicant Type, file, submitting contact, upload date and download link. Admins see all records; other staff are scoped by company lead ownership, closure and assignments using the existing visible team scope. `/api/client-portal/staff/uploads` requires a staff token and rejects client sessions.
+
+
+## Submission stage visibility and Super Admin receipts
+
+Upload receipt emails use a responsive inline-styled layout with labelled submission details and an Excel download button. Active Super Admins are included in the deduplicated upload email recipients alongside the assigned team and closing salesperson. This does not add extra recipients to support messages, which continue to go only to the contact selected by the client.
+
+Client Data Uploads now displays saved Purchase/Sales workflow stages and a View stages dialog. Workflows are matched to the upload's lead and Applicant Type and retain their financial year and unit. Receiving a file does not automatically mark a checklist, review or import as complete. When no matching processing record exists, the page explicitly shows Awaiting workflow setup. Super Admin visibility continues to include all submissions.
+
+Dashboard Client Data & Upload Tracker counts now open client lists for allocated totals, SLA received/not received and Purchase/Sales completed, in-progress and review-pending counts. User rows and grand totals use the same visible data and exact stage state as the displayed count. The client list includes company, Applicant Type/unit and assigned user, with search and keyboard dismissal.
