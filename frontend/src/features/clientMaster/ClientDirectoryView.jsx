@@ -221,7 +221,7 @@ function ClientDirectoryView({ clients, pagination, summary, staff, loading, err
         'Lead Close': companyPoClosed(item) ? 'Yes' : 'No',
         'Created By': data.importMeta?.createdBy || '',
         'Creation Date': data.importMeta?.creationDate || item.createdAt || '',
-        'Assigned To': getAssignedName(item, staff).replace(/^-$/, ''),
+        'Assigned Staff / SPOC': getAssignedName(item, staff).replace(/^-$/, ''),
         'Lead Owner': clientLeadOwner(item, staff).replace(/^-$/, ''),
         'Manager Assigned to Staff': getAssignedStaffNames(item, staff).join(', '),
         'Client Name': data.basic?.clientLegalName || '',
@@ -362,7 +362,7 @@ function ClientDirectoryView({ clients, pagination, summary, staff, loading, err
             <table className="crm-data-table w-full min-w-[1600px] table-fixed text-left text-sm">
               <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-black uppercase tracking-[0.06em] text-slate-500 shadow-sm">
                 <tr>
-                  {['Unique ID', 'Legal Name', 'Trade Name', 'State', 'Lead Owner', 'Assigned To', 'Visibility Status', 'PO Close', 'Service Category', 'MSME', 'CPCB Approval', 'Manager Assigned to Staff', 'Actions'].map((header) => <th key={header} className={`px-5 py-4 ${header === 'Actions' ? 'w-56' : ''}`}>{header}</th>)}
+                  {['Unique ID', 'Legal Name', 'Trade Name', 'State', 'Lead Owner', 'Assigned Staff / SPOC', 'Visibility Status', 'PO Close', 'Service Category', 'MSME', 'CPCB Approval', 'Manager Assigned to Staff', 'Actions'].map((header) => <th key={header} title={header === 'Assigned Staff / SPOC' ? 'Permanent staff assigned to the selected service. Admin/import coordinator metadata does not override this owner.' : undefined} className={`px-5 py-4 ${header === 'Actions' ? 'w-56' : ''}`}>{header}</th>)}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -562,7 +562,7 @@ function ClientMetricOutputCard({ stat, clients, onClose, onExport }) {
       <div className="hidden-scrollbar max-h-[320px] overflow-auto">
         <table className="crm-data-table w-full min-w-[760px] table-fixed text-left text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-black uppercase tracking-[0.06em] text-slate-500">
-            <tr>{['Unique ID', 'Legal Name', 'State', 'Visibility', 'CPCB'].map((header) => <th key={header} className="px-4 py-3">{header}</th>)}</tr>
+            <tr>{['Unique ID', 'Legal Name', 'State', 'Visibility', 'CPCB'].map((header) => <th key={header} title={header === 'Assigned Staff / SPOC' ? 'Permanent staff assigned to the selected service. Admin/import coordinator metadata does not override this owner.' : undefined} className="px-4 py-3">{header}</th>)}</tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {preview.length === 0 ? (

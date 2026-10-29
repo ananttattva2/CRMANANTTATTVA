@@ -39,6 +39,12 @@ function stageState(record, stage) {
   if (row?.yesNo === 'Yes') return row.partialDataReceived && !row.completeDataReceived ? 'progress' : 'complete';
   return row?.date || row?.files?.length || row?.remarks ? 'progress' : 'pending';
 }
+function hasWorkflowProgress(record, financialYear) {
+  if (!record || financialYear && normalizeYear(record.financialYear) !== normalizeYear(financialYear)) return false;
+  return STAGES.some(stage => stageState(record, stage) !== 'pending')
+    || ['Pending', 'Approved', 'Rejected'].includes(record.managerVerificationStatus)
+    || ['Pending', 'Approved', 'Rejected'].includes(record.complianceVerificationStatus);
+}
 function applicationDescriptor(client) {
   const data = client.data || {}, basic = data.basic || {}, lead = client.selectedLead || {};
   const selections = lead.serviceSelections || [];
@@ -100,8 +106,9 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
     if (options.groupBy === 'application') {
       const descriptor = applicationDescriptor(client);
       Object.assign(detail, descriptor);
+      detail.workflowRecorded = hasWorkflowProgress(purchaseIndex.get(clientId), options.financialYear) || hasWorkflowProgress(salesIndex.get(clientId), options.financialYear);
       detail.companyKey += ':' + descriptor.category.toLowerCase().replace(/[^a-z0-9]/g, '') + ':' + descriptor.unit.toLowerCase().replace(/[^a-z0-9]/g, '');
-      detail.sources = [{ ...descriptor, clientId, slaReceived: detail.slaReceived, purchase: detail.purchase, sales: detail.sales }];
+      detail.sources = [{ ...descriptor, workflowRecorded: detail.workflowRecorded, clientId, slaReceived: detail.slaReceived, purchase: detail.purchase, sales: detail.sales }];
     }
     const existing = group.clients.find(row => row.companyKey === detail.companyKey);
     if (existing) {
@@ -120,7 +127,7 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
       const sources = detail.sources.filter(source => source.closed
         && source.serviceType === representative.serviceType
         && (representative.serviceType !== 'annual' || source.annualWorkflowReady)
-        && (representative.serviceType !== 'annual' || !options.financialYear || source.annualQualified && source.annualReturnYears.includes(options.financialYear)));
+        && (representative.serviceType !== 'annual' || !options.financialYear || source.workflowRecorded || source.annualQualified && source.annualReturnYears.includes(options.financialYear)));
       if (!sources.length) return [];
       detail.clientId = representative.clientId;
       detail.category = representative.category;
@@ -142,4 +149,4 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
   }
   return [...groups.values()].sort((a, b) => a.userName.localeCompare(b.userName));
 }
-module.exports = { STAGES, stageState, buildUploadTracker, matchesTrackedService, applicationDescriptor, financialYearForDate };
+module.exports = { STAGES, stageState, hasWorkflowProgress, buildUploadTracker, matchesTrackedService, applicationDescriptor, financialYearForDate };

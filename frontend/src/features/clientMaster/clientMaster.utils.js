@@ -524,6 +524,8 @@ function resolvePersonName(value, people = []) {
 }
 
 function getAssignedName(item, people = []) {
+  const operational = getAssignedStaffNames(item, people);
+  if (operational.length) return operational.join(', ');
   const assigned = item?.adminControls?.assignedTo;
   const data = readClientData(item);
   const selectedLeadAssigned = item?.selectedLead?.assignedTo;
@@ -546,20 +548,29 @@ function getAssignedName(item, people = []) {
 }
 
 function getAssignedStaffNames(item, people = []) {
-  const serviceAllocations = item?.serviceAllocations && typeof item.serviceAllocations === 'object'
-    ? Object.values(item.serviceAllocations)
-    : [];
-  const assignments = [
-    ...(Array.isArray(item?.assignments) ? item.assignments : []),
-    ...(Array.isArray(item?.selectedLead?.assignments) ? item.selectedLead.assignments : [])
-  ];
+  const data = readClientData(item);
+  const lead = item?.selectedLead && typeof item.selectedLead === 'object' ? item.selectedLead : data.selectedLeadSnapshot || {};
+  const serviceId = String(item?.assignedServiceId || data.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId || '');
+  const services = lead.serviceSelections || [];
+  const allAssignments = [...(Array.isArray(item?.assignments) ? item.assignments : []), ...(Array.isArray(lead.assignments) ? lead.assignments : [])];
+  let assignments = serviceId ? allAssignments.filter(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === serviceId) : allAssignments;
+  if (serviceId && !assignments.length) {
+    const index = services.findIndex(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === serviceId);
+    const row = (lead.assignments || [])[index];
+    if (row && !row.assignedServiceId && !row.serviceAssignmentId) assignments = [row];
+  }
+  const scopedStaff = [...new Set(assignments.flatMap(row => [row.assignedStaff, row.assignedStaffText, row.assignedStaffEmail]).map(value => resolvePersonName(value, people)).filter(Boolean))];
+  if (scopedStaff.length) {
+    const normalized = new Map();
+    for (const name of scopedStaff) normalized.set(name.toLowerCase(), name);
+    return [...normalized.values()];
+  }
+  const serviceAllocations = Object.entries(item?.serviceAllocations || data.serviceAllocations || {}).filter(([key]) => !serviceId || key === serviceId).map(([,value]) => value);
   const candidates = [
     item?.assignedStaff,
     item?.assignedStaffText,
     item?.assignedStaffEmail,
-    item?.selectedLead?.assignedStaff,
-    item?.selectedLead?.assignedStaffText,
-    item?.selectedLead?.assignedStaffEmail,
+    ...(services.length <= 1 ? [lead.assignedStaff, lead.assignedStaffText, lead.assignedStaffEmail] : []),
     ...assignments.flatMap((row) => [row?.assignedStaff, row?.assignedStaffText, row?.assignedStaffEmail]),
     ...serviceAllocations.map((entry) => {
       if (!entry) return '';
@@ -567,7 +578,7 @@ function getAssignedStaffNames(item, people = []) {
         ? (entry.userId || entry.userIdString || entry.user || entry.assignedTo || entry.assigneeId || entry.assignedUserId || entry._id || entry.id)
         : entry;
       return resolvePersonName(assignee, people)
-        || (typeof entry === 'object' ? String(entry.userName || entry.assignedUserName || entry.assigneeName || entry.assignedByName || '').trim() : '');
+        || (typeof entry === 'object' ? String(entry.userName || entry.assignedUserName || entry.assigneeName || '').trim() : '');
     })
   ];
   return [...new Set(candidates.map((value) => resolvePersonName(value, people)).filter(Boolean))];

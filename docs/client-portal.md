@@ -74,3 +74,10 @@ Upload receipt emails use a responsive inline-styled layout with labelled submis
 Client Data Uploads now displays saved Purchase/Sales workflow stages and a View stages dialog. Workflows are matched to the upload's lead and Applicant Type and retain their financial year and unit. Receiving a file does not automatically mark a checklist, review or import as complete. When no matching processing record exists, the page explicitly shows Awaiting workflow setup. Super Admin visibility continues to include all submissions.
 
 Dashboard Client Data & Upload Tracker counts now open client lists for allocated totals, SLA received/not received and Purchase/Sales completed, in-progress and review-pending counts. User rows and grand totals use the same visible data and exact stage state as the displayed count. The client list includes company, Applicant Type/unit and assigned user, with search and keyboard dismissal.
+
+
+## Assignment display and saved-year tracker progress
+
+The Client Master directory, details and annual Current SPOC display prefer the permanent staff assignment for the selected service (`assignedStaff` and its display/email fields). Service IDs are matched first; positional fallback is limited to legacy assignments without an ID. Sibling-service staff are not borrowed. This is separate from `adminControls.assignedTo` and imported coordinator metadata, now labelled Admin / Record Coordinator in the editor. Historical imported coordinator values are retained rather than overwritten.
+
+The Annual Return tracker continues to enforce closed services and manager/permanent staff allocation. Actual, non-empty Purchase/Sales workflow progress saved for the selected financial year also keeps an allocated service visible if current-PO/CPCB eligibility is no longer satisfied. Blank auto-created workflow records and other-year records do not bypass eligibility. Each checklist stage is still counted from saved state, and saving preliminary data does not mark Upload Complete, Manager Review or Compliance Review as complete.

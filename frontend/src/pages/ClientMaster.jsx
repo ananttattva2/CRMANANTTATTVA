@@ -3209,7 +3209,7 @@ export default function ClientMaster() {
               <div className="grid gap-5 md:grid-cols-3">
                 {canApproveClient && <SelectLike label="Approval Status" value={client.adminControls.approvalStatus} options={selectOptions.approvalStatus} onChange={(value) => setAdmin('approvalStatus', value)} />}
                 {normalizedCurrentRole !== 'compliance' && <SelectLike label="Client Visibility Status" value={client.adminControls.visibilityStatus} options={selectOptions.visibilityStatus} onChange={(value) => setAdmin('visibilityStatus', value)} />}
-                {normalizedCurrentRole !== 'compliance' && <SelectLike label="Assigned To" value={client.adminControls.assignedTo} options={staffOptions} placeholder="Search and select admin to assign" onChange={(value) => setAdmin('assignedTo', value)} />}
+                {normalizedCurrentRole !== 'compliance' && <SelectLike label="Admin / Record Coordinator" value={client.adminControls.assignedTo} options={staffOptions} placeholder="Search and select admin to assign" onChange={(value) => setAdmin('assignedTo', value)} />}
               </div>
             </Card>
           )}
@@ -3865,7 +3865,7 @@ function ClientViewModal({ client, serviceClients = [], onServiceChange, onEditS
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     <InlineClientMeta label="Unique ID" value={getClientUniqueId(client)} icon={FileText} />
                     <InlineClientMeta label="Visibility" value={visibility} icon={Eye} status />
-                    <InlineClientMeta label="Assigned To" value={assignedName} icon={UserRound} />
+                    <InlineClientMeta label="Assigned Staff / SPOC" value={assignedName} icon={UserRound} />
                     <InlineClientMeta label="CPCB" value={data.cpcb?.status || '-'} icon={ShieldCheck} />
                     <InlineClientMeta label="OTP Mobile" value={data.otp?.mobile || '-'} icon={KeyRound} />
                     <InlineClientMeta label="OTP Name" value={data.otp?.personName || '-'} icon={UserRound} />
