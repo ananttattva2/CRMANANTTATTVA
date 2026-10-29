@@ -13,7 +13,7 @@ exports.list = async (req, res) => {
   try {
     const result = await portalContacts(req.clientEmail, req.query.lead);
     if (!result) return res.status(403).json({ error: 'Company is not linked to your account.' });
-    return res.json(await Message.find({ lead: result.lead._id, sender: req.clientEmail }).sort({ createdAt: -1 }).limit(100).select('body recipientName recipientRole emailStatus createdAt').lean());
+    return res.json(await Message.find({ lead: result.lead._id, sender: req.clientEmail }).sort({ createdAt: -1 }).limit(100).select('body recipient recipientName recipientRole emailStatus createdAt').lean());
   } catch { return res.status(503).json({ error: 'Messages could not be loaded.' }); }
 };
 exports.send = async (req, res) => {
@@ -32,6 +32,6 @@ exports.send = async (req, res) => {
       row.emailStatus = 'sent';
     } catch { row.emailStatus = 'failed'; }
     await Message.updateOne({ _id: row._id }, { $set: { emailStatus: row.emailStatus } }).catch(() => {});
-    return res.status(201).json({ _id: row._id, body: row.body, recipientName: row.recipientName, recipientRole: row.recipientRole, createdAt: row.createdAt, emailStatus: row.emailStatus });
+    return res.status(201).json({ _id: row._id, body: row.body, recipient: row.recipient, recipientName: row.recipientName, recipientRole: row.recipientRole, createdAt: row.createdAt, emailStatus: row.emailStatus });
   } catch { return res.status(503).json({ error: 'Message could not be saved. Please try again.' }); }
 };

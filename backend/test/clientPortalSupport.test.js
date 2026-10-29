@@ -30,7 +30,7 @@ test('support message is emailed only to selected team member and retained if em
   try {
     const ctrl = require(controllerPath), req = { clientEmail: 'client@example.com', body: { lead: 'one', recipient: 'it_support@ananttattva.com', message: '<Please help>' } };
     let res = response(); await ctrl.send(req, res);
-    assert.equal(res.code, 201); assert.equal(res.body.emailStatus, 'sent'); assert.deepEqual(sent.map(row => row.to), ['it_support@ananttattva.com']);
+    assert.equal(res.code, 201); assert.equal(res.body.emailStatus, 'sent'); assert.equal(res.body.recipient, 'it_support@ananttattva.com'); assert.deepEqual(sent.map(row => row.to), ['it_support@ananttattva.com']);
     assert.match(sent[0].html, /&lt;Please help&gt;/); assert.match(sent[0].html, /client@example.com/);
     mailer.sendMail = async () => { throw new Error('SMTP unavailable'); };
     res = response(); await ctrl.send(req, res); assert.equal(res.code, 201); assert.equal(res.body.emailStatus, 'failed'); assert.equal(res.body.body, '<Please help>');
