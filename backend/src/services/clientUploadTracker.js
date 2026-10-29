@@ -45,7 +45,7 @@ function hasWorkflowProgress(record, financialYear) {
     || ['Pending', 'Approved', 'Rejected'].includes(record.managerVerificationStatus)
     || ['Pending', 'Approved', 'Rejected'].includes(record.complianceVerificationStatus);
 }
-function applicationDescriptor(client) {
+function applicationDescriptor(client, selectedFinancialYear = '') {
   const data = client.data || {}, basic = data.basic || {}, lead = client.selectedLead || {};
   const selections = lead.serviceSelections || [];
   const selectedServiceId = String(client.assignedServiceId || '');
@@ -72,9 +72,16 @@ function applicationDescriptor(client) {
     && Boolean(assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail);
   const poRows = [...(assignment.poYearRows || []), ...(assignment.originalPoDetails ? [assignment.originalPoDetails] : [])];
   const poReceived = normalize(assignment.poStatus) === 'received' || poRows.some(hasPoEvidence);
-  const currentAnnualPoRows = poReceived ? poRows.filter(row => normalizeYear(row?.poFinancialYear) === financialYearForDate())
+  const trackerFinancialYear = normalizeYear(selectedFinancialYear) || financialYearForDate();
+  const currentAnnualPoRows = poReceived ? poRows.filter(row => {
+    const annualYears = yearsFrom(row?.annualReturnYear);
+    return annualYears.includes(trackerFinancialYear) || normalizeYear(row?.poFinancialYear) === trackerFinancialYear;
+  })
     .filter(row => !row?.services?.length || isAnnualService(row.services)) : [];
-  const annualReturnYears = [...new Set(currentAnnualPoRows.flatMap(row => yearsFrom(row?.annualReturnYear)))];
+  const annualReturnYears = [...new Set(currentAnnualPoRows.flatMap(row => {
+    const recorded = yearsFrom(row?.annualReturnYear);
+    return recorded.length ? recorded : normalizeYear(row?.poFinancialYear) === trackerFinancialYear ? [trackerFinancialYear] : [];
+  }))];
   const cpcb = data.cpcb?.status || data.cpcb?.approvalStatus || data.cpcb?.applicationStatus || basic.cpcbStatus || data.importMeta?.cpcbStatus;
   const cpcbApproved = /approved|registered|processed|annualreturnapplicable/.test(normalize(cpcb));
   const annualQualified = cpcbApproved && currentAnnualPoRows.length > 0;
@@ -104,7 +111,7 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
     detail.companyKey = assignedCompanyKey(client);
     detail.clientIds = [clientId];
     if (options.groupBy === 'application') {
-      const descriptor = applicationDescriptor(client);
+      const descriptor = applicationDescriptor(client, options.financialYear);
       Object.assign(detail, descriptor);
       detail.workflowRecorded = hasWorkflowProgress(purchaseIndex.get(clientId), options.financialYear) || hasWorkflowProgress(salesIndex.get(clientId), options.financialYear);
       detail.companyKey += ':' + descriptor.category.toLowerCase().replace(/[^a-z0-9]/g, '') + ':' + descriptor.unit.toLowerCase().replace(/[^a-z0-9]/g, '');
