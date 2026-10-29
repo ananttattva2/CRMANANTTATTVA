@@ -23,6 +23,7 @@ router.post('/temporary/bulk', requireAuth, temporaryLeadCtrl.bulkCreate);
 router.post('/temporary/:id/convert', requireAuth, temporaryLeadCtrl.convert);
 router.post('/temporary/:id/follow-up', requireAuth, temporaryLeadCtrl.saveFollowUp);
 router.post('/temporary/:id/follow-up/close', requireAuth, temporaryLeadCtrl.closeFollowUp);
+router.patch('/temporary/:id/reassign', requireAuth, requireRoles(ADMIN_ROLES), temporaryLeadCtrl.reassign);
 router.post('/duplicate-approvals', requireAuth, leadCtrl.requestDuplicateLeadApproval);
 router.patch('/duplicate-approvals/:id', requireAuth, leadCtrl.updateDuplicateLeadApproval);
 router.post('/bulk', requireAuth, requireRoles(ADMIN_ROLES), leadCtrl.bulkCreateLeads);

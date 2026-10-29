@@ -3,6 +3,8 @@ const LeadActivity = require('../models/LeadActivity');
 const Sequence = require('../models/Sequence');
 const TemporaryLead = require('../models/TemporaryLead');
 const CalendarItem = require('../models/CalendarItem');
+const User = require('../models/User');
+const mongoose = require('mongoose');
 const { normalizeCompanyIdentity } = require('../services/crmRecordPersistence');
 const { createLeadRecordInternal } = require('./leadController');
 const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
@@ -110,6 +112,7 @@ exports.list = async (req, res) => {
   const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 10));
   const search = String(req.query.search || '').trim();
   const status = String(req.query.status || '').trim().toUpperCase();
+  const allocationOwner = String(req.query.allocationOwner || '').trim();
   const filter = {};
   if (search) filter.$or = [
     { tempLeadCode: { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
@@ -120,6 +123,8 @@ exports.list = async (req, res) => {
     { sector: { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }
   ];
   if (['DRAFT', 'CONVERTED'].includes(status)) filter.status = status;
+  if (allocationOwner === 'unassigned') filter.createdBy = null;
+  else if (mongoose.Types.ObjectId.isValid(allocationOwner)) filter.createdBy = allocationOwner;
   const accessFilter = await temporaryLeadAccessFilter(req.user);
   const scopedFilter = combineFilters(filter, accessFilter);
   if (req.query.view === 'review' && req.query.snapshot === 'true') {
@@ -138,6 +143,48 @@ exports.list = async (req, res) => {
     TemporaryLead.countDocuments(combineFilters({ status: 'CONVERTED' }, accessFilter))
   ]);
   res.json({ ok: true, temporaryLeads: rows, pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) }, counts: { total: draftCount + convertedCount, draft: draftCount, converted: convertedCount } });
+};
+
+exports.reassign = async (req, res) => {
+  const userId = String(req.body?.userId || '').trim();
+  if (!mongoose.Types.ObjectId.isValid(req.params.id) || !mongoose.Types.ObjectId.isValid(userId)) {
+    return res.status(400).json({ error: 'Select a valid CRM user.' });
+  }
+
+  const [row, target] = await Promise.all([
+    TemporaryLead.findById(req.params.id),
+    User.findOne({ _id: userId, isActive: { $ne: false } }).select('_id name email role')
+  ]);
+  if (!row) return res.status(404).json({ error: 'Temporary lead not found.' });
+  if (!target) return res.status(404).json({ error: 'Active CRM user not found.' });
+  if (row.status === 'CONVERTED') {
+    return res.status(409).json({ error: 'This record is already a permanent lead. Reassign it from the Leads tab.' });
+  }
+
+  const previousUserId = id => String(id || '');
+  if (previousUserId(row.createdBy) !== previousUserId(target._id)) {
+    if (!Array.isArray(row.reassignmentHistory)) row.reassignmentHistory = [];
+    row.reassignmentHistory.unshift({
+      fromUserId: previousUserId(row.createdBy),
+      fromName: row.createdByName || row.createdByEmail || '',
+      toUserId: previousUserId(target._id),
+      toName: target.name || target.email,
+      changedBy: previousUserId(req.user._id),
+      changedByName: req.user.name || req.user.email,
+      changedAt: new Date().toISOString()
+    });
+    row.createdBy = target._id;
+    row.createdByName = target.name || target.email;
+    row.createdByEmail = target.email || '';
+    await row.save();
+    await CalendarItem.updateMany(
+      { temporaryLeadId: String(row._id), status: { $ne: 'completed' } },
+      { $set: { assignedTo: String(target._id), assignedToId: String(target._id), assignedToName: target.name || target.email, assignedToEmail: target.email || '' } }
+    );
+  }
+
+  await row.populate('createdBy', 'name email role');
+  res.json({ ok: true, message: 'Temporary lead reassigned successfully.', temporaryLead: row });
 };
 
 exports.create = async (req, res) => {

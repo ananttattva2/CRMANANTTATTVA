@@ -23,7 +23,8 @@ const TemporaryLeadSchema = new mongoose.Schema({
   followUpRemarks: { type: String, trim: true },
   followUpPriority: { type: String, trim: true, default: 'Medium' },
   followUpFlag: { type: String, trim: true, default: 'GREEN' },
-  followUpHistory: { type: Array, default: [] }
+  followUpHistory: { type: Array, default: [] },
+  reassignmentHistory: { type: Array, default: [] }
 }, { timestamps: true });
 
 TemporaryLeadSchema.index({ createdBy: 1, createdAt: -1 });
