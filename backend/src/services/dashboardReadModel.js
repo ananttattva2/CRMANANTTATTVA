@@ -68,7 +68,10 @@ function createDashboardCache(options = {}) {
 function invalidateDashboardReads() { for (const invalidate of caches) invalidate(); }
 // Version the shared snapshot whenever its identity/join semantics change so a
 // deployment cannot serve the previous Redis payload for otherwise-correct data.
-const cachedAssignments = createDashboardCache({ name: 'dashboard-assignments-v3', maxEntries: 2 });
+// v4 discards snapshots captured before permanent service-staff ownership was
+// made authoritative (for example ATUL LTD retaining Nitin import metadata
+// after its live service was assigned to Tushar).
+const cachedAssignments = createDashboardCache({ name: 'dashboard-assignments-v4', maxEntries: 2 });
 const staffFields = ['assignedStaff', 'assignedStaffText', 'assignedStaffEmail'];
 const legacyClosedOwnerFields = ['closedBy', 'closedByText', 'closedByEmail'];
 const present = field => ({ [field]: { $exists: true, $nin: [null, ''] } });
