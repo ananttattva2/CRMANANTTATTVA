@@ -162,3 +162,14 @@ test('admin correction rejects stale amounts, missing reasons and concurrent cha
   await h.correct(h.req,h.res,e=>{throw e});assert.ok([400,409].includes(h.res.code));assert.equal(h.updates.length,0);
  }
 });
+
+
+test('administrator may correct an incorrect estimate to zero without deleting its audit trail',async()=>{
+ const entry={_id:'entry',leadKind:'hot',leadId:'lead',serviceKeys:['s1'],groupId:'a',amountPaise:1000000};
+ const h=harness({admin:true,entries:[entry]});h.req.params.entryId='entry';
+ h.req.body={amount:'0',expectedPaise:1000000,expectedRevision:0,reason:'Incorrect original estimate',requestId:'12345678-1234-1234-1234-123456789012'};
+ await h.correct(h.req,h.res,e=>{throw e});assert.equal(h.res.code,200);
+ assert.equal(h.updates[0].update.$set.amountPaise,0);
+ assert.equal(h.updates[0].update.$push.corrections.beforePaise,1000000);
+ assert.equal(h.updates[0].update.$push.corrections.afterPaise,0);
+});

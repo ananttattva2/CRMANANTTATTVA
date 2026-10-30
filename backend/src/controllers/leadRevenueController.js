@@ -116,10 +116,10 @@ exports.correct = async (req, res, next) => {
     const entry = c.entries.find(e => String(e._id) === String(req.params.entryId));
     if (!entry) return res.status(404).json({ error: 'Revenue contribution not found for this lead.' });
     let amount;
-    try { amount = amountPaise(req.body.amount); } catch (e) { return res.status(400).json({ error: e.message }); }
+    try { amount = amountPaise(req.body.amount, { allowZero: true }); } catch (e) { return res.status(400).json({ error: e.message, code: 'INVALID_REVENUE_AMOUNT' }); }
     const reason = String(req.body.reason || '').trim().slice(0, 500);
     const requestId = String(req.body.requestId || '');
-    if (!reason || !/^[\da-f-]{36}$/i.test(requestId)) return res.status(400).json({ error: 'Correction reason and a valid request ID are required.' });
+    if (!reason || !/^[\da-f-]{36}$/i.test(requestId)) return res.status(400).json({ error: 'Correction reason and a valid request ID are required.', code: 'INVALID_REVENUE_CORRECTION' });
     const prior = (entry.corrections || []).find(correction => correction.requestId === requestId);
     if (prior) return prior.afterPaise === amount ? res.json({ ok: true, alreadySaved: true }) : res.status(409).json({ error: 'Correction request ID already used.' });
     if (!Number.isSafeInteger(req.body.expectedPaise) || req.body.expectedPaise !== entry.amountPaise || !Number.isSafeInteger(req.body.expectedRevision) || req.body.expectedRevision !== (entry.corrections || []).length) return res.status(409).json({ error: 'Revenue changed. Refresh before correcting it.' });

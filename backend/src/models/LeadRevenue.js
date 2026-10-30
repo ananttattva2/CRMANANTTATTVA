@@ -5,7 +5,7 @@ const schema = new mongoose.Schema({
   leadId: { type: mongoose.Schema.Types.ObjectId, required: true, immutable: true },
   groupId: { type: String, required: true, immutable: true },
   requestId: { type: String, required: true, immutable: true },
-  amountPaise: { type: Number, required: true, min: 1 },
+  amountPaise: { type: Number, required: true, min: 0 },
   serviceKeys: { type: [String], required: true, immutable: true },
   services: { type: [String], immutable: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, immutable: true },

@@ -1,10 +1,5 @@
 const { createHash } = require('node:crypto');
-function amountPaise(value) {
-  if (!/^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/.test(String(value))) throw new Error('Enter a positive amount with at most 2 decimal places.');
-  const amount = Math.round(Number(value) * 100);
-  if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error('Revenue must be greater than zero.');
-  return amount;
-}
+const { parseRevenuePaise: amountPaise } = require('../utils/revenueAmount');
 function serviceRows(lead, kind) {
   if (kind === 'cold') return [{ key: 'cold-base', label: 'Cold lead estimated revenue', owner: String(lead.createdBy?._id || lead.createdBy || '') }];
   const rows = lead.serviceSelections?.length ? lead.serviceSelections : [];
