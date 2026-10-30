@@ -8,6 +8,12 @@ const quotationCtrl = require('../controllers/quotationController');
 const temporaryAssignmentCtrl = require('../controllers/temporaryLeadAssignmentController');
 const temporaryLeadCtrl = require('../controllers/temporaryLeadController');
 
+const revenueCtrl = require('../controllers/leadRevenueController');
+router.get('/pipeline-revenue', requireAuth, cacheRead, revenueCtrl.pipeline);
+router.get('/revenue/:kind/:id', requireAuth, revenueCtrl.get);
+router.post('/revenue/:kind/:id', requireAuth, revenueCtrl.add);
+router.post('/revenue/cold/:id/close', requireAuth, revenueCtrl.closeCold);
+
 router.get('/', requireAuth, cacheRead, leadCtrl.listLeads);
 router.get('/assignment-users', requireAuth, cacheRead, leadCtrl.listAssignmentUsers);
 router.get('/service-catalog', requireAuth, cacheRead, leadCtrl.listServiceCatalog);

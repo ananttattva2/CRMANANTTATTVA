@@ -45,7 +45,7 @@ jobs:
 
       - name: Test paginated directory APIs
         working-directory: backend
-        run: node --test test/directoryServerPagination.test.js test/crmRedisCache.test.js test/crmCacheInvalidation.test.js test/crmFreshness.test.js test/slowPageReadModels.test.js test/slowPageLoading.test.js test/authDatabaseFailure.test.js test/pendingLeadsMonthEnd.test.js test/loadingBottlenecks.test.js test/dashboardDataFetch.test.js test/reportPayloadPerformance.test.js
+        run: node --test test/directoryServerPagination.test.js test/crmRedisCache.test.js test/crmCacheInvalidation.test.js test/crmFreshness.test.js test/slowPageReadModels.test.js test/slowPageLoading.test.js test/authDatabaseFailure.test.js test/pendingLeadsMonthEnd.test.js test/loadingBottlenecks.test.js test/dashboardDataFetch.test.js test/reportPayloadPerformance.test.js test/leadRevenue.test.js test/leadRevenueSchema.test.js test/temporaryLeads.test.js test/addServicesSubmitFlow.test.js
 
       - name: Build frontend
         env:

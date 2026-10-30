@@ -56,8 +56,9 @@ test('explicit Add navigation cannot auto-resume an existing quotation', () => {
   assert.match(source, /if \(isExplicitAddQuotation \|\| !quotationContext \|\| viewMode !== 'form'/);
 });
 
-test('explicit Revise keeps the selected quotation ID and its two saved items', () => {
+test('explicit Revise keeps the selected quotation ID and its two saved items', async () => {
   const { context, state } = prepare();
+  context.mergeQuotationLeadDetails = (await import('../../frontend/src/utils/quotationLeadDetails.mjs')).mergeQuotationLeadDetails;
   context.row = { _id: 'approved-quote', leadId: 'lead-1', status: 'approved', pricingMode: 'individual', items: [{ assignedServiceId: 'service-0', basicAmount: 75000 }, { assignedServiceId: 'service-1', basicAmount: 25000 }] };
   const start = source.indexOf('  function editQuotation(');
   vm.runInContext(`${source.slice(start, source.indexOf('  function requestLeadSelection(', start))} editQuotation(row);`, context);

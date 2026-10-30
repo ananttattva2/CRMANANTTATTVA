@@ -18,6 +18,8 @@ async function temporaryLeadAccessFilter(user) {
   return ownerFilter(await getVisibleUserScope(user), 'createdBy', '', ['createdByName', 'createdByEmail']);
 }
 
+exports.temporaryLeadAccessFilter = temporaryLeadAccessFilter;
+
 async function nextTemporaryLeadCode() {
   const sequence = await Sequence.findOneAndUpdate(
     { key: 'temporary_lead' },
@@ -123,6 +125,8 @@ exports.list = async (req, res) => {
     { sector: { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }
   ];
   if (['DRAFT', 'CONVERTED'].includes(status)) filter.status = status;
+  if (status === 'DRAFT') filter.pipelineClosedAt = null;
+  if (status === 'CLOSED') filter.pipelineClosedAt = { $ne: null };
   if (allocationOwner === 'unassigned') filter.createdBy = null;
   else if (mongoose.Types.ObjectId.isValid(allocationOwner)) filter.createdBy = allocationOwner;
   const accessFilter = await temporaryLeadAccessFilter(req.user);
@@ -136,13 +140,14 @@ exports.list = async (req, res) => {
       .lean();
     return res.json({ ok: true, temporaryLeads: rows, pagination: { page: 1, limit: rows.length, total: rows.length, pages: 1 } });
   }
-  const [rows, total, draftCount, convertedCount] = await Promise.all([
+  const [rows, total, draftCount, convertedCount, closedCount] = await Promise.all([
     TemporaryLead.find(scopedFilter).populate('createdBy', 'name email').sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
     TemporaryLead.countDocuments(scopedFilter),
-    TemporaryLead.countDocuments(combineFilters({ status: 'DRAFT' }, accessFilter)),
-    TemporaryLead.countDocuments(combineFilters({ status: 'CONVERTED' }, accessFilter))
+    TemporaryLead.countDocuments(combineFilters({ status: 'DRAFT', pipelineClosedAt: null }, accessFilter)),
+    TemporaryLead.countDocuments(combineFilters({ status: 'CONVERTED' }, accessFilter)),
+    TemporaryLead.countDocuments(combineFilters({ pipelineClosedAt: { $ne: null } }, accessFilter))
   ]);
-  res.json({ ok: true, temporaryLeads: rows, pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) }, counts: { total: draftCount + convertedCount, draft: draftCount, converted: convertedCount } });
+  res.json({ ok: true, temporaryLeads: rows, pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) }, counts: { total: draftCount + convertedCount + closedCount, draft: draftCount, converted: convertedCount, closed: closedCount } });
 };
 
 exports.reassign = async (req, res) => {
@@ -210,6 +215,7 @@ exports.bulkCreate = async (req, res) => {
 exports.convert = async (req, res) => {
   const row = await TemporaryLead.findOne(combineFilters({ _id: req.params.id }, await temporaryLeadAccessFilter(req.user)));
   if (!row) return res.status(404).json({ error: 'Temporary lead not found.' });
+  if (row.pipelineClosedAt) return res.status(409).json({ error: 'Closed cold leads cannot be converted.' });
   if (row.status === 'CONVERTED') {
     const lead = row.convertedLead ? await Lead.findById(row.convertedLead).lean() : null;
     return res.json({ ok: true, temporaryLead: row, lead, alreadyConverted: true });
@@ -226,6 +232,7 @@ exports.convert = async (req, res) => {
 exports.saveFollowUp = async (req, res) => {
   const row = await TemporaryLead.findOne(combineFilters({ _id: req.params.id }, await temporaryLeadAccessFilter(req.user)));
   if (!row) return res.status(404).json({ error: 'Temporary lead not found.' });
+  if (row.pipelineClosedAt) return res.status(409).json({ error: 'Closed cold leads cannot receive new follow-ups.' });
   if (row.status === 'CONVERTED') return res.status(409).json({ error: 'Converted temporary leads must be followed up from the permanent Lead.' });
   const scheduledDate = String(req.body.scheduledDate || '').trim();
   const scheduledTime = String(req.body.scheduledTime || '').trim();

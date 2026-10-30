@@ -1,6 +1,6 @@
 const { invalidateCrmCache } = require('./crmCache');
 const trackedModels = new Set([
-  'Lead', 'TemporaryLead', 'Quotation', 'Client', 'Team', 'User', 'Role',
+  'LeadRevenue', 'Lead', 'TemporaryLead', 'Quotation', 'Client', 'Team', 'User', 'Role',
   'PendingApproval', 'AnnualReturn', 'ProformaInvoice', 'PurchaseData', 'SalesData',
   'PurchaseImportRow', 'SalesImportRow', 'PurchaseProof', 'ClientComplianceReview',
   'ArComplianceReview', 'ClientDeactivation', 'HealthReportAssignment',

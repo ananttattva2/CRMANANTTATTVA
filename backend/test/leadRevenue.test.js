@@ -1,0 +1,103 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const { amountPaise, serviceRows, groupsFrom, hotClosed } = require('../src/services/leadRevenue');
+
+test('revenue uses exact paise and rejects invalid, negative, infinite or overprecision amounts', () => {
+  assert.equal(amountPaise('10000'), 1000000);
+  assert.equal(amountPaise('10.29'), 1029);
+  for (const value of ['-1', '0', '1.001', 'Infinity', '', '1e3', '10000000000']) assert.throws(() => amountPaise(value));
+});
+test('adding revenue preserves history while separate groups retain separate totals', () => {
+  const entries = [{ _id: '1', groupId: 'a', amountPaise: 1000000 }, { _id: '2', groupId: 'a', amountPaise: 500000 }, { _id: '3', groupId: 'b', amountPaise: 200000 }];
+  const result = groupsFrom(entries);
+  assert.deepEqual(result.map(g => g.amountPaise), [1500000, 200000]);
+  assert.equal(entries[0].amountPaise, 1000000);
+  assert.equal(result[0].contributions.length, 2);
+});
+test('service keys survive unrelated edits and partial closure stays open', () => {
+  const lead = { createdBy: 'owner', serviceSelections: [{ assignedServiceId: 'a', servicesOffered: 'Annual Return' }, { assignedServiceId: 'b' }], assignments: [{ assignedServiceId: 'a', closedBy: 'user' }, { assignedServiceId: 'b' }] };
+  assert.deepEqual(serviceRows(lead, 'hot').map(s => s.key), ['a', 'b']);
+  assert.equal(hotClosed(lead), false);
+  lead.assignments[1].closedAt = new Date();
+  assert.equal(hotClosed(lead), true);
+  assert.equal(serviceRows({ createdBy: 'owner' }, 'cold')[0].key, 'cold-base');
+});
+
+function harness({ lead = {}, entries = [], eligibleOwner = 'u', denied = false, duplicate = false } = {}) {
+  const inserted = [];
+  const hot = { _id: 'lead', createdBy: 'u', serviceSelections: [{ assignedServiceId: 's1', createdByCrmUserId: eligibleOwner }], ...lead };
+  const chain = value => ({ select() { return this; }, sort() { return this; }, async lean() { return value; } });
+  const Revenue = { find: () => chain(entries), findOne: ({ requestId }) => chain(entries.find(e => e.requestId === requestId)), async create(value) { if (duplicate) throw Object.assign(new Error('duplicate'), { code: 11000 }); inserted.push(value); } };
+  const deps = {
+    'node:crypto': require('node:crypto'), mongoose: { isValidObjectId: () => true },
+    '../models/Lead': { findOne: () => chain(denied ? null : hot) },
+    '../models/TemporaryLead': { findOne: () => chain(null) },
+    '../models/LeadRevenue': Revenue,
+    './leadController': { leadAccessFilter: async () => ({ scoped: true }) },
+    './temporaryLeadController': { temporaryLeadAccessFilter: async () => ({ scoped: true }) },
+    '../services/leadRevenue': require('../src/services/leadRevenue'),
+    '../utils/userRoles': { userHasAnyRole: () => false }
+  };
+  const context = { exports: {}, require: name => { if (!(name in deps)) throw new Error(name); return deps[name]; } };
+  vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/controllers/leadRevenueController.js'), 'utf8'), context);
+  const req = { params: { kind: 'hot', id: 'lead' }, user: { _id: 'u', name: 'User' }, body: { amount: '10000', mode: 'new', serviceKeys: ['s1'], requestId: '12345678-1234-1234-1234-123456789012' } };
+  const res = { code: 200, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };
+  return { add: context.exports.add, req, res, inserted };
+}
+async function run(h) { await h.add(h.req, h.res, e => { throw e; }); return h; }
+test('authorized author records revenue once for their new service', async () => {
+  const h = await run(harness());
+  assert.equal(h.res.code, 201);
+  assert.equal(h.inserted[0].amountPaise, 1000000);
+  assert.equal(h.inserted[0].createdBy, 'u');
+});
+test('other authors, inaccessible leads and already-priced services cannot overwrite revenue', async () => {
+  for (const options of [{ eligibleOwner: 'other' }, { denied: true }, { entries: [{ leadKind: 'hot', leadId: 'lead', serviceKeys: ['s1'], groupId: 'a', amountPaise: 500 }] }]) {
+    const h = await run(harness(options));
+    assert.ok([404, 409].includes(h.res.code));
+    assert.equal(h.inserted.length, 0);
+  }
+});
+test('add-to-existing is an appended contribution, with invalid groups rejected', async () => {
+  const old = { leadKind: 'hot', leadId: 'lead', serviceKeys: ['old-service'], groupId: 'group', amountPaise: 500 };
+  const h = harness({ entries: [old] });
+  h.req.body.mode = 'add'; h.req.body.groupId = 'group';
+  await run(h);
+  assert.equal(h.inserted[0].groupId, 'group');
+  assert.equal(old.amountPaise, 500);
+  const bad = harness(); bad.req.body.mode = 'add'; bad.req.body.groupId = 'foreign';
+  await run(bad); assert.equal(bad.res.code, 400);
+});
+test('duplicate request retries are idempotent; unique-index races are reported as conflicts', async () => {
+  const h = harness({ entries: [{ requestId: '12345678-1234-1234-1234-123456789012', leadKind: 'hot', leadId: 'lead', createdBy: 'u', amountPaise: 1000000, serviceKeys: ['s1'], groupId: 'a' }] });
+  await run(h); assert.equal(h.res.body.alreadySaved, true); assert.equal(h.inserted.length, 0);
+  const race = await run(harness({ duplicate: true })); assert.equal(race.res.code, 409);
+});
+
+test('pipeline moves converted cold estimates into Hot totals exactly once', async () => {
+ const chain = value => ({select(){return this},sort(){return this},maxTimeMS(){return this},async lean(){return value}});
+ const hot = [{_id:'h',leadCode:'H1',company:'Hot',serviceSelections:[{assignedServiceId:'a'}],assignments:[]}];
+ const cold = [{_id:'c',status:'CONVERTED',convertedLead:'h',clientName:'Origin'}, {_id:'c2',status:'DRAFT',tempLeadCode:'C2',clientName:'Cold'}];
+ const own = {_id:'r1',leadKind:'hot',leadId:'h',groupId:'g1',amountPaise:1000000,serviceKeys:['a']};
+ const inherited = {_id:'r2',leadKind:'cold',leadId:'c',groupId:'g2',amountPaise:500000,serviceKeys:['cold-base']};
+ let coldReads=0,revenueReads=0;
+ const deps={
+  'node:crypto':require('node:crypto'),mongoose:{},'../models/Lead':{find:()=>chain(hot)},
+  '../models/TemporaryLead':{find:()=>chain(++coldReads===1?cold:[cold[0]])},
+  '../models/LeadRevenue':{find:()=>chain(++revenueReads===1?[own,inherited]:[inherited])},
+  './leadController':{leadAccessFilter:async()=>({visible:'hot'})},
+  './temporaryLeadController':{temporaryLeadAccessFilter:async()=>({visible:'cold'})},
+  '../services/leadRevenue':require('../src/services/leadRevenue'), '../utils/userRoles':{}
+ };
+ const context={exports:{},require:name=>deps[name]};
+ vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../src/controllers/leadRevenueController.js'),'utf8'),context);
+ const res={json(data){this.data=data}};
+ await context.exports.pipeline({user:{_id:'u'}},res,e=>{throw e});
+ assert.equal(res.data.rows.length,2);
+ assert.equal(res.data.rows.find(r=>r.kind==='hot').revenuePaise,1500000);
+ assert.equal(res.data.rows.find(r=>r.kind==='cold').revenuePaise,0);
+ assert.equal(res.data.rows.reduce((n,r)=>n+r.revenuePaise,0),1500000);
+});

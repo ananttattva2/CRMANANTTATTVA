@@ -67,6 +67,8 @@ async function leadAccessFilter(user) {
   ]);
 }
 
+exports.leadAccessFilter = leadAccessFilter;
+
 function combineAccessFilters(...filters) {
   const active = filters.filter((filter) => filter && Object.keys(filter).length);
   return active.length > 1 ? { $and: active } : active[0] || {};

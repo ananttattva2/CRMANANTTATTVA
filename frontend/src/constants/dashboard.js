@@ -103,7 +103,9 @@ export const navSections = [
         label: 'Customer Hub',
         icon: BriefcaseBusiness,
         children: [
-          { label: 'Lead Generation', icon: ClipboardList, path: '/sales/lead-generation' },
+          { label: 'Hot Leads', icon: ClipboardList, path: '/sales/lead-generation' },
+          { label: 'Cold Leads', icon: ClipboardList, path: '/sales/lead-generation?tab=temporary' },
+          { label: 'Open & Closed Leads', icon: TrendingUp, path: '/sales/lead-pipeline' },
           { label: 'Lead Allocate', icon: UserPlus, path: '/sales/lead-allocate', roles: adminRoles },
           { label: 'Client Master', icon: UserRound, path: '/sales/client-master' },
           { label: 'Client Data Uploads', icon: FileText, path: '/client-data-uploads' },

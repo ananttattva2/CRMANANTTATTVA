@@ -78,7 +78,7 @@ test('successful Add Services saves clear append mode for draft, final submit an
   for (const [workflowStatus, openHealthReport] of [['draft', false], ['submitted', false], ['submitted', true]]) {
     const state = {}, saved = { _id: 'lead-1', serviceSelections: [{}, {}] };
     const context = {
-      saving: false, serviceOnlyMode: true, assignmentRows: [], introductionConsent: false,
+      saving: false, serviceOnlyMode: true, assignmentRows: [], introductionConsent: false, revenueDraft: null,
       validateLeadForSubmit: () => '', buildLeadPayload: () => ({ addServicesMode: true }),
       editingLeadId: 'lead-1', API_ENDPOINTS: { leads: { detail: id => id } },
       api: { put: async () => ({ data: { lead: saved } }) },

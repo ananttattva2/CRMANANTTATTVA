@@ -10,6 +10,7 @@ const LandingPage = lazy(() => import('./pages/LandingPage'))
 const VerifyOtp = lazy(() => import('./pages/VerifyOtp'))
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'))
+const LeadPipeline = lazy(() => import('./pages/LeadPipeline'))
 const LeadGeneration = lazy(() => import('./pages/LeadGeneration'))
 const ClientDataUploads = lazy(() => import('./pages/ClientDataUploads'))
 const ClientMaster = lazy(() => import('./pages/ClientMaster'))
@@ -142,6 +143,7 @@ function App(){
         <Route path="/announcements" element={<ProtectedRoute><Notifications mode="announcements"/></ProtectedRoute>} />
         <Route path="/calendar" element={<ProtectedRoute><CalendarTodo/></ProtectedRoute>} />
         <Route path="/assistant" element={<ProtectedRoute><AssistantPage/></ProtectedRoute>} />
+        <Route path="/sales/lead-pipeline" element={<ProtectedRoute><LeadPipeline/></ProtectedRoute>} />
         <Route path="/sales/lead-generation" element={<ProtectedRoute><LeadGeneration/></ProtectedRoute>} />
         <Route path="/sales/lead-allocate" element={<ProtectedRoute allowedRoles={['admin', 'superadmin']}><LeadAllocate/></ProtectedRoute>} />
         <Route path="/sales/lead-generation/temporary" element={<Navigate to="/sales/lead-generation?tab=temporary" replace />} />

@@ -56,6 +56,7 @@ const connectDB = async () => {
       compressors: ['zlib'],
       zlibCompressionLevel: 1
     });
+    await require('../models/LeadRevenue').createIndexes();
     await ensureQuotationIndexes();
     await ensurePiboCategoryIndexes();
     await ReminderDelivery.createIndexes();

@@ -12,7 +12,7 @@ test('Lead Generation uses inline tabs for temporary and notified leads', () => 
   const styles = read('frontend/src/styles/modules/02-auth-leads-and-client-detail.css');
 
   assert.match(page, /function LeadWorkspaceTabs/);
-  assert.match(page, /label: 'Temporary Leads'/);
+  assert.match(page, /label: 'Cold Leads'/);
   assert.match(page, /label: 'Notified Leads'/);
   assert.match(page, /workspaceTab === 'temporary'/);
   assert.match(page, /workspaceTab === 'notified'/);

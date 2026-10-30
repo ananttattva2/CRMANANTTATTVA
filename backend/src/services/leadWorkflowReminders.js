@@ -509,7 +509,7 @@ async function temporaryLeadOwner(row) {
 }
 
 async function remindTemporaryLeadFollowUps(now) {
-  const rows = await TemporaryLead.find({ status: 'DRAFT', nextFollowUpDate: { $exists: true, $nin: ['', null] } }).lean();
+  const rows = await TemporaryLead.find({ status: 'DRAFT', pipelineClosedAt: null, nextFollowUpDate: { $exists: true, $nin: ['', null] } }).lean();
   for (const row of rows) {
     const due = new Date(`${row.nextFollowUpDate}T${row.nextFollowUpTime || '09:00'}:00`);
     if (!due.getTime()) continue;
