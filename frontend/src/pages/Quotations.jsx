@@ -1,4 +1,5 @@
 import useCrmRefresh from '../hooks/useCrmRefresh'
+import { mergeQuotationLeadDetails } from '../utils/quotationLeadDetails.mjs';
 import { canReviseQuotation } from '../utils/quotationRevision.mjs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -510,7 +511,7 @@ function syncQuotationWithLead(quotation = {}, lead = {}) {
   return {
     ...quotation,
     companyName: lead.company || quotation.companyName || '',
-    leadDetails: mapLeadToDetails(lead),
+    leadDetails: mergeQuotationLeadDetails(quotation.leadDetails, mapLeadToDetails(lead)),
     items: syncQuotationItemsWithLead(quotation.items, lead)
   };
 }
@@ -1501,7 +1502,7 @@ export default function Quotations() {
       fromName: row.fromName || quotationOwnerName(row),
       preparedByName: row.preparedByName || quotationPreparedByName(row),
       leadDetails: latestLead
-        ? mapLeadToDetails(latestLead)
+        ? mergeQuotationLeadDetails(row.leadDetails, mapLeadToDetails(latestLead))
         : { ...emptyLeadDetails, ...(row.leadDetails || {}) },
       validUntil: row.validUntil || '',
       pricingMode: row.pricingMode || (Array.isArray(row.items) && row.items.length ? 'individual' : ''),

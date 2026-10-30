@@ -62,5 +62,5 @@ test('new and revised quotations refresh lead-owned details from the latest lead
   assert.equal(refreshed.leadDetails.addressLine1, 'Updated address');
   assert.equal(refreshed.leadDetails.city, 'Mumbai');
   assert.equal(refreshed.leadDetails.gstNumber, '27AAZCA6657R1ZB');
-  assert.match(source, /leadDetails: latestLead\s*\? mapLeadToDetails\(latestLead\)/);
+  assert.match(source, /leadDetails: latestLead\s*\? mergeQuotationLeadDetails\(row\.leadDetails, mapLeadToDetails\(latestLead\)\)/);
 });
