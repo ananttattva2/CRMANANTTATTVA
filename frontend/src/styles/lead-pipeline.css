@@ -555,9 +555,10 @@
 
 /* Revenue pipeline composition matching the approved dashboard reference. */
 .pipeline-page {
-  max-width:1560px;
+  max-width:none;
+  width:100%;
   min-height:auto;
-  margin:0 auto;
+  margin:0;
   padding:16px 28px 18px;
   background:
     radial-gradient(circle at 48% 10%,rgba(255,255,255,.92),transparent 31%),
@@ -666,4 +667,37 @@
   .pipeline-filters>span { display:flex; }
   .pipeline-root { margin-bottom:14px; }
   .pipeline-category-count { right:18px; left:18px; }
+}
+
+/* Fill the dashboard workspace instead of leaving wide and tall empty gutters. */
+@media(min-width:1000px) {
+  .pipeline-page {
+    box-sizing:border-box;
+    display:flex;
+    flex-direction:column;
+    width:100%;
+    max-width:none;
+    min-height:calc(100dvh - 64px);
+    margin:0;
+  }
+  .pipeline-header,
+  .pipeline-root,
+  .pipeline-note {
+    flex-shrink:0;
+  }
+  .pipeline-branches {
+    flex:1;
+    align-items:stretch;
+  }
+  .pipeline-branch {
+    display:flex;
+    flex-direction:column;
+  }
+  .pipeline-category {
+    flex:1;
+    min-height:210px;
+  }
+  .pipeline-states {
+    flex-shrink:0;
+  }
 }
