@@ -32,4 +32,28 @@ function hotClosed(lead) {
       || /^(closed|closed won|closed lost)$/i.test(String(row.status || lead.status || '').trim());
   });
 }
-module.exports = { amountPaise, serviceRows, groupsFrom, hotClosed };
+function purchaseOrders(lead = {}) {
+  const unique = new Map();
+  const assignments = lead.assignments?.length ? lead.assignments : [lead];
+  assignments.forEach((assignment, index) => {
+    if ((assignment.poStatus && assignment.poStatus !== 'received') || /rejected/i.test(assignment.poApprovalStatus || '')) return;
+    const rows = assignment.poYearRows?.length ? assignment.poYearRows : assignment.originalPoDetails ? [assignment.originalPoDetails] : [assignment];
+    rows.forEach((po, rowIndex) => {
+      const amount = Number(po.poAmount);
+      if (!Number.isFinite(amount) || amount <= 0) return;
+      const number = String(po.poNumber || po.poNo || '').trim();
+      const key = number ? [number.toUpperCase(), po.poDate || '', po.poFinancialYear || po.fy || ''].join('|') : `unnumbered:${index}:${rowIndex}`;
+      const value = { number: number || 'Not numbered', date: po.poDate || '', amountPaise: Math.round(amount * 100) };
+      if (!unique.has(key) || unique.get(key).amountPaise < value.amountPaise) unique.set(key, value);
+    });
+  });
+  return [...unique.values()];
+}
+function serviceDetails(lead = {}) {
+  const rows = lead.serviceSelections?.length ? lead.serviceSelections : [lead];
+  return rows.map((row, index) => {
+    const assignment = (lead.assignments || []).find(a => row.assignedServiceId && a.assignedServiceId === row.assignedServiceId) || lead.assignments?.[index] || {};
+    return { id: row.assignedServiceId || `service-${index}`, category: row.eprCategory || '', offering: row.servicesOffered || row.applicableService || '', applicant: row.subApplicantType || row.piboCategory || row.applicantType || '', year: row.firstAnnualReturnYearApplicable || row.financialYear || '', closed: hotClosed({ ...(rows.length === 1 ? lead : { status: lead.status }), ...row, serviceSelections: [row], assignments: [assignment] }), manager: assignment.assignedToText || '', staff: assignment.assignedStaffText || '' };
+  });
+}
+module.exports = { amountPaise, serviceRows, groupsFrom, hotClosed, purchaseOrders, serviceDetails };

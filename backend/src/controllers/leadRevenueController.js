@@ -5,7 +5,7 @@ const TemporaryLead = require('../models/TemporaryLead');
 const Revenue = require('../models/LeadRevenue');
 const { leadAccessFilter } = require('./leadController');
 const { temporaryLeadAccessFilter } = require('./temporaryLeadController');
-const { amountPaise, serviceRows, groupsFrom, hotClosed } = require('../services/leadRevenue');
+const { amountPaise, serviceRows, groupsFrom, hotClosed, purchaseOrders, serviceDetails } = require('../services/leadRevenue');
 const { userHasAnyRole } = require('../utils/userRoles');
 
 async function context(req) {
@@ -77,21 +77,33 @@ exports.pipeline = async (req, res, next) => {
   try {
     const [hotAccess, coldAccess] = await Promise.all([leadAccessFilter(req.user), temporaryLeadAccessFilter(req.user)]);
     const [hot, cold] = await Promise.all([
-      Lead.find(hotAccess).select('leadCode company status serviceSelections.assignedServiceId serviceSelections.closedBy serviceSelections.closedByText serviceSelections.closedAt serviceSelections.status assignments.assignedServiceId assignments.closedBy assignments.closedByText assignments.closedAt closedAt closedBy closedByText createdBy createdByName generatedForName importedCreatedBy createdAt').maxTimeMS(15000).lean(),
+      Lead.find(hotAccess).select('leadCode company status serviceSelections.assignedServiceId serviceSelections.closedBy serviceSelections.closedByText serviceSelections.closedAt serviceSelections.status assignments.assignedServiceId assignments.closedBy assignments.closedByText assignments.closedAt assignments.poStatus assignments.poApprovalStatus assignments.poNumber assignments.poDate assignments.poFinancialYear assignments.poAmount assignments.poYearRows.poNumber assignments.poYearRows.poNo assignments.poYearRows.poDate assignments.poYearRows.poFinancialYear assignments.poYearRows.fy assignments.poYearRows.poAmount assignments.originalPoDetails.poNumber assignments.originalPoDetails.poDate assignments.originalPoDetails.poFinancialYear assignments.originalPoDetails.poAmount closedAt closedBy closedByText createdBy createdByName generatedForName importedCreatedBy createdAt').maxTimeMS(15000).lean(),
       TemporaryLead.find(coldAccess).select('tempLeadCode clientName status convertedLead pipelineClosedAt createdBy createdByName createdAt').lean()
     ]);
     const entries = await Revenue.find({ $or: [{ leadKind: 'hot', leadId: { $in: hot.map(l => l._id) } }, { leadKind: 'cold', leadId: { $in: cold.map(l => l._id) } }] }).sort({ createdAt: 1 }).lean();
-    // A converted cold lead moves to Hot; transfer its estimate without double counting.
+    // Converted Cold records remain visible as closed conversion history; Hot owns current business revenue.
     const origins = await TemporaryLead.find({ status: 'CONVERTED', convertedLead: { $in: hot.map(l => l._id) } }).select('_id convertedLead').lean();
     const inherited = await Revenue.find({ leadKind: 'cold', leadId: { $in: origins.map(l => l._id) } }).lean();
     const rows = [
       ...hot.map(lead => ({ kind: 'hot', lead, closed: hotClosed(lead), inheritedIds: origins.filter(o => String(o.convertedLead) === String(lead._id)).map(o => String(o._id)) })),
-      ...cold.filter(l => l.status !== 'CONVERTED').map(lead => ({ kind: 'cold', lead, closed: Boolean(lead.pipelineClosedAt), inheritedIds: [] }))
+      ...cold.map(lead => ({ kind: 'cold', lead, closed: lead.status === 'CONVERTED' || Boolean(lead.pipelineClosedAt), inheritedIds: [] }))
     ].map(({ kind, lead, closed, inheritedIds }) => {
       const own = entries.filter(e => e.leadKind === kind && String(e.leadId) === String(lead._id));
       const groups = groupsFrom([...own, ...inherited.filter(e => inheritedIds.includes(String(e.leadId)))]);
-      return { id: String(lead._id), kind, state: closed ? 'closed' : 'open', code: lead.leadCode || lead.tempLeadCode, company: lead.company || lead.clientName, owner: lead.generatedForName || lead.importedCreatedBy || lead.createdByName || 'Unassigned', serviceCount: kind === 'hot' ? lead.serviceSelections?.length || 1 : 0, groups, revenuePaise: groups.reduce((n, g) => n + g.amountPaise, 0), createdAt: lead.createdAt };
+      return { canonicalKey: kind === 'cold' && lead.status === 'CONVERTED' && lead.convertedLead ? `hot:${lead.convertedLead}` : `${kind}:${lead._id}`, converted: kind === 'cold' && lead.status === 'CONVERTED', convertedLeadId: kind === 'cold' && lead.convertedLead ? String(lead.convertedLead) : undefined, poAmountPaise: kind === 'hot' ? purchaseOrders(lead).reduce((n, po) => n + po.amountPaise, 0) : 0, id: String(lead._id), kind, state: closed ? 'closed' : 'open', code: lead.leadCode || lead.tempLeadCode, company: lead.company || lead.clientName, owner: lead.generatedForName || lead.importedCreatedBy || lead.createdByName || 'Unassigned', serviceCount: kind === 'hot' ? lead.serviceSelections?.length || 1 : 0, groups, revenuePaise: groups.reduce((n, g) => n + g.amountPaise, 0), createdAt: lead.createdAt };
     });
     res.json({ ok: true, rows });
+  } catch (error) { next(error); }
+};
+
+exports.services = async (req, res, next) => {
+  try {
+    const c = await context(req);
+    if (!c) return res.status(404).json({ error: 'Lead not found or not accessible.' });
+    let lead = c.kind === 'hot' ? c.lead : null;
+    if (c.kind === 'cold' && c.lead.status === 'CONVERTED' && c.lead.convertedLead) {
+      lead = await Lead.findOne({ $and: [{ _id: c.lead.convertedLead }, await leadAccessFilter(req.user)] }).lean();
+    }
+    res.json({ ok: true, company: c.lead.company || c.lead.clientName, converted: c.lead.status === 'CONVERTED', services: lead ? serviceDetails(lead) : [], purchaseOrders: lead ? purchaseOrders(lead) : [] });
   } catch (error) { next(error); }
 };

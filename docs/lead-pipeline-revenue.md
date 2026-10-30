@@ -13,7 +13,7 @@ Navigation: Customer Hub → Hot Leads / Cold Leads. Home → Pending Leads → 
 
 ## Classification
 
-Hot Leads are the existing permanent Lead records. Cold Leads are unconverted TemporaryLead records. Converted Cold Leads move to Hot Leads; their previously recorded estimate follows them and is counted once. Cold closure uses pipelineClosedAt rather than changing existing conversion status values. Hot Leads are closed when all services have closure evidence; partly closed leads remain open.
+Hot Leads are the existing permanent Lead records. Cold Leads are unconverted TemporaryLead records. Converted Cold Leads also appear in Cold Closed as conversion history. Their estimate follows the linked Hot Lead. Overall totals prefer that Hot record and count each business lead once; category counts overlap intentionally. Cold closure uses pipelineClosedAt rather than changing existing conversion status values. Hot Leads are closed when all services have closure evidence; partly closed leads remain open.
 
 ## Data and integrity
 
@@ -26,3 +26,10 @@ No destructive migration, historical backfill, role changes, reseeding, or crede
 ## Validation
 
 Targeted tests cover paise validation, append-only group totals, service ownership, denied access, duplicate requests, duplicate-index conflicts, service closure classification, existing Add Services behavior, Cold Lead labels, cache invalidation, and quotation revision compatibility. Production frontend build and backend syntax checks are required before deployment. Local browser automation was unavailable; visual browser acceptance remains a separate check.
+
+
+## Conversion history, PO values, and services
+
+Cold Closed includes converted records as well as manually closed Cold Leads. The Hot Closed card displays recorded PO value / estimated revenue separately, never as a combined amount. Received POs with the same number, date and financial year repeated across assignments count once (highest duplicate value); provisional and rejected assignment POs are excluded. Amounts come from saved PO records, not quotation estimates or assumed payments.
+
+Click a company in the simplified list for a separate service popup. It loads authorized current service details and recorded PO summaries. Converted Cold records can show their linked Hot services only if the actor also has access to that Hot Lead. Category, service-count and revenue-group columns are removed from the lead list. Excel uses one row per displayed lead with separate PO and estimated-revenue amounts.

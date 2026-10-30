@@ -10,6 +10,7 @@ const temporaryLeadCtrl = require('../controllers/temporaryLeadController');
 
 const revenueCtrl = require('../controllers/leadRevenueController');
 router.get('/pipeline-revenue', requireAuth, cacheRead, revenueCtrl.pipeline);
+router.get('/pipeline-revenue/:kind/:id/services', requireAuth, revenueCtrl.services);
 router.get('/revenue/:kind/:id', requireAuth, revenueCtrl.get);
 router.post('/revenue/:kind/:id', requireAuth, revenueCtrl.add);
 router.post('/revenue/cold/:id/close', requireAuth, revenueCtrl.closeCold);

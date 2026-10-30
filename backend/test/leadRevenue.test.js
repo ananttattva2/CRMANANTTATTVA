@@ -45,7 +45,7 @@ function harness({ lead = {}, entries = [], eligibleOwner = 'u', denied = false,
   vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/controllers/leadRevenueController.js'), 'utf8'), context);
   const req = { params: { kind: 'hot', id: 'lead' }, user: { _id: 'u', name: 'User' }, body: { amount: '10000', mode: 'new', serviceKeys: ['s1'], requestId: '12345678-1234-1234-1234-123456789012' } };
   const res = { code: 200, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };
-  return { add: context.exports.add, req, res, inserted };
+  return { add: context.exports.add, services: context.exports.services, req, res, inserted };
 }
 async function run(h) { await h.add(h.req, h.res, e => { throw e; }); return h; }
 test('authorized author records revenue once for their new service', async () => {
@@ -77,7 +77,7 @@ test('duplicate request retries are idempotent; unique-index races are reported 
   const race = await run(harness({ duplicate: true })); assert.equal(race.res.code, 409);
 });
 
-test('pipeline moves converted cold estimates into Hot totals exactly once', async () => {
+test('converted cold leads remain in Cold Closed history and link to one unique Hot business lead', async () => {
  const chain = value => ({select(){return this},sort(){return this},maxTimeMS(){return this},async lean(){return value}});
  const hot = [{_id:'h',leadCode:'H1',company:'Hot',serviceSelections:[{assignedServiceId:'a'}],assignments:[]}];
  const cold = [{_id:'c',status:'CONVERTED',convertedLead:'h',clientName:'Origin'}, {_id:'c2',status:'DRAFT',tempLeadCode:'C2',clientName:'Cold'}];
@@ -96,8 +96,44 @@ test('pipeline moves converted cold estimates into Hot totals exactly once', asy
  vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../src/controllers/leadRevenueController.js'),'utf8'),context);
  const res={json(data){this.data=data}};
  await context.exports.pipeline({user:{_id:'u'}},res,e=>{throw e});
- assert.equal(res.data.rows.length,2);
+ assert.equal(res.data.rows.length,3);
  assert.equal(res.data.rows.find(r=>r.kind==='hot').revenuePaise,1500000);
- assert.equal(res.data.rows.find(r=>r.kind==='cold').revenuePaise,0);
- assert.equal(res.data.rows.reduce((n,r)=>n+r.revenuePaise,0),1500000);
+ assert.equal(res.data.rows.find(r=>r.kind==='cold'&&r.id==='c').state,'closed');
+ assert.equal(res.data.rows.find(r=>r.kind==='cold'&&r.id==='c').canonicalKey,'hot:h');
+ assert.equal(res.data.rows.find(r=>r.kind==='cold'&&r.id==='c2').state,'open');
+ const {uniquePipelineRows}=await import('../../frontend/src/utils/leadPipeline.mjs');
+ assert.equal(uniquePipelineRows(res.data.rows).reduce((n,r)=>n+r.revenuePaise,0),1500000);
+ assert.equal(uniquePipelineRows(res.data.rows).length,2);
+});
+
+
+test('PO totals count repeated received POs once and exclude provisional/rejected amounts', () => {
+ const {purchaseOrders}=require('../src/services/leadRevenue');
+ const po={poNumber:'PO-1',poDate:'2026-10-01',poFinancialYear:'2026-27',poAmount:10000};
+ const rows=purchaseOrders({assignments:[
+  {poStatus:'received',poYearRows:[po]},
+  {poStatus:'received',poYearRows:[po,{...po,poNumber:'PO-2',poAmount:3000}]},
+  {poStatus:'provisional',poYearRows:[{...po,poNumber:'PENDING',poAmount:50000}]},
+  {poStatus:'received',poApprovalStatus:'REJECTED',poYearRows:[{...po,poNumber:'REJECTED',poAmount:40000}]}
+ ]});
+ assert.equal(rows.length,2);
+ assert.equal(rows.reduce((n,p)=>n+p.amountPaise,0),1300000);
+});
+test('service popup returns saved service details and each service closure state',()=>{
+ const {serviceDetails}=require('../src/services/leadRevenue');
+ const rows=serviceDetails({serviceSelections:[{assignedServiceId:'a',eprCategory:'Plastic',servicesOffered:'Annual Return'},{assignedServiceId:'b',servicesOffered:'Registration'}],assignments:[{assignedServiceId:'a',closedBy:'u',assignedStaffText:'Staff'}]});
+ assert.equal(rows.length,2);assert.equal(rows[0].offering,'Annual Return');assert.equal(rows[0].closed,true);assert.equal(rows[1].closed,false);assert.equal(rows[0].staff,'Staff');
+});
+
+
+test('company service endpoint respects access and returns only display fields', async()=>{
+ const denied=harness({denied:true});
+ await denied.services(denied.req,denied.res,e=>{throw e});
+ assert.equal(denied.res.code,404);
+ const allowed=harness({lead:{password:'PRIVATE-MARKER',otp:'SECRET-OTP'}});
+ await allowed.services(allowed.req,allowed.res,e=>{throw e});
+ assert.equal(allowed.res.body.ok,true);
+ assert.equal(allowed.res.body.services.length,1);
+ assert.ok(!JSON.stringify(allowed.res.body).includes('PRIVATE-MARKER'));
+ assert.ok(!JSON.stringify(allowed.res.body).includes('SECRET-OTP'));
 });
