@@ -13,6 +13,7 @@ router.get('/pipeline-revenue', requireAuth, cacheRead, revenueCtrl.pipeline);
 router.get('/pipeline-revenue/:kind/:id/services', requireAuth, revenueCtrl.services);
 router.get('/revenue/:kind/:id', requireAuth, revenueCtrl.get);
 router.post('/revenue/:kind/:id', requireAuth, revenueCtrl.add);
+router.patch('/revenue/:kind/:id/:entryId', requireAuth, revenueCtrl.correct);
 router.post('/revenue/cold/:id/close', requireAuth, revenueCtrl.closeCold);
 
 router.get('/', requireAuth, cacheRead, leadCtrl.listLeads);
@@ -26,6 +27,7 @@ router.get('/search/company', requireAuth, cacheRead, leadCtrl.searchCompanies);
 router.get('/duplicate-approvals', requireAuth, cacheRead, leadCtrl.listDuplicateLeadApprovals);
 router.get('/temporary', requireAuth, cacheRead, temporaryLeadCtrl.list);
 router.post('/temporary', requireAuth, temporaryLeadCtrl.create);
+router.put('/temporary/:id', requireAuth, temporaryLeadCtrl.update);
 router.post('/temporary/bulk', requireAuth, temporaryLeadCtrl.bulkCreate);
 router.post('/temporary/:id/convert', requireAuth, temporaryLeadCtrl.convert);
 router.post('/temporary/:id/follow-up', requireAuth, temporaryLeadCtrl.saveFollowUp);

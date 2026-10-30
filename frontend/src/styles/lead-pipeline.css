@@ -520,3 +520,35 @@
   .pipeline-branch { padding-top:0; }
   .pipeline-service-grid { grid-template-columns:1fr; }
 }
+
+/* Fill the available workspace; keep a single compact visual hierarchy. */
+.pipeline-page { max-width:none; width:100%; margin:0; padding:14px 14px 18px; }
+.pipeline-header { gap:16px; align-items:center; }
+.pipeline-header h1 { font-size:28px; margin:3px 0; }
+.pipeline-header p:last-child { font-size:12px; }
+.pipeline-filters { margin:14px 0; gap:10px; }
+.pipeline-root { padding:18px 20px; border-radius:18px; }
+.pipeline-root strong { font-size:30px; overflow-wrap:anywhere; }
+.pipeline-root>span:nth-child(2) { min-width:0; }
+.pipeline-category { padding:20px 22px; min-height:174px; border-top-width:3px; box-shadow:0 7px 22px #26385c08; }
+.pipeline-category h2 { margin-top:9px; font-size:25px; }
+.pipeline-category strong { margin-top:5px; font-size:clamp(30px,2.7vw,44px); line-height:1.15; }
+.pipeline-category-icon { padding:16px; }
+.pipeline-state { padding:18px; min-height:155px; }
+.pipeline-state>strong { font-size:clamp(25px,2.2vw,34px); margin:14px 0; }
+.pipeline-header .pipeline-toolbar { margin-left:auto; }
+.pipeline-note { max-width:none; margin:13px 0 0; font-size:10px; text-align:left; }
+.pipeline-closed-money { justify-content:space-between; gap:8px; }
+.pipeline-closed-money strong { font-size:clamp(19px,1.7vw,28px); }
+.pipeline-root-breakdown { border-left:1px solid #ebe6dd; padding-left:18px; }
+@media(min-width:1100px) { .pipeline-header { display:grid; grid-template-columns:minmax(0,1fr) auto; } }
+@media(max-width:640px) { .pipeline-page { padding:12px; } .pipeline-header { align-items:stretch; } .pipeline-header .pipeline-toolbar { margin-left:0; } .pipeline-category { min-height:155px; } .pipeline-state { min-height:150px; padding:14px; } }
+
+@media(min-width:1000px) {
+  .pipeline-page { min-height:calc(100dvh - 64px); display:flex; flex-direction:column; }
+  .pipeline-header,.pipeline-filters,.pipeline-root,.pipeline-note { flex-shrink:0; }
+  .pipeline-branches { flex:1; align-items:stretch; }
+  .pipeline-branch { display:flex; flex-direction:column; }
+  .pipeline-category { flex:1; min-height:185px; }
+  .pipeline-states { flex-shrink:0; }
+}

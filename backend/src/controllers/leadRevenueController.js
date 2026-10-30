@@ -31,7 +31,7 @@ exports.get = async (req, res, next) => {
   try {
     const c = await context(req);
     if (!c) return res.status(404).json({ error: 'Lead not found or not accessible.' });
-    return res.json({ ok: true, groups: c.groups, eligibleServices: c.eligible, serviceKeys: serviceRows(c.lead, c.kind).map(s => s.key), locked: c.kind === 'cold' && (c.lead.status === 'CONVERTED' || Boolean(c.lead.pipelineClosedAt)) });
+    return res.json({ ok: true, groups: c.groups, canEditSaved: userHasAnyRole(req.user, ['admin', 'superadmin']), eligibleServices: c.eligible, serviceKeys: serviceRows(c.lead, c.kind).map(s => s.key), locked: c.kind === 'cold' && (c.lead.status === 'CONVERTED' || Boolean(c.lead.pipelineClosedAt)) });
   } catch (error) { next(error); }
 };
 exports.add = async (req, res, next) => {
@@ -105,5 +105,29 @@ exports.services = async (req, res, next) => {
       lead = await Lead.findOne({ $and: [{ _id: c.lead.convertedLead }, await leadAccessFilter(req.user)] }).lean();
     }
     res.json({ ok: true, company: c.lead.company || c.lead.clientName, converted: c.lead.status === 'CONVERTED', services: lead ? serviceDetails(lead) : [], purchaseOrders: lead ? purchaseOrders(lead) : [] });
+  } catch (error) { next(error); }
+};
+
+exports.correct = async (req, res, next) => {
+  try {
+    if (!userHasAnyRole(req.user, ['admin', 'superadmin'])) return res.status(403).json({ error: 'Only Admin or Super Admin can edit saved revenue.' });
+    const c = await context(req);
+    if (!c) return res.status(404).json({ error: 'Lead not found or not accessible.' });
+    const entry = c.entries.find(e => String(e._id) === String(req.params.entryId));
+    if (!entry) return res.status(404).json({ error: 'Revenue contribution not found for this lead.' });
+    let amount;
+    try { amount = amountPaise(req.body.amount); } catch (e) { return res.status(400).json({ error: e.message }); }
+    const reason = String(req.body.reason || '').trim().slice(0, 500);
+    const requestId = String(req.body.requestId || '');
+    if (!reason || !/^[\da-f-]{36}$/i.test(requestId)) return res.status(400).json({ error: 'Correction reason and a valid request ID are required.' });
+    const prior = (entry.corrections || []).find(correction => correction.requestId === requestId);
+    if (prior) return prior.afterPaise === amount ? res.json({ ok: true, alreadySaved: true }) : res.status(409).json({ error: 'Correction request ID already used.' });
+    if (!Number.isSafeInteger(req.body.expectedPaise) || req.body.expectedPaise !== entry.amountPaise || !Number.isSafeInteger(req.body.expectedRevision) || req.body.expectedRevision !== (entry.corrections || []).length) return res.status(409).json({ error: 'Revenue changed. Refresh before correcting it.' });
+    const updated = await Revenue.findOneAndUpdate({ _id: entry._id, amountPaise: req.body.expectedPaise, 'corrections.requestId': { $ne: requestId }, $expr: { $eq: [{ $size: { $ifNull: ['$corrections', []] } }, req.body.expectedRevision] } }, {
+      $set: { amountPaise: amount },
+      $push: { corrections: { requestId, beforePaise: entry.amountPaise, afterPaise: amount, reason, actor: req.user._id, actorName: req.user.name || req.user.email, at: new Date() } }
+    }, { new: true, runValidators: true });
+    if (!updated) return res.status(409).json({ error: 'Another administrator changed this revenue. Refresh and try again.' });
+    res.json({ ok: true });
   } catch (error) { next(error); }
 };

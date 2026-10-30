@@ -26,11 +26,12 @@ test('service keys survive unrelated edits and partial closure stays open', () =
   assert.equal(serviceRows({ createdBy: 'owner' }, 'cold')[0].key, 'cold-base');
 });
 
-function harness({ lead = {}, entries = [], eligibleOwner = 'u', denied = false, duplicate = false } = {}) {
+function harness({ lead = {}, entries = [], eligibleOwner = 'u', denied = false, duplicate = false, admin = false, conflict = false } = {}) {
   const inserted = [];
+  const updates = [];
   const hot = { _id: 'lead', createdBy: 'u', serviceSelections: [{ assignedServiceId: 's1', createdByCrmUserId: eligibleOwner }], ...lead };
   const chain = value => ({ select() { return this; }, sort() { return this; }, async lean() { return value; } });
-  const Revenue = { find: () => chain(entries), findOne: ({ requestId }) => chain(entries.find(e => e.requestId === requestId)), async create(value) { if (duplicate) throw Object.assign(new Error('duplicate'), { code: 11000 }); inserted.push(value); } };
+  const Revenue = { async findOneAndUpdate(filter, update) { if (conflict) return null; updates.push({filter,update}); return {_id: 'entry'}; }, find: () => chain(entries), findOne: ({ requestId }) => chain(entries.find(e => e.requestId === requestId)), async create(value) { if (duplicate) throw Object.assign(new Error('duplicate'), { code: 11000 }); inserted.push(value); } };
   const deps = {
     'node:crypto': require('node:crypto'), mongoose: { isValidObjectId: () => true },
     '../models/Lead': { findOne: () => chain(denied ? null : hot) },
@@ -39,13 +40,13 @@ function harness({ lead = {}, entries = [], eligibleOwner = 'u', denied = false,
     './leadController': { leadAccessFilter: async () => ({ scoped: true }) },
     './temporaryLeadController': { temporaryLeadAccessFilter: async () => ({ scoped: true }) },
     '../services/leadRevenue': require('../src/services/leadRevenue'),
-    '../utils/userRoles': { userHasAnyRole: () => false }
+    '../utils/userRoles': { userHasAnyRole: () => admin }
   };
   const context = { exports: {}, require: name => { if (!(name in deps)) throw new Error(name); return deps[name]; } };
   vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/controllers/leadRevenueController.js'), 'utf8'), context);
   const req = { params: { kind: 'hot', id: 'lead' }, user: { _id: 'u', name: 'User' }, body: { amount: '10000', mode: 'new', serviceKeys: ['s1'], requestId: '12345678-1234-1234-1234-123456789012' } };
   const res = { code: 200, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };
-  return { add: context.exports.add, services: context.exports.services, req, res, inserted };
+  return { add: context.exports.add, correct: context.exports.correct, services: context.exports.services, req, res, inserted, updates };
 }
 async function run(h) { await h.add(h.req, h.res, e => { throw e; }); return h; }
 test('authorized author records revenue once for their new service', async () => {
@@ -136,4 +137,28 @@ test('company service endpoint respects access and returns only display fields',
  assert.equal(allowed.res.body.services.length,1);
  assert.ok(!JSON.stringify(allowed.res.body).includes('PRIVATE-MARKER'));
  assert.ok(!JSON.stringify(allowed.res.body).includes('SECRET-OTP'));
+});
+
+
+test('saved revenue corrections require administrator role and preserve before/after audit',async()=>{
+ const entry={_id:'entry',leadKind:'hot',leadId:'lead',serviceKeys:['s1'],groupId:'a',amountPaise:1000000};
+ const user=harness({entries:[entry]});user.req.params.entryId='entry';
+ await user.correct(user.req,user.res,e=>{throw e});assert.equal(user.res.code,403);assert.equal(user.updates.length,0);
+ const admin=harness({admin:true,entries:[entry]});admin.req.params.entryId='entry';
+ admin.req.body={amount:'12500',expectedPaise:1000000,expectedRevision:0,reason:'Correct approved estimate',requestId:'12345678-1234-1234-1234-123456789012'};
+ await admin.correct(admin.req,admin.res,e=>{throw e});assert.equal(admin.res.code,200);
+ assert.equal(admin.updates[0].filter.amountPaise,1000000);
+ assert.equal(admin.updates[0].update.$set.amountPaise,1250000);
+ assert.equal(admin.updates[0].update.$push.corrections.beforePaise,1000000);
+ assert.equal(admin.updates[0].update.$push.corrections.afterPaise,1250000);
+ assert.equal(admin.updates[0].update.$push.corrections.actor,'u');
+ assert.equal(entry.amountPaise,1000000);
+});
+test('admin correction rejects stale amounts, missing reasons and concurrent changes',async()=>{
+ const entry={_id:'entry',leadKind:'hot',leadId:'lead',serviceKeys:['s1'],groupId:'a',amountPaise:1000000};
+ for(const options of [{expectedPaise:999,reason:'Fix'}, {expectedPaise:1000000,expectedRevision:0,reason:''}, {expectedPaise:1000000,expectedRevision:0,reason:'Fix',conflict:true}]){
+  const h=harness({admin:true,entries:[entry],conflict:options.conflict});h.req.params.entryId='entry';
+  h.req.body={amount:'12000',expectedPaise:options.expectedPaise,expectedRevision:0,reason:options.reason,requestId:'12345678-1234-1234-1234-123456789012'};
+  await h.correct(h.req,h.res,e=>{throw e});assert.ok([400,409].includes(h.res.code));assert.equal(h.updates.length,0);
+ }
 });

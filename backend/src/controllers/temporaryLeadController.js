@@ -52,8 +52,9 @@ function validateTemporaryLeadPayload(data) {
   return '';
 }
 
-async function findTemporaryLeadDuplicate(data) {
+async function findTemporaryLeadDuplicate(data, excludeId) {
   const temporary = await TemporaryLead.findOne({
+    ...(excludeId ? { _id: { $ne: excludeId } } : {}),
     $or: [
       { companyIdentity: data.companyIdentity },
       { emailIdentity: data.emailIdentity },
@@ -284,3 +285,23 @@ exports.closeFollowUp = async (req, res) => {
 };
 
 exports.__test = { nextTemporaryLeadCode, normalizeTemporaryLeadPayload, validateTemporaryLeadPayload };
+
+exports.update = async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Invalid Cold Lead ID.' });
+    const row = await TemporaryLead.findOne(combineFilters({ _id: req.params.id }, await temporaryLeadAccessFilter(req.user)));
+    if (!row) return res.status(404).json({ error: 'Cold lead not found or not accessible.' });
+    if (row.status === 'CONVERTED' || row.pipelineClosedAt) return res.status(409).json({ error: 'Closed or converted cold lead details are read-only. Edit the linked Hot Lead after conversion.' });
+    if (String(req.body.expectedUpdatedAt || '') !== row.updatedAt.toISOString()) return res.status(409).json({ error: 'Cold lead changed. Refresh before editing.' });
+    const data = normalizeTemporaryLeadPayload(req.body);
+    const error = validateTemporaryLeadPayload(data);
+    if (error) return res.status(400).json({ error });
+    if (data.companyIdentity !== row.companyIdentity || data.emailIdentity !== row.emailIdentity || data.phoneIdentity !== row.phoneIdentity) {
+      const duplicate = await findTemporaryLeadDuplicate(data, row._id);
+      if (duplicate) return res.status(409).json({ error: 'Company, email or phone already belongs to another lead.' });
+    }
+    const updated = await TemporaryLead.findOneAndUpdate({ _id: row._id, updatedAt: row.updatedAt, status: 'DRAFT', pipelineClosedAt: null }, { $set: data }, { new: true, runValidators: true });
+    if (!updated) return res.status(409).json({ error: 'Cold lead changed while saving. Refresh and try again.' });
+    res.json({ ok: true, temporaryLead: updated });
+  } catch (error) { next(error); }
+};

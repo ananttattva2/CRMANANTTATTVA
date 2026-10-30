@@ -20,7 +20,7 @@ function groupsFrom(entries) {
     if (!groups.has(entry.groupId)) groups.set(entry.groupId, { id: entry.groupId, amountPaise: 0, contributions: [] });
     const group = groups.get(entry.groupId);
     group.amountPaise += entry.amountPaise;
-    group.contributions.push({ id: String(entry._id), amountPaise: entry.amountPaise, services: entry.services, createdByName: entry.createdByName, createdAt: entry.createdAt });
+    group.contributions.push({ id: String(entry._id), amountPaise: entry.amountPaise, services: entry.services, createdByName: entry.createdByName, createdAt: entry.createdAt, corrections: entry.corrections || [] });
   }
   return [...groups.values()];
 }
