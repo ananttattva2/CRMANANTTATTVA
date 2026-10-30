@@ -1,4 +1,5 @@
-require('dotenv').config();
+require('../config/loadEnv')();
+const { mongoConfig, safeMongoError } = require('../config/mongoConfig');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
@@ -6,9 +7,8 @@ const Role = require('../models/Role');
 const { ROLES } = require('../constants/roles');
 
 async function seed() {
-  const uri = process.env.MONGO_ATLAS_URI || process.env.MONGO_URI;
-  if (!uri) throw new Error('MongoDB Atlas is not configured. Set MONGO_ATLAS_URI or MONGO_URI.');
-  await mongoose.connect(uri, { dbName: process.env.DB_NAME || 'registerd_types' });
+  const config = mongoConfig();
+  await mongoose.connect(config.uri, { dbName: config.dbName, authSource: config.authSource });
   console.log('Connected to DB for seeding');
 
   for (const r of ROLES) {
@@ -43,4 +43,4 @@ async function seed() {
   process.exit(0);
 }
 
-seed().catch(err => { console.error(err); process.exit(1); });
+seed().catch(err => { console.error(safeMongoError(err)); process.exit(1); });

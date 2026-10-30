@@ -5,24 +5,7 @@ const ReminderDelivery = require('../models/ReminderDelivery');
 
 mongoose.set('bufferCommands', false);
 
-function buildMongoUri() {
-  const srvUri = process.env.MONGO_ATLAS_URI || process.env.MONGO_URI;
-  const directHosts = String(process.env.MONGO_DIRECT_HOSTS || '').trim();
-  if (!srvUri || !directHosts || !srvUri.startsWith('mongodb+srv://')) return srvUri;
-
-  const parsed = new URL(srvUri);
-  const credentials = parsed.username
-    ? `${parsed.username}${parsed.password ? `:${parsed.password}` : ''}@`
-    : '';
-  const params = new URLSearchParams(parsed.search);
-  params.set('tls', 'true');
-  params.set('authSource', process.env.MONGO_AUTH_SOURCE || params.get('authSource') || 'admin');
-  if (process.env.MONGO_REPLICA_SET) params.set('replicaSet', process.env.MONGO_REPLICA_SET);
-  params.set('retryWrites', params.get('retryWrites') || 'true');
-  params.set('w', params.get('w') || 'majority');
-  const dbName = process.env.DB_NAME || parsed.pathname.replace(/^\//, '') || 'registerd_types';
-  return `mongodb://${credentials}${directHosts}/${encodeURIComponent(dbName)}?${params.toString()}`;
-}
+const { buildMongoUri, mongoConfig, safeMongoError } = require('./mongoConfig');
 
 async function ensureQuotationIndexes() {
   const collection = mongoose.connection.collection('quotations');
@@ -64,9 +47,11 @@ async function ensurePiboCategoryIndexes() {
 const connectDB = async () => {
   try {
     const uri = buildMongoUri();
-    if (!uri) throw new Error('MongoDB Atlas is not configured. Set MONGO_ATLAS_URI or MONGO_URI.');
+    const config = mongoConfig();
+    console.info('MongoDB connecting', config.diagnostics);
     await mongoose.connect(uri, {
-      dbName: process.env.DB_NAME || 'registerd_types',
+      dbName: config.dbName,
+      authSource: config.authSource,
       serverSelectionTimeoutMS: 10000,
       compressors: ['zlib'],
       zlibCompressionLevel: 1
@@ -97,7 +82,7 @@ const connectDB = async () => {
     ]).catch(error => console.error('CRM read index setup failed', { name: error.name, code: error.code }));
     console.log('MongoDB connected');
   } catch (err) {
-    console.error('MongoDB connection error', err);
+    console.error('MongoDB connection error', safeMongoError(err));
     throw err;
   }
 };

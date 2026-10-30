@@ -1,4 +1,6 @@
-require('dotenv').config({ override: true });
+require('./config/loadEnv')();
+const { safeMongoError } = require('./config/mongoConfig');
+const { singleFlight } = require('./config/databaseReadiness');
 const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
@@ -87,10 +89,12 @@ app.use('/api', (req, res, next) => {
 
 let schedulerStarted = false;
 let dbReady;
+let dbInitialized = false;
 const isServerlessRuntime = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 
-function connectAndStartServices() {
-  dbReady = connectDB();
+const connectAndStartServices = singleFlight(function () {
+  dbInitialized = false;
+  dbReady = connectDB().then(() => { dbInitialized = true; });
   dbReady.then(async () => {
     await applyKnownDataCorrections().catch((error) => console.error('Known CRM data correction failed', error));
     await pauseExistingPendingClientApprovalTimers().catch((error) => console.error('Pending client reminder reconciliation failed', error));
@@ -113,24 +117,23 @@ function connectAndStartServices() {
       startTemporaryAssignmentReminderScheduler();
       schedulerStarted = true;
     }
-  }).catch(error => console.error('CRM startup services failed', error));
+  }).catch(error => console.error('CRM startup services failed', safeMongoError(error)));
   return dbReady;
-}
+});
 
 connectAndStartServices().catch((err) => {
-  console.error('Database startup failed', err);
+  console.error('Database startup failed', safeMongoError(err));
 });
 
 app.use('/api', async (req, res, next) => {
   try {
-    if (mongoose.connection.readyState !== 1) {
-      if (mongoose.connection.readyState !== 2) connectAndStartServices();
-      await dbReady;
+    if (!dbInitialized || mongoose.connection.readyState !== 1 || connectAndStartServices.isPending()) {
+      await connectAndStartServices();
     }
   } catch (err) {
     return res.status(503).json({
       error: 'Database unavailable. Please check MongoDB Atlas connection.',
-      message: process.env.NODE_ENV === 'production' ? undefined : err.message
+      code: 'DATABASE_UNAVAILABLE'
     });
   }
   return next();
