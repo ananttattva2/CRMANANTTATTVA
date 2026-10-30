@@ -51,4 +51,19 @@ function serviceDetails(lead = {}) {
     return { id: row.assignedServiceId || `service-${index}`, category: row.eprCategory || '', offering: row.servicesOffered || row.applicableService || '', applicant: row.subApplicantType || row.piboCategory || row.applicantType || '', year: row.firstAnnualReturnYearApplicable || row.financialYear || '', closed: hotClosed({ ...(rows.length === 1 ? lead : { status: lead.status }), ...row, serviceSelections: [row], assignments: [assignment] }), manager: assignment.assignedToText || '', staff: assignment.assignedStaffText || '' };
   });
 }
-module.exports = { amountPaise, serviceRows, groupsFrom, hotClosed, purchaseOrders, serviceDetails };
+function clientContactDetails(lead = {}) {
+  const contact = lead.contacts?.[0] || {};
+  const address = lead.addresses?.[0] || {};
+  return {
+    company: lead.company || lead.clientName || '',
+    contactPerson: lead.contactPerson || lead.personName || contact.contactPerson || '',
+    email: lead.emails || lead.email || contact.emails || '',
+    phone: lead.mobileNo1 || lead.phone || contact.mobileNo1 || '',
+    communicationMode: lead.communicationMode || '',
+    communicationNote: lead.communicationModeNote || '',
+    industry: lead.industryType || lead.sector || '',
+    address: [lead.addressLine1 || address.addressLine1, lead.addressLine2 || address.addressLine2, lead.addressLine3 || address.addressLine3].filter(Boolean).join(', '),
+    city: lead.city || address.city || '', state: lead.state || address.state || '', pinCode: lead.pinCode || address.pinCode || ''
+  };
+}
+module.exports = { amountPaise, serviceRows, groupsFrom, hotClosed, purchaseOrders, serviceDetails, clientContactDetails };

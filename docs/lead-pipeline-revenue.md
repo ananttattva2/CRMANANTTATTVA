@@ -43,3 +43,10 @@ Regular users cannot edit a recorded revenue amount. Admin/Super Admin see Edit 
 
 
 Revenue correction accepts plain/Indian-formatted amounts and normalizes leading zeros and insignificant trailing decimal zeros. Admin may correct an erroneous estimate to zero while retaining its contribution and audit history. Initial contributions still require a positive amount. Invalid precision, negative values and exponent notation are rejected; the correction UI validates before requesting the API and shows errors beside the correction fields.
+
+
+## Traffic Source
+
+The Traffic Source panel sits beside Revenue Pipeline on wide screens and below it on smaller screens. It shows all built-in Client Communication Modes, configured custom options (including zero counts), and any additional mode saved on visible leads. Counts follow the search/owner filters and deduplicate converted Cold/Hot records, preferring the current Hot record's saved source. Empty sources, including Cold Leads without a recorded mode, appear under Other / Not specified; no source is inferred or written into the database.
+
+Click a source for its filtered lead list and Excel export. Click a company for authorized contact, address, communication mode, service and PO details. Contact data is loaded on demand through the existing scope-checked detail endpoint, not copied into every cached summary row. If custom dropdown options fail to load, saved source counts remain available and the panel shows a warning.

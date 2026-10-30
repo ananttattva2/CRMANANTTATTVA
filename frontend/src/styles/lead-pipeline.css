@@ -552,3 +552,42 @@
   .pipeline-category { flex:1; min-height:185px; }
   .pipeline-states { flex-shrink:0; }
 }
+
+.pipeline-content-layout { display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:20px; flex:1; min-height:0; align-items:start; }
+.pipeline-revenue-column { display:flex; flex-direction:column; min-width:0; height:100%; }
+.pipeline-section-title { display:flex; align-items:center; gap:8px; margin:0 0 14px; color:#152d48; font-size:18px; font-weight:900; letter-spacing:-.03em; }
+.pipeline-section-title svg { color:#f36b26; }
+.traffic-sources { min-width:0; background:#fff; border:1px solid #dce9e6; border-radius:20px; overflow:hidden; box-shadow:0 8px 25px #153b2e08; }
+.traffic-sources>header { display:flex; align-items:center; gap:11px; padding:18px 17px; background:linear-gradient(130deg,#f0faf7,#f5f9ff); border-bottom:1px solid #e6eeeb; }
+.traffic-source-icon { display:grid; place-items:center; padding:11px; border-radius:13px; color:#128268; background:#dcf3e9; }
+.traffic-sources header p { font-size:9px; font-weight:900; letter-spacing:.13em; color:#5e9488; }
+.traffic-sources h2 { font-size:21px; font-weight:900; letter-spacing:-.04em; color:#142941; margin-top:3px; }
+.traffic-source-total { margin-left:auto; font-size:16px; font-weight:900; color:#146c57; background:white; border:1px solid #d2e8df; border-radius:10px; padding:7px 10px; }
+.traffic-source-intro { margin:0; padding:14px 17px 8px; font-size:11px; font-weight:800; color:#405c6b; }
+.traffic-source-intro span { display:block; font-size:10px; color:#87979e; margin-top:4px; font-weight:500; }
+.traffic-source-list { max-height:540px; overflow:auto; padding:0 10px 10px; scrollbar-width:thin; }
+.traffic-source-list>button { display:block; width:100%; text-align:left; padding:12px 8px; border-bottom:1px solid #edf2f1; transition:background .18s; border-radius:9px; }
+.traffic-source-list>button:hover { background:#f3faf7; }
+.traffic-source-list>button:focus-visible { outline:3px solid #46ad99; outline-offset:-3px; }
+.traffic-source-row { display:flex; align-items:center; gap:8px; }
+.traffic-source-dot { width:7px; height:7px; flex-shrink:0; border-radius:50%; background:hsl(var(--source-hue) 75% 44%); }
+.traffic-source-row strong { font-size:12px; font-weight:750; color:#365166; }
+.traffic-source-row b { margin-left:auto; font-size:15px; font-weight:900; color:#142d43; }
+.traffic-source-row svg { color:#8ba0aa; flex-shrink:0; }
+.traffic-source-bar { display:block; height:4px; margin:8px 0 5px 15px; background:#eff4f2; border-radius:5px; overflow:hidden; }
+.traffic-source-bar>span { display:block; height:100%; background:hsl(var(--source-hue) 67% 49%); border-radius:5px; }
+.traffic-source-list small { display:block; margin-left:15px; font-size:9px; color:#8b9ca5; }
+.traffic-source-zero .traffic-source-row strong,.traffic-source-zero .traffic-source-row b { color:#82949f; }
+.traffic-sources>footer { display:flex; align-items:flex-start; gap:7px; padding:13px 16px; background:#f8fafb; border-top:1px solid #eaf0ee; color:#82949e; font-size:9px; line-height:1.7; }
+.traffic-sources>footer svg { flex-shrink:0; margin-top:2px; }
+.traffic-source-warning { margin:10px; padding:10px; border-radius:8px; background:#fff6e7; color:#8d692e; font-size:10px; }
+.pipeline-client-profile { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; background:#f5faf8; border:1px solid #dcebe4; border-radius:15px; padding:18px; }
+.pipeline-client-profile span { display:block; font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:#82958d; }
+.pipeline-client-profile strong { display:block; margin-top:5px; font-size:12px; font-weight:700; color:#304c42; overflow-wrap:anywhere; white-space:pre-wrap; }
+@media(max-width:1440px) {
+ .pipeline-content-layout { grid-template-columns:1fr; }
+ .traffic-source-list { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0 12px; max-height:none; }
+ .pipeline-revenue-column { height:auto; }
+}
+@media(max-width:760px) { .traffic-source-list { grid-template-columns:repeat(2,minmax(0,1fr)); } .pipeline-client-profile { grid-template-columns:1fr 1fr; } }
+@media(max-width:480px) { .traffic-source-list,.pipeline-client-profile { grid-template-columns:1fr; } }

@@ -5,7 +5,7 @@ const TemporaryLead = require('../models/TemporaryLead');
 const Revenue = require('../models/LeadRevenue');
 const { leadAccessFilter } = require('./leadController');
 const { temporaryLeadAccessFilter } = require('./temporaryLeadController');
-const { amountPaise, serviceRows, groupsFrom, hotClosed, purchaseOrders, serviceDetails } = require('../services/leadRevenue');
+const { amountPaise, serviceRows, groupsFrom, hotClosed, purchaseOrders, serviceDetails, clientContactDetails } = require('../services/leadRevenue');
 const { userHasAnyRole } = require('../utils/userRoles');
 
 async function context(req) {
@@ -77,8 +77,8 @@ exports.pipeline = async (req, res, next) => {
   try {
     const [hotAccess, coldAccess] = await Promise.all([leadAccessFilter(req.user), temporaryLeadAccessFilter(req.user)]);
     const [hot, cold] = await Promise.all([
-      Lead.find(hotAccess).select('leadCode company status serviceSelections.assignedServiceId serviceSelections.closedBy serviceSelections.closedByText serviceSelections.closedAt serviceSelections.status assignments.assignedServiceId assignments.closedBy assignments.closedByText assignments.closedAt assignments.poStatus assignments.poApprovalStatus assignments.poNumber assignments.poDate assignments.poFinancialYear assignments.poAmount assignments.poYearRows.poNumber assignments.poYearRows.poNo assignments.poYearRows.poDate assignments.poYearRows.poFinancialYear assignments.poYearRows.fy assignments.poYearRows.poAmount assignments.originalPoDetails.poNumber assignments.originalPoDetails.poDate assignments.originalPoDetails.poFinancialYear assignments.originalPoDetails.poAmount closedAt closedBy closedByText createdBy createdByName generatedForName importedCreatedBy createdAt').maxTimeMS(15000).lean(),
-      TemporaryLead.find(coldAccess).select('tempLeadCode clientName status convertedLead pipelineClosedAt createdBy createdByName createdAt').lean()
+      Lead.find(hotAccess).select('communicationMode leadCode company status serviceSelections.assignedServiceId serviceSelections.closedBy serviceSelections.closedByText serviceSelections.closedAt serviceSelections.status assignments.assignedServiceId assignments.closedBy assignments.closedByText assignments.closedAt assignments.poStatus assignments.poApprovalStatus assignments.poNumber assignments.poDate assignments.poFinancialYear assignments.poAmount assignments.poYearRows.poNumber assignments.poYearRows.poNo assignments.poYearRows.poDate assignments.poYearRows.poFinancialYear assignments.poYearRows.fy assignments.poYearRows.poAmount assignments.originalPoDetails.poNumber assignments.originalPoDetails.poDate assignments.originalPoDetails.poFinancialYear assignments.originalPoDetails.poAmount closedAt closedBy closedByText createdBy createdByName generatedForName importedCreatedBy createdAt').maxTimeMS(15000).lean(),
+      TemporaryLead.find(coldAccess).select('communicationMode tempLeadCode clientName status convertedLead pipelineClosedAt createdBy createdByName createdAt').lean()
     ]);
     const entries = await Revenue.find({ $or: [{ leadKind: 'hot', leadId: { $in: hot.map(l => l._id) } }, { leadKind: 'cold', leadId: { $in: cold.map(l => l._id) } }] }).sort({ createdAt: 1 }).lean();
     // Converted Cold records remain visible as closed conversion history; Hot owns current business revenue.
@@ -90,7 +90,7 @@ exports.pipeline = async (req, res, next) => {
     ].map(({ kind, lead, closed, inheritedIds }) => {
       const own = entries.filter(e => e.leadKind === kind && String(e.leadId) === String(lead._id));
       const groups = groupsFrom([...own, ...inherited.filter(e => inheritedIds.includes(String(e.leadId)))]);
-      return { canonicalKey: kind === 'cold' && lead.status === 'CONVERTED' && lead.convertedLead ? `hot:${lead.convertedLead}` : `${kind}:${lead._id}`, converted: kind === 'cold' && lead.status === 'CONVERTED', convertedLeadId: kind === 'cold' && lead.convertedLead ? String(lead.convertedLead) : undefined, poAmountPaise: kind === 'hot' ? purchaseOrders(lead).reduce((n, po) => n + po.amountPaise, 0) : 0, id: String(lead._id), kind, state: closed ? 'closed' : 'open', code: lead.leadCode || lead.tempLeadCode, company: lead.company || lead.clientName, owner: lead.generatedForName || lead.importedCreatedBy || lead.createdByName || 'Unassigned', serviceCount: kind === 'hot' ? lead.serviceSelections?.length || 1 : 0, groups, revenuePaise: groups.reduce((n, g) => n + g.amountPaise, 0), createdAt: lead.createdAt };
+      return { communicationMode: String(lead.communicationMode || '').trim(), canonicalKey: kind === 'cold' && lead.status === 'CONVERTED' && lead.convertedLead ? `hot:${lead.convertedLead}` : `${kind}:${lead._id}`, converted: kind === 'cold' && lead.status === 'CONVERTED', convertedLeadId: kind === 'cold' && lead.convertedLead ? String(lead.convertedLead) : undefined, poAmountPaise: kind === 'hot' ? purchaseOrders(lead).reduce((n, po) => n + po.amountPaise, 0) : 0, id: String(lead._id), kind, state: closed ? 'closed' : 'open', code: lead.leadCode || lead.tempLeadCode, company: lead.company || lead.clientName, owner: lead.generatedForName || lead.importedCreatedBy || lead.createdByName || 'Unassigned', serviceCount: kind === 'hot' ? lead.serviceSelections?.length || 1 : 0, groups, revenuePaise: groups.reduce((n, g) => n + g.amountPaise, 0), createdAt: lead.createdAt };
     });
     res.json({ ok: true, rows });
   } catch (error) { next(error); }
@@ -104,7 +104,7 @@ exports.services = async (req, res, next) => {
     if (c.kind === 'cold' && c.lead.status === 'CONVERTED' && c.lead.convertedLead) {
       lead = await Lead.findOne({ $and: [{ _id: c.lead.convertedLead }, await leadAccessFilter(req.user)] }).lean();
     }
-    res.json({ ok: true, company: c.lead.company || c.lead.clientName, converted: c.lead.status === 'CONVERTED', services: lead ? serviceDetails(lead) : [], purchaseOrders: lead ? purchaseOrders(lead) : [] });
+    res.json({ ok: true, company: c.lead.company || c.lead.clientName, converted: c.lead.status === 'CONVERTED', clientDetails: clientContactDetails(lead || c.lead), services: lead ? serviceDetails(lead) : [], purchaseOrders: lead ? purchaseOrders(lead) : [] });
   } catch (error) { next(error); }
 };
 
