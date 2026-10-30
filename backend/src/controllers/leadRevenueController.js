@@ -8,6 +8,13 @@ const { temporaryLeadAccessFilter } = require('./temporaryLeadController');
 const { amountPaise, serviceRows, groupsFrom, hotClosed, purchaseOrders, serviceDetails } = require('../services/leadRevenue');
 const { userHasAnyRole } = require('../utils/userRoles');
 
+function pipelineOwner(lead, kind) {
+  const currentOwner = kind === 'hot' ? lead.generatedForUser : lead.createdBy;
+  return currentOwner?.name || currentOwner?.email
+    || (kind === 'hot' ? lead.generatedForName : '')
+    || lead.importedCreatedBy || lead.createdByName || 'Unassigned';
+}
+
 async function context(req) {
   const kind = req.params.kind;
   if (!['hot', 'cold'].includes(kind) || !mongoose.isValidObjectId(req.params.id)) return null;
@@ -77,8 +84,8 @@ exports.pipeline = async (req, res, next) => {
   try {
     const [hotAccess, coldAccess] = await Promise.all([leadAccessFilter(req.user), temporaryLeadAccessFilter(req.user)]);
     const [hot, cold] = await Promise.all([
-      Lead.find(hotAccess).select('leadCode company status serviceSelections.assignedServiceId serviceSelections.closedBy serviceSelections.closedByText serviceSelections.closedAt serviceSelections.status assignments.assignedServiceId assignments.closedBy assignments.closedByText assignments.closedAt assignments.poStatus assignments.poApprovalStatus assignments.poNumber assignments.poDate assignments.poFinancialYear assignments.poAmount assignments.poYearRows.poNumber assignments.poYearRows.poNo assignments.poYearRows.poDate assignments.poYearRows.poFinancialYear assignments.poYearRows.fy assignments.poYearRows.poAmount assignments.originalPoDetails.poNumber assignments.originalPoDetails.poDate assignments.originalPoDetails.poFinancialYear assignments.originalPoDetails.poAmount closedAt closedBy closedByText createdBy createdByName generatedForName importedCreatedBy createdAt').maxTimeMS(15000).lean(),
-      TemporaryLead.find(coldAccess).select('tempLeadCode clientName status convertedLead pipelineClosedAt createdBy createdByName createdAt').lean()
+      Lead.find(hotAccess).select('leadCode company status serviceSelections.assignedServiceId serviceSelections.closedBy serviceSelections.closedByText serviceSelections.closedAt serviceSelections.status assignments.assignedServiceId assignments.closedBy assignments.closedByText assignments.closedAt assignments.poStatus assignments.poApprovalStatus assignments.poNumber assignments.poDate assignments.poFinancialYear assignments.poAmount assignments.poYearRows.poNumber assignments.poYearRows.poNo assignments.poYearRows.poDate assignments.poYearRows.poFinancialYear assignments.poYearRows.fy assignments.poYearRows.poAmount assignments.originalPoDetails.poNumber assignments.originalPoDetails.poDate assignments.originalPoDetails.poFinancialYear assignments.originalPoDetails.poAmount closedAt closedBy closedByText createdBy createdByName generatedForUser generatedForName importedCreatedBy createdAt').populate('generatedForUser', 'name email').maxTimeMS(15000).lean(),
+      TemporaryLead.find(coldAccess).select('tempLeadCode clientName status convertedLead pipelineClosedAt createdBy createdByName createdAt').populate('createdBy', 'name email').lean()
     ]);
     const entries = await Revenue.find({ $or: [{ leadKind: 'hot', leadId: { $in: hot.map(l => l._id) } }, { leadKind: 'cold', leadId: { $in: cold.map(l => l._id) } }] }).sort({ createdAt: 1 }).lean();
     // Converted Cold records remain visible as closed conversion history; Hot owns current business revenue.
@@ -90,7 +97,7 @@ exports.pipeline = async (req, res, next) => {
     ].map(({ kind, lead, closed, inheritedIds }) => {
       const own = entries.filter(e => e.leadKind === kind && String(e.leadId) === String(lead._id));
       const groups = groupsFrom([...own, ...inherited.filter(e => inheritedIds.includes(String(e.leadId)))]);
-      return { canonicalKey: kind === 'cold' && lead.status === 'CONVERTED' && lead.convertedLead ? `hot:${lead.convertedLead}` : `${kind}:${lead._id}`, converted: kind === 'cold' && lead.status === 'CONVERTED', convertedLeadId: kind === 'cold' && lead.convertedLead ? String(lead.convertedLead) : undefined, poAmountPaise: kind === 'hot' ? purchaseOrders(lead).reduce((n, po) => n + po.amountPaise, 0) : 0, id: String(lead._id), kind, state: closed ? 'closed' : 'open', code: lead.leadCode || lead.tempLeadCode, company: lead.company || lead.clientName, owner: lead.generatedForName || lead.importedCreatedBy || lead.createdByName || 'Unassigned', serviceCount: kind === 'hot' ? lead.serviceSelections?.length || 1 : 0, groups, revenuePaise: groups.reduce((n, g) => n + g.amountPaise, 0), createdAt: lead.createdAt };
+      return { canonicalKey: kind === 'cold' && lead.status === 'CONVERTED' && lead.convertedLead ? `hot:${lead.convertedLead}` : `${kind}:${lead._id}`, converted: kind === 'cold' && lead.status === 'CONVERTED', convertedLeadId: kind === 'cold' && lead.convertedLead ? String(lead.convertedLead) : undefined, poAmountPaise: kind === 'hot' ? purchaseOrders(lead).reduce((n, po) => n + po.amountPaise, 0) : 0, id: String(lead._id), kind, state: closed ? 'closed' : 'open', code: lead.leadCode || lead.tempLeadCode, company: lead.company || lead.clientName, owner: pipelineOwner(lead, kind), serviceCount: kind === 'hot' ? lead.serviceSelections?.length || 1 : 0, groups, revenuePaise: groups.reduce((n, g) => n + g.amountPaise, 0), createdAt: lead.createdAt };
     });
     res.json({ ok: true, rows });
   } catch (error) { next(error); }
@@ -131,3 +138,5 @@ exports.correct = async (req, res, next) => {
     res.json({ ok: true });
   } catch (error) { next(error); }
 };
+
+exports.__test = { pipelineOwner };

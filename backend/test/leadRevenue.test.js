@@ -79,8 +79,8 @@ test('duplicate request retries are idempotent; unique-index races are reported 
 });
 
 test('converted cold leads remain in Cold Closed history and link to one unique Hot business lead', async () => {
- const chain = value => ({select(){return this},sort(){return this},maxTimeMS(){return this},async lean(){return value}});
- const hot = [{_id:'h',leadCode:'H1',company:'Hot',serviceSelections:[{assignedServiceId:'a'}],assignments:[]}];
+ const chain = value => ({select(){return this},populate(){return this},sort(){return this},maxTimeMS(){return this},async lean(){return value}});
+ const hot = [{_id:'h',leadCode:'H1',company:'Hot',generatedForUser:{_id:'owner',name:'Current Owner'},generatedForName:'Stale Owner',serviceSelections:[{assignedServiceId:'a'}],assignments:[]}];
  const cold = [{_id:'c',status:'CONVERTED',convertedLead:'h',clientName:'Origin'}, {_id:'c2',status:'DRAFT',tempLeadCode:'C2',clientName:'Cold'}];
  const own = {_id:'r1',leadKind:'hot',leadId:'h',groupId:'g1',amountPaise:1000000,serviceKeys:['a']};
  const inherited = {_id:'r2',leadKind:'cold',leadId:'c',groupId:'g2',amountPaise:500000,serviceKeys:['cold-base']};
@@ -99,6 +99,7 @@ test('converted cold leads remain in Cold Closed history and link to one unique 
  await context.exports.pipeline({user:{_id:'u'}},res,e=>{throw e});
  assert.equal(res.data.rows.length,3);
  assert.equal(res.data.rows.find(r=>r.kind==='hot').revenuePaise,1500000);
+ assert.equal(res.data.rows.find(r=>r.kind==='hot').owner,'Current Owner');
  assert.equal(res.data.rows.find(r=>r.kind==='cold'&&r.id==='c').state,'closed');
  assert.equal(res.data.rows.find(r=>r.kind==='cold'&&r.id==='c').canonicalKey,'hot:h');
  assert.equal(res.data.rows.find(r=>r.kind==='cold'&&r.id==='c2').state,'open');
