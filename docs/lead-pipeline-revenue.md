@@ -1,6 +1,6 @@
 # Hot / Cold Lead Pipeline and Estimated Revenue
 
-Navigation: Customer Hub → Hot Leads, Cold Leads, Open & Closed Leads.
+Navigation: Customer Hub → Hot Leads / Cold Leads. Home → Pending Leads → Open & Closed Leads.
 
 ## Usage
 

@@ -13,7 +13,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
   const isDashboardRoute = ['/dashboard', '/overall-dashboard', '/superadmin-dashboard', '/mis', '/mis/complete', '/mis/client-daily'].includes(location.pathname)
   const [dashboardChoicesOpen, setDashboardChoicesOpen] = useState(() => isDashboardRoute)
   const [openNestedGroups, setOpenNestedGroups] = useState(() => ({
-    'Pending Leads': location.pathname.startsWith('/pending-leads'),
+    'Pending Leads': location.pathname.startsWith('/pending-leads') || location.pathname === '/sales/lead-pipeline',
     Tickets: location.pathname.includes('tickets')
   }))
 
@@ -144,7 +144,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
                                       <span className="flex items-center gap-3"><ChildIcon className="h-4 w-4 shrink-0" />{child.label}</span>
                                       <ChevronDown className={`h-4 w-4 transition ${openNestedGroups[child.label] ? 'rotate-180' : ''}`} />
                                     </button>
-                                    {openNestedGroups[child.label] && <div className="mt-1 grid gap-1 pl-6">{child.children.map((entry) => { const EntryIcon = entry.icon; return <button type="button" key={entry.label} onClick={() => { setActiveItem(entry.label); navigate(entry.path); onClose?.() }} className={`flex min-h-9 items-center gap-2 rounded-xl px-3 text-left text-xs font-black ${pathMatches(entry.path) ? 'bg-[#f45b0b] text-white' : 'text-emerald-50/75 hover:bg-white/10'}`}><EntryIcon className="h-3.5 w-3.5" />{entry.label}</button> })}</div>}
+                                    {openNestedGroups[child.label] && <div className="mt-1 grid gap-1 pl-6">{child.children.filter(canShowItem).map((entry) => { const EntryIcon = entry.icon; return <button type="button" key={entry.label} onClick={() => { setActiveItem(entry.label); navigate(entry.path); onClose?.() }} className={`flex min-h-9 items-center gap-2 rounded-xl px-3 text-left text-xs font-black ${pathMatches(entry.path) ? 'bg-[#f45b0b] text-white' : 'text-emerald-50/75 hover:bg-white/10'}`}><EntryIcon className="h-3.5 w-3.5" />{entry.label}</button> })}</div>}
                                   </div>
                                 )
                               }
@@ -240,7 +240,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
                             return (
                               <div key={child.label} className="rounded-lg bg-slate-50 p-1">
                                 <div className="px-2 py-1 text-xs font-black uppercase tracking-[0.12em] text-slate-400">{child.label}</div>
-                                {child.children.map((entry) => {
+                                {child.children.filter(canShowItem).map((entry) => {
                                   const EntryIcon = entry.icon
                                   return (
                                     <button

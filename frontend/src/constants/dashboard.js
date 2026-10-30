@@ -82,10 +82,10 @@ export const navSections = [
           {
             label: 'Pending Leads',
             icon: ClipboardList,
-            roles: adminRoles,
             children: [
-              { label: 'Lead Open', icon: Clock3, path: '/pending-leads/open' },
-              { label: 'Lead Close', icon: ClipboardList, path: '/pending-leads/closed' }
+              { label: 'Lead Open', icon: Clock3, path: '/pending-leads/open', roles: adminRoles },
+              { label: 'Lead Close', icon: ClipboardList, path: '/pending-leads/closed', roles: adminRoles },
+              { label: 'Open & Closed Leads', icon: TrendingUp, path: '/sales/lead-pipeline' }
             ]
           },
           { label: 'Notifications', icon: Bell, path: '/notifications' },
@@ -105,7 +105,6 @@ export const navSections = [
         children: [
           { label: 'Hot Leads', icon: ClipboardList, path: '/sales/lead-generation' },
           { label: 'Cold Leads', icon: ClipboardList, path: '/sales/lead-generation?tab=temporary' },
-          { label: 'Open & Closed Leads', icon: TrendingUp, path: '/sales/lead-pipeline' },
           { label: 'Lead Allocate', icon: UserPlus, path: '/sales/lead-allocate', roles: adminRoles },
           { label: 'Client Master', icon: UserRound, path: '/sales/client-master' },
           { label: 'Client Data Uploads', icon: FileText, path: '/client-data-uploads' },
