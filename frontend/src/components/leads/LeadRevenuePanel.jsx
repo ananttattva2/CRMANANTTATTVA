@@ -32,7 +32,8 @@ export default function LeadRevenuePanel({ kind = 'hot', leadId, serviceVersion 
     if (leadId) api.get(`/leads/revenue/${kind}/${leadId}`).then(r => { if (active) { setData(r.data); setLoaded(true); } }).catch(e => { if (active) setError(e.response?.data?.error || 'Unable to load saved revenue.'); });
     return () => { active = false; };
   }, [kind, leadId, serviceVersion]);
-  const canRecord = !leadId || (loaded && (data.eligibleServices.length > 0 || (serviceVersion && serviceVersion.split(',').some(key => key && !(data.serviceKeys || []).includes(key)))));
+  const hasUnsavedServices = Boolean(serviceVersion && serviceVersion.split(',').some(key => key && !(data.serviceKeys || []).includes(key)));
+  const canRecord = !leadId || (loaded && (data.eligibleServices.length > 0 || hasUnsavedServices));
   const change = (field, value) => setDraft(d => ({ ...d, [field]: value }));
   async function save() {
     if (!leadId || busy) return;
@@ -53,7 +54,7 @@ export default function LeadRevenuePanel({ kind = 'hot', leadId, serviceVersion 
       {data.groups.length > 0 && <div className="grid gap-3 sm:grid-cols-2"><label className="rounded-xl border bg-white p-3 text-sm font-bold"><input type="radio" name={`revenue-${kind}-${leadId}`} checked={draft.mode === 'new'} onChange={() => change('mode', 'new')}/> Create a separate revenue group</label><label className="rounded-xl border bg-white p-3 text-sm font-bold"><input type="radio" name={`revenue-${kind}-${leadId}`} checked={draft.mode === 'add'} onChange={() => change('mode', 'add')}/> Add to an existing revenue group</label></div>}
       {draft.mode === 'add' && <label className="block text-xs font-black text-slate-600">Existing group<select aria-label="Existing revenue group" value={draft.groupId} onChange={e => change('groupId', e.target.value)} className="mt-2 h-11 w-full rounded-xl border bg-white px-3"><option value="">Choose revenue group</option>{data.groups.map((g, i) => <option key={g.id} value={g.id}>Group {i + 1} — {revenueMoney(g.amountPaise)}{draft.amount ? ` → ${revenueMoney(g.amountPaise + Math.round(Number(draft.amount) * 100))}` : ''}</option>)}</select></label>}
       <p className="text-xs font-semibold text-slate-500">{!canRecord ? 'Saved services are locked or belong to another author. Add a new service to record additional revenue.' : onDraftChange ? 'This contribution is recorded when you save the lead/services. Only your new, unpriced saved services are included.' : `${data.eligibleServices.length} new unpriced service(s) available. The amount is locked after recording.`}</p>
-      {!onDraftChange && <button type="button" onClick={save} disabled={busy || !loaded || !draft.amount || !data.eligibleServices.length || (draft.mode === 'add' && !draft.groupId)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-800 px-4 py-3 text-sm font-black text-white disabled:opacity-40"><Plus className="h-4 w-4"/>{busy ? 'Recording…' : 'Record & lock revenue'}</button>}
+      {(!onDraftChange || (leadId && loaded && !hasUnsavedServices && data.eligibleServices.length > 0)) && <button type="button" onClick={save} disabled={busy || !loaded || !draft.amount || !data.eligibleServices.length || (draft.mode === 'add' && !draft.groupId)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-800 px-4 py-3 text-sm font-black text-white disabled:opacity-40"><Plus className="h-4 w-4"/>{busy ? 'Recording…' : 'Record & lock revenue'}</button>}
     </div>}
     {error && <p role="alert" className="mt-3 text-sm font-bold text-red-700">{error}</p>}
   </section>;

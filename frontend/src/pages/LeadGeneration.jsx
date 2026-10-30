@@ -2064,9 +2064,10 @@ export default function LeadGeneration() {
         try { await saveLeadRevenue('hot', leadRecordId(savedLead), revenueDraft); setRevenueDraft(null); }
         catch (revenueError) {
           setLead(savedLead); setEditingLeadId(leadRecordId(savedLead)); setActiveTab('assign');
-          setError(`Lead saved successfully. Revenue was not recorded: ${revenueError.response?.data?.error || revenueError.message}`);
-          showToast('Lead saved; please retry revenue recording from Assign.', 'error');
+          setServiceOnlyMode(false);
           await loadPage();
+          setError(`Lead saved successfully. Revenue was not recorded: ${revenueError.response?.data?.error || revenueError.message}`);
+          showToast('Lead saved; retry with Record & lock revenue in Assign.', 'error');
           return savedLead;
         }
       }
