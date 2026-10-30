@@ -1,6 +1,6 @@
 import { uniquePipelineRows } from '../utils/leadPipeline.mjs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, BarChart3, CheckCircle2, Download, Flame, RefreshCw, Search, Snowflake, Users, X } from 'lucide-react';
+import { ArrowUpRight, BarChart3, CheckCircle2, Download, Flame, Search, Snowflake, Users, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import DashboardShell from '../components/dashboard/DashboardShell';
 import LeadRevenuePanel, { revenueMoney } from '../components/leads/LeadRevenuePanel';
@@ -79,8 +79,7 @@ export default function LeadPipeline() {
     finally { setClosing(false); }
   }
   return <DashboardShell currentUser={currentUser}><div className="pipeline-page">
-    <header className="pipeline-header"><div><p className="pipeline-eyebrow">SALES INTELLIGENCE</p><h1>Open &amp; Closed Leads</h1><p>A clear view of your hot and cold pipeline, with locked revenue history.</p></div><div className="pipeline-toolbar"><button type="button" onClick={() => { setLoading(true); void load(); }} aria-label="Refresh pipeline"><RefreshCw size={16}/></button><button type="button" onClick={() => exportRows(unique, 'lead-pipeline')} disabled={loading || !filtered.length}><Download size={16}/>Export Excel</button></div></header>
-    <div className="pipeline-filters"><label><Search size={17}/><input aria-label="Search pipeline" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search company, lead ID or owner…"/></label><select aria-label="Filter by owner" value={owner} onChange={e => setOwner(e.target.value)}><option value="">All visible owners</option>{[...new Set(rows.map(r => r.owner))].sort().map(name => <option key={name}>{name}</option>)}</select><span><Users size={15}/>{unique.length} unique leads</span></div>
+    <header className="pipeline-header"><div className="pipeline-heading"><h1>Revenue Pipeline</h1><p>A clear view of your hot and cold pipeline, with locked revenue history.</p></div><div className="pipeline-filters"><label><Search size={17}/><input aria-label="Search pipeline" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search company, lead ID or owner…"/></label><select aria-label="Filter by owner" value={owner} onChange={e => setOwner(e.target.value)}><option value="">All visible owners</option>{[...new Set(rows.map(r => r.owner))].sort().map(name => <option key={name}>{name}</option>)}</select><span><Users size={15}/>{unique.length} unique leads</span></div></header>
     {error && <p role="alert" className="pipeline-error">{error}</p>}
     {loading ? <div role="status" className="pipeline-empty">Loading your lead pipeline…</div> : <>
       <button type="button" onClick={() => open()} className="pipeline-root"><span className="pipeline-root-icon"><BarChart3 size={28}/></span><span><small>COMPLETE PIPELINE</small><strong>{revenueMoney(total(unique))}</strong><span>Total estimated revenue · {unique.length} unique leads</span></span><span className="pipeline-root-breakdown"><span><Flame size={17}/>Hot Leads<b>{filtered.filter(r => r.kind === 'hot').length}</b></span><span><Snowflake size={17}/>Cold Leads<b>{filtered.filter(r => r.kind === 'cold').length}</b></span></span><ArrowUpRight size={20}/></button>
@@ -88,7 +87,7 @@ export default function LeadPipeline() {
         const source = filtered.filter(r => r.kind === kind);
         const Icon = kind === 'hot' ? Flame : Snowflake;
         return <section key={kind} className={`pipeline-branch ${kind}`}>
-          <button type="button" onClick={() => open(kind)} className="pipeline-category"><div><p>{kind === 'hot' ? 'HIGH PRIORITY' : 'NURTURE PIPELINE'}<span>{source.length} leads</span></p><h2>{kind === 'hot' ? 'Hot Leads' : 'Cold Leads'}</h2><strong>{revenueMoney(total(source))}</strong><small>Total estimated revenue</small></div><span className="pipeline-category-icon"><Icon size={43}/></span></button>
+          <button type="button" onClick={() => open(kind)} className="pipeline-category"><div><p>{kind === 'hot' ? 'HIGH PRIORITY' : 'NURTURE PIPELINE'}</p><h2>{kind === 'hot' ? 'Hot Leads' : 'Cold Leads'}</h2><strong>{revenueMoney(total(source))}</strong><small>Total estimated revenue</small><span className="pipeline-category-count"><Users size={19}/><b>{source.length}</b>{kind === 'hot' ? 'hot leads' : 'cold leads'}</span></div><span className="pipeline-category-icon"><Icon size={43}/></span></button>
           <div className="pipeline-states">{['open', 'closed'].map(state => { const items = source.filter(r => r.state === state); return <button type="button" key={state} onClick={() => open(kind, state)} className={`pipeline-state ${state}`}><span><i/>{state === 'open' ? 'Open + Revenue' : kind === 'hot' ? 'Closed · PO / Revenue' : 'Closed + Revenue'}<ArrowUpRight size={19}/></span>{kind === 'hot' && state === 'closed' ? <div className="pipeline-closed-money"><div><small>PO value</small><strong>{revenueMoney(poTotal(items))}</strong></div><span>/</span><div><small>Estimated revenue</small><strong>{revenueMoney(total(items))}</strong></div></div> : <strong>{revenueMoney(total(items))}</strong>}<small>{state === 'closed' ? <CheckCircle2 size={18}/> : <Users size={18}/>}<b>{items.length}</b> {state} leads</small></button>; })}</div>
         </section>;
       })}</div>

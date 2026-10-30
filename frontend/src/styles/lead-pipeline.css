@@ -552,3 +552,118 @@
   .pipeline-category { flex:1; min-height:185px; }
   .pipeline-states { flex-shrink:0; }
 }
+
+/* Revenue pipeline composition matching the approved dashboard reference. */
+.pipeline-page {
+  max-width:1560px;
+  min-height:auto;
+  margin:0 auto;
+  padding:16px 28px 18px;
+  background:
+    radial-gradient(circle at 48% 10%,rgba(255,255,255,.92),transparent 31%),
+    linear-gradient(135deg,#f3fbf8 0%,#f8fbff 53%,#effcf7 100%);
+}
+.pipeline-header {
+  display:grid;
+  grid-template-columns:minmax(330px,.72fr) minmax(650px,1.9fr);
+  align-items:center;
+  gap:30px;
+}
+.pipeline-heading h1 {
+  margin:0 0 3px;
+  font-size:30px;
+  line-height:1.05;
+  color:#07133f;
+}
+.pipeline-heading p {
+  font-size:12px;
+  color:#617393;
+}
+.pipeline-header .pipeline-filters {
+  display:grid;
+  grid-template-columns:minmax(360px,1fr) 168px max-content;
+  gap:14px;
+  width:100%;
+  margin:0;
+}
+.pipeline-filters label,
+.pipeline-filters select {
+  min-height:42px;
+  border-color:#d7e1eb;
+  border-radius:10px;
+  box-shadow:0 2px 7px rgba(36,58,88,.06);
+}
+.pipeline-filters label { padding:9px 14px; }
+.pipeline-filters select { padding:9px 13px; font-weight:800; color:#17213c; }
+.pipeline-filters>span { justify-content:flex-end; white-space:nowrap; font-size:12px; color:#60718e; }
+.pipeline-root {
+  min-height:106px;
+  margin:17px 0 28px;
+  padding:19px 24px;
+  border-radius:16px;
+  background:linear-gradient(110deg,#fff8ef 0%,#fff 58%,#fffdfa 100%);
+  box-shadow:0 7px 20px rgba(178,105,48,.08);
+}
+.pipeline-root-icon { padding:15px; border-radius:15px; }
+.pipeline-root small { font-size:11px; }
+.pipeline-root strong { font-size:32px; line-height:1; color:#07133f; }
+.pipeline-root>span:nth-child(2)>span { font-weight:700; }
+.pipeline-root-breakdown { gap:12px; padding-left:22px; }
+.pipeline-root-breakdown>span { min-width:168px; justify-content:center; padding:13px 16px; }
+.pipeline-root>svg:last-child { display:none; }
+.pipeline-branches { gap:22px; }
+.pipeline-category {
+  min-height:178px;
+  padding:19px 24px 58px;
+  border-radius:17px;
+  border-top-width:2px;
+  box-shadow:0 8px 24px rgba(34,56,87,.08);
+}
+.pipeline-category:before { top:-9px; }
+.pipeline-category h2 { margin-top:5px; font-size:21px; }
+.pipeline-category strong { margin-top:4px; font-size:38px; line-height:1.08; }
+.pipeline-category small { display:block; margin-top:2px; }
+.pipeline-category-icon { position:absolute; right:24px; top:37px; padding:15px; }
+.pipeline-category-count {
+  position:absolute;
+  right:24px;
+  bottom:0;
+  left:24px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-height:46px;
+  border-top:1px solid rgba(145,163,188,.28);
+  color:#687892;
+  font-size:12px;
+  font-weight:700;
+}
+.pipeline-category-count b { font-size:24px; line-height:1; color:var(--accent); }
+.pipeline-states { gap:18px; padding-top:28px; }
+.pipeline-state { min-height:128px; padding:16px 20px; border-radius:15px; border-top-width:2px; }
+.pipeline-state>strong { margin:11px 0 13px; font-size:29px; line-height:1; }
+.pipeline-state>small { padding-top:10px; }
+.pipeline-state small b { font-size:19px; }
+.pipeline-closed-money { margin:9px 0 10px; }
+.pipeline-closed-money strong { font-size:22px; }
+.pipeline-note { margin-top:12px; line-height:1.45; }
+
+@media(min-width:1000px) {
+  .pipeline-page { display:block; min-height:auto; }
+  .pipeline-branches { align-items:start; }
+  .pipeline-branch { display:block; }
+  .pipeline-category { min-height:178px; }
+}
+@media(max-width:1180px) {
+  .pipeline-header { grid-template-columns:1fr; gap:14px; }
+  .pipeline-header .pipeline-filters { grid-template-columns:minmax(280px,1fr) 180px max-content; }
+}
+@media(max-width:760px) {
+  .pipeline-page { padding:14px; }
+  .pipeline-header .pipeline-filters { display:flex; flex-wrap:wrap; }
+  .pipeline-filters label { flex-basis:100%; }
+  .pipeline-filters select { width:calc(100% - 120px); }
+  .pipeline-filters>span { display:flex; }
+  .pipeline-root { margin-bottom:14px; }
+  .pipeline-category-count { right:18px; left:18px; }
+}
