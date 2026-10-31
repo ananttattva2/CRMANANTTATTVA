@@ -2703,6 +2703,108 @@ body:has(.annual-review-backdrop) .client-detail-card {
   box-shadow: 0 1px 3px rgba(5, 150, 105, 0.25);
 }
 
+/* Approval Center / PO review workspace */
+.pending-approval-title .pending-back-button { display:none !important; }
+.pending-approval-title span {
+  display:block !important;
+  margin-top:4px !important;
+  color:#64748b !important;
+  font-size:11px !important;
+  font-weight:600 !important;
+}
+.pending-approval-title h1 { font-size:25px !important; }
+.pending-po-filter-bar {
+  grid-template-columns:minmax(280px,1.45fr) minmax(170px,.65fr) minmax(170px,.65fr) minmax(155px,.55fr) auto auto !important;
+  border-bottom:0 !important;
+  padding:13px 14px 10px !important;
+}
+.pending-tabs-wrap {
+  padding:0 14px !important;
+}
+.approval-tabs-scroll {
+  border:0 !important;
+  border-bottom:1px solid #e2e8f0 !important;
+  border-radius:0 !important;
+  background:#fff !important;
+  padding:0 !important;
+}
+.approval-tabs-inner { gap:22px !important; min-height:45px !important; }
+.approval-tab {
+  height:45px !important;
+  flex:0 0 auto !important;
+  border-radius:0 !important;
+  padding:0 8px !important;
+  font-size:12px !important;
+}
+.approval-tab:hover { background:transparent !important; color:#047857 !important; }
+.approval-tab.is-active {
+  background:transparent !important;
+  color:#047857 !important;
+  box-shadow:inset 0 -2px 0 #059669 !important;
+}
+.approval-tab-indicator { display:none !important; }
+.pending-po-table { border-top:0 !important; }
+.pending-po-table .pending-table-head {
+  min-height:58px !important;
+  padding:10px 14px !important;
+}
+.pending-po-table .pending-table-count-title {
+  font-size:16px !important;
+}
+.pending-po-status-tabs {
+  display:inline-flex !important;
+  overflow:hidden;
+  border:1px solid #dbe5ea;
+  border-radius:8px;
+  background:#f8fafc;
+}
+.pending-table-head .pending-po-status-tabs { display:inline-flex !important; }
+.pending-po-status-tabs button {
+  min-width:75px;
+  min-height:34px;
+  border:0;
+  border-right:1px solid #e2e8f0;
+  background:transparent;
+  padding:0 13px;
+  color:#64748b;
+  font-size:10px;
+  font-weight:800;
+}
+.pending-po-status-tabs button:last-child { border-right:0; }
+.pending-po-status-tabs button:hover { color:#047857; }
+.pending-po-status-tabs button.is-active {
+  background:#059669;
+  color:#fff;
+  box-shadow:0 2px 6px rgba(5,150,105,.2);
+}
+.pending-sort-button {
+  border:0;
+  background:transparent;
+  padding:0;
+  color:inherit;
+  font:inherit;
+  cursor:pointer;
+}
+.pending-sort-button:hover { color:#047857; }
+.pending-po-uploaded-date {
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  white-space:nowrap;
+}
+.pending-po-uploaded-date strong { color:#27364b; font-size:11px; }
+.pending-po-uploaded-date small { color:#94a3b8; font-size:9px; font-weight:700; }
+.pending-po-table .pending-table-wrap table { min-width:1280px !important; }
+
+@media(max-width:1150px) {
+  .pending-po-filter-bar { grid-template-columns:1fr 1fr 1fr !important; }
+}
+@media(max-width:700px) {
+  .pending-po-filter-bar { grid-template-columns:1fr !important; }
+  .pending-po-status-tabs { width:100%; }
+  .pending-po-status-tabs button { flex:1; min-width:0; }
+}
+
 @media (max-width: 1380px) {
   .pending-metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;

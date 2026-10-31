@@ -47,6 +47,7 @@ test('regular user PO edits still create a pending review even with modify flag'
     assert.equal(row.poApprovalStatus,'PENDING');
     assert.equal(requests.length,1);
     assert.equal(requests[0][1].$set.approvalStatus,'PENDING');
+    assert.ok(requests[0][1].$set.payload.poSubmittedAt instanceof Date);
     assert.equal(requests[0][2].upsert,true);
   } finally {PendingApproval.findOneAndUpdate=originalCreate;PendingApproval.updateOne=originalUpdate;User.find=originalUsers;}
 });

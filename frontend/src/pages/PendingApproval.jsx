@@ -1,7 +1,7 @@
 import useCrmRefresh from '../hooks/useCrmRefresh';
 import { canApprovePo, canReviewPoDecision } from '../utils/poDecision.mjs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Diamond, Edit3, Eye, FileCheck2, FileSpreadsheet, FileText, Loader2, RefreshCw, RotateCcw, Search, X, XCircle, Users, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowUpDown, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Diamond, Edit3, Eye, FileCheck2, FileSpreadsheet, FileText, Loader2, RefreshCw, RotateCcw, Search, X, XCircle, Users, Trash2 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { DeactivationApprovals } from '../features/clientMaster/ClientDeactivation';
 import DashboardShell from '../components/dashboard/DashboardShell';
@@ -686,6 +686,23 @@ function rowMatchesSearch(row, query) {
   return Object.values(row || {}).some((value) => formatApprovalValue(value).toLowerCase().includes(needle));
 }
 
+function poSubmittedTimestamp(row) {
+  const direct = row?.payload?.poSubmittedAt;
+  if (direct && Number.isFinite(new Date(direct).getTime())) return new Date(direct).getTime();
+  const dateMatch = String(row?.requestDate || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (dateMatch) {
+    const legacy = new Date(`${dateMatch[3]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[1].padStart(2, '0')} ${row?.requestTime || '00:00:00'}`);
+    if (Number.isFinite(legacy.getTime())) return legacy.getTime();
+  }
+  const fallback = new Date(row?.createdAt || row?.updatedAt || 0).getTime();
+  return Number.isFinite(fallback) ? fallback : 0;
+}
+
+function poSubmittedDisplayValue(row) {
+  const timestamp = poSubmittedTimestamp(row);
+  return timestamp ? new Date(timestamp) : null;
+}
+
 function readError(err, fallback) {
   return err?.response?.data?.error || fallback;
 }
@@ -732,6 +749,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
   const [clientPage, setClientPage] = useState(1);
   const [quotePage, setQuotePage] = useState(1);
   const [poPage, setPoPage] = useState(1);
+  const [poDateSort, setPoDateSort] = useState('desc');
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -788,7 +806,11 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
   const filteredRoyalty = useMemo(() => !['all', 'royalty'].includes(typeFilter) ? [] : royaltyApprovals.filter(filterRow), [royaltyApprovals, searchTerm, statusFilter, userFilter, typeFilter]);
   const filteredServices = useMemo(() => !['all', 'services'].includes(typeFilter) ? [] : serviceApprovals.filter(filterRow), [serviceApprovals, searchTerm, statusFilter, userFilter, typeFilter]);
   const filteredTemporary = useMemo(() => !['all', 'temporary'].includes(typeFilter) ? [] : temporaryApprovals.filter(filterRow), [temporaryApprovals, searchTerm, statusFilter, userFilter, typeFilter]);
-  const filteredPoApprovals = useMemo(() => !['all', 'po'].includes(typeFilter) ? [] : poApprovals.filter(filterRow), [poApprovals, searchTerm, statusFilter, piboFilter, userFilter, typeFilter]);
+  const filteredPoApprovals = useMemo(() => {
+    if (!['all', 'po'].includes(typeFilter)) return [];
+    const direction = poDateSort === 'asc' ? 1 : -1;
+    return poApprovals.filter(filterRow).sort((a, b) => direction * (poSubmittedTimestamp(a) - poSubmittedTimestamp(b)));
+  }, [poApprovals, searchTerm, statusFilter, piboFilter, userFilter, typeFilter, poDateSort]);
   const approvedTodayCount = useMemo(() => (
     allApprovalRows.filter((row) => getApprovalStatus(row) === 'APPROVED').length
   ), [allApprovalRows]);
@@ -842,6 +864,19 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
 
   const approvalTabs = useMemo(() => {
     if (companyOnly) return [{ id: 'clients', icon: Clock3, label: 'Pending Clients', count: filteredClients.length }];
+    if (!isComplianceApprovalView && !isServiceParticipantView) {
+      const adminTabs = [{ id: 'po', icon: FileCheck2, label: 'PO Approvals', count: filteredPoApprovals.length }];
+      if (canViewClients) adminTabs.push({ id: 'clients', icon: Users, label: 'Clients', count: filteredClients.length });
+      adminTabs.push(
+        { id: 'quotations', icon: FileText, label: 'Quotations', count: filteredQuotations.length },
+        { id: 'services', icon: FileText, label: 'Service Approvals', count: filteredServices.length },
+        { id: 'duplicates', icon: Users, label: 'Special Approvals', count: filteredDuplicateLeads.length },
+        { id: 'royalty', icon: Users, label: 'Royalty Claims', count: filteredRoyalty.length }
+      );
+      if (canApproveTemporary) adminTabs.push({ id: 'temporary', icon: Users, label: 'Temporary Assignments', count: filteredTemporary.length });
+      adminTabs.push({ id: 'deactivation', icon: Users, label: 'Client Deactivation', count: deactivationCount });
+      return adminTabs;
+    }
     const list = [{ id: 'deactivation', icon: Users, label: 'Client Deactivation', count: deactivationCount }];
     if (isServiceParticipantView) {
       if (canViewClients) list.push({ id: 'clients', icon: Clock3, label: 'Client Decisions', count: filteredClients.length });
@@ -1546,8 +1581,8 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
               </button>
               <div>
                 <p>Approval desk</p>
-                <h1>Pending Approval</h1>
-                <span>Review client masters and quotation requests with a focused approval workflow.</span>
+                <h1>Approval Center</h1>
+                <span>Review requests and track approval decisions</span>
               </div>
             </div>
             <button
@@ -1575,7 +1610,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
           </div>}
 
           <section className="pending-approval-panel">
-            {activeTab !== 'deactivation' && <div className="pending-filter-bar">
+            {activeTab !== 'deactivation' && <div className={`pending-filter-bar ${activeTab === 'po' ? 'pending-po-filter-bar' : ''}`}>
               <label className="pending-search-field">
                 <Search className="h-4 w-4" />
                 <input
@@ -1585,7 +1620,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                   placeholder="Search approval..."
                 />
               </label>
-              {!isComplianceApprovalView && <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} aria-label="Filter approval type">
+              {!isComplianceApprovalView && activeTab !== 'po' && <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} aria-label="Filter approval type">
                 <option value="all">All Types</option>
                 <option value="clients">Clients</option>
                 <option value="quotations">Quotations</option>
@@ -1594,13 +1629,13 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                 <option value="royalty">Royalty Claims</option>
                 {canApproveTemporary && <option value="temporary">Temporary Assignments</option>}
               </select>}
-              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filter approval status">
+              {activeTab !== 'po' && <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filter approval status">
                 <option value="all">All Status</option>
                 <option value="PENDING">Pending</option>
                 <option value="PARTIALLY_APPROVED">Partially Approved</option>
                 <option value="APPROVED">Approved</option>
                 <option value="REJECTED">Rejected</option>
-              </select>
+              </select>}
               <select value={piboFilter} onChange={(event) => setPiboFilter(event.target.value)} aria-label="Filter PIBO category">
                 <option value="all">All Applicant Types</option>
                 {piboOptions.map((option) => (
@@ -1611,6 +1646,10 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                 <option value="all">All Users</option>
                 {userOptions.map((option) => <option key={option} value={option}>{option}</option>)}
               </select>
+              {activeTab === 'po' && <select value={poDateSort} onChange={(event) => { setPoDateSort(event.target.value); setPoPage(1); }} aria-label="Sort PO upload date">
+                <option value="desc">Newest uploads</option>
+                <option value="asc">Oldest uploads</option>
+              </select>}
               <button type="button" className="pending-reset-button" onClick={resetFilters}>
                 <RotateCcw className="h-4 w-4" />
                 Reset
@@ -1625,7 +1664,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                 Refresh
               </button>
             </div>}
-            {activeTab !== 'deactivation' && !isComplianceApprovalView && (
+            {activeTab !== 'deactivation' && activeTab !== 'po' && !isComplianceApprovalView && (
               <div className="pending-status-quick-filters" aria-label="Quick approval status filters">
                 <span>Quick filter</span>
                 <button type="button" className={statusFilter === 'APPROVED' ? 'is-active' : ''} onClick={() => { setActiveTab('quotations'); setTypeFilter('quotations'); setStatusFilter('APPROVED'); }}>
@@ -1643,7 +1682,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
 
             {activeTab === 'deactivation' ? <DeactivationApprovals onCountChange={setDeactivationCount} /> : activeTab === 'po' ? (
               <>
-                <ApprovalTable title="Purchase Order Approvals" columns={['Company / Lead', 'Service', 'PO Amount', 'PO Proof', 'Basic Amount (INR)', 'Submitted By', 'Status', 'Actions']} emptyText="No Purchase Orders are waiting for approval." page={poPage} totalPages={poTotalPages} showing={visiblePoApprovals.length} total={filteredPoApprovals.length} onPrev={() => setPoPage((value) => Math.max(1, value - 1))} onNext={() => setPoPage((value) => Math.min(poTotalPages, value + 1))}>
+                <ApprovalTable title="Purchase Order Approvals" className="pending-po-table" columns={['Company / Lead', 'Service', 'PO Amount', 'PO Proof', 'Basic Amount (INR)', 'Submitted By', { label: 'PO Uploaded', sortable: true, direction: poDateSort, onSort: () => { setPoDateSort((value) => value === 'desc' ? 'asc' : 'desc'); setPoPage(1); } }, 'Status', 'Actions']} emptyText="No Purchase Orders are waiting for approval." page={poPage} totalPages={poTotalPages} showing={visiblePoApprovals.length} total={filteredPoApprovals.length} onPrev={() => setPoPage((value) => Math.max(1, value - 1))} onNext={() => setPoPage((value) => Math.min(poTotalPages, value + 1))} actions={<div className="pending-po-status-tabs" aria-label="PO approval status"><button type="button" className={statusFilter === 'PENDING' ? 'is-active' : ''} onClick={() => { setStatusFilter('PENDING'); setPoPage(1); }}>Pending</button><button type="button" className={statusFilter === 'APPROVED' ? 'is-active' : ''} onClick={() => { setStatusFilter('APPROVED'); setPoPage(1); }}>Approved</button><button type="button" className={statusFilter === 'REJECTED' ? 'is-active' : ''} onClick={() => { setStatusFilter('REJECTED'); setPoPage(1); }}>Rejected</button><button type="button" className={statusFilter === 'all' ? 'is-active' : ''} onClick={() => { setStatusFilter('all'); setPoPage(1); }}>All</button></div>}>
                 {visiblePoApprovals.map((row) => {
                   const id = row._id || row.id;
                   const hasCompletedDecision = ['APPROVED', 'REJECTED', 'REVISION_REQUIRED'].includes(String(row.approvalStatus || '').toUpperCase());
@@ -1727,7 +1766,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                     return rendered;
                   })()}</Cell>
                     <Cell>{poRows.map((po) => <strong key={`${po.approvalId || id}-${po.rowIndex ?? 0}-${po.poNumber || 'po'}-basic`} className="block text-slate-900">{po.basicAmountValue != null ? `₹${po.basicAmountValue.toLocaleString('en-IN')}` : '-'}</strong>)}</Cell>
-                    <Cell>{row.payload?.poSubmittedByName || row.createdByName || '-'}</Cell><Cell>{statusBadge(row.approvalStatus)}</Cell>
+                    <Cell>{row.payload?.poSubmittedByName || row.createdByName || '-'}</Cell><Cell>{poSubmittedDisplayValue(row) ? <span className="pending-po-uploaded-date"><strong>{formatDisplayDate(poSubmittedDisplayValue(row))}</strong><small>{poSubmittedDisplayValue(row).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</small></span> : '-'}</Cell><Cell>{statusBadge(row.approvalStatus)}</Cell>
                     <Cell><div className="flex flex-wrap gap-2">{hasCompletedDecision && <button type="button" disabled={Boolean(savingId)} onClick={() => openPoDetails(row)} className="inline-flex items-center gap-1 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-black text-teal-700 hover:bg-teal-100 disabled:opacity-40"><Eye className="h-3.5 w-3.5" />View Details</button>}<button type="button" disabled={!canApprove || Boolean(savingId) || !canApprovePo(row.approvalStatus)} onClick={() => openPoDecision(row, 'APPROVED')} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white disabled:opacity-40">Approve</button><button type="button" disabled={row.approvalStatus !== 'PENDING'} onClick={() => openPoDecision(row, 'REJECTED')} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-black text-red-600 disabled:opacity-40">Reject</button><button type="button" disabled={row.approvalStatus !== 'PENDING'} onClick={() => openPoDecision(row, 'REVISION_REQUIRED')} className="rounded-lg border border-orange-200 px-3 py-2 text-xs font-black text-orange-600 disabled:opacity-40">Revise</button>{canApprove && <button type="button" disabled={Boolean(savingId)} onClick={() => setRemovePoRow(row)} aria-label={`Remove PO approval for ${row.clientName}`} title="Remove PO approval" className="rounded-lg border border-rose-200 px-3 py-2 text-rose-600 hover:bg-rose-50 disabled:opacity-40"><Trash2 className="h-4 w-4" /></button>}</div></Cell>
                   </tr>;
                 })}
@@ -2145,13 +2184,13 @@ function useCountUp(value, duration = 900) {
   return displayValue;
 }
 
-function ApprovalTable({ title, columns, children, emptyText, page, totalPages, onPrev, onNext, actions = null, showing = 0, total = 0 }) {
+function ApprovalTable({ title, columns, children, emptyText, page, totalPages, onPrev, onNext, actions = null, showing = 0, total = 0, className = '' }) {
   const hasRows = React.Children.count(children) > 0;
   const startEntry = total === 0 ? 0 : (page - 1) * rowsPerPage + 1;
   const endEntry = Math.min(page * rowsPerPage, total);
 
   return (
-    <div className="pending-table-card">
+    <div className={`pending-table-card ${className}`}>
       <div className="pending-table-head">
         <div className="pending-table-title-wrap">
           <h2 className="pending-table-count-title">{title}</h2>
@@ -2167,11 +2206,12 @@ function ApprovalTable({ title, columns, children, emptyText, page, totalPages, 
                 const label = isObject ? column.label : column;
                 const sortable = isObject ? column.sortable : false;
                 return (
-                  <th key={label}>
-                    <span className="pending-th-content">
-                      {label}
-                      {sortable && <Diamond className="pending-sort-icon h-3 w-3" />}
-                    </span>
+                  <th key={label} aria-sort={sortable ? column.direction === 'asc' ? 'ascending' : 'descending' : undefined}>
+                    {sortable && column.onSort ? <button type="button" className="pending-th-content pending-sort-button" onClick={column.onSort}>
+                      {label}<ArrowUpDown className="pending-sort-icon h-3.5 w-3.5" />
+                    </button> : <span className="pending-th-content">
+                      {label}{sortable && <Diamond className="pending-sort-icon h-3 w-3" />}
+                    </span>}
                   </th>
                 );
               })}
