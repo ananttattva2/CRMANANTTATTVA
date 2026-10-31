@@ -56,11 +56,11 @@ test('quotation form, view, and printable download expose Unit Name', () => {
 test('quotation API sanitization rejects invalid units and non-integer periods', () => {
   assert.throws(
     () => quotationController._test.cleanBody({ items: [{ serviceCategory: 'EPR - Execution', servicePeriod: 1, serviceStartDate: '2026-08-07' }] }),
-    /Select Period must be Days, Month, or Annual/
+    /Select Period must be Days, Months, or Years/
   );
   assert.throws(
     () => quotationController._test.cleanBody({ items: [{ serviceCategory: 'EPR - Execution', servicePeriod: 1, periodUnit: 'weeks', serviceStartDate: '2026-08-07' }] }),
-    /Select Period must be Days, Month, or Annual/
+    /Select Period must be Days, Months, or Years/
   );
   assert.throws(
     () => quotationController._test.cleanBody({ items: [{ serviceCategory: 'EPR - Execution', servicePeriod: 1.5, periodUnit: 'months', serviceStartDate: '2026-08-07' }] }),
@@ -80,24 +80,42 @@ test('EPR Credit quotations require KG or MT UOM and normalize it', () => {
   const body = quotationController._test.cleanBody({ items: [{ businessCategory: 'EPR Credit', unitLabel: 'kg', annualReturnEprCreditYears: ['2024-25'], serviceCategory: 'EPR - Execution', servicePeriod: 1, periodUnit: 'annual', serviceStartDate: '2026-08-07' }] });
   assert.equal(body.items[0].unit, '1');
   assert.equal(body.items[0].unitLabel, 'KG');
-  assert.equal(body.items[0].servicePeriod, 0);
+  assert.equal(body.items[0].servicePeriod, 1);
   assert.equal(body.items[0].periodUnit, 'annual');
-  assert.equal(body.items[0].serviceStartDate, '');
-  assert.equal(body.items[0].serviceEndDate, '');
+  assert.equal(body.items[0].serviceStartDate, '2026-08-07');
+  assert.equal(body.items[0].serviceEndDate, '2027-08-06');
 });
 
-test('EPR Credit accepts the dashed business label and always clears legacy service-period values', () => {
+test('EPR Credit accepts the dashed business label and supports day-based validity', () => {
   const body = quotationController._test.cleanBody({ items: [{
     businessCategory: 'EPR - Credit', unitLabel: 'MT', annualReturnEprCreditYears: ['2025-26'],
-    serviceCategory: 'EPR - Execution', servicePeriod: 25, periodUnit: 'days', transitionPeriod: 'Yes',
+    serviceCategory: 'EPR - Execution', servicePeriod: 25, periodUnit: 'days', transitionPeriod: 'No',
     serviceStartDate: '2026-08-07', serviceEndDate: '2026-09-01'
   }] });
   assert.equal(body.items[0].businessCategory, 'EPR Credit');
-  assert.equal(body.items[0].servicePeriod, 0);
-  assert.equal(body.items[0].periodUnit, 'annual');
+  assert.equal(body.items[0].servicePeriod, 25);
+  assert.equal(body.items[0].periodUnit, 'days');
   assert.equal(body.items[0].transitionPeriod, 'No');
-  assert.equal(body.items[0].serviceStartDate, '');
-  assert.equal(body.items[0].serviceEndDate, '');
+  assert.equal(body.items[0].serviceStartDate, '2026-08-07');
+  assert.equal(body.items[0].serviceEndDate, '2026-08-31');
+});
+
+test('EPR Credit calculates validity dates for days, months, and years', () => {
+  const cases = [
+    ['days', 10, '2026-08-16'],
+    ['months', 3, '2026-11-06'],
+    ['annual', 2, '2028-08-06']
+  ];
+  for (const [periodUnit, servicePeriod, expectedEndDate] of cases) {
+    const body = quotationController._test.cleanBody({ items: [{
+      businessCategory: 'EPR Credit', unitLabel: 'KG', annualReturnEprCreditYears: ['2025-26'],
+      serviceCategory: 'EPR - Execution', servicePeriod, periodUnit, serviceStartDate: '2026-08-07'
+    }] });
+    assert.equal(body.items[0].periodUnit, periodUnit);
+    assert.equal(body.items[0].servicePeriod, servicePeriod);
+    assert.equal(body.items[0].serviceEndDate, expectedEndDate);
+    assert.doesNotThrow(() => quotationController._test.validateQuotationItemDates(body.items));
+  }
 });
 
 test('quotation updates preserve business category and assigned service identity', () => {
@@ -197,7 +215,7 @@ test('transition dates are system-derived and frozen against update payloads', (
 test('period controls appear in the mapping popup and not in the main quotation table', () => {
   const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
   assert.match(page, /const financialYearEprYearHeading = financialYearIsRegistration \? 'Registration EPR Year' : 'Annual Return EPR Year'/);
-  assert.match(page, /'Service Period', 'Select Period', 'Transition Period', \.\.\.\(financialYearNeedsEprData \? \[financialYearEprYearHeading\]/);
+  assert.match(page, /'Service Period', 'Select Period', \.\.\.\(financialYearNeedsEprCreditYears \? \['Service Start Date'\] : \[\]\), 'Transition Period', \.\.\.\(financialYearNeedsEprData \? \[financialYearEprYearHeading\]/);
   assert.match(page, /\[financialYearEprYearHeading\]\s*:\s*\[\]\), \.\.\.\(financialYearNeedsEprCreditYears \? \['Annual Return EPR Credit Years'\]/);
   assert.match(page, /'Annual Return EPR Credit Years'\]\s*:\s*\[\]\), 'Applicant Type', \.\.\.\(financialYearNeedsRegistrationYear \? \['Registration Year'\]/);
   assert.match(page, /financialYearDraft\.transitionPeriod \|\| 'No'.*TRANSITION_PERIOD_OPTIONS/s);
@@ -216,12 +234,14 @@ test('Other Consultancy exposes a required Registration Year after Applicant Typ
   assert.match(model, /registrationYear: \{ type: String[\s\S]*2022-23[\s\S]*2029-30/);
 });
 
-test('EPR Credit period controls are disabled and validity notes use business category and quotation validity', () => {
+test('EPR Credit period controls support dates, days, months, and annual validity', () => {
   const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
-  assert.match(page, /disabled=\{financialYearNeedsEprCreditYears\}/);
-  assert.match(page, /financialYearNeedsEprCreditYears \? 'N\/A'/);
-  assert.match(page, /The EPR – Credit rates are valid till:/);
-  assert.match(page, /servicePeriodValidityNote\(financialYearDraft, quotation\.validUntil\)/);
+  assert.doesNotMatch(page, /disabled=\{financialYearNeedsEprCreditYears\}/);
+  assert.doesNotMatch(page, /financialYearNeedsEprCreditYears \? 'N\/A'/);
+  assert.match(page, /financialYearNeedsEprCreditYears \? \['Service Start Date'\]/);
+  assert.match(page, /The EPR – Credit rates are valid for/);
+  assert.match(page, /servicePeriodValidityNote\(financialYearDraft\)/);
+  assert.match(page, /PERIOD_UNIT_OPTIONS = \[[\s\S]*value: 'days', label: 'Days'[\s\S]*value: 'months', label: 'Months'[\s\S]*value: 'annual', label: 'Years'/);
   assert.match(page, /item\.businessCategory \? ` for \$\{item\.businessCategory\}`/);
   assert.doesNotMatch(page, /item\.serviceCategory \? ` for \$\{item\.serviceCategory\}`/);
 });

@@ -246,6 +246,7 @@ function cleanItems(items, user = null, existingItems = [], systemStartDate = ''
       const rawBusinessCategory = cleanString(item.businessCategory) || cleanString(existingItem.businessCategory) || undefined;
       const isEprCredit = String(rawBusinessCategory || '').toLowerCase().replace(/[^a-z0-9]+/g, '') === 'eprcredit';
       const businessCategory = isEprCredit ? 'EPR Credit' : rawBusinessCategory;
+      const pwpEprCredit = isPwpEprCreditItem({ ...existingItem, ...item, businessCategory });
       const isOtherConsultancy = String(businessCategory || '').toLowerCase().replace(/[^a-z0-9]+/g, '') === 'otherconsultancy';
       const registrationYear = cleanString(item.registrationYear ?? existingItem.registrationYear);
       if (isOtherConsultancy && !EPR_CREDIT_YEAR_OPTIONS.has(registrationYear)) {
@@ -254,7 +255,7 @@ function cleanItems(items, user = null, existingItems = [], systemStartDate = ''
       let periodUnit;
       let servicePeriod;
       try {
-        if (isEprCredit) {
+        if (pwpEprCredit) {
           periodUnit = 'annual';
           servicePeriod = 0;
         } else {
@@ -282,7 +283,6 @@ function cleanItems(items, user = null, existingItems = [], systemStartDate = ''
       if (isEprCredit && !['KG', 'MT'].includes(unitLabel)) {
         throw new Error(`Quotation item ${index + 1}: UOM must be KG or MT for EPR Credit.`);
       }
-      const pwpEprCredit = isPwpEprCreditItem({ ...existingItem, ...item, businessCategory });
       if (isEprCredit && !pwpEprCredit && !annualReturnEprCreditYears.length) {
         throw new Error(`Quotation item ${index + 1}: select at least one Annual Return EPR Credit Year.`);
       }
@@ -294,11 +294,11 @@ function cleanItems(items, user = null, existingItems = [], systemStartDate = ''
       )) {
         throw new Error(`Quotation item ${index + 1}: Service Period and Select Period are read-only while Transition Period is Yes.`);
       }
-      let serviceStartDate = isEprCredit ? '' : existingTransitionIsFrozen
+      let serviceStartDate = pwpEprCredit ? '' : existingTransitionIsFrozen
         ? normalizeDateOnly(existingItem.serviceStartDate)
         : normalizeDateOnly(item.serviceStartDate || existingItem.serviceStartDate);
       let serviceEndDate = '';
-      if (isEprCredit) {
+      if (pwpEprCredit) {
         serviceEndDate = '';
       } else if (transitionPeriod === 'Yes') {
         if (existingTransitionIsFrozen) {
@@ -324,7 +324,7 @@ function cleanItems(items, user = null, existingItems = [], systemStartDate = ''
         validityPeriod: Math.max(1, Math.min(50, Number(item.validityPeriod) || 1)),
         servicePeriod,
         periodUnit,
-        transitionPeriod: isEprCredit ? 'No' : transitionPeriod,
+        transitionPeriod: pwpEprCredit ? 'No' : transitionPeriod,
         annualReturnYears,
         annualReturnEprCreditYears: isEprCredit && !pwpEprCredit ? annualReturnEprCreditYears : [],
         servicesOffered: cleanString(item.servicesOffered),
@@ -425,7 +425,7 @@ async function validateQuotationPiboItems(items = []) {
 function validateQuotationItemDates(items = []) {
   for (let index = 0; index < items.length; index += 1) {
     const item = items[index] || {};
-    if (String(item.businessCategory || '').toLowerCase().replace(/[^a-z0-9]+/g, '') === 'eprcredit') continue;
+    if (isPwpEprCreditItem(item)) continue;
     if (!item.serviceStartDate) throw new Error(`Quotation item ${index + 1}: Service Start Date is required.`);
     if (!item.serviceEndDate) throw new Error(`Quotation item ${index + 1}: Service End Date is required.`);
     if (item.serviceEndDate < item.serviceStartDate) {

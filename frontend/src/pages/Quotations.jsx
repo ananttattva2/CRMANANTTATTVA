@@ -88,8 +88,8 @@ const emptyItem = {
 
 const PERIOD_UNIT_OPTIONS = [
   { value: 'days', label: 'Days' },
-  { value: 'months', label: 'Month' },
-  { value: 'annual', label: 'Annual' }
+  { value: 'months', label: 'Months' },
+  { value: 'annual', label: 'Years' }
 ];
 const TRANSITION_PERIOD_OPTIONS = ['Yes', 'No'];
 
@@ -104,8 +104,8 @@ function periodUnitLabel(unit, quantity = 1) {
 function periodUnitLongLabel(unit) {
   switch (String(unit || '').trim().toLowerCase()) {
     case 'days': return 'Days';
-    case 'months': return 'Month';
-    default: return 'Annual';
+    case 'months': return 'Months';
+    default: return 'Years';
   }
 }
 
@@ -122,17 +122,19 @@ function isOtherConsultancyItem(item = {}) {
 }
 
 function quotationServicePeriodDisplay(item = {}) {
-  return isEprCreditItem(item) ? '0' : periodDisplay(item.servicePeriod, item.periodUnit);
+  return isPwpEprCreditItem(item) ? 'Not required' : periodDisplay(item.servicePeriod, item.periodUnit);
 }
 
-function servicePeriodValidityNote(item = {}, validUntil = '') {
-  if (isEprCreditItem(item)) {
-    return `The EPR – Credit rates are valid till: ${formatServiceDate(validUntil)}. New revised EPR credit rates will be applicable after expiry of validity date.`;
-  }
+function servicePeriodValidityNote(item = {}) {
   const unit = item.periodUnit || 'annual';
   const period = Math.max(1, Number(item.servicePeriod) || 1);
   const startDate = normalizeDateInputValue(item.serviceStartDate);
   const endDate = item.transitionPeriod === 'Yes' ? normalizeDateInputValue(item.serviceEndDate) : serviceEndDateFrom(startDate, period, unit);
+  if (isEprCreditItem(item)) {
+    return startDate && endDate
+      ? `The EPR – Credit rates are valid for ${periodDisplay(period, unit)} (${formatServiceDate(startDate)} to ${formatServiceDate(endDate)}). New revised EPR credit rates will be applicable after expiry of this period.`
+      : `The EPR – Credit rates will be valid for ${periodDisplay(period, unit)} from the selected Service Start Date.`;
+  }
   const renewalDate = endDate ? addServiceDays(endDate, 1) : '';
   return `Your service period is ${periodDisplay(period, unit)}${startDate ? ` (${formatServiceDate(startDate)} to ${formatServiceDate(endDate)})` : ''}${item.businessCategory ? ` for ${item.businessCategory}` : ''}${renewalDate ? ` and renewal will be applicable from ${formatServiceDate(renewalDate)}` : ''}.`;
 }
@@ -1676,7 +1678,7 @@ export default function Quotations() {
       let base = { ...emptyItem, ...(drafts[index] || {}), [field]: value };
       if (field === 'businessCategory') {
         if (isEprCreditItem(base)) {
-          base = { ...base, registrationYear: '', servicePeriod: 0, periodUnit: 'annual', transitionPeriod: 'No', serviceStartDate: '', serviceEndDate: '' };
+          base = { ...base, registrationYear: '', servicePeriod: Number(base.servicePeriod) > 0 ? base.servicePeriod : 1, periodUnit: base.periodUnit || 'annual', transitionPeriod: 'No' };
         } else if (isEprCreditItem(drafts[index] || {})) {
           base = { ...base, servicePeriod: 1, periodUnit: 'annual', transitionPeriod: 'No' };
         }
@@ -1739,7 +1741,7 @@ export default function Quotations() {
       servicesOffered: sourceService.servicesOffered || item.servicesOffered || '',
       registrationYear: item.registrationYear || sourceService.registrationYear || '',
       validityPeriod: String(item.validityPeriod || selectedYears.length || 1),
-      servicePeriod: isEprCreditItem({ ...item, businessCategory: sourceService.businessCategory || item.businessCategory }) ? '0' : String(item.servicePeriod || 1),
+      servicePeriod: String(Number(item.servicePeriod) > 0 ? item.servicePeriod : 1),
       periodUnit: ['days', 'months', 'annual'].includes(String(item.periodUnit || '').trim()) ? String(item.periodUnit).trim() : 'annual',
       transitionPeriod: ['Yes', 'No'].includes(String(item.transitionPeriod || '').trim()) ? String(item.transitionPeriod).trim() : 'No',
       annualReturnYears: selectedYears,
@@ -1793,7 +1795,7 @@ export default function Quotations() {
     const transitionPeriod = ['Yes', 'No'].includes(String(financialYearDraft?.transitionPeriod || '').trim())
       ? String(financialYearDraft.transitionPeriod).trim()
       : 'No';
-    const servicePeriod = eprCredit ? 0 : Math.max(1, Math.min(servicePeriodMax, Number(financialYearDraft?.servicePeriod) || 1));
+    const servicePeriod = Math.max(1, Math.min(servicePeriodMax, Number(financialYearDraft?.servicePeriod) || 1));
     const update = {
       validityPeriod: eprYearRequired ? validityPeriod : '',
       servicePeriod,
@@ -1814,11 +1816,11 @@ export default function Quotations() {
       applicableService: financialYearDraft.applicableService || ''
     };
     const existingStartDate = normalizeDateInputValue(financialYearDraft.serviceStartDate || quotation.items[financialYearItemIndex]?.serviceStartDate || itemDrafts[financialYearItemIndex]?.serviceStartDate);
-    if (eprCredit) {
-      update.transitionPeriod = 'No';
-      update.serviceStartDate = '';
-      update.serviceEndDate = '';
-    } else if (transitionPeriod === 'Yes' && sortedYears.length) {
+    if (eprCredit && !existingStartDate) {
+      setFinancialYearError('Please select the Service Start Date for EPR Credit.');
+      return;
+    }
+    if (transitionPeriod === 'Yes' && sortedYears.length && !eprCredit) {
       Object.assign(update, datesFromAnnualYears(sortedYears));
     } else if (existingStartDate) {
       update.serviceStartDate = existingStartDate;
@@ -1843,24 +1845,25 @@ export default function Quotations() {
       : 'annual';
     const servicePeriodMax = periodUnit === 'days' ? 3650 : periodUnit === 'months' ? 600 : 100;
     const eprCredit = isEprCreditItem(draft);
-    const servicePeriod = eprCredit ? 0 : Math.max(1, Math.min(servicePeriodMax, Number(draft.servicePeriod) || 1));
+    const pwpEprCredit = isPwpEprCreditItem(draft);
+    const servicePeriod = pwpEprCredit ? 0 : Math.max(1, Math.min(servicePeriodMax, Number(draft.servicePeriod) || 1));
     const transitionPeriod = ['Yes', 'No'].includes(String(draft.transitionPeriod || '').trim())
       ? String(draft.transitionPeriod).trim()
       : 'No';
     const serviceEndDate = transitionPeriod === 'Yes'
       ? normalizeDateInputValue(draft.serviceEndDate)
       : serviceEndDateFrom(serviceStartDate, servicePeriod, periodUnit);
-    if (!eprCredit && !serviceStartDate) {
+    if (!pwpEprCredit && !serviceStartDate) {
       setError(requiresEprDataYear(draft.eprCategory || draft.serviceCategory)
         ? 'Select EPR Data Year and Annual Return EPR Year before saving the quotation item.'
         : 'Select Service Start Date and Service Period before saving the quotation item.');
       return;
     }
-    if (!eprCredit && !serviceEndDate) {
+    if (!pwpEprCredit && !serviceEndDate) {
       setError('Select Service End Date before saving the quotation item.');
       return;
     }
-    if (!eprCredit && serviceEndDate < serviceStartDate) {
+    if (!pwpEprCredit && serviceEndDate < serviceStartDate) {
       setError('Service End Date must be on or after Service Start Date.');
       return;
     }
@@ -1886,11 +1889,11 @@ export default function Quotations() {
       return;
     }
     draft.piboParent = parent;
-    draft.serviceStartDate = eprCredit ? '' : serviceStartDate;
-    draft.serviceEndDate = eprCredit ? '' : serviceEndDate;
+    draft.serviceStartDate = pwpEprCredit ? '' : serviceStartDate;
+    draft.serviceEndDate = pwpEprCredit ? '' : serviceEndDate;
     draft.servicePeriod = servicePeriod;
     draft.periodUnit = periodUnit;
-    draft.transitionPeriod = eprCredit ? 'No' : transitionPeriod;
+    draft.transitionPeriod = pwpEprCredit ? 'No' : transitionPeriod;
     draft.servicesForYear = deriveFinancialYearFromDate(serviceStartDate);
     draft.unit = '1';
     draft.unitName = String(draft.unitName || '').trim();
@@ -2061,18 +2064,18 @@ export default function Quotations() {
       return;
     }
     const invalidPeriodIndex = quotation.items.findIndex((item) => {
-      if (isEprCreditItem(item)) return Number(item.servicePeriod) !== 0;
+      if (isPwpEprCreditItem(item)) return Number(item.servicePeriod) !== 0;
       const unit = String(item.periodUnit || '').trim();
       const period = Number(item.servicePeriod);
       const max = unit === 'days' ? 3650 : unit === 'months' ? 600 : 100;
       return !['days', 'months', 'annual'].includes(unit) || !Number.isInteger(period) || period < 1 || period > max;
     });
     if (invalidPeriodIndex >= 0) {
-      setError(`Quotation item ${invalidPeriodIndex + 1}: enter a valid whole Service Period and select Days, Month, or Annual.`);
+      setError(`Quotation item ${invalidPeriodIndex + 1}: enter a valid whole Service Period and select Days, Months, or Years.`);
       return;
     }
     const invalidDateIndex = quotation.items.findIndex((item) => {
-      if (isEprCreditItem(item)) return false;
+      if (isPwpEprCreditItem(item)) return false;
       const start = normalizeDateInputValue(item.serviceStartDate);
       const end = normalizeDateInputValue(item.serviceEndDate);
       return !start || !end || end < start;
@@ -2704,13 +2707,14 @@ export default function Quotations() {
             <header className="flex items-start justify-between border-b border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-orange-50 px-6 py-5"><div><p className="text-[11px] font-black uppercase tracking-[.2em] text-emerald-700">{financialYearNeedsEprData ? 'EPR Data Year Mapping' : 'Service Period Mapping'}</p><h2 className="mt-1 text-2xl font-black text-slate-950">{financialYearNeedsEprData ? 'Select EPR data validity and Annual Return years' : 'Select Service Period'}</h2><p className="mt-1 text-sm font-bold text-slate-500">Quotation item #{Number(financialYearItemIndex) + 1}</p></div><button type="button" onClick={() => { setFinancialYearDraft(null); setFinancialYearItemIndex(null); setFinancialYearError(''); }} className="grid h-11 w-11 place-items-center rounded-xl border bg-white text-slate-500"><X className="h-5 w-5" /></button></header>
             <div className="max-h-[calc(92vh-165px)] overflow-y-auto p-6">
               <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                <table className={`w-full text-left text-sm ${financialYearNeedsEprData ? (financialYearNeedsEprCreditYears ? 'min-w-[1720px]' : 'min-w-[1450px]') : (financialYearNeedsEprCreditYears ? 'min-w-[1380px]' : financialYearNeedsRegistrationYear ? 'min-w-[1320px]' : 'min-w-[1120px]')}`}>
-                  <thead className="bg-gradient-to-r from-teal-50 to-cyan-50 text-[10px] uppercase tracking-[.13em] text-teal-900"><tr>{['Sr. No', ...(financialYearNeedsEprData ? ['EPR Data Validity'] : []), 'Service Period', 'Select Period', 'Transition Period', ...(financialYearNeedsEprData ? [financialYearEprYearHeading] : []), ...(financialYearNeedsEprCreditYears ? ['Annual Return EPR Credit Years'] : []), 'Applicant Type', ...(financialYearNeedsRegistrationYear ? ['Registration Year'] : []), 'Service Category', 'Business Category', 'Services Offered'].map((heading) => <th key={heading} className={`px-4 py-4 ${heading === 'Annual Return EPR Credit Years' || heading === financialYearEprYearHeading ? 'min-w-[220px]' : heading === 'Applicant Type' || heading === 'Registration Year' ? 'min-w-[160px]' : ''}`}>{heading}</th>)}</tr></thead>
+                <table className={`w-full text-left text-sm ${financialYearNeedsEprData ? (financialYearNeedsEprCreditYears ? 'min-w-[1900px]' : 'min-w-[1450px]') : (financialYearNeedsEprCreditYears ? 'min-w-[1560px]' : financialYearNeedsRegistrationYear ? 'min-w-[1320px]' : 'min-w-[1120px]')}`}>
+                  <thead className="bg-gradient-to-r from-teal-50 to-cyan-50 text-[10px] uppercase tracking-[.13em] text-teal-900"><tr>{['Sr. No', ...(financialYearNeedsEprData ? ['EPR Data Validity'] : []), 'Service Period', 'Select Period', ...(financialYearNeedsEprCreditYears ? ['Service Start Date'] : []), 'Transition Period', ...(financialYearNeedsEprData ? [financialYearEprYearHeading] : []), ...(financialYearNeedsEprCreditYears ? ['Annual Return EPR Credit Years'] : []), 'Applicant Type', ...(financialYearNeedsRegistrationYear ? ['Registration Year'] : []), 'Service Category', 'Business Category', 'Services Offered'].map((heading) => <th key={heading} className={`px-4 py-4 ${heading === 'Annual Return EPR Credit Years' || heading === financialYearEprYearHeading ? 'min-w-[220px]' : heading === 'Applicant Type' || heading === 'Registration Year' || heading === 'Service Start Date' ? 'min-w-[160px]' : ''}`}>{heading}</th>)}</tr></thead>
                   <tbody><tr className="align-top">
                     <td className="p-4"><span className="grid h-9 w-9 place-items-center rounded-xl bg-slate-100 font-black">{Number(financialYearItemIndex) + 1}</span></td>
                     {financialYearNeedsEprData && <td className="p-4"><div className="flex h-12 w-40 overflow-hidden rounded-xl border border-slate-200"><input type="number" min="1" max="50" value={financialYearDraft.validityPeriod || ''} onChange={(event) => { const limit = Math.max(1, Math.min(50, Number(event.target.value) || 1)); setFinancialYearDraft((current) => ({ ...current, validityPeriod: String(limit), annualReturnYears: (current.annualReturnYears || []).slice(0, limit) })); }} className="min-w-0 flex-1 px-4 font-black outline-none" /><span className="grid place-items-center border-l bg-slate-50 px-3 text-xs font-black text-slate-500">Year</span></div></td>}
-                    <td className="p-4"><div className={`flex h-12 w-40 overflow-hidden rounded-xl border border-slate-200 ${financialYearNeedsEprCreditYears ? 'bg-slate-100' : ''}`}><input type="number" min={financialYearNeedsEprCreditYears ? 0 : 1} disabled={financialYearNeedsEprCreditYears} max={financialYearDraft.periodUnit === 'days' ? 3650 : financialYearDraft.periodUnit === 'months' ? 600 : 100} value={financialYearNeedsEprCreditYears ? 0 : (financialYearDraft.servicePeriod || '')} onChange={(event) => { const max = financialYearDraft.periodUnit === 'days' ? 3650 : financialYearDraft.periodUnit === 'months' ? 600 : 100; const period = Math.max(1, Math.min(max, Number(event.target.value) || 1)); setFinancialYearDraft((current) => ({ ...current, servicePeriod: String(period), ...(current.transitionPeriod === 'Yes' ? {} : { serviceEndDate: serviceEndDateFrom(current.serviceStartDate, period, current.periodUnit || 'annual') }) })); }} className="min-w-0 flex-1 px-4 font-black outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500" /><span className="grid place-items-center border-l bg-slate-50 px-3 text-xs font-black text-slate-500">{financialYearNeedsEprCreditYears ? 'N/A' : periodUnitLabel(financialYearDraft.periodUnit || 'annual', financialYearDraft.servicePeriod)}</span></div></td>
-                    <td className="p-4"><QuoteSelect disabled={financialYearNeedsEprCreditYears} value={financialYearNeedsEprCreditYears ? '' : (financialYearDraft.periodUnit || 'annual')} options={PERIOD_UNIT_OPTIONS} placeholder={financialYearNeedsEprCreditYears ? 'N/A' : 'Select period'} categoryLabel="Select Period" onChange={(value) => setFinancialYearDraft((current) => { const unit = normalizePeriodUnit(value); const max = unit === 'days' ? 3650 : unit === 'months' ? 600 : 100; const period = Math.max(1, Math.min(max, Number(current.servicePeriod) || 1)); return { ...current, periodUnit: unit, servicePeriod: String(period), ...(current.transitionPeriod === 'Yes' ? {} : { serviceEndDate: serviceEndDateFrom(current.serviceStartDate, period, unit) }) }; })} /></td>
+                    <td className="p-4"><div className="flex h-12 w-40 overflow-hidden rounded-xl border border-slate-200"><input type="number" min="1" max={financialYearDraft.periodUnit === 'days' ? 3650 : financialYearDraft.periodUnit === 'months' ? 600 : 100} value={financialYearDraft.servicePeriod || ''} onChange={(event) => { const max = financialYearDraft.periodUnit === 'days' ? 3650 : financialYearDraft.periodUnit === 'months' ? 600 : 100; const period = Math.max(1, Math.min(max, Number(event.target.value) || 1)); setFinancialYearDraft((current) => ({ ...current, servicePeriod: String(period), ...(current.transitionPeriod === 'Yes' ? {} : { serviceEndDate: serviceEndDateFrom(current.serviceStartDate, period, current.periodUnit || 'annual') }) })); }} className="min-w-0 flex-1 px-4 font-black outline-none" /><span className="grid place-items-center border-l bg-slate-50 px-3 text-xs font-black text-slate-500">{periodUnitLabel(financialYearDraft.periodUnit || 'annual', financialYearDraft.servicePeriod)}</span></div></td>
+                    <td className="p-4"><QuoteSelect value={financialYearDraft.periodUnit || 'annual'} options={PERIOD_UNIT_OPTIONS} placeholder="Select period" categoryLabel="Select Period" onChange={(value) => setFinancialYearDraft((current) => { const unit = normalizePeriodUnit(value); const max = unit === 'days' ? 3650 : unit === 'months' ? 600 : 100; const period = Math.max(1, Math.min(max, Number(current.servicePeriod) || 1)); return { ...current, periodUnit: unit, servicePeriod: String(period), ...(current.transitionPeriod === 'Yes' ? {} : { serviceEndDate: serviceEndDateFrom(current.serviceStartDate, period, unit) }) }; })} /></td>
+                    {financialYearNeedsEprCreditYears && <td className="p-4"><input type="date" value={normalizeDateInputValue(financialYearDraft.serviceStartDate)} onChange={(event) => { setFinancialYearDraft((current) => ({ ...current, serviceStartDate: event.target.value, serviceEndDate: serviceEndDateFrom(event.target.value, current.servicePeriod || 1, current.periodUnit || 'annual') })); setFinancialYearError(''); }} className="h-12 w-44 rounded-xl border border-slate-200 bg-white px-3 font-black outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-100" />{financialYearError?.includes('Service Start Date') && <p className="mt-2 text-xs font-black text-red-600">{financialYearError}</p>}</td>}
                     <td className="p-4"><QuoteSelect value={financialYearDraft.transitionPeriod || 'No'} options={TRANSITION_PERIOD_OPTIONS} placeholder="Transition Period" categoryLabel="Transition Period" onChange={(value) => setFinancialYearDraft((current) => {
                       if (value === 'Yes') {
                         const yearDates = datesFromAnnualYears(current.annualReturnYears || []);
@@ -2726,7 +2730,7 @@ export default function Quotations() {
                   </tr></tbody>
                 </table>
               </div>
-              <div className="mt-5 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 p-5"><p className="text-xs font-black uppercase tracking-[.16em] text-emerald-700">Service Period Validity Note</p>{financialYearNeedsEprCreditYears ? <p className="mt-2 text-lg font-black text-slate-900">{servicePeriodValidityNote(financialYearDraft, quotation.validUntil)}</p> : <><p className="mt-2 text-lg font-black text-slate-900">Your service period is {periodDisplay(financialYearDraft.servicePeriod, financialYearDraft.periodUnit)}{financialYearDraft.serviceStartDate ? ` (${formatServiceDate(financialYearDraft.serviceStartDate)} to ${formatServiceDate(financialYearDisplayEnd)})` : ''}{financialYearDraft.businessCategory ? ` for ${financialYearDraft.businessCategory}` : ''}.</p><p className="mt-1 text-sm font-bold text-slate-600">{financialYearDraft.serviceStartDate ? `Renewal will be applicable from ${formatServiceDate(financialYearRenewalDate)}.` : 'Select the Service Start Date in the quotation row to calculate the Service End Date and renewal date automatically.'}</p></>}</div>
+              <div className="mt-5 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 p-5"><p className="text-xs font-black uppercase tracking-[.16em] text-emerald-700">Service Period Validity Note</p>{financialYearNeedsEprCreditYears ? <p className="mt-2 text-lg font-black text-slate-900">{servicePeriodValidityNote(financialYearDraft)}</p> : <><p className="mt-2 text-lg font-black text-slate-900">Your service period is {periodDisplay(financialYearDraft.servicePeriod, financialYearDraft.periodUnit)}{financialYearDraft.serviceStartDate ? ` (${formatServiceDate(financialYearDraft.serviceStartDate)} to ${formatServiceDate(financialYearDisplayEnd)})` : ''}{financialYearDraft.businessCategory ? ` for ${financialYearDraft.businessCategory}` : ''}.</p><p className="mt-1 text-sm font-bold text-slate-600">{financialYearDraft.serviceStartDate ? `Renewal will be applicable from ${formatServiceDate(financialYearRenewalDate)}.` : 'Select the Service Start Date in the quotation row to calculate the Service End Date and renewal date automatically.'}</p></>}</div>
             </div>
             <footer className="flex justify-end gap-3 border-t bg-slate-50 px-6 py-4"><button type="button" onClick={() => { setFinancialYearDraft(null); setFinancialYearItemIndex(null); setFinancialYearError(''); }} className="rounded-xl border bg-white px-5 py-3 font-black text-slate-600">Cancel</button><button type="button" onClick={saveFinancialYearSelection} className="rounded-xl bg-[#30737B] px-6 py-3 font-black text-white shadow-lg">{financialYearNeedsEprData ? 'Apply EPR Data Year' : 'Apply Service Period'}</button></footer>
           </section>

@@ -15,7 +15,7 @@ function normalizeDateOnly(value) {
 function normalizePeriodUnit(value, { allowMissing = true } = {}) {
   const raw = String(value || '').trim().toLowerCase();
   if (!raw && allowMissing) return 'annual';
-  if (!PERIOD_UNITS.includes(raw)) throw new Error('Select Period must be Days, Month, or Annual.');
+  if (!PERIOD_UNITS.includes(raw)) throw new Error('Select Period must be Days, Months, or Years.');
   return raw;
 }
 
