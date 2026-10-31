@@ -33,6 +33,8 @@ test('quotation actions expose the request modal and Pending Approval exposes fi
   const model = fs.readFileSync(path.join(backendRoot, 'models/PendingApproval.js'), 'utf8');
 
   assert.match(quotationsPage, /Management Approval/);
+  assert.match(quotationsPage, /> Admin Approval<\/button>/);
+  assert.match(quotationsPage, /const canRequestManagementApproval = Boolean\(currentUser\)/);
   assert.match(quotationsPage, /Send to Admin/);
   assert.match(quotationsPage, /Auto-fetched from quotation/);
   assert.match(quotationsPage, /ApprovalSourceIcon/);

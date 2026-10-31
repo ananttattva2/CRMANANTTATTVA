@@ -1370,7 +1370,7 @@ export default function Quotations() {
       setManagementSourceOpen(false);
       setSuccessModal({
         title: 'Sent for Admin Approval',
-        message: response.data?.message || 'Quotation is now assigned to the selected Admin. A Super Admin may approve it directly.'
+        message: response.data?.message || 'Quotation is now available in the Admin approval queue. A Super Admin may approve it directly.'
       });
       await loadPage();
     } catch (err) {
@@ -1412,7 +1412,7 @@ export default function Quotations() {
       const summary = response.data.summary || {};
       setBulkPreview(null);
       await loadPage();
-      setSuccessModal({ title: 'Bulk quotation import complete', message: `${summary.created || 0} created, ${summary.updated || 0} updated, ${summary.failed || 0} failed, and ${skippedCount} incomplete quotation${skippedCount === 1 ? ' was' : 's were'} skipped. Saved quotations remain drafts until Management Approval is requested from Actions.` });
+      setSuccessModal({ title: 'Bulk quotation import complete', message: `${summary.created || 0} created, ${summary.updated || 0} updated, ${summary.failed || 0} failed, and ${skippedCount} incomplete quotation${skippedCount === 1 ? ' was' : 's were'} skipped. Saved quotations remain drafts until Admin Approval is requested from Actions.` });
     } catch (importError) {
       const failures = importError.response?.data?.failures || [];
       setError(failures.length ? failures.slice(0, 3).map((row) => `${row.quotationNumber || `Row ${row.row}`}: ${row.error}`).join(' · ') : (importError.response?.data?.error || 'Bulk quotation import failed.'));
@@ -2208,7 +2208,7 @@ export default function Quotations() {
       return <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700"><Check className="h-3.5 w-3.5" /> Final Approved</span>;
     }
     if (String(row?.status || '').toLowerCase() === 'rejected') return null;
-    return <button type="button" onClick={() => openManagementApproval(row)} className="inline-flex items-center gap-1 rounded-lg border border-orange-300 bg-white px-3 py-2 text-xs font-black text-orange-600"><Users className="h-3.5 w-3.5" /> Management Approval</button>;
+    return <button type="button" onClick={() => openManagementApproval(row)} className="inline-flex items-center gap-1 rounded-lg border border-orange-300 bg-white px-3 py-2 text-xs font-black text-orange-600"><Users className="h-3.5 w-3.5" /> Admin Approval</button>;
   }
 
   if (viewMode === 'list') {
@@ -2384,7 +2384,7 @@ export default function Quotations() {
             <form onSubmit={submitManagementApproval} className="management-approval-modal">
               <header className="management-approval-header">
                 <div className="management-approval-title-icon"><Users className="h-6 w-6" /></div>
-                <div><p>Final approval request</p><h2>Management Approval</h2></div>
+                <div><p>Quotation approval request</p><h2>Admin Approval</h2></div>
                 <button type="button" disabled={managementApprovalSaving} onClick={() => setManagementApproval(null)} aria-label="Close management approval"><X className="h-5 w-5" /></button>
               </header>
               <div className="management-approval-body">
