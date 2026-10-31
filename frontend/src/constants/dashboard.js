@@ -15,7 +15,8 @@ import {
   UserPlus,
   Users,
   BarChart3,
-  TrendingUp
+  TrendingUp,
+  Factory
 } from 'lucide-react'
 
 export const roles = ['operation', 'admin', 'superadmin', 'manager', 'compliance', 'sales', 'accounts']
@@ -107,6 +108,7 @@ export const navSections = [
           { label: 'Cold Leads', icon: ClipboardList, path: '/sales/lead-generation?tab=temporary' },
           { label: 'Lead Allocate', icon: UserPlus, path: '/sales/lead-allocate', roles: adminRoles },
           { label: 'Client Master', icon: UserRound, path: '/sales/client-master' },
+          { label: 'CTO & CTE', icon: Factory, path: '/sales/cto-cte' },
           { label: 'Client Data Uploads', icon: FileText, path: '/client-data-uploads' },
           { label: 'Client Master Allocate', icon: Users, path: '/sales/client-master-allocate', roles: [...adminRoles, 'manager'] },
           { label: 'Health Report Check', icon: ClipboardList, path: '/sales/health-report-check' },

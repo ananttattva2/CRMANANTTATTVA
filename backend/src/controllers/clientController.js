@@ -1183,6 +1183,25 @@ exports.listClients = async (req, res) => {
   // explicitly requests this bounded directory representation.
   if (!paginated) {
     const queryStartedAt = process.hrtime.bigint();
+    if (req.query.view === 'cte-cto') {
+      const clients = await Client.find(baseFilter)
+        .select([
+          '_id', 'companyIdentity', 'assignedServiceId', 'selectedLead', 'updatedAt',
+          'data.basic.clientLegalName', 'data.basic.tradeName', 'data.basic.applicantType',
+          'data.basic.subApplicantType', 'data.basic.piboCategory',
+          'data.basic.eprCategory', 'data.basic.plantUnit', 'data.cte',
+          'data.importMeta.uniqueId', 'data.importMeta.leadNumber',
+          'data.selectedLeadSnapshot.applicantType', 'data.selectedLeadSnapshot.piboParent',
+          'data.selectedLeadSnapshot.piboCategoryParent', 'data.selectedLeadSnapshot.subApplicantType',
+          'data.selectedLeadSnapshot.piboCategory', 'data.selectedLeadSnapshot.assignedServiceId'
+        ].join(' '))
+        .populate('selectedLead', 'leadCode company applicantType subApplicantType piboCategory piboParent serviceSelections')
+        .sort({ 'data.basic.clientLegalName': 1, updatedAt: -1 })
+        .lean();
+      const queryMs = Number(process.hrtime.bigint() - queryStartedAt) / 1e6;
+      res.set('Server-Timing', `access;dur=${accessMs.toFixed(1)}, query;dur=${queryMs.toFixed(1)}`);
+      return res.json({ ok: true, clients });
+    }
     if (req.query.view === 'execution') {
       const clients = await Client.find(combineAccessFilters(baseFilter, { 'adminControls.approvalStatus': 'APPROVED' }))
         .select('data.basic.clientLegalName data.basic.tradeName data.basic.applicantType data.basic.subApplicantType data.basic.servicesOffered data.clientLifecycle.workFollowUps selectedLead adminControls.approvalStatus adminControls.assignedTo createdAt')

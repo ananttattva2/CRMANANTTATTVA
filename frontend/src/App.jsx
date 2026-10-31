@@ -14,6 +14,7 @@ const LeadPipeline = lazy(() => import('./pages/LeadPipeline'))
 const LeadGeneration = lazy(() => import('./pages/LeadGeneration'))
 const ClientDataUploads = lazy(() => import('./pages/ClientDataUploads'))
 const ClientMaster = lazy(() => import('./pages/ClientMaster'))
+const CteCtoDirectory = lazy(() => import('./pages/CteCtoDirectory'))
 const ClientMasterAllocate = lazy(() => import('./pages/ClientMasterAllocate'))
 const LeadAllocate = lazy(() => import('./pages/LeadAllocate'))
 const HealthReportCheck = lazy(() => import('./pages/HealthReportCheck'))
@@ -151,6 +152,7 @@ function App(){
         <Route path="/compliance/health-report" element={<ProtectedRoute><ComplianceHealthDashboard/></ProtectedRoute>} />
         <Route path="/client-data-uploads" element={<ProtectedRoute><ClientDataUploads/></ProtectedRoute>} />
         <Route path="/sales/client-master" element={<ProtectedRoute><ClientMaster/></ProtectedRoute>} />
+        <Route path="/sales/cto-cte" element={<ProtectedRoute><CteCtoDirectory/></ProtectedRoute>} />
         <Route path="/sales/client-master-allocate" element={<ProtectedRoute><ClientMasterAllocate/></ProtectedRoute>} />
         <Route path="/sales/health-report-check" element={<ProtectedRoute><HealthReportCheck/></ProtectedRoute>} />
         <Route path="/sales/client-annual-returns/:clientKey" element={<ProtectedRoute><ClientMaster/></ProtectedRoute>} />

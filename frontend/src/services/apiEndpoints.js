@@ -59,6 +59,7 @@ const API_ENDPOINTS = {
   },
   clients: {
     list: '/clients',
+    cteCtoDirectory: '/clients?view=cte-cto',
     dashboardComplianceRecords: '/clients/dashboard/compliance-records',
     catalog: '/clients/discovery/catalog',
     discoverySearch: '/clients/discovery/search',
