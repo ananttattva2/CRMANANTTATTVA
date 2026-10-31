@@ -1190,6 +1190,8 @@ exports.listClients = async (req, res) => {
           'data.basic.clientLegalName', 'data.basic.tradeName', 'data.basic.applicantType',
           'data.basic.subApplicantType', 'data.basic.piboCategory',
           'data.basic.eprCategory', 'data.basic.plantUnit', 'data.cte',
+          'data.otp', 'data.otpContacts', 'data.authorised', 'data.authorisedPersons',
+          'data.coordinating', 'data.coordinatingPersons', 'data.serviceDetailsByAssignedServiceId',
           'data.importMeta.uniqueId', 'data.importMeta.leadNumber',
           'data.selectedLeadSnapshot.applicantType', 'data.selectedLeadSnapshot.piboParent',
           'data.selectedLeadSnapshot.piboCategoryParent', 'data.selectedLeadSnapshot.subApplicantType',
@@ -1198,9 +1200,27 @@ exports.listClients = async (req, res) => {
         .populate('selectedLead', 'leadCode company applicantType subApplicantType piboCategory piboParent serviceSelections')
         .sort({ 'data.basic.clientLegalName': 1, updatedAt: -1 })
         .lean();
+      const directoryClients = clients.map((client) => {
+        const resolved = resolveClientMasterData(client, readClientAssignedServiceId(client, client.data || {}));
+        return {
+          ...client,
+          data: {
+            basic: client.data?.basic || {},
+            importMeta: client.data?.importMeta || {},
+            selectedLeadSnapshot: client.data?.selectedLeadSnapshot || {},
+            cte: resolved.cte || {},
+            otp: resolved.otp || {},
+            otpContacts: Array.isArray(resolved.otpContacts) ? resolved.otpContacts : [],
+            authorised: resolved.authorised || {},
+            authorisedPersons: Array.isArray(resolved.authorisedPersons) ? resolved.authorisedPersons : [],
+            coordinating: resolved.coordinating || {},
+            coordinatingPersons: Array.isArray(resolved.coordinatingPersons) ? resolved.coordinatingPersons : []
+          }
+        };
+      });
       const queryMs = Number(process.hrtime.bigint() - queryStartedAt) / 1e6;
       res.set('Server-Timing', `access;dur=${accessMs.toFixed(1)}, query;dur=${queryMs.toFixed(1)}`);
-      return res.json({ ok: true, clients });
+      return res.json({ ok: true, clients: directoryClients });
     }
     if (req.query.view === 'execution') {
       const clients = await Client.find(combineAccessFilters(baseFilter, { 'adminControls.approvalStatus': 'APPROVED' }))

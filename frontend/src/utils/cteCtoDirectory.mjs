@@ -7,6 +7,15 @@ export function documentUrl(value) {
   return text(value?.secureUrl || value?.url || value?.dataUrl || (typeof value === 'string' ? value : ''))
 }
 
+function people(primary, additional, fields) {
+  return [primary || {}, ...(Array.isArray(additional) ? additional : [])]
+    .filter((person) => fields.some((field) => text(person?.[field])))
+}
+
+function peopleValues(records, field, mapper = (item) => text(item?.[field])) {
+  return records.map(mapper).filter(Boolean).join(' | ') || '-'
+}
+
 export function describeCteCtoRecord(record = {}) {
   const data = record.data || {}
   const snapshot = data.selectedLeadSnapshot || {}
@@ -25,6 +34,9 @@ export function describeCteCtoRecord(record = {}) {
       || lead.subApplicantType || lead.piboCategory,
     'Not applicable'
   )
+  const otpContacts = people(data.otp, data.otpContacts, ['mobile', 'personName', 'designation'])
+  const authorisedPersons = people(data.authorised, data.authorisedPersons, ['name', 'designation', 'department', 'reporting', 'mobile', 'email', 'pan', 'panDocument', 'aadhaarNumber', 'aadhaarDocument'])
+  const coordinatingPersons = people(data.coordinating, data.coordinatingPersons, ['name', 'designation', 'department', 'reporting', 'mobile', 'email'])
   return {
     ...record,
     id: text(record._id || record.id),
@@ -35,7 +47,10 @@ export function describeCteCtoRecord(record = {}) {
     subApplicantType,
     eprCategory: text(data.basic?.eprCategory || service.eprCategory, '-'),
     assignedServiceId,
-    cte: data.cte || {}
+    cte: data.cte || {},
+    otpContacts,
+    authorisedPersons,
+    coordinatingPersons
   }
 }
 
@@ -78,7 +93,26 @@ export function cteCtoExportRows(groups = []) {
       'CTO/CCA Issue Date': text(plant.ctoIssueDate, '-'),
       'CTO/CCA Valid Upto': text(plant.ctoValidDate, '-'),
       'CTO/CCA Product Quantity': (plant.ctoProductRows || []).map((row) => `${text(row.productName, 'Product')}: ${text(row.quantity, '-')}`).join('; ') || '-',
-      'CTO/CCA Document': documentUrl(plant.ctoDocument) || '-'
+      'CTO/CCA Document': documentUrl(plant.ctoDocument) || '-',
+      'OTP Person Name': peopleValues(record.otpContacts || [], 'personName'),
+      'OTP Mobile No.': peopleValues(record.otpContacts || [], 'mobile'),
+      'OTP Person Designation': peopleValues(record.otpContacts || [], 'designation'),
+      'Authorised Person Name': peopleValues(record.authorisedPersons || [], 'name'),
+      'Authorised Person Designation': peopleValues(record.authorisedPersons || [], 'designation'),
+      'Authorised Person Department': peopleValues(record.authorisedPersons || [], 'department'),
+      'Authorised Person Reporting Details': peopleValues(record.authorisedPersons || [], 'reporting'),
+      'Authorised Person Mobile': peopleValues(record.authorisedPersons || [], 'mobile'),
+      'Authorised Person Email': peopleValues(record.authorisedPersons || [], 'email'),
+      'Authorised Person PAN': peopleValues(record.authorisedPersons || [], 'pan'),
+      'Authorised Person PAN Document': peopleValues(record.authorisedPersons || [], 'panDocument', (person) => documentUrl(person?.panDocument)),
+      'Authorised Person Aadhaar': peopleValues(record.authorisedPersons || [], 'aadhaarNumber'),
+      'Authorised Person Aadhaar Document': peopleValues(record.authorisedPersons || [], 'aadhaarDocument', (person) => documentUrl(person?.aadhaarDocument)),
+      'Coordinating Person Name': peopleValues(record.coordinatingPersons || [], 'name'),
+      'Coordinating Person Designation': peopleValues(record.coordinatingPersons || [], 'designation'),
+      'Coordinating Person Department': peopleValues(record.coordinatingPersons || [], 'department'),
+      'Coordinating Person Reporting Details': peopleValues(record.coordinatingPersons || [], 'reporting'),
+      'Coordinating Person Mobile': peopleValues(record.coordinatingPersons || [], 'mobile'),
+      'Coordinating Person Email': peopleValues(record.coordinatingPersons || [], 'email')
     }))
   }))
 }
