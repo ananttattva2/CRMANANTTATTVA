@@ -26,7 +26,7 @@ const ADMIN_LOGIN_ROLES = ['admin', 'superadmin'];
 const SUPPORT_TICKET_100_MILESTONE = 'support_tickets_100_v1';
 
 function roleLabel(name) {
-  const fixed = { superadmin: 'Super Admin', compliance: 'Compliance Manager' };
+  const fixed = { superadmin: 'Super Admin', compliance: 'Compliance Manager', 'cte-cto': 'CTE & CTO' };
   return fixed[name] || String(name || '').replace(/[-_]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 

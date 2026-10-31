@@ -15,6 +15,7 @@ const { notifyComplianceClientSubmission } = require('../services/clientComplian
 const { mapQuotationPendingApprovalRow } = require('./quotationController');
 const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
 const { CLIENT_APPROVAL_ROLES } = require('../constants/roles');
+const { userHasAnyRole } = require('../utils/userRoles');
 const { analyzeClientMasterData } = require('../services/userProductivityReport');
 const { normalizeClientMaster, resolveClientMasterData } = require('../services/clientMasterResolver');
 const { normalizeCompanyIdentity } = require('../services/crmRecordPersistence');
@@ -97,8 +98,6 @@ async function validateNewClientLeadEligibility(selectedLead, assignedServiceId,
     ? ''
     : CLIENT_MASTER_CLOSED_LEAD_ERROR;
 }
-const { userHasAnyRole } = require('../utils/userRoles');
-
 function normalizeApprovalStatus(value) {
   const status = String(value || '').trim().toUpperCase();
   return ['PENDING', 'PARTIALLY_APPROVED', 'APPROVED', 'REJECTED'].includes(status) ? status : '';
@@ -1184,7 +1183,13 @@ exports.listClients = async (req, res) => {
   if (!paginated) {
     const queryStartedAt = process.hrtime.bigint();
     if (req.query.view === 'cte-cto') {
-      const clients = await Client.find(baseFilter)
+      const cteCtoDirectoryFilter = userHasAnyRole(req.user, ['CTE & CTO'])
+        ? combineAccessFilters(
+            clientMasterSourceRecordFilter(),
+            testLeadReferences ? dashboardClientExclusionFilter(testLeadReferences) : {}
+          )
+        : baseFilter;
+      const clients = await Client.find(cteCtoDirectoryFilter)
         .select([
           '_id', 'companyIdentity', 'assignedServiceId', 'selectedLead', 'updatedAt',
           'data.basic.clientLegalName', 'data.basic.tradeName', 'data.basic.applicantType',

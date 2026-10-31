@@ -19,7 +19,7 @@ import {
   Factory
 } from 'lucide-react'
 
-export const roles = ['operation', 'admin', 'superadmin', 'manager', 'compliance', 'sales', 'accounts']
+export const roles = ['operation', 'admin', 'superadmin', 'manager', 'compliance', 'sales', 'accounts', 'cte-cto']
 export const adminRoles = ['admin', 'superadmin']
 export const isComplianceRole = (role = '') => String(role).trim().toLowerCase().replace(/[\s_-]+/g, '').includes('compliance')
 export const getUserRoles = (user = {}) => [...new Set([user?.role, ...(Array.isArray(user?.roles) ? user.roles : [])]
@@ -41,7 +41,8 @@ export const roleLabels = {
   manager: 'Manager',
   compliance: 'Compliance Manager',
   sales: 'Sales',
-  accounts: 'Accounts'
+  accounts: 'Accounts',
+  'cte-cto': 'CTE & CTO'
 }
 
 export const defaultUserForm = {

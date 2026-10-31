@@ -23,10 +23,8 @@ const ANANT_LOGO_SOURCE_URL = '/anant-tattva-logo-chroma.png';
 
 const MANAGEMENT_APPROVAL_SOURCES = [
   { value: 'TEAMS', label: 'Teams' },
-  { value: 'EMAIL', label: 'Email' },
-  { value: 'VERBAL_CALL', label: 'Verbal Call' },
-  { value: 'WHATSAPP', label: 'WhatsApp' },
-  { value: 'OTHER', label: 'Other' }
+  { value: 'OUTLOOK', label: 'Outlook' },
+  { value: 'WHATSAPP', label: 'WhatsApp' }
 ];
 
 function TeamsApprovalIcon({ className = '' }) {
@@ -35,7 +33,7 @@ function TeamsApprovalIcon({ className = '' }) {
 
 function ApprovalSourceIcon({ source, className = '' }) {
   if (source === 'TEAMS') return <TeamsApprovalIcon className={className} />;
-  if (source === 'EMAIL') return <Mail className={className} />;
+  if (source === 'OUTLOOK') return <Mail className={className} />;
   if (source === 'VERBAL_CALL') return <Phone className={className} />;
   if (source === 'WHATSAPP') return <MessageCircle className={className} />;
   return <MoreHorizontal className={className} />;
@@ -1340,7 +1338,7 @@ export default function Quotations() {
 
   async function openManagementApproval(row) {
     if (!canRequestManagementApproval || ['approved', 'rejected'].includes(String(row?.status || '').toLowerCase())) return;
-    setManagementApproval({ row, approverId: '', source: '', note: '' });
+    setManagementApproval({ row, approverId: '', priceApprovedByName: '', source: '', proofUrl: '', proofName: '', note: '' });
     setManagementSourceOpen(false);
     setManagementApproversLoading(true);
     setError('');
@@ -1361,9 +1359,9 @@ export default function Quotations() {
         approverId: approvers.length === 1 ? String(approvers[0].id) : current.approverId,
         row: fullQuotation ? { ...current.row, ...fullQuotation } : current.row
       } : current);
-      if (!approvers.length) setError('No active Super Admin is available for final approval.');
+      if (!approvers.length) setError('No active Admin is available for quotation approval.');
     } catch (err) {
-      setError(err?.response?.data?.error || 'Unable to load Super Admin approvers.');
+      setError(err?.response?.data?.error || 'Unable to load Admin approvers.');
     } finally {
       setManagementApproversLoading(false);
     }
@@ -1371,21 +1369,24 @@ export default function Quotations() {
 
   async function submitManagementApproval(event) {
     event.preventDefault();
-    if (!managementApproval?.row || !managementApproval.approverId || !managementApproval.source) return;
+    if (!managementApproval?.row || !managementApproval.approverId || !managementApproval.priceApprovedByName || !managementApproval.source) return;
     const id = managementApproval.row._id || managementApproval.row.id;
     setManagementApprovalSaving(true);
     setError('');
     try {
       const response = await api.patch(API_ENDPOINTS.quotations.managementApproval(id), {
         approverId: managementApproval.approverId,
+        priceApprovedByName: managementApproval.priceApprovedByName,
         source: managementApproval.source,
+        proofUrl: managementApproval.proofUrl,
+        proofName: managementApproval.proofName,
         note: String(managementApproval.note || '').trim()
       });
       setManagementApproval(null);
       setManagementSourceOpen(false);
       setSuccessModal({
-        title: 'Sent to Super Admin',
-        message: response.data?.message || 'Quotation is now visible in Pending Approval for final Super Admin approval.'
+        title: 'Sent for Admin Approval',
+        message: response.data?.message || 'Quotation is now assigned to the selected Admin. A Super Admin may approve it directly.'
       });
       await loadPage();
     } catch (err) {
@@ -2161,17 +2162,17 @@ export default function Quotations() {
 
   const canApproveQuotation = [currentUser?.role, ...(currentUser?.roles || [])].some((role) => ['admin', 'superadmin'].includes(String(role || '').toLowerCase().replace(/[\s_-]+/g, '')));
 
-  async function uploadApprovalProof(event) {
+  async function uploadManagementApprovalProof(event) {
     const file = event.target.files?.[0];
     if (!file) return;
-    setApprovalDecisionSaving(true);
+    setManagementApprovalSaving(true);
     try {
       const uploaded = await uploadMedia(file, 'crm/quotations/approval-proofs');
-      setApprovalDecision((current) => current && ({ ...current, proofUrl: uploaded.secureUrl, proofName: file.name }));
+      setManagementApproval((current) => current && ({ ...current, proofUrl: uploaded.secureUrl, proofName: file.name }));
     } catch (err) {
       setError(err?.response?.data?.error || 'Unable to upload approval proof.');
     } finally {
-      setApprovalDecisionSaving(false);
+      setManagementApprovalSaving(false);
       event.target.value = '';
     }
   }
@@ -2207,7 +2208,20 @@ export default function Quotations() {
     if (requestStatus === 'PENDING') {
       const adminApproved = isQuotationAdminApproved(row);
       const superAdmin = [currentUser?.role, ...(currentUser?.roles || [])].some((role) => String(role || '').toLowerCase().replace(/[\s_-]+/g, '') === 'superadmin');
-      return <><span className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700"><Users className="h-3.5 w-3.5" /> Approval Requested</span>{adminApproved && <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-600 px-3 py-2 text-xs font-black text-white"><Check className="h-3.5 w-3.5" /> Admin Approved</span>}{canApproveQuotation && (!adminApproved || superAdmin) && <button type="button" onClick={() => setApprovalDecision({ row, remarks: '', proofUrl: '', proofName: '' })} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white"><Check className="h-3.5 w-3.5" />{superAdmin ? 'Super Admin Approve' : 'Admin Approve'}</button>}</>;
+      const currentIds = [currentUser?._id, currentUser?.id, currentUser?.userId].map((id) => String(id || '').trim()).filter(Boolean);
+      const assignedAdminId = String(row?.managementApproval?.approverId || row?.managementApproval?.approver || '').trim();
+      const assignedToCurrentAdmin = row?.managementApproval?.approverRole !== 'admin' || !assignedAdminId || currentIds.includes(assignedAdminId);
+      const canTakeDecision = superAdmin || (canApproveQuotation && assignedToCurrentAdmin);
+      const openDecision = () => setApprovalDecision({
+        row,
+        remarks: '',
+        requestNote: String(row.managementApproval?.note || ''),
+        proofUrl: String(row.managementApproval?.proofUrl || ''),
+        proofName: String(row.managementApproval?.proofName || ''),
+        priceApprovedByName: String(row.managementApproval?.priceApprovedByName || ''),
+        source: String(row.managementApproval?.source || '')
+      });
+      return <><span className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700"><Users className="h-3.5 w-3.5" /> Approval Requested</span>{adminApproved && <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-600 px-3 py-2 text-xs font-black text-white"><Check className="h-3.5 w-3.5" /> Admin Approved</span>}{canTakeDecision && (!adminApproved || superAdmin) && <button type="button" onClick={openDecision} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white"><Check className="h-3.5 w-3.5" />{superAdmin ? 'Super Admin Approve' : 'Admin Approve'}</button>}</>;
     }
     if (requestStatus === 'APPROVED' || String(row?.status || '').toLowerCase() === 'approved') {
       return <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700"><Check className="h-3.5 w-3.5" /> Final Approved</span>;
@@ -2374,14 +2388,15 @@ export default function Quotations() {
             <div><dt>Quotation No.</dt><dd>{approvalDecision.row.quotationNumber || '-'}</dd></div>
             <div><dt>Company</dt><dd>{approvalDecision.row.companyName || approvalDecision.row.leadDetails?.companyName || '-'}</dd></div>
             <div><dt>Date</dt><dd>{formatDisplayDate(approvalDecision.row.quotationDate || approvalDecision.row.createdAt)}</dd></div>
-            <label className="pending-decision-field"><span>Price approved by *</span><select required disabled={approvalDecisionSaving} value={approvalDecision.priceApprovedByName || ''} onChange={(event) => setApprovalDecision((current) => ({ ...current, priceApprovedByName: event.target.value }))}><option value="">Select name</option><option>KRUNAL GODA</option><option>ANAND PADHYA</option></select></label>
+            <label className="pending-decision-field"><span>Price approved by *</span><select required disabled={approvalDecisionSaving || Boolean(approvalDecision.row.managementApproval?.priceApprovedByName)} value={approvalDecision.priceApprovedByName || ''} onChange={(event) => setApprovalDecision((current) => ({ ...current, priceApprovedByName: event.target.value }))}><option value="">Select name</option><option>KRUNAL GODA</option><option>ANAND PADHYA</option></select></label>
             <div><dt>Amount (₹)</dt><dd>{formatInr(Number(approvalDecision.row.grandTotal) || 0)}</dd></div>
             <div><dt>Requested By</dt><dd>{approvalDecision.row.managementApproval?.requestedByName || approvalDecision.row.createdBy?.name || '-'}</dd></div>
-            <label className="pending-decision-field"><span>Approval Source *</span><select required disabled={approvalDecisionSaving} value={approvalDecision.source || ''} onChange={(event) => setApprovalDecision((current) => ({ ...current, source: event.target.value }))}><option value="">Select source</option><option value="WHATSAPP">WhatsApp</option><option value="TEAMS">Teams</option><option value="OUTLOOK">Outlook</option></select></label>
-            <label className="pending-decision-field"><span>Proof (optional)</span><span className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-emerald-300 bg-emerald-50 p-3 text-emerald-700"><UploadCloud className="h-4 w-4 shrink-0" />{approvalDecision.proofName || 'Upload proof'}<input type="file" accept="image/*,.pdf" className="sr-only" disabled={approvalDecisionSaving} onChange={uploadApprovalProof} /></span></label>
-            <label className="pending-decision-field" style={{ gridColumn: '1 / -1' }}><span>Note</span><textarea rows={3} maxLength={500} disabled={approvalDecisionSaving} value={approvalDecision.remarks} onChange={(event) => setApprovalDecision((current) => ({ ...current, remarks: event.target.value }))} placeholder="Enter note..." /></label>
+            <label className="pending-decision-field"><span>Approval Source *</span><select required disabled={approvalDecisionSaving || Boolean(approvalDecision.row.managementApproval?.source)} value={approvalDecision.source || ''} onChange={(event) => setApprovalDecision((current) => ({ ...current, source: event.target.value }))}><option value="">Select source</option><option value="WHATSAPP">WhatsApp</option><option value="TEAMS">Teams</option><option value="OUTLOOK">Outlook</option></select></label>
+            <div className="pending-decision-field"><span>Proof</span>{approvalDecision.proofUrl ? <a href={approvalDecision.proofUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 font-black text-emerald-700"><Eye className="h-4 w-4" />{approvalDecision.proofName || 'View uploaded proof'}</a> : <span className="flex rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-400">No proof uploaded</span>}</div>
+            {approvalDecision.requestNote && <div className="pending-decision-field" style={{ gridColumn: '1 / -1' }}><span>Requester Note</span><p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-700">{approvalDecision.requestNote}</p></div>}
+            <label className="pending-decision-field" style={{ gridColumn: '1 / -1' }}><span>Approval Note <em>(Optional)</em></span><textarea rows={3} maxLength={500} disabled={approvalDecisionSaving} value={approvalDecision.remarks} onChange={(event) => setApprovalDecision((current) => ({ ...current, remarks: event.target.value }))} placeholder="Enter approval note..." /></label>
           </dl>
-          <div className="pending-decision-actions"><button type="button" disabled={approvalDecisionSaving} onClick={() => setApprovalDecision(null)}>Cancel</button><button type="submit" disabled={approvalDecisionSaving}>{approvalDecisionSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Confirm Approval</button></div>
+          <div className="pending-decision-actions"><button type="button" disabled={approvalDecisionSaving} onClick={() => setApprovalDecision(null)}>Cancel</button><button type="submit" disabled={approvalDecisionSaving || !approvalDecision.priceApprovedByName || !approvalDecision.source}>{approvalDecisionSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Confirm Approval</button></div>
         </form></div>}
         {managementApproval && (
           <div className="pending-decision-backdrop management-approval-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !managementApprovalSaving) setManagementApproval(null); }}>
@@ -2392,20 +2407,22 @@ export default function Quotations() {
                 <button type="button" disabled={managementApprovalSaving} onClick={() => setManagementApproval(null)} aria-label="Close management approval"><X className="h-5 w-5" /></button>
               </header>
               <div className="management-approval-body">
-                <div className="management-approval-info"><AlertTriangle className="h-5 w-5" /><p>Fill these details to send the quotation to Pending Approval. The selected Super Admin will give the final approval there.</p></div>
+                <div className="management-approval-info"><AlertTriangle className="h-5 w-5" /><p>Enter the price-approval details and select the Admin who should review this quotation. A Super Admin can approve it directly at any time.</p></div>
                 <dl className="management-approval-summary">
                   <div><dt>Quotation No.</dt><dd>{managementApproval.row.quotationNumber || '-'}</dd></div>
                   <div><dt>Company</dt><dd>{managementApproval.row.companyName || managementApproval.row.leadDetails?.companyName || '-'}</dd></div>
                   <div><dt>Date</dt><dd>{formatDisplayDate(managementApproval.row.quotationDate || managementApproval.row.createdAt)}</dd></div>
                 </dl>
                 <div className="management-approval-grid">
-                  <label><span>Price approved by <b>*</b></span><select required disabled={managementApproversLoading || managementApprovalSaving} value={managementApproval.approverId} onChange={(event) => setManagementApproval((current) => ({ ...current, approverId: event.target.value }))}><option value="">{managementApproversLoading ? 'Loading Super Admins...' : 'Select Super Admin'}</option>{managementApprovers.map((approver) => <option key={approver.id} value={approver.id}>{approver.name}{approver.email && approver.email !== approver.name ? ` (${approver.email})` : ''}</option>)}</select></label>
+                  <label><span>Send approval to Admin <b>*</b></span><select required disabled={managementApproversLoading || managementApprovalSaving} value={managementApproval.approverId} onChange={(event) => setManagementApproval((current) => ({ ...current, approverId: event.target.value }))}><option value="">{managementApproversLoading ? 'Loading Admins...' : 'Select Admin'}</option>{managementApprovers.map((approver) => <option key={approver.id} value={approver.id}>{approver.name}{approver.email && approver.email !== approver.name ? ` (${approver.email})` : ''}</option>)}</select></label>
+                  <label><span>Price approved by <b>*</b></span><select required disabled={managementApprovalSaving} value={managementApproval.priceApprovedByName} onChange={(event) => setManagementApproval((current) => ({ ...current, priceApprovedByName: event.target.value }))}><option value="">Select name</option><option>KRUNAL GODA</option><option>ANAND PADHYA</option></select></label>
                   <label><span>Amount (₹)</span><div className="management-approval-amount"><i>₹</i><input readOnly aria-readonly="true" value={formatInr(Number(managementApproval.row.grandTotal) || 0).replace('₹', '').trim()} /></div><small>Auto-fetched from quotation</small></label>
                   <div className="management-source-field"><span>Approval Source <b>*</b></span><div className={`management-source-picker ${managementSourceOpen ? 'is-open' : ''}`}><button type="button" className="management-source-trigger" disabled={managementApprovalSaving} aria-haspopup="listbox" aria-expanded={managementSourceOpen} onClick={() => setManagementSourceOpen((open) => !open)}>{managementApproval.source ? <><i className={`management-source-icon is-${managementApproval.source.toLowerCase()}`}><ApprovalSourceIcon source={managementApproval.source} className="h-5 w-5" /></i><strong>{MANAGEMENT_APPROVAL_SOURCES.find((option) => option.value === managementApproval.source)?.label}</strong></> : <strong className="is-placeholder">Select Source</strong>}<ChevronDown className="ml-auto h-4 w-4" /></button>{managementSourceOpen && <div className="management-source-menu" role="listbox" aria-label="Approval Source">{MANAGEMENT_APPROVAL_SOURCES.map((option) => <button type="button" role="option" aria-selected={managementApproval.source === option.value} key={option.value} onClick={() => { setManagementApproval((current) => ({ ...current, source: option.value })); setManagementSourceOpen(false); }}><i className={`management-source-icon is-${option.value.toLowerCase()}`}><ApprovalSourceIcon source={option.value} className="h-5 w-5" /></i><span>{option.label}</span>{managementApproval.source === option.value && <Check className="ml-auto h-4 w-4 text-emerald-600" />}</button>)}</div>}</div></div>
+                  <label><span>Proof <em>(Optional)</em></span><span className="flex min-h-12 cursor-pointer items-center gap-2 rounded-lg border border-dashed border-emerald-300 bg-emerald-50 px-3 text-sm font-black text-emerald-700"><UploadCloud className="h-4 w-4" />{managementApproval.proofName || 'Upload proof'}<input type="file" accept="image/*,.pdf" className="sr-only" disabled={managementApprovalSaving} onChange={uploadManagementApprovalProof} /></span></label>
                   <label><span>Note <em>(Optional)</em></span><textarea maxLength={500} rows={5} disabled={managementApprovalSaving} value={managementApproval.note} onChange={(event) => setManagementApproval((current) => ({ ...current, note: event.target.value }))} placeholder="Add any note (optional)..." /><small className="management-note-count">{managementApproval.note.length}/500</small></label>
                 </div>
               </div>
-              <footer className="management-approval-footer"><button type="button" disabled={managementApprovalSaving} onClick={() => setManagementApproval(null)}>Cancel</button><button type="submit" disabled={managementApprovalSaving || managementApproversLoading || !managementApproval.approverId || !managementApproval.source}>{managementApprovalSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Send to Pending Approval</button></footer>
+              <footer className="management-approval-footer"><button type="button" disabled={managementApprovalSaving} onClick={() => setManagementApproval(null)}>Cancel</button><button type="submit" disabled={managementApprovalSaving || managementApproversLoading || !managementApproval.approverId || !managementApproval.priceApprovedByName || !managementApproval.source}>{managementApprovalSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Send to Admin</button></footer>
             </form>
           </div>
         )}

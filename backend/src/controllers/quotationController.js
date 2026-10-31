@@ -580,7 +580,8 @@ function mapQuotationPendingApprovalRow(quotation, approvalType = 'CREATE') {
     adminApprovalStatus: quotation.managementApproval?.adminApprovalStatus || '',
     managementApprovalStatus: quotation.managementApproval?.status || '',
     managementApproverId: quotation.managementApproval?.approverId || quotation.managementApproval?.approver || '',
-    managementApproverName: quotation.managementApproval?.priceApprovedByName || quotation.managementApproval?.approverName || '',
+    managementApproverName: quotation.managementApproval?.approverName || '',
+    priceApprovedByName: quotation.managementApproval?.priceApprovedByName || '',
     managementApprovalSource: quotation.managementApproval?.source || '',
     managementApprovalNote: quotation.managementApproval?.note || '',
     managementApprovalRequestedBy: quotation.managementApproval?.requestedByName || '',
@@ -944,6 +945,13 @@ exports.updateQuotationApproval = async (req, res) => {
   if (!quotation) {
     return res.status(404).json({ error: 'Linked quotation not found. Refresh Pending Approval and try again.' });
   }
+  const selectedAdminId = String(quotation.managementApproval?.approverId || quotation.managementApproval?.approver || '').trim();
+  const currentReviewerId = String(req.user?._id || req.user?.id || '').trim();
+  if (String(quotation.managementApproval?.status || '').toUpperCase() === 'PENDING'
+    && quotation.managementApproval?.approverRole === 'admin'
+    && !isSuperAdminReviewer && selectedAdminId && selectedAdminId !== currentReviewerId) {
+    return res.status(403).json({ error: 'This quotation is assigned to another Admin. A Super Admin may approve it directly.' });
+  }
   if (['approved', 'rejected'].includes(quotation.status)) {
     return res.status(409).json({ error: 'This quotation already has a final decision. Refresh Pending Approval.' });
   }
@@ -951,7 +959,10 @@ exports.updateQuotationApproval = async (req, res) => {
   if (status === 'APPROVED' && hasApprovalDetails) {
     quotation.managementApproval = {
       ...(quotation.managementApproval || {}), priceApprovedByName,
-      source: approvalSource, note: remarks, proofUrl, proofName
+      source: approvalSource,
+      note: quotation.managementApproval?.note || remarks,
+      proofUrl: proofUrl || quotation.managementApproval?.proofUrl || '',
+      proofName: proofName || quotation.managementApproval?.proofName || ''
     };
     Object.assign(update, {
       managementApproverName: priceApprovedByName, managementApprovalSource: approvalSource, managementApprovalNote: remarks,
@@ -1062,7 +1073,8 @@ exports.updateQuotationApproval = async (req, res) => {
   res.json({ ok: true, approvalStatus: status, quotation });
 };
 
-const MANAGEMENT_APPROVAL_SOURCES = new Set(['TEAMS', 'EMAIL', 'VERBAL_CALL', 'WHATSAPP', 'OTHER']);
+const MANAGEMENT_APPROVAL_SOURCES = new Set(['TEAMS', 'OUTLOOK', 'WHATSAPP']);
+const PRICE_APPROVER_NAMES = new Set(['KRUNAL GODA', 'ANAND PADHYA']);
 
 function normalizeManagementApprovalSource(value) {
   return String(value || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
@@ -1074,8 +1086,8 @@ exports.listManagementApprovers = async (_req, res) => {
     .sort({ name: 1, email: 1 })
     .lean();
   const approvers = users
-    .filter((user) => userHasAnyRole(user, ['superadmin']))
-    .map((user) => ({ id: user._id, name: user.name || user.email, email: user.email || '' }));
+    .filter((user) => userHasAnyRole(user, ['admin']) && !userHasAnyRole(user, ['superadmin']))
+    .map((user) => ({ id: user._id, name: user.name || user.email, email: user.email || '', role: 'admin' }));
   return res.json({ ok: true, approvers });
 };
 
@@ -1083,10 +1095,14 @@ exports.submitManagementApproval = async (req, res) => {
   const approverId = String(req.body.approverId || '').trim();
   const source = normalizeManagementApprovalSource(req.body.source);
   const note = String(req.body.note || '').trim();
+  const priceApprovedByName = String(req.body.priceApprovedByName || '').trim().toUpperCase();
+  const proofUrl = String(req.body.proofUrl || '').trim();
+  const proofName = String(req.body.proofName || '').trim();
 
   if (!mongoose.Types.ObjectId.isValid(approverId)) {
-    return res.status(400).json({ error: 'Please select the Super Admin who should give final approval.' });
+    return res.status(400).json({ error: 'Please select the Admin who should review this quotation.' });
   }
+  if (!PRICE_APPROVER_NAMES.has(priceApprovedByName)) return res.status(400).json({ error: 'Please select who approved the price.' });
   if (!MANAGEMENT_APPROVAL_SOURCES.has(source)) {
     return res.status(400).json({ error: 'Please select a valid management approval source.' });
   }
@@ -1096,8 +1112,8 @@ exports.submitManagementApproval = async (req, res) => {
 
   const approver = await User.findOne({ _id: approverId, isActive: { $ne: false } })
     .select('_id name email role roles');
-  if (!approver || !userHasAnyRole(approver, ['superadmin'])) {
-    return res.status(400).json({ error: 'The selected approver is not an active Super Admin.' });
+  if (!approver || !userHasAnyRole(approver, ['admin']) || userHasAnyRole(approver, ['superadmin'])) {
+    return res.status(400).json({ error: 'The selected reviewer is not an active Admin.' });
   }
 
   const requestedId = String(req.params.id || '').trim();
@@ -1116,7 +1132,7 @@ exports.submitManagementApproval = async (req, res) => {
   }
 
   const requestedAt = new Date();
-  const approverName = approver.name || approver.email || 'Super Admin';
+  const approverName = approver.name || approver.email || 'Admin';
   const requestedByName = req.user?.name || req.user?.email || 'CRM Admin';
   quotation.status = 'submitted';
   quotation.managementApproval = {
@@ -1124,8 +1140,12 @@ exports.submitManagementApproval = async (req, res) => {
     approverId: approver._id,
     approver: approver._id,
     approverName,
+    approverRole: 'admin',
+    priceApprovedByName,
     note,
     source,
+    proofUrl,
+    proofName,
     amount: Number(quotation.grandTotal || 0),
     requestedBy: req.user?._id,
     requestedByName,
@@ -1136,6 +1156,7 @@ exports.submitManagementApproval = async (req, res) => {
   const approvalRecord = await upsertQuotationPendingApproval(quotation, quotation.revisionHistory?.length ? 'UPDATE' : 'CREATE');
   approvalRecord.managementApprover = approver._id;
   approvalRecord.managementApproverName = approverName;
+  approvalRecord.priceApprovedByName = priceApprovedByName;
   approvalRecord.managementApprovalSource = source;
   approvalRecord.managementApprovalNote = note;
   approvalRecord.managementApprovalRecordedBy = req.user?._id;
@@ -1144,20 +1165,24 @@ exports.submitManagementApproval = async (req, res) => {
     managementApprovalStatus: 'PENDING',
     managementApproverId: String(approver._id),
     managementApproverName: approverName,
+    priceApprovedByName,
     managementApprovalSource: source,
     managementApprovalNote: note,
+    managementApprovalProofUrl: proofUrl,
+    managementApprovalProofName: proofName,
     managementApprovalRequestedBy: requestedByName,
     managementApprovalRequestedAt: requestedAt
   };
   approvalRecord.markModified('payload');
   await approvalRecord.save();
 
+  const superAdmins = await User.find({ isActive: { $ne: false }, $or: [{ role: 'superadmin' }, { roles: 'superadmin' }] }).select('_id').lean();
   const notification = await Notification.create({
-    title: 'Final quotation approval requested',
-    description: `${quotation.quotationNumber || 'Quotation'} for ${quotation.companyName || quotation.leadDetails?.companyName || 'a client'} is waiting for your final approval.`,
+    title: 'Quotation approval requested',
+    description: `${quotation.quotationNumber || 'Quotation'} for ${quotation.companyName || quotation.leadDetails?.companyName || 'a client'} is waiting for Admin approval.`,
     tag: 'Quotation Approval',
     kind: 'management_quotation_approval_requested',
-    audience: [approver._id],
+    audience: [approver._id, ...superAdmins.map((user) => user._id)],
     visibleToRoles: ['superadmin'],
     createdBy: req.user?._id,
     createdByName: requestedByName,
@@ -1169,7 +1194,7 @@ exports.submitManagementApproval = async (req, res) => {
   return res.json({
     ok: true,
     approvalStatus: 'PENDING',
-    message: 'Management approval request sent to Pending Approval.',
+    message: `Approval request sent to ${approverName}. Super Admin may approve it directly.`,
     managementApproval: quotation.managementApproval,
     quotation
   });
