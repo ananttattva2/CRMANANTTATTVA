@@ -2133,7 +2133,7 @@ export default function Quotations() {
       }
       setSuccessModal({
         title: editingId ? 'Quotation updated' : 'Quotation saved',
-        message: `${response.data.quotation?.quotationNumber || 'Quotation'} was saved and sent directly to Super Admin for approval. Admin approval is not required.`
+        message: `${response.data.quotation?.quotationNumber || 'Quotation'} was saved. Enter the Admin Approval details to send it to Admin, or a Super Admin can approve it directly.`
       });
       setQuotation({ ...emptyQuotation, leadDetails: { ...emptyLeadDetails }, items: [], terms: [] });
       setEditingId('');
@@ -2147,7 +2147,9 @@ export default function Quotations() {
     }
   }
 
-  const canApproveQuotation = [currentUser?.role, ...(currentUser?.roles || [])].some((role) => ['admin', 'superadmin'].includes(String(role || '').toLowerCase().replace(/[\s_-]+/g, '')));
+  const quotationUserRoles = [currentUser?.role, ...(currentUser?.roles || [])].map((role) => String(role || '').toLowerCase().replace(/[\s_-]+/g, ''));
+  const isSuperAdminQuotationUser = quotationUserRoles.includes('superadmin');
+  const canApproveQuotation = quotationUserRoles.some((role) => ['admin', 'superadmin'].includes(role));
 
   async function uploadManagementApprovalProof(event) {
     const file = event.target.files?.[0];
@@ -2191,27 +2193,31 @@ export default function Quotations() {
 
   function renderManagementApprovalAction(row) {
     if (!canRequestManagementApproval) return null;
-    const requestStatus = String(row?.managementApproval?.status || '').toUpperCase();
+    // Older records could be marked PENDING automatically before the user
+    // entered approval details. Treat those as not requested yet.
+    const hasRequestDetails = Boolean(String(row?.managementApproval?.priceApprovedByName || '').trim() && String(row?.managementApproval?.source || '').trim());
+    const requestStatus = hasRequestDetails ? String(row?.managementApproval?.status || '').toUpperCase() : '';
+    const openDecision = () => setApprovalDecision({
+      row,
+      remarks: '',
+      requestNote: String(row.managementApproval?.note || ''),
+      proofUrl: String(row.managementApproval?.proofUrl || ''),
+      proofName: String(row.managementApproval?.proofName || ''),
+      priceApprovedByName: String(row.managementApproval?.priceApprovedByName || ''),
+      source: String(row.managementApproval?.source || '')
+    });
     if (requestStatus === 'PENDING') {
       const adminApproved = isQuotationAdminApproved(row);
-      const superAdmin = [currentUser?.role, ...(currentUser?.roles || [])].some((role) => String(role || '').toLowerCase().replace(/[\s_-]+/g, '') === 'superadmin');
       const canTakeDecision = canApproveQuotation;
-      const openDecision = () => setApprovalDecision({
-        row,
-        remarks: '',
-        requestNote: String(row.managementApproval?.note || ''),
-        proofUrl: String(row.managementApproval?.proofUrl || ''),
-        proofName: String(row.managementApproval?.proofName || ''),
-        priceApprovedByName: String(row.managementApproval?.priceApprovedByName || ''),
-        source: String(row.managementApproval?.source || '')
-      });
-      return <><span className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700"><Users className="h-3.5 w-3.5" /> Approval Requested</span>{adminApproved && <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-600 px-3 py-2 text-xs font-black text-white"><Check className="h-3.5 w-3.5" /> Admin Approved</span>}{canTakeDecision && (!adminApproved || superAdmin) && <button type="button" onClick={openDecision} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white"><Check className="h-3.5 w-3.5" />{superAdmin ? 'Super Admin Approve' : 'Admin Approve'}</button>}</>;
+      return <><span className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700"><Users className="h-3.5 w-3.5" /> Approval Requested</span>{adminApproved && <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-600 px-3 py-2 text-xs font-black text-white"><Check className="h-3.5 w-3.5" /> Admin Approved</span>}{canTakeDecision && (!adminApproved || isSuperAdminQuotationUser) && <button type="button" onClick={openDecision} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white"><Check className="h-3.5 w-3.5" />{isSuperAdminQuotationUser ? 'Super Admin Approve' : 'Admin Approve'}</button>}</>;
     }
     if (requestStatus === 'APPROVED' || String(row?.status || '').toLowerCase() === 'approved') {
       return <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700"><Check className="h-3.5 w-3.5" /> Final Approved</span>;
     }
     if (String(row?.status || '').toLowerCase() === 'rejected') return null;
-    return <button type="button" onClick={() => openManagementApproval(row)} className="inline-flex items-center gap-1 rounded-lg border border-orange-300 bg-white px-3 py-2 text-xs font-black text-orange-600"><Users className="h-3.5 w-3.5" /> Admin Approval</button>;
+    return isSuperAdminQuotationUser
+      ? <button type="button" onClick={openDecision} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white"><Check className="h-3.5 w-3.5" /> Super Admin Approve</button>
+      : <button type="button" onClick={() => openManagementApproval(row)} className="inline-flex items-center gap-1 rounded-lg border border-orange-300 bg-white px-3 py-2 text-xs font-black text-orange-600"><Users className="h-3.5 w-3.5" /> Admin Approval</button>;
   }
 
   if (viewMode === 'list') {

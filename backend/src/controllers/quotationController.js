@@ -834,7 +834,6 @@ exports.createQuotation = async (req, res) => {
     createdBy: req.user?._id
   });
   await quotation.populate('createdBy', 'name email');
-  await upsertQuotationPendingApproval(quotation, 'CREATE', true);
   await sendQuotationLifecycleEmail({ quotation, event: 'created', actor: req.user })
     .catch((error) => console.error('[Quotation lifecycle email] create failed', error));
   res.status(201).json({ ok: true, quotation });
@@ -889,7 +888,6 @@ exports.updateQuotation = async (req, res) => {
   await quotation.save();
   await quotation.populate('createdBy', 'name email');
   await PendingApproval.deleteMany({ type: 'quotation', sourceClientId: String(quotation._id), approvalStatus: 'PENDING' });
-  await upsertQuotationPendingApproval(quotation, 'UPDATE', true);
   await sendQuotationLifecycleEmail({ quotation, event: 'revised', actor: req.user })
     .catch((error) => console.error('[Quotation lifecycle email] revision failed', error));
   res.json({ ok: true, quotation });
@@ -947,6 +945,12 @@ exports.updateQuotationApproval = async (req, res) => {
   }
   if (['approved', 'rejected'].includes(quotation.status)) {
     return res.status(409).json({ error: 'This quotation already has a final decision. Refresh Pending Approval.' });
+  }
+  const hasSubmittedAdminDetails = String(quotation.managementApproval?.status || '').toUpperCase() === 'PENDING'
+    && PRICE_APPROVER_NAMES.has(String(quotation.managementApproval?.priceApprovedByName || '').trim().toUpperCase())
+    && MANAGEMENT_APPROVAL_SOURCES.has(normalizeManagementApprovalSource(quotation.managementApproval?.source));
+  if (status === 'APPROVED' && !isSuperAdminReviewer && !hasSubmittedAdminDetails) {
+    return res.status(409).json({ error: 'Enter and submit the Admin Approval details before approving this quotation.' });
   }
   quotation.$where = { status: quotation.status };
   if (status === 'APPROVED' && hasApprovalDetails) {

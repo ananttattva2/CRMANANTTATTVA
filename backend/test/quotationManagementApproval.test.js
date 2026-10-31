@@ -25,6 +25,9 @@ test('management request enters the Admin queue and preserves the Super Admin ov
   assert.match(controller, /Only Super Admin can complete final approval/);
   assert.doesNotMatch(controller, /Admin approval must be completed before final Super Admin approval/);
   assert.match(controller, /approvalKind: 'MANAGEMENT_FINAL'/);
+  assert.doesNotMatch(controller, /upsertQuotationPendingApproval\(quotation, 'CREATE', true\)/);
+  assert.doesNotMatch(controller, /upsertQuotationPendingApproval\(quotation, 'UPDATE', true\)/);
+  assert.match(controller, /Enter and submit the Admin Approval details before approving this quotation/);
 });
 
 test('quotation actions expose the request modal and Pending Approval exposes final approve', () => {
@@ -41,6 +44,9 @@ test('quotation actions expose the request modal and Pending Approval exposes fi
   assert.match(quotationsPage, /MessageCircle/);
   assert.doesNotMatch(quotationsPage, /value: 'VERBAL_CALL'/);
   assert.match(quotationsPage, /Admin Approve/);
+  assert.match(quotationsPage, /const hasRequestDetails = Boolean/);
+  assert.match(quotationsPage, /isSuperAdminQuotationUser/);
+  assert.match(quotationsPage, /Super Admin Approve/);
   assert.match(pendingPage, /Super Admin Approval/);
   assert.match(pendingPage, /Final Approve/);
   assert.doesNotMatch(pendingPage, /Admin Approval Required/);

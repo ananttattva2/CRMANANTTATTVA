@@ -2,11 +2,9 @@ function directQuotationApproval(actor = {}, quotation = {}) {
   return {
     status: 'submitted',
     approvalDecision: {},
-    managementApproval: {
-      status: 'PENDING', amount: Number(quotation.grandTotal || 0),
-      requestedBy: actor._id, requestedByName: actor.name || actor.email || 'CRM User',
-      requestedAt: new Date()
-    }
+    // Saving alone does not request approval. The quotation owner must first
+    // enter the price-approval details using the Admin Approval action.
+    managementApproval: {}
   };
 }
 module.exports = { directQuotationApproval };
