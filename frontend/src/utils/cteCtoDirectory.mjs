@@ -58,9 +58,10 @@ export function groupCteCtoClients(records = []) {
   const groups = new Map()
   records.map(describeCteCtoRecord).forEach((record) => {
     const companyKey = record.companyName.toLowerCase().replace(/[^a-z0-9]/g, '')
-    const key = `company:${text(record.companyIdentity, companyKey).toLowerCase()}`
-    const current = groups.get(key) || { key, companyName: record.companyName, tradeName: record.tradeName, leadCode: record.leadCode, records: [] }
+    const key = `company:${companyKey || text(record.companyIdentity, record.id).toLowerCase()}`
+    const current = groups.get(key) || { key, companyName: record.companyName, tradeName: record.tradeName, leadCode: record.leadCode, leadCodes: [], records: [] }
     current.records.push(record)
+    if (record.leadCode && record.leadCode !== '-' && !current.leadCodes.includes(record.leadCode)) current.leadCodes.push(record.leadCode)
     if (current.leadCode === '-' && record.leadCode !== '-') current.leadCode = record.leadCode
     groups.set(key, current)
   })
