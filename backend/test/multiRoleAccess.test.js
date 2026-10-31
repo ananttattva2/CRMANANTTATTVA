@@ -21,3 +21,16 @@ test('compliance-family and duplicate roles are normalized consistently', () => 
   assert.deepEqual(getUserRoles(user), ['compliance-manager', 'sales']);
   assert.equal(userHasAnyRole(user, ['compliance']), true);
 });
+
+test('CTE and CTO access is detected from a secondary CTE & CTO/CAA role', () => {
+  const user = { role: 'sales', roles: ['Sales', 'Operation', 'CTE & CTO/CAA'] };
+  assert.equal(userHasAnyRole(user, ['CTE & CTO']), true);
+  assert.equal(userHasAnyRole(user, ['cte-cto']), true);
+  assert.equal(userHasAnyRole(user, ['admin']), false);
+});
+
+test('CTE and CTO role spelling variants share the same permission family', () => {
+  for (const role of ['CTE & CTO', 'CTE & CTO/CCA', 'CTE & CTO/CAA', 'CTO & CTE']) {
+    assert.equal(userHasAnyRole({ role }, ['cte-cto']), true, role);
+  }
+});

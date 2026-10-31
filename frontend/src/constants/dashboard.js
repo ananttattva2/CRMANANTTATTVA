@@ -25,10 +25,14 @@ export const isComplianceRole = (role = '') => String(role).trim().toLowerCase()
 export const getUserRoles = (user = {}) => [...new Set([user?.role, ...(Array.isArray(user?.roles) ? user.roles : [])]
   .map((role) => String(role || '').trim().toLowerCase())
   .filter(Boolean))]
+const normalizeRoleFamily = (role = '') => {
+  const family = String(role || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '')
+  return /^(?:ctecto|ctocte)(?:cca|caa)?$/.test(family) ? 'ctecto' : family
+}
 export const hasAnyRole = (user, allowed = []) => {
-  const normalizedAllowed = allowed.map((role) => String(role || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ''))
+  const normalizedAllowed = allowed.map(normalizeRoleFamily)
   return getUserRoles(user).some((role) => {
-    const normalized = role.replace(/[^a-z0-9]+/g, '')
+    const normalized = normalizeRoleFamily(role)
     return normalizedAllowed.includes(normalized) || (normalizedAllowed.includes('compliance') && normalized.includes('compliance'))
   })
 }

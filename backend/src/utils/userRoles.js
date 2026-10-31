@@ -8,7 +8,12 @@ function getUserRoles(user = {}) {
 }
 
 function normalizeRoleFamily(value) {
-  return normalizeRole(value).replace(/-/g, '');
+  const family = normalizeRole(value).replace(/-/g, '');
+  // The same operational role exists in saved data under both CCA and CAA
+  // labels. Treat those labels, and the reversed CTO/CTE spelling, as one
+  // permission family so secondary roles receive the same access.
+  if (/^(?:ctecto|ctocte)(?:cca|caa)?$/.test(family)) return 'ctecto';
+  return family;
 }
 
 function userHasAnyRole(user, allowedRoles = []) {
