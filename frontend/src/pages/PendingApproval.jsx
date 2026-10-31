@@ -1948,7 +1948,6 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                       row={quote}
                       savingId={savingId}
                       isSuperAdmin={isQuotationSuperAdmin}
-                      currentUser={currentUser}
                       onFinalize={(row) => setQuotationDecision({ row, status: 'APPROVED', finalApproval: true, remarks: '', proofUrl: '', proofName: '' })}
                     />
                     <QuotationActionCell
@@ -1960,7 +1959,6 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                       canApprove={canApprove}
                       canAdminApprove={canAdminApproveQuotation}
                       isSuperAdmin={isQuotationSuperAdmin}
-                      currentUser={currentUser}
                     />
                   </tr>
                 ))}
@@ -2326,16 +2324,13 @@ function ManagementApprovalCell({ row, savingId, isSuperAdmin = false, onFinaliz
   );
 }
 
-function QuotationActionCell({ row, savingId, onView, onRevise, onUpdate, canApprove = false, canAdminApprove = false, isSuperAdmin = false, currentUser = null }) {
+function QuotationActionCell({ row, savingId, onView, onRevise, onUpdate, canApprove = false, canAdminApprove = false, isSuperAdmin = false }) {
   const id = row?.id;
   const approving = savingId === `quote-${id}-APPROVED`;
   const rejecting = savingId === `quote-${id}-REJECTED`;
   const revisable = getApprovalStatus(row) !== 'PENDING';
   const adminApproved = String(row?.adminApprovalStatus || '').toUpperCase() === 'APPROVED';
-  const currentIds = [currentUser?._id, currentUser?.id, currentUser?.userId].map((value) => String(value || '').trim()).filter(Boolean);
-  const selectedAdminId = String(row?.managementApproverId || '').trim();
-  const assignedToCurrentAdmin = !selectedAdminId || currentIds.includes(selectedAdminId);
-  const canDecideQuotation = isSuperAdmin || (canAdminApprove && assignedToCurrentAdmin);
+  const canDecideQuotation = isSuperAdmin || canAdminApprove;
 
   return (
     <td className="pending-quotation-actions-cell">

@@ -1041,8 +1041,6 @@ export default function Quotations() {
   const [detailQuotation, setDetailQuotation] = useState(null);
   const [successModal, setSuccessModal] = useState(null);
   const [managementApproval, setManagementApproval] = useState(null);
-  const [managementApprovers, setManagementApprovers] = useState([]);
-  const [managementApproversLoading, setManagementApproversLoading] = useState(false);
   const [managementApprovalSaving, setManagementApprovalSaving] = useState(false);
   const [approvalDecision, setApprovalDecision] = useState(null);
   const [approvalDecisionSaving, setApprovalDecisionSaving] = useState(false);
@@ -1338,44 +1336,30 @@ export default function Quotations() {
 
   async function openManagementApproval(row) {
     if (!canRequestManagementApproval || ['approved', 'rejected'].includes(String(row?.status || '').toLowerCase())) return;
-    setManagementApproval({ row, approverId: '', priceApprovedByName: '', source: '', proofUrl: '', proofName: '', note: '' });
+    setManagementApproval({ row, priceApprovedByName: '', source: '', proofUrl: '', proofName: '', note: '' });
     setManagementSourceOpen(false);
-    setManagementApproversLoading(true);
     setError('');
     try {
       const id = row?._id || row?.id;
-      const [approversResult, quotationResult] = await Promise.allSettled([
-        managementApprovers.length
-          ? Promise.resolve({ data: { approvers: managementApprovers } })
-          : api.get(API_ENDPOINTS.quotations.managementApprovers),
-        api.get(API_ENDPOINTS.quotations.detail(id))
-      ]);
-      if (approversResult.status === 'rejected') throw approversResult.reason;
-      const approvers = approversResult.value.data?.approvers || [];
-      const fullQuotation = quotationResult.status === 'fulfilled' ? quotationResult.value.data?.quotation : null;
-      setManagementApprovers(approvers);
+      const quotationResult = await api.get(API_ENDPOINTS.quotations.detail(id));
+      const fullQuotation = quotationResult.data?.quotation;
       setManagementApproval((current) => current ? {
         ...current,
-        approverId: approvers.length === 1 ? String(approvers[0].id) : current.approverId,
         row: fullQuotation ? { ...current.row, ...fullQuotation } : current.row
       } : current);
-      if (!approvers.length) setError('No active Admin is available for quotation approval.');
     } catch (err) {
-      setError(err?.response?.data?.error || 'Unable to load Admin approvers.');
-    } finally {
-      setManagementApproversLoading(false);
+      setError(err?.response?.data?.error || 'Unable to load quotation approval details.');
     }
   }
 
   async function submitManagementApproval(event) {
     event.preventDefault();
-    if (!managementApproval?.row || !managementApproval.approverId || !managementApproval.priceApprovedByName || !managementApproval.source) return;
+    if (!managementApproval?.row || !managementApproval.priceApprovedByName || !managementApproval.source) return;
     const id = managementApproval.row._id || managementApproval.row.id;
     setManagementApprovalSaving(true);
     setError('');
     try {
       const response = await api.patch(API_ENDPOINTS.quotations.managementApproval(id), {
-        approverId: managementApproval.approverId,
         priceApprovedByName: managementApproval.priceApprovedByName,
         source: managementApproval.source,
         proofUrl: managementApproval.proofUrl,
@@ -2208,10 +2192,7 @@ export default function Quotations() {
     if (requestStatus === 'PENDING') {
       const adminApproved = isQuotationAdminApproved(row);
       const superAdmin = [currentUser?.role, ...(currentUser?.roles || [])].some((role) => String(role || '').toLowerCase().replace(/[\s_-]+/g, '') === 'superadmin');
-      const currentIds = [currentUser?._id, currentUser?.id, currentUser?.userId].map((id) => String(id || '').trim()).filter(Boolean);
-      const assignedAdminId = String(row?.managementApproval?.approverId || row?.managementApproval?.approver || '').trim();
-      const assignedToCurrentAdmin = row?.managementApproval?.approverRole !== 'admin' || !assignedAdminId || currentIds.includes(assignedAdminId);
-      const canTakeDecision = superAdmin || (canApproveQuotation && assignedToCurrentAdmin);
+      const canTakeDecision = canApproveQuotation;
       const openDecision = () => setApprovalDecision({
         row,
         remarks: '',
@@ -2407,14 +2388,13 @@ export default function Quotations() {
                 <button type="button" disabled={managementApprovalSaving} onClick={() => setManagementApproval(null)} aria-label="Close management approval"><X className="h-5 w-5" /></button>
               </header>
               <div className="management-approval-body">
-                <div className="management-approval-info"><AlertTriangle className="h-5 w-5" /><p>Enter the price-approval details and select the Admin who should review this quotation. A Super Admin can approve it directly at any time.</p></div>
+                <div className="management-approval-info"><AlertTriangle className="h-5 w-5" /><p>Enter the price-approval details and send the quotation to the Admin approval queue. Any Admin can review it, and a Super Admin can approve it directly at any time.</p></div>
                 <dl className="management-approval-summary">
                   <div><dt>Quotation No.</dt><dd>{managementApproval.row.quotationNumber || '-'}</dd></div>
                   <div><dt>Company</dt><dd>{managementApproval.row.companyName || managementApproval.row.leadDetails?.companyName || '-'}</dd></div>
                   <div><dt>Date</dt><dd>{formatDisplayDate(managementApproval.row.quotationDate || managementApproval.row.createdAt)}</dd></div>
                 </dl>
                 <div className="management-approval-grid">
-                  <label><span>Send approval to Admin <b>*</b></span><select required disabled={managementApproversLoading || managementApprovalSaving} value={managementApproval.approverId} onChange={(event) => setManagementApproval((current) => ({ ...current, approverId: event.target.value }))}><option value="">{managementApproversLoading ? 'Loading Admins...' : 'Select Admin'}</option>{managementApprovers.map((approver) => <option key={approver.id} value={approver.id}>{approver.name}{approver.email && approver.email !== approver.name ? ` (${approver.email})` : ''}</option>)}</select></label>
                   <label><span>Price approved by <b>*</b></span><select required disabled={managementApprovalSaving} value={managementApproval.priceApprovedByName} onChange={(event) => setManagementApproval((current) => ({ ...current, priceApprovedByName: event.target.value }))}><option value="">Select name</option><option>KRUNAL GODA</option><option>ANAND PADHYA</option></select></label>
                   <label><span>Amount (₹)</span><div className="management-approval-amount"><i>₹</i><input readOnly aria-readonly="true" value={formatInr(Number(managementApproval.row.grandTotal) || 0).replace('₹', '').trim()} /></div><small>Auto-fetched from quotation</small></label>
                   <div className="management-source-field"><span>Approval Source <b>*</b></span><div className={`management-source-picker ${managementSourceOpen ? 'is-open' : ''}`}><button type="button" className="management-source-trigger" disabled={managementApprovalSaving} aria-haspopup="listbox" aria-expanded={managementSourceOpen} onClick={() => setManagementSourceOpen((open) => !open)}>{managementApproval.source ? <><i className={`management-source-icon is-${managementApproval.source.toLowerCase()}`}><ApprovalSourceIcon source={managementApproval.source} className="h-5 w-5" /></i><strong>{MANAGEMENT_APPROVAL_SOURCES.find((option) => option.value === managementApproval.source)?.label}</strong></> : <strong className="is-placeholder">Select Source</strong>}<ChevronDown className="ml-auto h-4 w-4" /></button>{managementSourceOpen && <div className="management-source-menu" role="listbox" aria-label="Approval Source">{MANAGEMENT_APPROVAL_SOURCES.map((option) => <button type="button" role="option" aria-selected={managementApproval.source === option.value} key={option.value} onClick={() => { setManagementApproval((current) => ({ ...current, source: option.value })); setManagementSourceOpen(false); }}><i className={`management-source-icon is-${option.value.toLowerCase()}`}><ApprovalSourceIcon source={option.value} className="h-5 w-5" /></i><span>{option.label}</span>{managementApproval.source === option.value && <Check className="ml-auto h-4 w-4 text-emerald-600" />}</button>)}</div>}</div></div>
@@ -2422,7 +2402,7 @@ export default function Quotations() {
                   <label><span>Note <em>(Optional)</em></span><textarea maxLength={500} rows={5} disabled={managementApprovalSaving} value={managementApproval.note} onChange={(event) => setManagementApproval((current) => ({ ...current, note: event.target.value }))} placeholder="Add any note (optional)..." /><small className="management-note-count">{managementApproval.note.length}/500</small></label>
                 </div>
               </div>
-              <footer className="management-approval-footer"><button type="button" disabled={managementApprovalSaving} onClick={() => setManagementApproval(null)}>Cancel</button><button type="submit" disabled={managementApprovalSaving || managementApproversLoading || !managementApproval.approverId || !managementApproval.priceApprovedByName || !managementApproval.source}>{managementApprovalSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Send to Admin</button></footer>
+              <footer className="management-approval-footer"><button type="button" disabled={managementApprovalSaving} onClick={() => setManagementApproval(null)}>Cancel</button><button type="submit" disabled={managementApprovalSaving || !managementApproval.priceApprovedByName || !managementApproval.source}>{managementApprovalSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Send to Admin</button></footer>
             </form>
           </div>
         )}

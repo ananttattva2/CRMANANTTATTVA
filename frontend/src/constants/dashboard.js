@@ -26,9 +26,9 @@ export const getUserRoles = (user = {}) => [...new Set([user?.role, ...(Array.is
   .map((role) => String(role || '').trim().toLowerCase())
   .filter(Boolean))]
 export const hasAnyRole = (user, allowed = []) => {
-  const normalizedAllowed = allowed.map((role) => String(role || '').trim().toLowerCase().replace(/[\s_-]+/g, ''))
+  const normalizedAllowed = allowed.map((role) => String(role || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ''))
   return getUserRoles(user).some((role) => {
-    const normalized = role.replace(/[\s_-]+/g, '')
+    const normalized = role.replace(/[^a-z0-9]+/g, '')
     return normalizedAllowed.includes(normalized) || (normalizedAllowed.includes('compliance') && normalized.includes('compliance'))
   })
 }

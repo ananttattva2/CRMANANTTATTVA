@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { BarChart3, BriefcaseBusiness, ChevronDown, ChevronsLeft, Gauge, X } from 'lucide-react'
 import { adminRoles, hasAnyRole, navSections } from '../../constants/dashboard'
@@ -16,6 +16,12 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
     'Pending Leads': location.pathname.startsWith('/pending-leads') || location.pathname === '/sales/lead-pipeline',
     Tickets: location.pathname.includes('tickets')
   }))
+  const isCteCtoUser = hasAnyRole(currentUser, ['cte-cto', 'CTE & CTO'])
+
+  useEffect(() => {
+    if (!isCteCtoUser) return
+    setOpenGroups((value) => value['Customer Hub'] ? value : { ...value, 'Customer Hub': true })
+  }, [isCteCtoUser])
 
   function toggleGroup(item, hasChildren) {
     const label = item.label

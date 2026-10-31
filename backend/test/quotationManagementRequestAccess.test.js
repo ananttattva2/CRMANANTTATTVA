@@ -19,15 +19,15 @@ test('authenticated quotation users can request management review while decision
       if (name.includes('quotationController')) return controller;
       if (name.includes('middleware/auth')) return { requireAuth, requireRoles };
       if (name.includes('constants/roles')) return { ADMIN_ROLES: ['admin', 'superadmin'] };
+      if (name.includes('services/crmCache')) return { cacheRead: () => {} };
       throw new Error(`Unexpected module: ${name}`);
     }
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/routes/quotations.js'), 'utf8'), context);
-  for (const key of ['get /management-approvers', 'patch /:id/management-approval']) {
-    const handlers = routes.get(key);
-    assert.equal(handlers[0], requireAuth);
-    assert.equal(handlers.length, 2);
-  }
+  assert.equal(routes.get('get /management-approvers')[0], requireAuth);
+  assert.equal(routes.get('get /management-approvers').length, 3);
+  assert.equal(routes.get('patch /:id/management-approval')[0], requireAuth);
+  assert.equal(routes.get('patch /:id/management-approval').length, 2);
   assert.deepEqual(Array.from(routes.get('patch /:id/management-approval/finalize')[1].roles), ['superadmin']);
   assert.deepEqual(Array.from(routes.get('patch /:id/approval')[1].roles), ['admin', 'superadmin']);
 });
