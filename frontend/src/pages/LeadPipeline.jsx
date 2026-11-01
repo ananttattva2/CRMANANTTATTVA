@@ -1,5 +1,5 @@
 import TrafficSources from '../components/leads/TrafficSources';
-import { trafficSourceKey, trafficSourceSummary } from '../utils/trafficSources.mjs';
+import { trafficSourceHierarchy, trafficSourceKey } from '../utils/trafficSources.mjs';
 import { uniquePipelineRows } from '../utils/leadPipeline.mjs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, BarChart3, CheckCircle2, Download, Flame, Search, Snowflake, Users, X } from 'lucide-react';
@@ -51,8 +51,8 @@ export default function LeadPipeline() {
   }, [serviceView]);
   const filtered = useMemo(() => rows.filter(r => (!owner || r.owner === owner) && `${r.company} ${r.code} ${r.owner}`.toLowerCase().includes(query.trim().toLowerCase())), [rows, query, owner]);
   const unique = uniquePipelineRows(filtered);
-  const trafficSources = useMemo(() => trafficSourceSummary(filtered, sourceModes), [filtered, sourceModes]);
-  const listed = selection ? (selection.kind ? filtered : unique).filter(r => (!selection.kind || r.kind === selection.kind) && (!selection.state || r.state === selection.state) && (!selection.source || trafficSourceKey(r.communicationMode) === selection.source)) : [];
+  const trafficSources = useMemo(() => trafficSourceHierarchy(filtered, sourceModes), [filtered, sourceModes]);
+  const listed = selection ? (selection.kind ? filtered : unique).filter(r => (!selection.kind || r.kind === selection.kind) && (!selection.state || r.state === selection.state) && (!selection.sources?.length || selection.sources.includes(trafficSourceKey(r.communicationMode)))) : [];
   const total = source => source.reduce((n, r) => n + r.revenuePaise, 0);
   const poTotal = source => source.reduce((n, r) => n + (r.poAmountPaise || 0), 0);
   async function showServices(row) {
@@ -63,7 +63,7 @@ export default function LeadPipeline() {
   }
   function closeServices() { serviceRequest.current++; setServiceView(null); }
   function open(kind = '', state = '') { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ kind, state }); }
-  function openSource(source) { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ source: source.key, sourceLabel: source.label }); }
+  function openSource(source) { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ sources: source.keys || [source.key], sourceLabel: source.label }); }
   function exportRows(source, name) {
     const data = source.map(r => ({
       'Lead ID': r.code, Company: r.company, 'Client Communication Mode': r.communicationMode || 'Other / Not specified', Status: r.converted ? 'Closed — Converted to Hot' : r.state, Owner: r.owner,

@@ -26,7 +26,7 @@ import LeadDeleteDialog from '../components/LeadDeleteDialog';
 import { poCommercialError, poYearLabel, hasSavedPoDetails } from '../utils/poCommercialDetails.mjs';
 import { formatDisplayDate } from '../utils/dateFormat';
 import { leadServiceExportRecords } from '../utils/leadServiceExport.mjs';
-import { COMMUNICATION_MODE_GROUPS, COMMUNICATION_MODE_PARENTS, communicationModeParent, hydrateCommunicationMode } from '../constants/communicationModes';
+import { COMMUNICATION_MODE_GROUPS, COMMUNICATION_MODE_PARENTS, communicationModeParent, hydrateCommunicationMode } from '../constants/communicationModes.mjs';
 
 const emptyLead = {
   sourceLeadId: '',

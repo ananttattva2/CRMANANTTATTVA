@@ -25,6 +25,26 @@ test('Traffic Source empty filters still show mode options with safe zero percen
  const summary=trafficSourceSummary([],['Partner Network']);
  assert.ok(summary.length>=14);assert.ok(summary.every(r=>r.count===0&&r.percentage===0));
 });
+test('Traffic Source groups sub-categories under expandable parent totals',async()=>{
+ const {trafficSourceHierarchy}=await import('../../frontend/src/utils/trafficSources.mjs');
+ const rows=[
+  {id:'a',kind:'hot',communicationMode:'LinkedIn Ads'},
+  {id:'b',kind:'hot',communicationMode:'Web Database'},
+  {id:'c',kind:'hot',communicationMode:'LinkedIn'},
+  {id:'d',kind:'cold',communicationMode:'Tele Calling'},
+  {id:'e',kind:'cold',communicationMode:'Local Chamber',communicationModeParent:'Reference & Referral'}
+ ];
+ const groups=trafficSourceHierarchy(rows);
+ const digital=groups.find(group=>group.label==='Digital Marketing');
+ const social=groups.find(group=>group.label==='Social Media');
+ const direct=groups.find(group=>group.label==='Direct Marketing');
+ const referral=groups.find(group=>group.label==='Reference & Referral');
+ assert.equal(digital.count,2);assert.equal(digital.percentage,40);
+ assert.equal(digital.children.find(child=>child.label==='LinkedIn Ads').count,1);
+ assert.equal(social.count,1);assert.equal(direct.count,1);assert.equal(referral.count,1);
+ assert.ok(referral.children.some(child=>child.label==='Local Chamber'));
+ assert.ok(digital.keys.includes(digital.children.find(child=>child.label==='Web Database').key));
+});
 test('client detail payload includes contact/source fields without unrelated private document fields',()=>{
  const {clientContactDetails}=require('../src/services/leadRevenue');
  const details=clientContactDetails({company:'Example',communicationMode:'Referral',password:'PRIVATE',contacts:[{contactPerson:'Demo Person',emails:'demo@example.test',mobileNo1:'9876543210'}],addresses:[{addressLine1:'Example address',city:'Mumbai'}]});
