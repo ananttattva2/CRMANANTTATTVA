@@ -47,6 +47,7 @@ test('opening Add Services appends an editable row while keeping all existing ro
   const context = {
     selectedSearchLead: original, emptyLead: {}, allCcpLeads: [],
     normalizeLegacyServiceSelections: lead => lead.serviceSelections,
+    hydrateCommunicationMode: lead => lead,
     displayLeadId: lead => lead.leadCode, leadRecordId: lead => lead._id,
     createServiceSelection: () => ({ assignedServiceId: 'new', servicesOffered: '' }),
     createAddressRow: () => ({}), showToast() {}
