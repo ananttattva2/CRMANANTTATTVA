@@ -18,6 +18,7 @@ const { normalizeCompanyIdentity } = require('../services/crmRecordPersistence')
 const { notifyNewProvisionalClosures } = require('../services/provisionalLeadClosureWorkflow');
 const { resolvePoProof, resolveApprovalPoProof } = require('../services/poProofResolver');
 const { normalizeProvisionalClosure, permanentlyCloseProvisionalAssignments } = require('../utils/provisionalClosureDeadline');
+const { normalizeCommunicationSelection } = require('../utils/communicationModes');
 const LeadDropdownOption = require('../models/LeadDropdownOption');
 const { sendLeadIntroductionEmail } = require('../services/leadIntroductionEmail');
 const {
@@ -215,6 +216,7 @@ function shouldValidatePiboSelection(data = {}, fallback = {}) {
 function cleanBody(body) {
   const data = {};
   [
+    'communicationModeParent',
     'communicationMode',
     'communicationModeNote',
     'sourceLeadId',
@@ -469,6 +471,9 @@ function cleanBody(body) {
     }
     delete data.piboCategoryParent;
     delete data.piboCategory;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'communicationMode') || Object.prototype.hasOwnProperty.call(body, 'communicationModeParent')) {
+    Object.assign(data, normalizeCommunicationSelection(data));
   }
   return data;
 }
@@ -1224,7 +1229,7 @@ function buildBulkMergeData(existing = {}, incoming = {}, user = {}) {
     servicesOffered: primary.servicesOffered || existing.servicesOffered || '', firstAnnualReturnYearApplicable: primary.firstAnnualReturnYearApplicable || existing.firstAnnualReturnYearApplicable || '',
     addresses: Array.isArray(existing.addresses) && existing.addresses.length ? existing.addresses : [bulkAddressRow(incoming)],
     contacts: Array.isArray(existing.contacts) && existing.contacts.length ? existing.contacts : [bulkContactRow(incoming)],
-    communicationMode: fill('communicationMode'), status: fill('status'), addressLine1: fill('addressLine1'), addressLine2: fill('addressLine2'),
+    communicationModeParent: fill('communicationModeParent'), communicationMode: fill('communicationMode'), status: fill('status'), addressLine1: fill('addressLine1'), addressLine2: fill('addressLine2'),
     addressLine3: fill('addressLine3'), landmark: fill('landmark'), state: fill('state'), city: fill('city'), pinCode: fill('pinCode'),
     existingClient: fill('existingClient'), website: fill('website'), salutation: fill('salutation'), contactPerson: fill('contactPerson'),
     designation: fill('designation'), emails: fill('emails'), mobileNo1: fill('mobileNo1'), mobileNo2: fill('mobileNo2'), whatsappNo: fill('whatsappNo'), linkedinUrl: fill('linkedinUrl'),
@@ -1274,7 +1279,7 @@ exports.listLeads = async (req, res) => {
     const queryStartedAt = process.hrtime.bigint();
     const readLeads = () => Lead.find(accessFilter)
     .select(req.query.view === 'review'
-      ? 'communicationMode communicationModeNote notes status generatedForUser generatedForName generatedForEmail leadCode sourceLeadId company createdAt updatedAt importedCreatedAt leadDate importedCreatedBy createdBy createdByCrmUserId createdByEmail createdByName applicantType subApplicantType piboCategory industryType eprCategory servicesOffered firstAnnualReturnYearApplicable assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail closedAt closedBy closedByText serviceSelections.applicantType serviceSelections.subApplicantType serviceSelections.piboCategory serviceSelections.eprCategory serviceSelections.servicesOffered serviceSelections.firstAnnualReturnYearApplicable serviceSelections.createdAt serviceSelections.createdByName serviceSelections.createdByEmail serviceSelections.closedAt serviceSelections.closedBy serviceSelections.closedByText assignments.closedAt assignments.closedBy assignments.closedByText'
+      ? 'communicationModeParent communicationMode communicationModeNote notes status generatedForUser generatedForName generatedForEmail leadCode sourceLeadId company createdAt updatedAt importedCreatedAt leadDate importedCreatedBy createdBy createdByCrmUserId createdByEmail createdByName applicantType subApplicantType piboCategory industryType eprCategory servicesOffered firstAnnualReturnYearApplicable assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail closedAt closedBy closedByText serviceSelections.applicantType serviceSelections.subApplicantType serviceSelections.piboCategory serviceSelections.eprCategory serviceSelections.servicesOffered serviceSelections.firstAnnualReturnYearApplicable serviceSelections.createdAt serviceSelections.createdByName serviceSelections.createdByEmail serviceSelections.closedAt serviceSelections.closedBy serviceSelections.closedByText assignments.closedAt assignments.closedBy assignments.closedByText'
       : req.query.view === 'quotation-editor'
         ? '-businessCardUrl -poFileUrl -assignments.poYearRows.poFileUrl -assignments.originalPoDetails.poFileUrl'
         : '')

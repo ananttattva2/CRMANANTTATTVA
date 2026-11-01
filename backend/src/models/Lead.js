@@ -5,6 +5,7 @@ const LeadSchema = new mongoose.Schema({
   sourceLeadId: { type: String, trim: true },
   externalLeadId: { type: String, trim: true, index: true },
   companyIdentity: { type: String, trim: true, index: true },
+  communicationModeParent: { type: String, trim: true },
   communicationMode: { type: String, trim: true },
   communicationModeNote: { type: String, trim: true },
   status: { type: String, trim: true },

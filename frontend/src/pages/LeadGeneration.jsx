@@ -26,9 +26,11 @@ import LeadDeleteDialog from '../components/LeadDeleteDialog';
 import { poCommercialError, poYearLabel, hasSavedPoDetails } from '../utils/poCommercialDetails.mjs';
 import { formatDisplayDate } from '../utils/dateFormat';
 import { leadServiceExportRecords } from '../utils/leadServiceExport.mjs';
+import { COMMUNICATION_MODE_GROUPS, COMMUNICATION_MODE_PARENTS, communicationModeParent, hydrateCommunicationMode } from '../constants/communicationModes';
 
 const emptyLead = {
   sourceLeadId: '',
+  communicationModeParent: '',
   communicationMode: '',
   status: '',
   company: '',
@@ -205,7 +207,6 @@ const tabs = [
 const annualReturnYearOptions = Array.from({ length: 7 }, (_, index) => `${2023 + index}-${String(24 + index).padStart(2, '0')}`);
 const BUSINESS_CATEGORY_OPTIONS = ['EPR Consultancy', 'EPR Credit'];
 const options = {
-  communicationMode: ['TeleCalling', 'Referral', 'Physical Visit', 'Campaign', 'Existing Client', 'Web Database', 'Webinar', 'Seminar', 'Exhibition', 'Associate Reference', 'Government'],
   status: ['Potential - Registered', 'Potential - Unregistered', 'Existing Client', 'Existing Client - Not Renewed'],
   industryType: ["Automotive", "Chemicals", "Construction", "Consumer Goods", "E-commerce" , "Electronics" , "Energy" , "FMCG","Financial Services" , "Healthcare" , "Hospitality", "IT & Software" , "Logistics" , "Manufacturing","Pharmaceuticals", "Renewables", "Retail", "Telecom", "Waste Management", "Other" , "Food Manufacturing" , "Mechinical Industry" ,"Petrochemical", "Packaging Manufacture" , "Plastic Recycling" , "E-Waste Recycler" , "E-Waste Recycling"],
   states: [
@@ -569,6 +570,14 @@ export default function LeadGeneration() {
   const [piboCategories, setPiboCategories] = useState([]);
   const [piboCategoriesLoading, setPiboCategoriesLoading] = useState(true);
   const [lead, setLead] = useState(emptyLead);
+  const resolvedCommunicationParent = communicationModeParent(lead.communicationMode) || lead.communicationModeParent || '';
+  const legacyCommunicationMode = Boolean(lead.communicationMode && !communicationModeParent(lead.communicationMode));
+  const communicationParentOptions = legacyCommunicationMode
+    ? [...COMMUNICATION_MODE_PARENTS, 'Legacy / Unmapped']
+    : COMMUNICATION_MODE_PARENTS;
+  const communicationSubcategoryOptions = resolvedCommunicationParent === 'Legacy / Unmapped'
+    ? [lead.communicationMode]
+    : (COMMUNICATION_MODE_GROUPS[resolvedCommunicationParent] || []);
   const [editingLeadId, setEditingLeadId] = useState('');
   const [viewLead, setViewLead] = useState(null);
   const [activeTab, setActiveTab] = useState('basic');
@@ -983,7 +992,8 @@ export default function LeadGeneration() {
   function startAddServicesMode() {
     if (!selectedSearchLead) return;
     const rows = normalizeLegacyServiceSelections(selectedSearchLead);
-    setLead({ ...emptyLead, ...selectedSearchLead, leadCode: displayLeadId(selectedSearchLead) === '-' ? nextVisibleLeadCode(allCcpLeads) : selectedSearchLead.leadCode, serviceSelections: [...rows.map((row, index) => ({ ...row, firstAnnualReturnYearApplicable: row.firstAnnualReturnYearApplicable || (index === 0 ? selectedSearchLead.firstAnnualReturnYearApplicable : '') })), createServiceSelection()], addresses: Array.isArray(selectedSearchLead.addresses) && selectedSearchLead.addresses.length ? selectedSearchLead.addresses : [createAddressRow(selectedSearchLead)] });
+    const normalizedLead = hydrateCommunicationMode(selectedSearchLead);
+    setLead({ ...emptyLead, ...normalizedLead, leadCode: displayLeadId(selectedSearchLead) === '-' ? nextVisibleLeadCode(allCcpLeads) : selectedSearchLead.leadCode, serviceSelections: [...rows.map((row, index) => ({ ...row, firstAnnualReturnYearApplicable: row.firstAnnualReturnYearApplicable || (index === 0 ? selectedSearchLead.firstAnnualReturnYearApplicable : '') })), createServiceSelection()], addresses: Array.isArray(selectedSearchLead.addresses) && selectedSearchLead.addresses.length ? selectedSearchLead.addresses : [createAddressRow(selectedSearchLead)] });
     setEditingLeadId(leadRecordId(selectedSearchLead)); setRevenueDraft(null);
     setRoyaltyClaimed(false);
     setRoyaltyClaiming(false);
@@ -1715,9 +1725,10 @@ export default function LeadGeneration() {
 
   function applyLeadEdit(item) {
     const normalizedServices = normalizeLegacyServiceSelections(item).map((row, index) => ({ ...row, firstAnnualReturnYearApplicable: row.firstAnnualReturnYearApplicable || (index === 0 ? item.firstAnnualReturnYearApplicable : '') }));
+    const normalizedLead = hydrateCommunicationMode(item);
     const ownerId = item.generatedForUser?._id || item.generatedForUser?.id || item.generatedForUser || item.createdOnBehalfOfUser?._id || item.createdOnBehalfOfUser || item.createdBy?._id || item.createdBy?.id || item.createdBy || currentUser?._id || currentUser?.id || '';
     const currentUserId = currentUser?._id || currentUser?.id || currentUser?.crmUserId || currentUser?.userId || '';
-    setLead({ ...emptyLead, ...item, serviceSelections: normalizedServices, applicableService: normalizedServices[0]?.applicableService || item.applicableService || '', addresses: item.addresses?.length ? item.addresses : [createAddressRow(item)], contacts: item.contacts?.length ? item.contacts : [createContactRow(item)], assignments: item.assignments?.length ? item.assignments : [createAssignmentRow(item)] });
+    setLead({ ...emptyLead, ...normalizedLead, serviceSelections: normalizedServices, applicableService: normalizedServices[0]?.applicableService || item.applicableService || '', addresses: item.addresses?.length ? item.addresses : [createAddressRow(item)], contacts: item.contacts?.length ? item.contacts : [createContactRow(item)], assignments: item.assignments?.length ? item.assignments : [createAssignmentRow(item)] });
     setGeneratedForUserId(String(ownerId));
     setGeneratedForMode(String(ownerId) === String(currentUserId) ? 'self' : 'other');
     setGeneratedForConfirmed(true);
@@ -1795,7 +1806,7 @@ export default function LeadGeneration() {
 
   function downloadLeadImportTemplate() {
     const headers = [
-      'Communication Mode', 'Lead ID', 'Status', 'Company', 'Industry', 'Service Category', 'Business Category', 'Applicant Type', 'Sub Applicant Type',
+      'Parent Communication Mode', 'Communication Mode', 'Lead ID', 'Status', 'Company', 'Industry', 'Service Category', 'Business Category', 'Applicant Type', 'Sub Applicant Type',
       'Services Offered', 'Applicable Services', 'Financial Year', 'Address', 'Address Line 2', 'Address Line 3', 'Landmark',
       'State', 'City', 'PIN', 'Existing Client', 'Website', 'Salutation', 'Contact Person', 'Designation', 'Email',
       'Emails Sent Count', 'Last Email Sent', 'Mobile 1', 'Mobile 2', 'WhatsApp No', 'LinkedIn URL', 'Business Card URL', 'Referred By', 'Source', 'Notes',
@@ -1808,6 +1819,7 @@ export default function LeadGeneration() {
       return services.map((service, index) => {
         const assignment = assignments[index] || createAssignmentRow(item);
         return {
+          'Parent Communication Mode': communicationModeParent(item.communicationMode) || item.communicationModeParent || '',
           'Communication Mode': item.communicationMode || '', 'Lead ID': displayLeadId(item).replace(/^-$/, ''), Status: item.status || '', Company: item.company || '',
           Industry: service.industryType || '', 'Service Category': service.eprCategory || '', 'Business Category': service.businessCategory || '', 'Applicant Type': service.applicantType || '',
           'Sub Applicant Type': service.piboCategory || '', 'Services Offered': service.servicesOffered || '', 'Applicable Services': service.applicableService || '',
@@ -2688,9 +2700,10 @@ export default function LeadGeneration() {
                 </LeadSection>
                 <section className={`lead-communication-matrix ${ownershipRequired ? 'pointer-events-none select-none opacity-45' : ''}`} aria-disabled={ownershipRequired}>
                   <h2>Client Communication Mode</h2>
-                  <div className="lead-communication-head"><span>Client Communication Mode</span><span>Status *</span></div>
+                  <div className="lead-communication-head"><span>Parent Communication Mode</span><span>Sub-Category</span><span>Status *</span></div>
                   <div className="lead-communication-row">
-                    <div className="lead-service-select-cell"><SearchableSelect disabled={serviceOnlyMode} value={lead.communicationMode} options={withCustomOptions('communicationMode', options.communicationMode)} onChange={(value) => requestSpecification('communicationMode', value, 'Communication mode')} placeholder="Select communication mode" allowCustom={false} />{canManageServiceCatalog && !serviceOnlyMode && <button type="button" onClick={() => openDropdownDialog({ field: 'communicationMode', label: 'Communication Mode', scope: 'lead', targetField: 'communicationMode' })} className="lead-service-catalog-add"><Plus className="h-3.5 w-3.5" />Add Communication Mode</button>}</div>
+                    <div className="lead-service-select-cell"><SearchableSelect disabled={serviceOnlyMode} value={resolvedCommunicationParent} options={communicationParentOptions} onChange={(value) => setLead((current) => ({ ...current, communicationModeParent: value, communicationMode: '', communicationModeNote: '' }))} placeholder="Select parent communication mode" allowCustom={false} />{legacyCommunicationMode && <span className="text-[10px] font-bold text-amber-700">Legacy value detected. Choose a parent to reclassify it.</span>}</div>
+                    <div className="lead-service-select-cell"><SearchableSelect disabled={serviceOnlyMode || !resolvedCommunicationParent || resolvedCommunicationParent === 'Legacy / Unmapped'} value={lead.communicationMode} options={communicationSubcategoryOptions} onChange={(value) => value ? requestSpecification('communicationMode', value, 'Communication sub-category') : setLead((current) => ({ ...current, communicationMode: '', communicationModeNote: '' }))} placeholder={resolvedCommunicationParent ? 'Select sub-category' : 'Select parent first'} allowCustom={false} /></div>
                     <div className="lead-service-select-cell"><SearchableSelect multiple disabled={serviceOnlyMode} value={lead.status} options={withCustomOptions('status', options.status)} onChange={(value) => updateField('status', value)} placeholder="Select one or more statuses" allowCustom={false} />{canManageServiceCatalog && !serviceOnlyMode && <button type="button" onClick={() => openDropdownDialog({ field: 'status', label: 'Status', scope: 'lead', targetField: 'status' })} className="lead-service-catalog-add"><Plus className="h-3.5 w-3.5" />Add Status</button>}</div>
                   </div>
                   {lead.communicationModeNote && (
@@ -5855,6 +5868,8 @@ function formatExcelValue(value, field) {
 
 function mapExcelRowToLead(row, staff) {
   const mapping = {
+    parentcommunicationmode: 'communicationModeParent',
+    communicationmodeparent: 'communicationModeParent',
     communicationmode: 'communicationMode',
     leadid: 'sourceLeadId',
     status: 'status',
