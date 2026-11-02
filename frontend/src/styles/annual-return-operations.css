@@ -5,3 +5,6 @@
 @media(prefers-reduced-motion:reduce){.arops-page *{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 .arops-category-photo{height:68px;padding:9px 11px;background-size:auto 100%,500% auto;background-repeat:no-repeat;background-position:center,var(--position) center}
 .arops-category-photo>span{width:36px;height:36px;flex-basis:36px;background:rgba(255,255,255,.22)}
+.arops-service-breakdown{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:7px;border-top:1px solid #e3ebe8;padding-top:6px}
+.arops-service-breakdown span{display:flex;min-width:0;align-items:center;justify-content:space-between;gap:5px;border-radius:5px;background:#f5f9f7;padding:4px 6px;color:#5a6b7f;font-size:7px;font-weight:800}
+.arops-service-breakdown b{color:#14213a;font-size:8px}

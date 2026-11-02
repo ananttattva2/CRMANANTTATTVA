@@ -33,14 +33,7 @@ function formatDate(value) { return value ? new Date(`${value}T00:00:00`).toLoca
 function initials(name) { return String(name || 'U').split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase(); }
 
 function Count({ value }) {
-  const [shown, setShown] = useState(value || 0);
-  useEffect(() => {
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { setShown(value || 0); return undefined; }
-    const from = shown; const to = Number(value) || 0; const start = performance.now(); let frame;
-    const tick = now => { const ratio = Math.min(1, (now - start) / 240); setShown(Math.round(from + ((to - from) * ratio))); if (ratio < 1) frame = requestAnimationFrame(tick); };
-    frame = requestAnimationFrame(tick); return () => cancelAnimationFrame(frame);
-  }, [value]);
-  return shown.toLocaleString('en-IN');
+  return (Number(value) || 0).toLocaleString('en-IN');
 }
 
 function FilterSelect({ label, value, onChange, children, disabled = false }) {
@@ -60,6 +53,7 @@ function DrillCard({ row, selected, icon: Icon, onClick, index = 0 }) {
     {selected && <span className="arops-selected-check"><Check /></span>}
     <div className="arops-drill-heading"><span><Icon /></span><div><h3>{row.label}</h3><p><b>{row.count}</b> Annual Return Services</p></div></div>
     <div className="arops-drill-body"><Breakdown row={row} /><div className="arops-completion"><strong>{row.completion}%</strong><small>Completion</small><Progress value={row.completion} /></div></div>
+    {row.serviceBreakdown?.length > 0 && <div className="arops-service-breakdown" aria-label="Annual Return service name breakdown">{row.serviceBreakdown.map(item => <span key={item.label}>{item.label}<b>{item.count}</b></span>)}</div>}
     {row.overdue > 0 && <small className="arops-overdue-note">{row.overdue} overdue</small>}
   </button>;
 }

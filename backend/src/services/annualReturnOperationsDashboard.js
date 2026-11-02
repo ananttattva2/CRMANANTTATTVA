@@ -8,6 +8,12 @@ const array = value => Array.isArray(value) ? value : [];
 const list = value => (Array.isArray(value) ? value : [value]).flatMap(item => String(item || '').split(/[,;\n]/)).map(item => item.trim()).filter(Boolean);
 const isAnnual = value => list(value).some(item => /annual(?:return(?:fill?ing)?|fill?ing)/.test(key(item)));
 
+function annualServiceName(...values) {
+  const saved = values.flatMap(list).find(item => isAnnual(item));
+  if (!saved) return '';
+  return /fill?ing/.test(key(saved)) ? 'Annual Return Filling' : 'Annual Return';
+}
+
 function categoryName(value) {
   const normalized = key(value);
   if (normalized.includes('plastic')) return 'Plastic Waste';
@@ -79,7 +85,8 @@ function buildRecords({ clients = [], users = [], filings = new Map(), teams = [
     let serviceIndex = services.findIndex(service => text(service.assignedServiceId || service.serviceAssignmentId) === selectedId);
     if (serviceIndex < 0 && services.length === 1) serviceIndex = 0;
     const service = services[serviceIndex] || {};
-    if (!isAnnual(service.servicesOffered || service.applicableService || client.data?.basic?.servicesOffered)) continue;
+    const serviceName = annualServiceName(service.servicesOffered, service.applicableService, client.data?.basic?.servicesOffered);
+    if (!serviceName) continue;
     const category = categoryName(service.eprCategory || lead.eprCategory || client.data?.basic?.eprCategory);
     if (!category) continue;
     const assignments = array(lead.assignments).filter(assignment => assignment && typeof assignment === 'object');
@@ -104,7 +111,7 @@ function buildRecords({ clients = [], users = [], filings = new Map(), teams = [
       return [year, workflowState(filing)];
     }));
     records.set(recordKey, {
-      id: recordKey, clientId, company, leadId, category, applicantType, subType, years,
+      id: recordKey, clientId, company, leadId, category, applicantType, subType, serviceName, years,
       assignedUserId: owner ? text(owner) : '', assignedUser: owner?.name || owner?.email || assignment.assignedStaffText || 'Unassigned',
       teamId: owner?.teamId ? text(owner.teamId) : '', team: team || manager?.name || manager?.email || 'No team assigned',
       managerId: manager ? text(manager) : '', dueDate, yearStates,
@@ -157,15 +164,21 @@ function aggregate(records, field) {
   const groups = new Map();
   array(records).forEach(record => {
     const label = record[field] || 'Not specified';
-    const row = groups.get(label) || { label, count: 0, completed: 0, inProgress: 0, pending: 0, overdue: 0 };
+    const row = groups.get(label) || { label, count: 0, completed: 0, inProgress: 0, pending: 0, overdue: 0, serviceNames: {} };
     row.count += 1;
     if (record.status === 'Completed') row.completed += 1;
     else if (record.status === 'In Progress') row.inProgress += 1;
     else row.pending += 1;
     if (record.overdue) row.overdue += 1;
+    const serviceName = record.serviceName || 'Annual Return';
+    row.serviceNames[serviceName] = (row.serviceNames[serviceName] || 0) + 1;
     groups.set(label, row);
   });
-  return [...groups.values()].map(row => ({ ...row, completion: row.count ? Math.round((row.completed / row.count) * 1000) / 10 : 0 }));
+  return [...groups.values()].map(row => ({
+    ...row,
+    serviceBreakdown: ['Annual Return', 'Annual Return Filling'].map(label => ({ label, count: row.serviceNames[label] || 0 })),
+    completion: row.count ? Math.round((row.completed / row.count) * 1000) / 10 : 0
+  }));
 }
 
 function summary(records) {
@@ -217,7 +230,7 @@ function buildDashboard(records, query = {}) {
   const subTypeBase = applyFilters(decorated, query, ['subType']);
   const workloadBase = applyFilters(decorated, query, ['user']);
   const categoryRows = aggregate(categoryBase, 'category');
-  const categories = CATEGORY_ORDER.map(label => categoryRows.find(row => row.label === label) || { label, count: 0, completed: 0, inProgress: 0, pending: 0, overdue: 0, completion: 0 });
+  const categories = CATEGORY_ORDER.map(label => categoryRows.find(row => row.label === label) || { label, count: 0, completed: 0, inProgress: 0, pending: 0, overdue: 0, completion: 0, serviceBreakdown: [{ label: 'Annual Return', count: 0 }, { label: 'Annual Return Filling', count: 0 }] });
   const applicantTypes = aggregate(applicantBase, 'applicantType').sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
   const subTypes = aggregate(subTypeBase, 'subType').sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
   const workloads = aggregate(workloadBase, 'assignedUser').map(row => ({ ...row, userId: workloadBase.find(item => item.assignedUser === row.label)?.assignedUserId || '' })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
@@ -243,4 +256,4 @@ function buildDashboard(records, query = {}) {
   return { ok: true, selectedYear, summary: currentSummary, comparisons, categories, applicantTypes, subTypes, workloads, options, records: pageRows, pagination: { page: Math.min(page, pages), limit, total: sorted.length, pages } };
 }
 
-module.exports = { CATEGORY_ORDER, categoryName, isAnnual, workflowState, activeAnnualReturnYear, buildRecords, buildDashboard, filingIndex };
+module.exports = { CATEGORY_ORDER, categoryName, isAnnual, annualServiceName, workflowState, activeAnnualReturnYear, buildRecords, buildDashboard, filingIndex };

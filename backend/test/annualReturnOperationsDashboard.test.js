@@ -1,11 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildRecords, buildDashboard, workflowState, categoryName, isAnnual, activeAnnualReturnYear } = require('../src/services/annualReturnOperationsDashboard');
+const { buildRecords, buildDashboard, workflowState, categoryName, isAnnual, annualServiceName, activeAnnualReturnYear } = require('../src/services/annualReturnOperationsDashboard');
 
 function record(id, overrides = {}) {
   return {
     id, clientId: id, company: `Company ${id}`, leadId: `ATPL-${id}`, category: 'Plastic Waste',
-    applicantType: 'PIBO', subType: 'Producer', years: ['2025-26'], assignedUserId: 'u1', assignedUser: 'Amit Sharma',
+    applicantType: 'PIBO', subType: 'Producer', serviceName: 'Annual Return', years: ['2025-26'], assignedUserId: 'u1', assignedUser: 'Amit Sharma',
     teamId: 't1', team: 'Operations', managerId: 'm1', dueDate: '', yearStates: { '2025-26': { status: 'Pending', progress: 0 } },
     openPath: `/clients/${id}/{year}`, ...overrides
   };
@@ -15,6 +15,8 @@ test('Annual Return dashboard recognises saved service aliases and five supporte
   assert.equal(isAnnual('Annual Return Filling'), true);
   assert.equal(isAnnual(' annual return '), true);
   assert.equal(isAnnual('New Registration'), false);
+  assert.equal(annualServiceName('Annual Return'), 'Annual Return');
+  assert.equal(annualServiceName('Annual Return Filling'), 'Annual Return Filling');
   assert.equal(categoryName('EPR - Plastic Waste'), 'Plastic Waste');
   assert.equal(categoryName('Electronic Waste'), 'E-Waste');
   assert.equal(categoryName('Waste Tyre'), 'Tyre Waste');
@@ -51,6 +53,26 @@ test('dashboard preserves sibling categories while drilling down and paginates c
   assert.equal(result.categories.find(row => row.label === 'E-Waste').count, 1);
   assert.equal(result.applicantTypes.find(row => row.label === 'PIBO').count, 2);
   assert.equal(result.subTypes.find(row => row.label === 'Producer').count, 1);
+});
+
+test('dashboard reconciles distinct totals and separately counts both saved Annual Return names for PIBO', () => {
+  const rows = [
+    record('1', { serviceName: 'Annual Return' }),
+    record('2', { serviceName: 'Annual Return Filling', subType: 'Importer' }),
+    record('3', { category: 'E-Waste', applicantType: 'Producer', subType: 'Recycler', serviceName: 'Annual Return Filling' })
+  ];
+  const global = buildDashboard(rows, { year: '2025-26' });
+  assert.equal(global.summary.total, 3);
+  assert.equal(global.categories.reduce((total, row) => total + row.count, 0), global.summary.total);
+  assert.equal(global.summary.completed + global.summary.inProgress + global.summary.pending, global.summary.total);
+
+  const plastic = buildDashboard(rows, { year: '2025-26', category: 'Plastic Waste' });
+  const pibo = plastic.applicantTypes.find(row => row.label === 'PIBO');
+  assert.equal(pibo.count, 2);
+  assert.deepEqual(pibo.serviceBreakdown, [
+    { label: 'Annual Return', count: 1 },
+    { label: 'Annual Return Filling', count: 1 }
+  ]);
 });
 
 test('overdue is a deadline condition and does not overwrite workflow status', () => {
