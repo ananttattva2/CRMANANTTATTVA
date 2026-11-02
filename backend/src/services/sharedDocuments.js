@@ -8,6 +8,13 @@ const ALLOWED_MIME_TYPES = new Set([
   'image/webp',
   'image/gif'
 ]);
+const POLICY_DOCUMENT_CATEGORIES = Object.freeze([
+  'Plastic Waste',
+  'E-Waste',
+  'Tyre Waste',
+  'Used Oil',
+  'Battery Waste'
+]);
 
 function cleanText(value, maxLength) {
   return String(value || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, maxLength);
@@ -18,6 +25,11 @@ function normalizeDocumentType(value) {
   return ['company', 'policy'].includes(normalized) ? normalized : '';
 }
 
+function normalizePolicyCategory(value) {
+  const normalized = cleanText(value, 120).toLowerCase().replace(/^epr\s*-\s*/, '').replace(/\s+/g, ' ');
+  return POLICY_DOCUMENT_CATEGORIES.find((category) => category.toLowerCase() === normalized) || '';
+}
+
 function safeFileName(value) {
   return path.basename(cleanText(value, 220)).replace(/[<>:"/\\|?*]/g, '-');
 }
@@ -25,7 +37,9 @@ function safeFileName(value) {
 function validateDocumentMetadata(body = {}) {
   const documentType = normalizeDocumentType(body.documentType);
   const title = cleanText(body.title, 160);
-  const serviceCategory = cleanText(body.serviceCategory, 120);
+  const serviceCategory = documentType === 'company'
+    ? 'Company Documents'
+    : normalizePolicyCategory(body.serviceCategory);
   const originalName = safeFileName(body.originalName);
   const mimeType = cleanText(body.mimeType, 120).toLowerCase();
   const size = Number(body.size);
@@ -33,7 +47,9 @@ function validateDocumentMetadata(body = {}) {
 
   if (!documentType) throw Object.assign(new Error('Choose Company Document or Policy Document.'), { status: 400 });
   if (title.length < 2) throw Object.assign(new Error('Document title is required.'), { status: 400 });
-  if (!serviceCategory) throw Object.assign(new Error('Service category is required.'), { status: 400 });
+  if (documentType === 'policy' && !serviceCategory) {
+    throw Object.assign(new Error(`Choose a valid policy category: ${POLICY_DOCUMENT_CATEGORIES.join(', ')}.`), { status: 400 });
+  }
   if (!originalName) throw Object.assign(new Error('Original file name is required.'), { status: 400 });
   if (!ALLOWED_MIME_TYPES.has(mimeType)) throw Object.assign(new Error('Only PDF, JPG, PNG, WEBP and GIF files are allowed.'), { status: 400 });
   if (!Number.isSafeInteger(size) || size < 1 || size > MAX_DOCUMENT_BYTES) throw Object.assign(new Error('File must be smaller than 25 MB.'), { status: 400 });
@@ -79,8 +95,10 @@ function serializeDocument(document = {}) {
 module.exports = {
   ALLOWED_MIME_TYPES,
   MAX_DOCUMENT_BYTES,
+  POLICY_DOCUMENT_CATEGORIES,
   buildDocumentFilter,
   normalizeDocumentType,
+  normalizePolicyCategory,
   safeFileName,
   serializeDocument,
   validateDocumentMetadata

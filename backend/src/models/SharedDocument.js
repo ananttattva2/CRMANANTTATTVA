@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const sharedDocumentSchema = new mongoose.Schema({
   documentType: { type: String, enum: ['company', 'policy'], required: true, index: true },
   title: { type: String, required: true, trim: true, maxlength: 160 },
+  // Company documents use the internal "Company Documents" bucket. Policy
+  // documents use one of the controlled waste categories validated by the API.
   serviceCategory: { type: String, required: true, trim: true, maxlength: 120, index: true },
   originalName: { type: String, required: true, trim: true, maxlength: 220 },
   mimeType: { type: String, required: true, trim: true, maxlength: 120 },
