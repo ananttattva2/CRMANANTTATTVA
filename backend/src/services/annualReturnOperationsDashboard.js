@@ -186,10 +186,30 @@ function previousYear(year) {
   return `${start}-${String(start + 1).slice(-2)}`;
 }
 
+// Annual Returns filed during a financial year report the immediately
+// preceding financial year. FY 2026-27 reports AR 2025-26; after 1 April
+// 2027 the active AR year becomes 2026-27 automatically.
+function activeAnnualReturnYear(now = new Date()) {
+  const date = new Date(now);
+  const currentFinancialYearStart = date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1;
+  const reportingStart = currentFinancialYearStart - 1;
+  return `${reportingStart}-${String(reportingStart + 1).slice(-2)}`;
+}
+
+function yearStart(year) {
+  const normalized = normalizeYear(year);
+  return normalized ? Number(normalized.slice(0, 4)) : Number.NEGATIVE_INFINITY;
+}
+
 function buildDashboard(records, query = {}) {
   records = array(records);
-  const years = [...new Set(records.flatMap(record => record.years))].sort().reverse();
-  const selectedYear = normalizeYear(query.year) || years[0] || '';
+  const activeYear = activeAnnualReturnYear();
+  const activeStart = yearStart(activeYear);
+  const observedYears = records.flatMap(record => array(record.years)).map(normalizeYear).filter(year => year && yearStart(year) <= activeStart);
+  const requestedYear = normalizeYear(query.year);
+  const selectedYear = requestedYear && yearStart(requestedYear) <= activeStart ? requestedYear : activeYear;
+  const years = [...new Set([activeYear, ...observedYears, ...(requestedYear && yearStart(requestedYear) <= activeStart ? [requestedYear] : [])])]
+    .sort((a, b) => yearStart(b) - yearStart(a));
   const decorated = decorate(records, selectedYear);
   const matching = applyFilters(decorated, query);
   const categoryBase = applyFilters(decorated, query, ['category', 'applicantType', 'subType']);
@@ -223,4 +243,4 @@ function buildDashboard(records, query = {}) {
   return { ok: true, selectedYear, summary: currentSummary, comparisons, categories, applicantTypes, subTypes, workloads, options, records: pageRows, pagination: { page: Math.min(page, pages), limit, total: sorted.length, pages } };
 }
 
-module.exports = { CATEGORY_ORDER, categoryName, isAnnual, workflowState, buildRecords, buildDashboard, filingIndex };
+module.exports = { CATEGORY_ORDER, categoryName, isAnnual, workflowState, activeAnnualReturnYear, buildRecords, buildDashboard, filingIndex };

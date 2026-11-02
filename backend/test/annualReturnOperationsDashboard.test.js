@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildRecords, buildDashboard, workflowState, categoryName, isAnnual } = require('../src/services/annualReturnOperationsDashboard');
+const { buildRecords, buildDashboard, workflowState, categoryName, isAnnual, activeAnnualReturnYear } = require('../src/services/annualReturnOperationsDashboard');
 
 function record(id, overrides = {}) {
   return {
@@ -20,6 +20,15 @@ test('Annual Return dashboard recognises saved service aliases and five supporte
   assert.equal(categoryName('Waste Tyre'), 'Tyre Waste');
   assert.equal(categoryName('Used Oil'), 'Used Oil');
   assert.equal(categoryName('Battery Waste'), 'Battery Waste');
+});
+
+test('active Annual Return year follows the previous financial year automatically', () => {
+  assert.equal(activeAnnualReturnYear(new Date(2026, 10, 2, 12)), '2025-26');
+  assert.equal(activeAnnualReturnYear(new Date(2027, 3, 1, 12)), '2026-27');
+  assert.equal(activeAnnualReturnYear(new Date(2027, 2, 31, 12)), '2025-26');
+  const future = buildDashboard([record('future', { years: ['2028-29'], yearStates: { '2028-29': { status: 'Pending', progress: 0 } } })], { year: '2028-29' });
+  assert.equal(future.selectedYear, activeAnnualReturnYear());
+  assert.equal(future.options.years.includes('2028-29'), false);
 });
 
 test('Annual Return workflow progress uses real approval stages instead of fabricated percentages', () => {

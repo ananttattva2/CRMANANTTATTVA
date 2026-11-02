@@ -109,7 +109,9 @@ export default function AnnualReturnOperationsDashboard() {
       try {
         const response = await api.get(API_ENDPOINTS.dashboardInsights.annualReturnOperations, { params: filters, signal: controller.signal });
         setData(response.data);
-        if (!filters.year && response.data.selectedYear) setFilters(current => ({ ...current, year: response.data.selectedYear }));
+        if (response.data.selectedYear && filters.year !== response.data.selectedYear) {
+          setFilters(current => ({ ...current, year: response.data.selectedYear, page: 1 }));
+        }
       } catch (requestError) {
         if (requestError.code !== 'ERR_CANCELED') {
           const responseData = requestError?.response?.data;
@@ -162,7 +164,7 @@ export default function AnnualReturnOperationsDashboard() {
     <header className="arops-header"><div><h1><span><BarChart3 /></span>Operations Dashboard</h1><p>Annual Return Services Overview</p></div><div className="arops-header-actions"><button type="button" onClick={() => setFilters(current => ({ ...current }))}><RefreshCw className={loading ? 'animate-spin' : ''} />Refresh</button><button type="button" onClick={exportExcel} disabled={exporting}><Download />{exporting ? 'Exporting…' : 'Export'}</button></div></header>
 
     <section className="arops-toolbar" aria-label="Dashboard filters">
-      <FilterSelect label="Annual Return Year" value={filters.year} onChange={value => setFilter('year', value)}><option value="">Latest Year</option>{(data?.options?.years || []).map(value => <option key={value}>{value}</option>)}</FilterSelect>
+      <FilterSelect label="Annual Return Year" value={filters.year} onChange={value => setFilter('year', value)}>{!filters.year && <option value="">Current Reporting Year</option>}{(data?.options?.years || []).map(value => <option key={value}>{value}</option>)}</FilterSelect>
       <FilterSelect label="Assigned User" value={filters.user} onChange={value => setFilter('user', value)}><option value="">All Users</option>{(data?.options?.users || []).map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</FilterSelect>
       <FilterSelect label="Team / Manager" value={filters.team} onChange={value => setFilter('team', value)}><option value="">All Teams</option>{(data?.options?.teams || []).map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</FilterSelect>
       <FilterSelect label="Service Category" value={filters.category} onChange={chooseCategory}><option value="">All Categories</option>{(data?.options?.categories || []).map(value => <option key={value}>{value}</option>)}</FilterSelect>
