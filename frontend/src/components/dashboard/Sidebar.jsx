@@ -7,21 +7,22 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
   const location = useLocation()
   const navigate = useNavigate()
   const currentPath = `${location.pathname}${location.search}`
-  const [openGroups, setOpenGroups] = useState({ Home: true, Sales: true })
+  const [openGroups, setOpenGroups] = useState({})
   const [activeFlyout, setActiveFlyout] = useState(null)
-  const [activeItem, setActiveItem] = useState('User Management')
+  const [activeItem, setActiveItem] = useState('')
   const isDashboardRoute = ['/dashboard', '/overall-dashboard', '/superadmin-dashboard', '/mis', '/mis/complete', '/mis/client-daily'].includes(location.pathname)
   const [dashboardChoicesOpen, setDashboardChoicesOpen] = useState(() => isDashboardRoute)
   const [openNestedGroups, setOpenNestedGroups] = useState(() => ({
     'Pending Leads': location.pathname.startsWith('/pending-leads') || location.pathname === '/sales/lead-pipeline',
     Tickets: location.pathname.includes('tickets')
   }))
-  const isCteCtoUser = hasAnyRole(currentUser, ['cte-cto', 'CTE & CTO'])
-
   useEffect(() => {
-    if (!isCteCtoUser) return
-    setOpenGroups((value) => value['Customer Hub'] ? value : { ...value, 'Customer Hub': true })
-  }, [isCteCtoUser])
+    const matchesRoute = item => item.path && (item.path.includes('?') ? item.path === currentPath : item.path === location.pathname);
+    const containsRoute = item => matchesRoute(item) || item.children?.some(containsRoute);
+    const activeGroups = navSections.flatMap(section => section.items).filter(item => item.children?.length && containsRoute(item));
+    setOpenGroups(value => ({ ...value, ...Object.fromEntries(activeGroups.map(item => [item.label, true])) }));
+    setActiveItem('');
+  }, [currentPath, location.pathname]);
 
   function toggleGroup(item, hasChildren) {
     const label = item.label
@@ -50,6 +51,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
 
   function canShowItem(item) {
     if (Array.isArray(item.roles) && !hasAnyRole(currentUser, item.roles)) return false
+    if (item.children?.length && item.label !== 'Dashboard' && !item.children.some(canShowItem)) return false
     if (item.label !== 'User Management') return true
     return hasAnyRole(currentUser, adminRoles)
   }
@@ -98,9 +100,9 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
       </div>
 
       <nav className={`sidebar-scrollbar flex-1 space-y-5 px-3 pb-5 ${collapsed ? 'overflow-visible px-2 pt-5' : 'overflow-y-auto px-4 pt-5'}`}>
-        {navSections.map((section) => (
+        {navSections.filter(section => section.items.some(canShowItem)).map((section) => (
           <div key={section.label}>
-            {!collapsed && section.label !== 'Operations' && <p className="mb-4 px-1 text-xs font-black uppercase tracking-[0.24em] text-emerald-100/70">{section.label}</p>}
+            {!collapsed && <p className="mb-3 border-b border-white/15 px-1 pb-2 text-[11px] font-black uppercase tracking-[0.16em] text-emerald-100/80">{section.label}</p>}
             <div className="space-y-2">
               {section.items.filter(canShowItem).map((item) => {
                 const Icon = item.icon
@@ -110,6 +112,14 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
                 // Child routes already have their own active treatment. Keep the
                 // parent highlighted only when the parent itself is selected.
                 const isPrimaryActive = activeItem === item.label || pathMatches(item.path)
+                if (item.label === 'Dashboard' && !collapsed) {
+                  const choiceClass = active => `sidebar-dashboard-choice flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-black transition ${active ? 'sidebar-dashboard-choice-active bg-[#f45b0b] text-white' : 'text-emerald-50/90 hover:bg-white/10 hover:text-white'}`;
+                  return <div key={item.label} className="grid gap-1">
+                    <button type="button" onClick={() => { navigate('/overall-dashboard'); onClose?.(); }} aria-current={location.pathname === '/overall-dashboard' ? 'page' : undefined} className={choiceClass(location.pathname === '/overall-dashboard')}><BarChart3 className="h-4 w-4 shrink-0"/>Overall Dashboard</button>
+                    {canChooseDashboard ? <>{[['operations', 'Operations Dashboard', Gauge], ['sales', 'Sales Dashboard', BriefcaseBusiness]].map(([mode, label, ModeIcon]) => <button type="button" key={mode} onClick={() => chooseDashboard(mode)} className={choiceClass(dashboardMode === mode && location.pathname === '/dashboard')}><ModeIcon className="h-4 w-4 shrink-0"/>{label}</button>)}</> : <button type="button" onClick={() => { navigate('/dashboard'); onClose?.(); }} className={choiceClass(location.pathname === '/dashboard')}><Gauge className="h-4 w-4 shrink-0"/>My Dashboard</button>}
+                    {renderDashboardReports(item)}
+                  </div>;
+                }
                 return (
                   <div key={item.label} className="relative">
                     <button

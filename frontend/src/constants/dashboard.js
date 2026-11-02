@@ -65,7 +65,7 @@ export const defaultUserForm = {
   isActive: true
 }
 
-export const navSections = [
+const originalNavSections = [
   {
     label: 'Operations',
     items: [
@@ -153,3 +153,20 @@ export const navSections = [
     ]
   }
 ]
+
+// Keep route definitions and role restrictions while grouping the workflow in order.
+const homeItems = originalNavSections[0].items[0].children;
+const customerItems = originalNavSections[1].items[0].children;
+const pendingLeadsMenu = homeItems.find(item => item.label === 'Pending Leads');
+const pick = (items, labels) => labels.map(label => items.find(item => item.label === label)).filter(Boolean);
+export const navSections = [
+  { label: 'Dashboards & Reports', items: pick(homeItems, ['Dashboard']) },
+  { label: 'Lead Management', items: [...pick(customerItems, ['Hot Leads', 'Cold Leads', 'Lead Allocate']), { label: 'Revenue Pipeline', icon: TrendingUp, path: '/sales/lead-pipeline' }, { ...pendingLeadsMenu, children: pendingLeadsMenu.children.filter(item => item.path !== '/sales/lead-pipeline') }] },
+  { label: 'Client Management', items: pick(customerItems, ['Client Master', 'Client Master Allocate', 'Client Data Uploads', 'CTO & CTE', 'Health Report Check']) },
+  { label: 'Quotations & Billing', items: [{ label: 'Quotation List', icon: FileText, path: '/sales/quotations' }, ...pick(customerItems, ['Add Quotation', 'Proforma Invoice'])] },
+  { label: 'Approvals', items: pick(homeItems, ['Pending Approval']) },
+  originalNavSections[2],
+  { label: 'Communication & Planning', items: pick(homeItems, ['Notifications', 'Announcements', 'Calendar']) },
+  { label: 'Administration', items: pick(homeItems, ['User Management']) },
+  { label: 'Help & Support', items: pick(originalNavSections[3].items, ['Tickets', 'Help Yourself', 'Dummey']) }
+];

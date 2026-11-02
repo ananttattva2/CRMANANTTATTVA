@@ -386,9 +386,9 @@ test('quotation preview keeps business and service categories inside separate ce
   assert.match(page, /\[overflow-wrap:anywhere\]/);
   assert.match(page, /overflow-wrap: anywhere; word-break: normal/);
   assert.match(density, /\[data-quotation-pdf\] table th/);
-  assert.match(density, /font-size: 9px !important/);
+  assert.match(density, /\[data-quotation-pdf\] table th \{\s*font-size: 12px !important/);
   assert.match(density, /\[data-quotation-pdf\] table td/);
-  assert.match(density, /font-size: 10px !important/);
+  assert.match(density, /\[data-quotation-pdf\] table td \{\s*font-size: 12px !important/);
 });
 
 test('quotation selects safely normalize object and string options before filtering', () => {

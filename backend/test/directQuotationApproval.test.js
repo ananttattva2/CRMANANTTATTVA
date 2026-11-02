@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
+const { quotationValidityError } = require('../src/utils/quotationValidity');
 const { directQuotationApproval } = require('../src/services/directQuotationApproval');
 
 const source = fs.readFileSync(path.join(__dirname, '../src/controllers/quotationController.js'), 'utf8');
@@ -20,7 +21,7 @@ for (const role of ['sales', 'operation', 'manager', 'franchise', 'admin', 'supe
         toObject() { return { ...this }; }, markModified() {}, async save() {}, async populate() { return this; }
       };
       const context = {
-        exports: {}, console, directQuotationApproval,
+        exports: {}, console, directQuotationApproval, quotationValidityError,
         validateGstNumber: () => '', quotationAccessFilter: async () => ({}), combineFilters: (...values) => values,
         cleanBody: () => data, refreshQuotationLeadDetails: async (value) => value, validatePaymentTerms: () => '',
         validateQuotationItemDates() {}, validateQuotationPiboItems: async () => {}, resolveCrmRelationships: async () => ({}),
@@ -36,7 +37,7 @@ for (const role of ['sales', 'operation', 'manager', 'franchise', 'admin', 'supe
       vm.runInNewContext(source.slice(start, end), context);
       let response;
       await context.exports[name](
-        { body: { leadDetails: {} }, params: { id: 'quotation' }, user: { _id: 'user', role, name: 'User' } },
+        { body: { leadDetails: {}, validUntil: '2026-12-31' }, params: { id: 'quotation' }, user: { _id: 'user', role, name: 'User' } },
         { status() { return this; }, json(value) { response = value; } }
       );
 

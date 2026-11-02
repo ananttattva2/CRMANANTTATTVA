@@ -1978,6 +1978,15 @@ export default function Quotations() {
   }
 
   async function saveQuotation(status = quotation.status) {
+    const validity = String(quotation.validUntil || '').trim();
+    const validityDate = new Date(`${validity}T00:00:00.000Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(validity) || !Number.isFinite(validityDate.getTime()) || validityDate.toISOString().slice(0, 10) !== validity) {
+      setError('Quotation Valid Until is required. Please select a valid date before saving.');
+      const field = document.getElementById('quotation-valid-until');
+      field?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      field?.querySelector('input')?.focus({ preventScroll: true });
+      return;
+    }
     if (!String(quotation.fromName || '').trim() || !String(quotation.preparedByName || '').trim()) {
       setError('Select the lead again and enter both From Name and Prepared By Name.');
       return;
@@ -2535,7 +2544,7 @@ export default function Quotations() {
           </div>
           <div className="mt-5 max-w-sm">
             <Field label="Quotation Valid Until" required>
-              <PremiumDatePicker value={quotation.validUntil || ''} onChange={(event) => setQuotation((current) => ({ ...current, validUntil: event.target.value }))} />
+              <div id="quotation-valid-until"><PremiumDatePicker required aria-label="Quotation Valid Until" value={quotation.validUntil || ''} onChange={(event) => setQuotation((current) => ({ ...current, validUntil: event.target.value }))} /><p className="mt-2 text-xs font-semibold text-slate-500">REQUIRED TO SAVE OR SUBMIT THIS QUOTATION.</p></div>
             </Field>
           </div>
 
@@ -3299,7 +3308,7 @@ function QuotationPreviewDrawer({ quotation, currentUser, onClose, onBackToPendi
         <div className="hidden-scrollbar flex-1 overflow-auto bg-[radial-gradient(circle_at_top_left,#fff7ed_0,#f8fafc_36%,#eef2f7_100%)] p-5 sm:p-8">
           {downloadError && <div className="mx-auto mb-3 max-w-[760px] rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-black text-red-600">{downloadError}</div>}
           {!canDownloadPdf && <div className="mx-auto mb-3 max-w-[760px] rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">PDF download will be available after Admin approval. Final Super Admin approval completes the full quotation workflow.</div>}
-          <div ref={documentRef} data-quotation-pdf className="mx-auto max-w-[760px]">
+          <div ref={documentRef} data-quotation-pdf className="quotation-document mx-auto w-[760px] max-w-none uppercase">
             <section className="min-h-[1020px] rounded-sm border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/15">
               <div className="flex items-center justify-between pb-2">
                 <img data-pdf-logo src={quotationLogoUrl || ANANT_LOGO_SOURCE_URL} alt="Anant Tattva" className="h-14 w-32 object-contain object-left" />
@@ -3483,7 +3492,7 @@ export function buildQuotationPrintHtml(quotation) {
     <style>
       @page { size: A4; margin: 10mm; }
       * { box-sizing: border-box; }
-      body { margin: 0; background: #fff; color: #111827; font-family: Arial, Helvetica, sans-serif; font-size: 10px; font-weight: 400; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      body { margin: 0; background: #fff; color: #111827; font-family: Arial, Helvetica, sans-serif; font-size: 12px; line-height: 1.5; text-transform: uppercase; font-weight: 400; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .page { width: 100%; min-height: 277mm; padding: 0; }
       .page + .page { page-break-before: always; }
       .header { display: flex; align-items: center; justify-content: space-between; padding: 12px 0 8px; border-bottom: 1px solid #020617; }
@@ -3498,13 +3507,13 @@ export function buildQuotationPrintHtml(quotation) {
       .value { font-weight: 400; }
       p { margin: 0 0 4px; }
       table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 4px; }
-      th { background: #f97316; color: white; border: 1px solid #020617; padding: 7px 6px; text-align: left; font-size: 9px; line-height: 1.15; font-weight: 900; text-transform: uppercase; overflow-wrap: anywhere; }
-      td { background: #fff; border: 1px solid #020617; padding: 7px 6px; font-size: 9px; line-height: 1.2; font-weight: 700; text-transform: uppercase; overflow-wrap: anywhere; word-break: normal; }
+      th { background: #f97316; color: white; border: 1px solid #020617; padding: 7px 6px; text-align: left; font-size: 12px; line-height: 1.4; font-weight: 900; text-transform: uppercase; overflow-wrap: anywhere; }
+      td { background: #fff; border: 1px solid #020617; padding: 7px 6px; font-size: 12px; line-height: 1.4; font-weight: 700; text-transform: uppercase; overflow-wrap: anywhere; word-break: normal; }
       table:first-of-type th:nth-child(1), table:first-of-type td:nth-child(1) { text-align: center; }
       td.amount { font-weight: 800; }
-      td.combined-amount { text-align: center; vertical-align: middle; font-size: 11px; }
+      td.combined-amount { text-align: center; vertical-align: middle; font-size: 12px; }
       .center { text-align: center; }
-      .package-header { margin-top: 4px; color: #020617; padding: 8px 2px; font-size: 10px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
+      .package-header { margin-top: 4px; color: #020617; padding: 8px 2px; font-size: 12px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
       .package-header + table { margin-top: 0; }
       .terms { margin-top: 16px; line-height: 1.45; }
       .terms p { margin: 2px 0; font-weight: 400; }

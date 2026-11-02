@@ -1,3 +1,4 @@
+const { quotationValidityError } = require('../utils/quotationValidity');
 const { directQuotationApproval } = require('../services/directQuotationApproval');
 const Quotation = require('../models/Quotation');
 const mongoose = require('mongoose');
@@ -817,6 +818,8 @@ exports.createQuotation = async (req, res) => {
   if (gstError) return res.status(400).json({ error: gstError });
   let data;
   try {
+    const validityError = quotationValidityError(req.body.validUntil);
+    if (validityError) throw new Error(validityError);
     data = cleanBody(req.body, req.user);
     data = await refreshQuotationLeadDetails(data, null, req.user);
     const termsError = validatePaymentTerms(data.terms, data.paymentTerm);
@@ -849,6 +852,8 @@ exports.updateQuotation = async (req, res) => {
   // Client-supplied status is deliberately ignored.
   let data;
   try {
+    const validityError = quotationValidityError(req.body.validUntil);
+    if (validityError) throw new Error(validityError);
     data = cleanBody(req.body, req.user, quotation.items || []);
     data = await refreshQuotationLeadDetails(data, quotation, req.user);
     const termsError = validatePaymentTerms(data.terms, data.paymentTerm);
@@ -1240,6 +1245,8 @@ exports.bulkCreateQuotations = async (req, res) => {
     try {
       const gstError = validateGstNumber(row.leadDetails?.gstNumber);
       if (gstError) throw new Error(gstError);
+      const validityError = quotationValidityError(row.validUntil);
+      if (validityError) throw new Error(validityError);
       const quotationNumber = cleanString(row.quotationNumber) || await nextQuotationNumber();
       const existing = await Quotation.findOne({ quotationNumber });
       const data = cleanBody(row, req.user, existing?.items || []);

@@ -87,17 +87,17 @@
     overflow-y: auto;
   }
 
-  /* Quotation document typography is intentionally denser than CRM tables. */
+  /* Quotation document text stays readable in the preview and download. */
   [data-quotation-pdf] table th {
-    font-size: 9px !important;
-    line-height: 1.25 !important;
+    font-size: 12px !important;
+    line-height: 1.5 !important;
     overflow-wrap: anywhere;
     word-break: normal;
   }
 
   [data-quotation-pdf] table td {
-    font-size: 10px !important;
-    line-height: 1.35 !important;
+    font-size: 12px !important;
+    line-height: 1.5 !important;
     overflow-wrap: anywhere;
     word-break: normal;
     white-space: normal;
@@ -525,3 +525,5 @@
 .applicant-picker-status-partial { background:#fef3c7; color:#92400e; }
 .applicant-picker-status-rejected { background:#fee2e2; color:#b91c1c; }
 .applicant-picker-status-pending { background:#f1f5f9; color:#475569; }
+
+@media screen and (min-width:1100px) { .quotation-document { zoom:calc(1 / var(--crm-desktop-scale)); } }

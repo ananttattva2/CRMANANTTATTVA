@@ -33,7 +33,7 @@ function manualDateValue(value) {
   return `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}`;
 }
 
-export default function PremiumDatePicker({ value = '', onChange, disabled = false, readOnly = false, className = '', placeholder = 'Select date', min, max, 'aria-label': ariaLabel }) {
+export default function PremiumDatePicker({ value = '', onChange, required = false, 'aria-invalid': ariaInvalid, disabled = false, readOnly = false, className = '', placeholder = 'Select date', min, max, 'aria-label': ariaLabel }) {
   const selected = parseDate(value);
   const [open, setOpen] = useState(false);
   const [manualValue, setManualValue] = useState(manualDateValue(value));
@@ -142,7 +142,7 @@ export default function PremiumDatePicker({ value = '', onChange, disabled = fal
   return <>
     <div ref={triggerRef} aria-expanded={open} className={`premium-date-trigger ${value ? 'has-value' : ''} ${disabled ? 'is-disabled' : ''} ${className}`.trim()}>
       <button type="button" className="premium-date-trigger__icon" aria-label={`Open ${ariaLabel || placeholder} calendar`} disabled={disabled || readOnly} onClick={() => setOpen((current) => !current)}><CalendarDays /></button>
-      <label className="premium-date-trigger__copy"><small>{value ? 'Selected date' : 'Date'} · type DD-MM-YYYY</small><input aria-label={ariaLabel || placeholder} inputMode="numeric" placeholder="DD-MM-YYYY" value={manualValue} disabled={disabled} readOnly={readOnly} onChange={(event) => setManualValue(event.target.value.replace(/[^\d/-]/g, '').slice(0, 10))} onBlur={commitManualValue} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commitManualValue(); event.currentTarget.blur(); } }} /></label>
+      <label className="premium-date-trigger__copy"><small>{value ? 'Selected date' : 'Date'} · type DD-MM-YYYY</small><input required={required} aria-required={required || undefined} aria-invalid={ariaInvalid} aria-label={ariaLabel || placeholder} inputMode="numeric" placeholder="DD-MM-YYYY" value={manualValue} disabled={disabled} readOnly={readOnly} onChange={(event) => setManualValue(event.target.value.replace(/[^\d/-]/g, '').slice(0, 10))} onBlur={commitManualValue} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commitManualValue(); event.currentTarget.blur(); } }} /></label>
       <button type="button" className="premium-date-trigger__chevron" aria-label="Toggle calendar" disabled={disabled || readOnly} onClick={() => setOpen((current) => !current)}><ChevronRight className={open ? 'is-open' : ''} /></button>
     </div>
     {popup}
