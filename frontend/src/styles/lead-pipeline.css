@@ -719,7 +719,7 @@
 .pipeline-revenue-column { display:flex; flex-direction:column; min-width:0; height:100%; }
 .pipeline-section-title { display:flex; align-items:center; gap:8px; margin:0 0 14px; color:#152d48; font-size:18px; font-weight:900; letter-spacing:-.03em; }
 .pipeline-section-title svg { color:#f36b26; }
-.pipeline-summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:14px 0; }
+.pipeline-summary-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:14px 0; }
 .pipeline-summary-grid>button { display:grid; grid-template-columns:auto 1fr; grid-template-rows:auto auto; column-gap:12px; min-width:0; padding:14px; border:1px solid #e2ece9; border-radius:14px; background:#fff; text-align:left; box-shadow:0 7px 22px #153b2e0a; transition:transform .18s,box-shadow .18s,border-color .18s; }
 .pipeline-summary-grid>button:hover { transform:translateY(-2px); border-color:#c9e3da; box-shadow:0 11px 25px #153b2e10; }
 .pipeline-summary-grid>button>span { grid-row:1/3; display:grid; width:45px; height:45px; place-items:center; border-radius:12px; }
