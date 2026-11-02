@@ -109,9 +109,14 @@ test('converted cold leads remain in Cold Closed history and link to one unique 
  assert.equal(res.data.rows.find(r=>r.kind==='cold'&&r.id==='c').state,'closed');
  assert.equal(res.data.rows.find(r=>r.kind==='cold'&&r.id==='c').canonicalKey,'hot:h');
  assert.equal(res.data.rows.find(r=>r.kind==='cold'&&r.id==='c2').state,'open');
- const {uniquePipelineRows}=await import('../../frontend/src/utils/leadPipeline.mjs');
+ const {currentPipelineRows,uniquePipelineRows}=await import('../../frontend/src/utils/leadPipeline.mjs');
  assert.equal(uniquePipelineRows(res.data.rows).reduce((n,r)=>n+r.revenuePaise,0),1500000);
  assert.equal(uniquePipelineRows(res.data.rows).length,2);
+ const current=currentPipelineRows(res.data.rows);
+ assert.equal(current.length,2);
+ assert.equal(current.some(r=>r.kind==='cold'&&r.converted),false);
+ assert.equal(current.filter(r=>r.kind==='hot').length,1);
+ assert.equal(current.filter(r=>r.kind==='cold').length,1);
 });
 
 

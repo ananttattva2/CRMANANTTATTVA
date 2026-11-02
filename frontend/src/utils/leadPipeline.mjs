@@ -8,6 +8,12 @@ export function uniquePipelineRows(rows = []) {
   return [...unique.values()];
 }
 
+// A converted Cold lead belongs to the Hot pipeline. The API may retain its
+// Cold row for audit history, but operational dashboard totals must show it once.
+export function currentPipelineRows(rows = []) {
+  return rows.filter(row => !(row.kind === 'cold' && row.converted));
+}
+
 // Calendar periods use local dates, Monday-based weeks and exclusive end bounds.
 export function pipelinePeriodRange(period, value) {
   if (period === 'all') return { label: 'All time' };
