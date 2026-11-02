@@ -71,3 +71,13 @@ test('a renewed consent on the newest record suppresses an older duplicate expir
  const result=await service.runConsentExpiryReminders({now:new Date('2026-11-02T04:00:00Z'),clients:[newer,client()],users:[],deliveries:ledger(),send:async()=>{sent++;}});
  assert.equal(result.sent,0); assert.equal(sent,0);
 });
+
+test('latest not-applicable or cleared consent does not send an older saved expiry', async () => {
+ for (const mode of ['not-applicable','cleared']) {
+  const newer=client();
+  if (mode === 'not-applicable') newer.data.cte.cteApplicable='No';
+  else newer.data.cte.plantWiseDetails[0].cteValidDate='';
+  const result=await service.runConsentExpiryReminders({now:new Date('2026-11-02T04:00:00Z'),clients:[newer,client()],users:[],deliveries:ledger(),send:async()=>assert.fail('Older duplicate consent must not send')});
+  assert.equal(result.sent,0);
+ }
+});

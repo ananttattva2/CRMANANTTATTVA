@@ -37,10 +37,9 @@ function consentEvents(client, today, includeOutsideWindow = false) {
     const data = resolveClientMasterData(client, serviceId), cte = data.serviceDetailsByAssignedServiceId?.[serviceId]?.cte || data.cte || {};
     for (const [index, plant] of (Array.isArray(cte.plantWiseDetails) ? cte.plantWiseDetails : []).entries()) {
       for (const [kind, field, number] of [['CTE', 'cteValidDate', 'cteConsentNo'], ['CTO/CCA', 'ctoValidDate', 'ctoOrderNo']]) {
-        if (kind === 'CTE' && String(cte.cteApplicable || '').toLowerCase() === 'no') continue;
+        const applicable = kind !== 'CTE' || String(cte.cteApplicable || '').toLowerCase() !== 'no';
         const expiry = dateKey(plant[field]), due = reminderDate(expiry);
-        if (!due) continue;
-        const eligible = today >= due && today <= expiry;
+        const eligible = Boolean(applicable && due && today >= due && today <= expiry);
         if (!includeOutsideWindow && !eligible) continue;
         const companyName = getCompanyName(client) || 'Your organisation';
         const identity = client.companyIdentity || String(client.selectedLead?._id || client.selectedLead || client._id);
