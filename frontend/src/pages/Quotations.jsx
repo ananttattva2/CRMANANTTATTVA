@@ -1046,6 +1046,8 @@ export default function Quotations() {
   const [managementApprovalSaving, setManagementApprovalSaving] = useState(false);
   const [approvalDecision, setApprovalDecision] = useState(null);
   const [approvalDecisionSaving, setApprovalDecisionSaving] = useState(false);
+  const [previewDecision, setPreviewDecision] = useState(null);
+  const [previewDecisionSaving, setPreviewDecisionSaving] = useState(false);
   const [managementSourceOpen, setManagementSourceOpen] = useState(false);
   const [editingItemIndex, setEditingItemIndex] = useState(null);
   const [itemDrafts, setItemDrafts] = useState({});
@@ -2200,6 +2202,42 @@ export default function Quotations() {
     }
   }
 
+  async function submitPreviewDecision(event) {
+    event.preventDefault();
+    if (!previewDecision?.quotation || !canApproveQuotation || previewDecisionSaving) return;
+    const status = String(previewDecision.status || '').toUpperCase();
+    const remarks = String(previewDecision.remarks || '').trim();
+    if (status === 'REJECTED' && !remarks) return;
+    const id = previewDecision.quotation._id || previewDecision.quotation.id;
+    setPreviewDecisionSaving(true);
+    setError('');
+    try {
+      const response = await api.patch(API_ENDPOINTS.quotations.approval(id), {
+        status,
+        approvalRecordId: location.state?.quotationSnapshot?.approvalRecordId || '',
+        remarks: remarks || (status === 'APPROVED' ? `${isSuperAdminQuotationUser ? 'Super Admin' : 'Admin'} approved from quotation preview` : '')
+      });
+      const savedQuotation = response.data?.quotation || previewDecision.quotation;
+      setPreviewQuotation(savedQuotation);
+      setPreviewDecision(null);
+      try {
+        sessionStorage.removeItem('crm.pendingApproval.cache.v7');
+        localStorage.removeItem('crm.pendingApproval.cache.v7');
+      } catch { /* Storage availability does not affect approval. */ }
+      await loadPage({ silent: true });
+      setSuccessModal({
+        title: status === 'APPROVED' ? 'Quotation approved' : 'Quotation rejected',
+        message: response.data?.message || `Quotation ${status.toLowerCase()} successfully.`
+      });
+    } catch (err) {
+      const message = err?.response?.data?.error || `Unable to ${status === 'APPROVED' ? 'approve' : 'reject'} quotation.`;
+      setError(message);
+      setPreviewDecision((current) => current ? { ...current, error: message } : current);
+    } finally {
+      setPreviewDecisionSaving(false);
+    }
+  }
+
   function renderManagementApprovalAction(row) {
     if (!canRequestManagementApproval) return null;
     // Older records could be marked PENDING automatically before the user
@@ -2424,7 +2462,24 @@ export default function Quotations() {
             </form>
           </div>
         )}
-        {previewQuotation && <QuotationPreviewDrawer quotation={previewQuotation} currentUser={currentUser} onClose={() => setPreviewQuotation(null)} onBackToPendingApproval={fromPendingApproval ? () => navigate('/pending-approval') : null} />}
+        {previewQuotation && <QuotationPreviewDrawer
+          quotation={previewQuotation}
+          currentUser={currentUser}
+          onClose={() => setPreviewQuotation(null)}
+          onBackToPendingApproval={fromPendingApproval ? () => navigate('/pending-approval') : null}
+          onApprove={fromPendingApproval && canApproveQuotation && !['approved', 'rejected'].includes(String(previewQuotation.status || '').toLowerCase()) && (isSuperAdminQuotationUser || !isQuotationAdminApproved(previewQuotation)) ? () => setPreviewDecision({ quotation: previewQuotation, status: 'APPROVED', remarks: '', error: '' }) : null}
+          onReject={fromPendingApproval && canApproveQuotation && !['approved', 'rejected'].includes(String(previewQuotation.status || '').toLowerCase()) ? () => setPreviewDecision({ quotation: previewQuotation, status: 'REJECTED', remarks: '', error: '' }) : null}
+        />}
+        {previewDecision && <div className="pending-decision-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !previewDecisionSaving) setPreviewDecision(null); }}><form onSubmit={submitPreviewDecision} className={`pending-decision-modal quotation-decision-modal ${previewDecision.status === 'APPROVED' ? 'is-approved' : 'is-rejected'}`}>
+          <button type="button" disabled={previewDecisionSaving} onClick={() => setPreviewDecision(null)} className="pending-decision-close" aria-label="Close quotation decision"><X className="h-5 w-5" /></button>
+          <p className="pending-decision-eyebrow">Quotation Decision</p>
+          <h2>{previewDecision.status === 'APPROVED' ? 'Approve quotation' : 'Reject quotation'}</h2>
+          <strong className="pending-decision-client">{previewDecision.quotation.companyName || previewDecision.quotation.leadDetails?.companyName || '-'}</strong>
+          <p className="pending-decision-help">{previewDecision.status === 'APPROVED' ? (isSuperAdminQuotationUser ? 'Super Admin approval completes the quotation workflow directly.' : 'Admin approval unlocks the PDF and sends the quotation for final Super Admin approval.') : 'The rejection reason will be saved in the quotation audit trail.'}</p>
+          {previewDecision.error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{previewDecision.error}</div>}
+          <label className="pending-decision-field"><span>{previewDecision.status === 'APPROVED' ? 'Approval note' : 'Rejection reason'} {previewDecision.status === 'REJECTED' && <b>*</b>}</span><textarea autoFocus rows={5} required={previewDecision.status === 'REJECTED'} maxLength={500} value={previewDecision.remarks} onChange={(event) => setPreviewDecision((current) => ({ ...current, remarks: event.target.value }))} placeholder={previewDecision.status === 'APPROVED' ? 'Add an optional approval note...' : 'Explain why this quotation is being rejected...'} /></label>
+          <div className="pending-decision-actions"><button type="button" disabled={previewDecisionSaving} onClick={() => setPreviewDecision(null)}>Cancel</button><button type="submit" disabled={previewDecisionSaving || (previewDecision.status === 'REJECTED' && !previewDecision.remarks.trim())}>{previewDecisionSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : previewDecision.status === 'APPROVED' ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}Confirm {previewDecision.status === 'APPROVED' ? 'Approval' : 'Rejection'}</button></div>
+        </form></div>}
         {successModal && (
           <SuccessDialog
             title={successModal.title}
@@ -3203,7 +3258,7 @@ function HistoryRow({ tone, title, by, date, status }) {
   );
 }
 
-function QuotationPreviewDrawer({ quotation, currentUser, onClose, onBackToPendingApproval }) {
+function QuotationPreviewDrawer({ quotation, currentUser, onClose, onBackToPendingApproval, onApprove, onReject }) {
   const details = quotation.leadDetails || {};
   const items = meaningfulQuotationItems(quotation.items);
   const combined = isCombinedQuotation(quotation);
@@ -3299,8 +3354,10 @@ function QuotationPreviewDrawer({ quotation, currentUser, onClose, onBackToPendi
               <h2 className="truncate text-xl font-black text-slate-950">{quotation.quotationNumber || 'Quotation Preview'}</h2>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             {onBackToPendingApproval && <button type="button" onClick={onBackToPendingApproval} className="btn-lift inline-flex min-h-10 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-5 font-black text-emerald-800"><ArrowLeft className="h-4 w-4" />Back to Pending Approval</button>}
+            {onApprove && <button type="button" onClick={onApprove} className="btn-lift inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-600 px-5 font-black text-white shadow-sm"><Check className="h-4 w-4" />Approve</button>}
+            {onReject && <button type="button" onClick={onReject} className="btn-lift inline-flex min-h-10 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-5 font-black text-red-700"><X className="h-4 w-4" />Reject</button>}
             <button type="button" onClick={onClose} className="btn-lift min-h-10 rounded-lg border border-slate-200 bg-white px-5 font-black text-slate-700">Close</button>
             <button type="button" disabled={downloadingPdf || !canDownloadPdf} title={!canDownloadPdf ? 'Admin approval is required before downloading this quotation.' : 'Download quotation PDF'} onClick={handleDownloadPdf} className="btn-lift inline-flex min-h-10 items-center gap-2 rounded-lg bg-blue-600 px-5 font-black text-white disabled:cursor-not-allowed disabled:opacity-60"><Download className={`h-4 w-4 ${downloadingPdf ? 'animate-bounce' : ''}`} />{downloadingPdf ? 'Generating PDF...' : canDownloadPdf ? 'Download PDF' : 'Approval Required'}</button>
           </div>
