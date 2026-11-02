@@ -10,7 +10,7 @@ const Team = require('../models/Team');
 const { loadPurchaseOrders } = require('./purchaseOrderController');
 const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
 const { loadOverallRecords } = require('../services/overallDashboardData');
-const { loadDashboardAssignments, createDashboardCache } = require('../services/dashboardReadModel');
+const { loadDashboardAssignments, createDashboardCache, leadProjection } = require('../services/dashboardReadModel');
 const cachedOverallRecords = createDashboardCache({ name: 'overall-records' });
 const cachedAssignmentReviews = createDashboardCache({ name: 'assignment-reviews' });
 const cachedMonthlyPurchaseOrders = createDashboardCache({ name: 'monthly-purchase-orders' });
@@ -216,14 +216,32 @@ exports.annualReturnOperations = async (req, res) => {
     stage = 'client visibility';
     const clientVisibility = await require('./clientController').clientAccessFilter(req.user);
     stage = 'assignment snapshot';
-    const [snapshot, users] = await Promise.all([
-      loadDashboardAssignments(
-        { Client, Lead },
-        combineFilters(clientMasterSourceRecordFilter(), clientVisibility, dashboardClientExclusionFilter(excluded)),
-        combineFilters(overallLeadFilter(scope), dashboardLeadExclusionFilter(excluded))
-      ),
+    const clientFilter = combineFilters(clientMasterSourceRecordFilter(), clientVisibility, dashboardClientExclusionFilter(excluded));
+    const leadFilter = combineFilters(overallLeadFilter(scope), dashboardLeadExclusionFilter(excluded));
+    const [snapshotResult, usersResult] = await Promise.allSettled([
+      loadDashboardAssignments({ Client, Lead }, clientFilter, leadFilter),
       visibleUsers(scope, req.user)
     ]);
+    let snapshot = snapshotResult.status === 'fulfilled' ? snapshotResult.value : null;
+    const users = usersResult.status === 'fulfilled' && usersResult.value.length
+      ? usersResult.value
+      : [{ _id: req.user._id, name: req.user.name, email: req.user.email, role: req.user.role }];
+    if (usersResult.status === 'rejected') console.warn('[annual-return-operations-dashboard] user directory fallback', {
+      name: usersResult.reason?.name, code: usersResult.reason?.code, message: usersResult.reason?.message
+    });
+    if (!snapshot) {
+      console.warn('[annual-return-operations-dashboard] compact Client Master snapshot failed; using authorised lead fallback', {
+        name: snapshotResult.reason?.name, code: snapshotResult.reason?.code, message: snapshotResult.reason?.message
+      });
+      stage = 'lead assignment fallback';
+      const fallback = await Promise.allSettled([
+        Lead.aggregate([{ $match: leadFilter }, { $project: leadProjection }]).option({ maxTimeMS: 12000 })
+      ]);
+      if (fallback[0].status === 'rejected') console.warn('[annual-return-operations-dashboard] lead fallback failed', {
+        name: fallback[0].reason?.name, code: fallback[0].reason?.code, message: fallback[0].reason?.message
+      });
+      snapshot = { clients: [], leads: fallback[0].status === 'fulfilled' ? fallback[0].value : [] };
+    }
     stage = 'assignment merge';
     const assignedClients = mergeManagerStaffAllocations(snapshot.clients, snapshot.leads);
     const mongoose = require('mongoose');
