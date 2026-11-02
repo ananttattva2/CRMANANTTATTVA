@@ -208,8 +208,10 @@ exports.overall = async (req, res) => {
 
 exports.annualReturnOperations = async (req, res) => {
   const startedAt = Date.now();
+  const diagnosticVersion = 'ar-dashboard-v3';
   let stage = 'scope';
   try {
+    res.set('X-Annual-Return-Dashboard', diagnosticVersion);
     const scope = await getVisibleUserScope(req.user);
     stage = 'lead exclusions';
     const excluded = await getAssignmentDashboardLeadReferences();
@@ -287,7 +289,8 @@ exports.annualReturnOperations = async (req, res) => {
     console.error('[annual-return-operations-dashboard] load failed', { stage, durationMs: Date.now() - startedAt, name: error.name, code: error.code, message: error.message, stack: error.stack });
     return res.status(error.code === 50 ? 503 : 500).json({
       error: 'Unable to load the Annual Return operations dashboard. Please refresh and retry.',
-      ...(process.env.NODE_ENV === 'production' ? {} : { stage, detail: error.message })
+      diagnostic: { version: diagnosticVersion, stage, code: String(error.code || error.name || 'UNKNOWN') },
+      ...(process.env.NODE_ENV === 'production' ? {} : { detail: error.message })
     });
   }
 };

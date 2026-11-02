@@ -111,7 +111,16 @@ export default function AnnualReturnOperationsDashboard() {
         setData(response.data);
         if (!filters.year && response.data.selectedYear) setFilters(current => ({ ...current, year: response.data.selectedYear }));
       } catch (requestError) {
-        if (requestError.code !== 'ERR_CANCELED') setError(requestError?.response?.data?.error || 'Unable to load the Summary Dashboard.');
+        if (requestError.code !== 'ERR_CANCELED') {
+          const responseData = requestError?.response?.data;
+          console.error('[Summary Dashboard] request failed', {
+            status: requestError?.response?.status,
+            diagnostic: responseData?.diagnostic,
+            error: responseData?.error || requestError.message
+          });
+          const diagnostic = responseData?.diagnostic;
+          setError(`${responseData?.error || 'Unable to load the Summary Dashboard.'}${diagnostic ? ` Diagnostic: ${diagnostic.version}/${diagnostic.stage}/${diagnostic.code}` : ''}`);
+        }
       } finally { if (!controller.signal.aborted) setLoading(false); }
     }, filters.search ? 220 : 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
