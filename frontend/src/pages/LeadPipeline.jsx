@@ -1,6 +1,6 @@
 import TrafficSources from '../components/leads/TrafficSources';
 import { trafficSourceHierarchy, trafficSourceKey } from '../utils/trafficSources.mjs';
-import { uniquePipelineRows } from '../utils/leadPipeline.mjs';
+import { uniquePipelineRows, pipelinePeriodRange, inPipelinePeriod } from '../utils/leadPipeline.mjs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, BadgeIndianRupee, Download, Flame, Search, Snowflake, Users, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -19,6 +19,9 @@ export default function LeadPipeline() {
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [owner, setOwner] = useState('');
+  const [period, setPeriod] = useState('all');
+  const [periodDate, setPeriodDate] = useState(() => `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`);
+  const range = useMemo(() => pipelinePeriodRange(period, periodDate), [period, periodDate]);
   const [selection, setSelection] = useState(null);
   const [revenueRow, setRevenueRow] = useState(null);
   const [closeRow, setCloseRow] = useState(null);
@@ -49,7 +52,7 @@ export default function LeadPipeline() {
     if (serviceView && serviceDialog.current && !serviceDialog.current.open) serviceDialog.current.showModal();
     if (!serviceView && serviceDialog.current?.open) serviceDialog.current.close();
   }, [serviceView]);
-  const filtered = useMemo(() => rows.filter(r => (!owner || r.owner === owner) && `${r.company} ${r.code} ${r.owner}`.toLowerCase().includes(query.trim().toLowerCase())), [rows, query, owner]);
+  const filtered = useMemo(() => rows.filter(r => inPipelinePeriod(r.createdAt, range) && (!owner || r.owner === owner) && `${r.company} ${r.code} ${r.owner}`.toLowerCase().includes(query.trim().toLowerCase())), [rows, query, owner, range]);
   const unique = uniquePipelineRows(filtered);
   const trafficSources = useMemo(() => trafficSourceHierarchy(filtered, sourceModes), [filtered, sourceModes]);
   const listed = selection ? (selection.kind ? filtered : unique).filter(r => (!selection.kind || r.kind === selection.kind) && (!selection.state || r.state === selection.state) && (!selection.sources?.length || selection.sources.includes(trafficSourceKey(r.communicationMode)))) : [];
@@ -92,6 +95,11 @@ export default function LeadPipeline() {
   }
   return <DashboardShell currentUser={currentUser}><div className="pipeline-page">
     <header className="pipeline-header"><div className="pipeline-heading"><h1>Revenue Pipeline</h1><p>A clear view of your hot and cold pipeline, with locked revenue history.</p></div><div className="pipeline-filters"><label><Search size={17}/><input aria-label="Search pipeline" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search company, lead ID or owner…"/></label><select aria-label="Filter by owner" value={owner} onChange={e => setOwner(e.target.value)}><option value="">All visible owners</option>{[...new Set(rows.map(r => r.owner))].sort().map(name => <option key={name}>{name}</option>)}</select><span><Users size={15}/>{unique.length} unique leads</span></div></header>
+    <section className="pipeline-period-bar" aria-label="Pipeline date filters">
+      <div className="pipeline-period-tabs" role="group" aria-label="Filter period">{[['all', 'All time'], ['week', 'Week'], ['month', 'Month'], ['year', 'Year']].map(([value, label]) => <button key={value} type="button" aria-pressed={period === value} onClick={() => setPeriod(value)}>{label}</button>)}</div>
+      <div className="pipeline-period-context">{period !== 'all' && <label>Choose {period}{period === 'year' ? <select aria-label="Choose year" value={periodDate.slice(0, 4)} onChange={e => setPeriodDate(`${e.target.value}-01-01`)}>{[...new Set([new Date().getFullYear(), Number(periodDate.slice(0, 4)), ...rows.map(row => new Date(row.createdAt).getFullYear()).filter(Number.isFinite)])].sort((a, b) => b - a).map(year => <option key={year} value={year}>{year}</option>)}</select> : <input aria-label={`Choose ${period}`} type={period === 'month' ? 'month' : 'date'} value={period === 'month' ? periodDate.slice(0, 7) : periodDate} onChange={e => { if (e.target.value) setPeriodDate(period === 'month' ? `${e.target.value}-01` : e.target.value); }}/>}</label>}<span>{range.label} · Lead creation date</span></div>
+      <button className="pipeline-export" type="button" disabled={loading || !unique.length} onClick={() => exportRows(unique, `pipeline-${period}`)}><Download size={16}/>Export</button>
+    </section>
     {error && <p role="alert" className="pipeline-error">{error}</p>}
     {loading ? <div role="status" className="pipeline-empty">Loading your lead pipeline…</div> : <>
       <section className="pipeline-summary-grid" aria-label="Pipeline summary">
@@ -106,6 +114,7 @@ export default function LeadPipeline() {
           <tr><td><button type="button" onClick={() => open('hot')}><Flame/>Hot Leads</button></td><td>{hotRows.length.toLocaleString('en-IN')}</td><td><button type="button" onClick={() => open('hot', 'open')}>{hotOpen.length.toLocaleString('en-IN')}</button></td><td><button type="button" onClick={() => open('hot', 'closed')}>{hotClosed.length.toLocaleString('en-IN')}</button></td><td>{revenueMoney(total(hotRows))}</td><td>{revenueMoney(poTotal(hotClosed))}</td></tr>
           <tr><td><button type="button" onClick={() => open('cold')}><Snowflake/>Cold Leads</button></td><td>{coldRows.length.toLocaleString('en-IN')}</td><td><button type="button" onClick={() => open('cold', 'open')}>{coldOpen.length.toLocaleString('en-IN')}</button></td><td><button type="button" onClick={() => open('cold', 'closed')}>{coldClosed.length.toLocaleString('en-IN')}</button></td><td>{revenueMoney(total(coldRows))}</td><td>—</td></tr>
         </tbody></table></div>
+        {!unique.length && <p role="status" className="pipeline-filter-empty">No leads match these filters. Try another period or owner.</p>}
         <div className="pipeline-kind-grid">
           <article className="pipeline-kind-card hot"><header><span><Flame/></span><button type="button" onClick={() => open('hot')}>Hot Leads<ArrowUpRight/></button></header><div className="pipeline-kind-counts"><button type="button" onClick={() => open('hot', 'open')}><small>Open</small><strong>{hotOpen.length.toLocaleString('en-IN')}</strong></button><button type="button" onClick={() => open('hot', 'closed')}><small>Closed</small><strong>{hotClosed.length.toLocaleString('en-IN')}</strong></button></div><div className="pipeline-kind-money"><button type="button" onClick={() => open('hot')}><small>Estimated Revenue</small><strong>{revenueMoney(total(hotRows))}</strong></button><button type="button" onClick={() => open('hot', 'closed')}><small>PO Value</small><strong>{revenueMoney(poTotal(hotClosed))}</strong></button></div></article>
           <article className="pipeline-kind-card cold"><header><span><Snowflake/></span><button type="button" onClick={() => open('cold')}>Cold Leads<ArrowUpRight/></button></header><div className="pipeline-kind-counts"><button type="button" onClick={() => open('cold', 'open')}><small>Open</small><strong>{coldOpen.length.toLocaleString('en-IN')}</strong></button><button type="button" onClick={() => open('cold', 'closed')}><small>Closed</small><strong>{coldClosed.length.toLocaleString('en-IN')}</strong></button></div><div className="pipeline-kind-money"><button type="button" onClick={() => open('cold')}><small>Estimated Revenue</small><strong>{revenueMoney(total(coldRows))}</strong></button></div></article>
