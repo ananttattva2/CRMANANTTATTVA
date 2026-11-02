@@ -871,3 +871,48 @@
 .pipeline-period-context select { padding:8px 12px; border:1px solid #d7e5e0; border-radius:8px; background:white; color:#183c40; }
 .pipeline-filter-empty { margin-top:14px; padding:14px; border-radius:10px; background:#f0f7f5; color:#42685d; font-size:13px; }
 @media(min-width:1001px) { .pipeline-content-layout .traffic-source-list { max-height:max(340px,calc(100dvh - 470px)); overflow:auto; } }
+
+/* Sales summary workspace */
+.pipeline-sales-workspace { min-width:0; }
+.pipeline-sales-workspace>.pipeline-kind-grid { margin-top:0; }
+.pipeline-sales-workspace .pipeline-kind-card { min-height:220px; }
+.pipeline-sales-workspace>.pipeline-note { margin:10px 2px 16px; color:#71849a; font-size:11px; line-height:1.5; }
+.pipeline-kind-counts-single { grid-template-columns:1fr; }
+.sales-rep-panel { overflow:hidden; border:1px solid #dce9e6; border-radius:18px; background:#fff; box-shadow:0 10px 30px #153b2e0d; }
+.sales-rep-panel>header { display:flex; align-items:center; justify-content:space-between; gap:18px; padding:18px 20px; border-bottom:1px solid #e4edeb; }
+.sales-rep-panel>header h2 { margin:2px 0 3px; color:#10213b; font-size:22px; font-weight:950; letter-spacing:-.035em; }
+.sales-rep-panel>header p:last-child { color:#71849a; font-size:11px; }
+.sales-rep-total { display:flex; flex:none; align-items:center; gap:7px; padding:8px 11px; border-radius:999px; color:#08745f; background:#e8f8f2; font-size:11px; font-weight:900; }
+.sales-rep-total svg { width:15px; height:15px; }
+.sales-rep-comparison { display:flex; align-items:center; gap:12px; padding:10px 20px; border-bottom:1px solid #d8eee7; color:#36685c; background:#effaf6; }
+.sales-rep-comparison strong { flex:none; font-size:11px; }
+.sales-rep-comparison span { font-size:10px; }
+.sales-rep-table-wrap { overflow:auto; }
+.sales-rep-table-wrap table { width:100%; min-width:850px; border-collapse:separate; border-spacing:0; }
+.sales-rep-table-wrap th { padding:10px 12px; border-right:1px solid #dfe8eb; border-bottom:1px solid #dfe8eb; color:#4f647c; background:#f3f7f9; font-size:10px; font-weight:900; text-align:center; }
+.sales-rep-table-wrap thead tr:first-child th:first-child { text-align:left; }
+.sales-rep-table-wrap th small { color:#8192a5; font-size:8px; text-transform:uppercase; letter-spacing:.05em; }
+.sales-rep-table-wrap td { padding:12px; border-right:1px solid #edf1f2; border-bottom:1px solid #edf1f2; color:#203650; font-size:11px; vertical-align:middle; text-align:center; }
+.sales-rep-table-wrap tbody tr:last-child td { border-bottom:0; }
+.sales-rep-table-wrap th:last-child,.sales-rep-table-wrap td:last-child { border-right:0; }
+.sales-rep-table-wrap tbody tr:hover td { background:#fbfefd; }
+.sales-rep-user { display:flex; align-items:center; gap:9px; text-align:left; }
+.sales-rep-user i { display:grid; width:31px; height:31px; flex:none; place-items:center; border-radius:50%; color:#08745f; background:#dff7ee; font-size:9px; font-style:normal; font-weight:950; }
+.sales-rep-user b { font-size:11px; font-weight:900; }
+.sales-rep-metric { display:grid; justify-items:center; gap:3px; }
+.sales-rep-metric>strong { color:#f05c19; font-size:17px; font-weight:950; }
+.sales-rep-metric.closed>strong { color:#07855f; }
+.sales-rep-metric.cold>strong { color:#1264e9; }
+.sales-rep-metric>span { display:inline-flex; align-items:center; gap:3px; color:#7b8d9e; font-size:8px; font-weight:800; white-space:nowrap; }
+.sales-rep-metric>span svg { width:10px; height:10px; }
+.sales-rep-metric>span.is-up { color:#07855f; }
+.sales-rep-metric>span.is-down { color:#d64b45; }
+.sales-rep-sources { display:flex; flex-wrap:wrap; justify-content:center; gap:5px; min-width:210px; }
+.sales-rep-sources>span { display:inline-flex; align-items:center; gap:5px; padding:5px 7px; border:1px solid #d9e9e4; border-radius:999px; color:#3c5968; background:#f8fbfa; font-size:8px; font-weight:800; }
+.sales-rep-sources em { display:grid; width:14px; height:14px; place-items:center; border-radius:50%; color:#fff; background:#18a37f; font-size:7px; font-style:normal; }
+.sales-rep-sources b { color:#0d755f; font-size:9px; }
+.sales-rep-sources>small { color:#92a0aa; font-size:9px; }
+@media(max-width:760px) {
+  .sales-rep-panel>header,.sales-rep-comparison { align-items:flex-start; flex-direction:column; }
+  .pipeline-sales-workspace .pipeline-kind-card { min-height:200px; }
+}

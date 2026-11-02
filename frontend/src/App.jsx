@@ -133,7 +133,8 @@ function App(){
         <Route path="/mis/sales-management" element={<Navigate to="/mis" replace />} />
         <Route path="/dashboard/activity-logs" element={<ProtectedRoute allowedRoles={['admin', 'superadmin']}><ActivityLogs/></ProtectedRoute>} />
         <Route path="/overall-dashboard" element={<ProtectedRoute><OverallDashboard/></ProtectedRoute>} />
-        <Route path="/summary-dashboard" element={<ProtectedRoute><AnnualReturnOperationsDashboard/></ProtectedRoute>} />
+        <Route path="/summary-dashboard" element={<ProtectedRoute><LeadPipeline/></ProtectedRoute>} />
+        <Route path="/summary-dashboard/operations" element={<ProtectedRoute><AnnualReturnOperationsDashboard/></ProtectedRoute>} />
         <Route path="/po-dashboard" element={<ProtectedRoute><PurchaseOrderDashboard/></ProtectedRoute>} />
         <Route path="/purchase-sales-dashboard" element={<ProtectedRoute><PurchaseSalesDashboard/></ProtectedRoute>} />
         <Route path="/pending-approval" element={<ProtectedRoute><PendingApproval/></ProtectedRoute>} />

@@ -1,8 +1,9 @@
 import TrafficSources from '../components/leads/TrafficSources';
 import { trafficSourceHierarchy, trafficSourceKey } from '../utils/trafficSources.mjs';
-import { uniquePipelineRows, pipelinePeriodRange, inPipelinePeriod } from '../utils/leadPipeline.mjs';
+import { uniquePipelineRows, pipelinePeriodRange, previousPipelinePeriodRange, inPipelinePeriod } from '../utils/leadPipeline.mjs';
+import { salesRepSummary } from '../utils/salesRepSummary.mjs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, BadgeIndianRupee, Download, Flame, Search, Snowflake, Users, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpRight, Download, Flame, Minus, Search, Snowflake, Users, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import DashboardShell from '../components/dashboard/DashboardShell';
 import DashboardViewTabs from '../components/dashboard/DashboardViewTabs';
@@ -10,6 +11,43 @@ import LeadRevenuePanel, { revenueMoney } from '../components/leads/LeadRevenueP
 import useCrmRefresh from '../hooks/useCrmRefresh';
 import api from '../services/api';
 import '../styles/lead-pipeline.css';
+
+function RepMetric({ value, previous, comparisonLabel, tone }) {
+  const difference = value - previous;
+  const TrendIcon = difference > 0 ? ArrowUp : difference < 0 ? ArrowDown : Minus;
+  return <div className={`sales-rep-metric ${tone || ''}`}>
+    <strong>{value.toLocaleString('en-IN')}</strong>
+    {comparisonLabel && <span className={difference > 0 ? 'is-up' : difference < 0 ? 'is-down' : 'is-flat'} title={`${previous} in the previous ${comparisonLabel}`}>
+      <TrendIcon aria-hidden="true" />{previous.toLocaleString('en-IN')} last {comparisonLabel}
+    </span>}
+  </div>;
+}
+
+function SalesRepTable({ reps, comparisonLabel, range, previousRange }) {
+  return <section className="sales-rep-panel" aria-labelledby="sales-rep-heading">
+    <header>
+      <div><p className="pipeline-eyebrow">OWNER PERFORMANCE</p><h2 id="sales-rep-heading">Sales Rep</h2><p>Lead counts use the actual lead owner. Major traffic source shows each owner&rsquo;s top three parent sources.</p></div>
+      <span className="sales-rep-total"><Users aria-hidden="true" />{reps.length} sales reps</span>
+    </header>
+    {comparisonLabel && <div className="sales-rep-comparison" role="note">
+      <strong>Selected {comparisonLabel} vs previous {comparisonLabel}</strong>
+      <span>{range.label} compared with {previousRange.label}. Each smaller figure is the previous {comparisonLabel} count.</span>
+    </div>}
+    <div className="sales-rep-table-wrap">
+      <table>
+        <thead><tr><th rowSpan="2">User Name</th><th colSpan="2">Hot Lead</th><th rowSpan="2">Cold Lead<br/><small>Open</small></th><th rowSpan="2">Major Traffic Source<br/><small>Top 3</small></th></tr><tr><th>Open</th><th>Closed</th></tr></thead>
+        <tbody>{reps.map((rep) => <tr key={rep.owner}>
+          <td><span className="sales-rep-user"><i aria-hidden="true">{rep.owner.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</i><b>{rep.owner}</b></span></td>
+          <td><RepMetric value={rep.hotOpen} previous={rep.previousHotOpen} comparisonLabel={comparisonLabel} tone="hot" /></td>
+          <td><RepMetric value={rep.hotClosed} previous={rep.previousHotClosed} comparisonLabel={comparisonLabel} tone="closed" /></td>
+          <td><RepMetric value={rep.coldOpen} previous={rep.previousColdOpen} comparisonLabel={comparisonLabel} tone="cold" /></td>
+          <td><div className="sales-rep-sources">{rep.trafficSources.length ? rep.trafficSources.map((source, index) => <span key={source.label}><em>{index + 1}</em>{source.label}<b>{source.count}</b></span>) : <small>No source recorded in this period</small>}</div></td>
+        </tr>)}</tbody>
+      </table>
+      {!reps.length && <p className="pipeline-empty">No sales representatives match these filters.</p>}
+    </div>
+  </section>;
+}
 
 export default function LeadPipeline() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -23,6 +61,7 @@ export default function LeadPipeline() {
   const [period, setPeriod] = useState('all');
   const [periodDate, setPeriodDate] = useState(() => `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`);
   const range = useMemo(() => pipelinePeriodRange(period, periodDate), [period, periodDate]);
+  const previousRange = useMemo(() => previousPipelinePeriodRange(period, periodDate), [period, periodDate]);
   const [selection, setSelection] = useState(null);
   const [revenueRow, setRevenueRow] = useState(null);
   const [closeRow, setCloseRow] = useState(null);
@@ -53,7 +92,9 @@ export default function LeadPipeline() {
     if (serviceView && serviceDialog.current && !serviceDialog.current.open) serviceDialog.current.showModal();
     if (!serviceView && serviceDialog.current?.open) serviceDialog.current.close();
   }, [serviceView]);
-  const filtered = useMemo(() => rows.filter(r => inPipelinePeriod(r.createdAt, range) && (!owner || r.owner === owner) && `${r.company} ${r.code} ${r.owner}`.toLowerCase().includes(query.trim().toLowerCase())), [rows, query, owner, range]);
+  const baseFiltered = useMemo(() => rows.filter(r => (!owner || r.owner === owner) && `${r.company} ${r.code} ${r.owner}`.toLowerCase().includes(query.trim().toLowerCase())), [rows, query, owner]);
+  const filtered = useMemo(() => baseFiltered.filter(r => inPipelinePeriod(r.createdAt, range)), [baseFiltered, range]);
+  const previousFiltered = useMemo(() => previousRange ? baseFiltered.filter(r => inPipelinePeriod(r.createdAt, previousRange)) : [], [baseFiltered, previousRange]);
   const unique = uniquePipelineRows(filtered);
   const trafficSources = useMemo(() => trafficSourceHierarchy(filtered, sourceModes), [filtered, sourceModes]);
   const listed = selection ? (selection.kind ? filtered : unique).filter(r => (!selection.kind || r.kind === selection.kind) && (!selection.state || r.state === selection.state) && (!selection.sources?.length || selection.sources.includes(trafficSourceKey(r.communicationMode)))) : [];
@@ -63,8 +104,8 @@ export default function LeadPipeline() {
   const coldRows = filtered.filter((row) => row.kind === 'cold');
   const hotOpen = hotRows.filter((row) => row.state === 'open');
   const hotClosed = hotRows.filter((row) => row.state === 'closed');
-  const coldOpen = coldRows.filter((row) => row.state === 'open');
-  const coldClosed = coldRows.filter((row) => row.state === 'closed');
+  const salesReps = useMemo(() => salesRepSummary(filtered, previousFiltered, sourceModes), [filtered, previousFiltered, sourceModes]);
+  const comparisonLabel = period === 'week' ? 'week' : period === 'month' ? 'month' : '';
   async function showServices(row) {
     const request = ++serviceRequest.current;
     setServiceView({ row, loading: true });
@@ -104,23 +145,14 @@ export default function LeadPipeline() {
     </section>
     {error && <p role="alert" className="pipeline-error">{error}</p>}
     {loading ? <div role="status" className="pipeline-empty">Loading your lead pipeline…</div> : <>
-      <section className="pipeline-summary-grid" aria-label="Pipeline summary">
-        <button type="button" onClick={() => open()}><span className="is-emerald"><BadgeIndianRupee/></span><small>Estimated Revenue</small><strong>{revenueMoney(total(unique))}</strong></button>
-        <button type="button" onClick={() => open('hot')}><span className="is-orange"><Flame/></span><small>Hot Leads</small><strong>{hotRows.length.toLocaleString('en-IN')}</strong></button>
-        <button type="button" onClick={() => open('cold')}><span className="is-blue"><Snowflake/></span><small>Cold Leads</small><strong>{coldRows.length.toLocaleString('en-IN')}</strong></button>
-      </section>
-      <div className="pipeline-content-layout"><section className="pipeline-overview" aria-label="Pipeline Overview">
-        <h2>Pipeline Overview</h2>
-        <div className="pipeline-overview-table"><table><thead><tr>{['Pipeline', 'Total Leads', 'Open', 'Closed', 'Estimated Revenue', 'PO Value'].map((label) => <th key={label}>{label}</th>)}</tr></thead><tbody>
-          <tr><td><button type="button" onClick={() => open('hot')}><Flame/>Hot Leads</button></td><td>{hotRows.length.toLocaleString('en-IN')}</td><td><button type="button" onClick={() => open('hot', 'open')}>{hotOpen.length.toLocaleString('en-IN')}</button></td><td><button type="button" onClick={() => open('hot', 'closed')}>{hotClosed.length.toLocaleString('en-IN')}</button></td><td>{revenueMoney(total(hotRows))}</td><td>{revenueMoney(poTotal(hotClosed))}</td></tr>
-          <tr><td><button type="button" onClick={() => open('cold')}><Snowflake/>Cold Leads</button></td><td>{coldRows.length.toLocaleString('en-IN')}</td><td><button type="button" onClick={() => open('cold', 'open')}>{coldOpen.length.toLocaleString('en-IN')}</button></td><td><button type="button" onClick={() => open('cold', 'closed')}>{coldClosed.length.toLocaleString('en-IN')}</button></td><td>{revenueMoney(total(coldRows))}</td><td>—</td></tr>
-        </tbody></table></div>
+      <div className="pipeline-content-layout"><section className="pipeline-sales-workspace" aria-label="Sales pipeline">
         {!unique.length && <p role="status" className="pipeline-filter-empty">No leads match these filters. Try another period or owner.</p>}
         <div className="pipeline-kind-grid">
           <article className="pipeline-kind-card hot"><header><span><Flame/></span><button type="button" onClick={() => open('hot')}>Hot Leads<ArrowUpRight/></button></header><div className="pipeline-kind-counts"><button type="button" onClick={() => open('hot', 'open')}><small>Open</small><strong>{hotOpen.length.toLocaleString('en-IN')}</strong></button><button type="button" onClick={() => open('hot', 'closed')}><small>Closed</small><strong>{hotClosed.length.toLocaleString('en-IN')}</strong></button></div><div className="pipeline-kind-money"><button type="button" onClick={() => open('hot')}><small>Estimated Revenue</small><strong>{revenueMoney(total(hotRows))}</strong></button><button type="button" onClick={() => open('hot', 'closed')}><small>PO Value</small><strong>{revenueMoney(poTotal(hotClosed))}</strong></button></div></article>
-          <article className="pipeline-kind-card cold"><header><span><Snowflake/></span><button type="button" onClick={() => open('cold')}>Cold Leads<ArrowUpRight/></button></header><div className="pipeline-kind-counts"><button type="button" onClick={() => open('cold', 'open')}><small>Open</small><strong>{coldOpen.length.toLocaleString('en-IN')}</strong></button><button type="button" onClick={() => open('cold', 'closed')}><small>Closed</small><strong>{coldClosed.length.toLocaleString('en-IN')}</strong></button></div><div className="pipeline-kind-money"><button type="button" onClick={() => open('cold')}><small>Estimated Revenue</small><strong>{revenueMoney(total(coldRows))}</strong></button></div></article>
+          <article className="pipeline-kind-card cold"><header><span><Snowflake/></span><button type="button" onClick={() => open('cold')}>Cold Leads<ArrowUpRight/></button></header><div className="pipeline-kind-counts pipeline-kind-counts-single"><button type="button" onClick={() => open('cold')}><small>Open</small><strong>{coldRows.length.toLocaleString('en-IN')}</strong></button></div><div className="pipeline-kind-money"><button type="button" onClick={() => open('cold')}><small>Estimated Revenue</small><strong>{revenueMoney(total(coldRows))}</strong></button></div></article>
         </div>
-        <p className="pipeline-note">Cold Closed includes leads converted to Hot. The overall count and revenue count each business lead once. PO value and estimated revenue are shown separately.</p>
+        <p className="pipeline-note">Cold Lead Open shows the complete Cold pipeline count. Hot Open and Closed remain separate. PO value and estimated revenue are shown separately.</p>
+        <SalesRepTable reps={salesReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange}/>
       </section><TrafficSources sources={trafficSources} onSelect={openSource} optionsUnavailable={sourceOptionsUnavailable}/></div>
     </>}
     <dialog ref={dialog} className="pipeline-dialog" onCancel={() => setSelection(null)} onClose={() => setSelection(null)}>

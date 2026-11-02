@@ -11,14 +11,14 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
   const [openGroups, setOpenGroups] = useState({})
   const [activeFlyout, setActiveFlyout] = useState(null)
   const [activeItem, setActiveItem] = useState('')
-  const isDashboardRoute = ['/dashboard', '/overall-dashboard', '/summary-dashboard', '/superadmin-dashboard', '/mis', '/mis/complete', '/mis/client-daily'].includes(location.pathname)
+  const isDashboardRoute = location.pathname.startsWith('/summary-dashboard') || ['/dashboard', '/overall-dashboard', '/superadmin-dashboard', '/mis', '/mis/complete', '/mis/client-daily'].includes(location.pathname)
   const [dashboardChoicesOpen, setDashboardChoicesOpen] = useState(() => isDashboardRoute)
   const [openNestedGroups, setOpenNestedGroups] = useState(() => ({
     'Pending Leads': location.pathname.startsWith('/pending-leads') || location.pathname === '/sales/lead-pipeline',
     Tickets: location.pathname.includes('tickets')
   }))
   useEffect(() => {
-    const matchesRoute = item => item.path && (item.path.includes('?') ? item.path === currentPath : item.path === location.pathname);
+    const matchesRoute = item => item.path && (item.path === '/summary-dashboard' ? location.pathname.startsWith('/summary-dashboard') : item.path.includes('?') ? item.path === currentPath : item.path === location.pathname);
     const containsRoute = item => matchesRoute(item) || item.children?.some(containsRoute);
     const activeGroups = navSections.flatMap(section => section.items).filter(item => item.children?.length && containsRoute(item));
     setOpenGroups(value => ({ ...value, ...Object.fromEntries(activeGroups.map(item => [item.label, true])) }));
@@ -52,6 +52,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
 
   function pathMatches(path) {
     if (!path) return false
+    if (path === '/summary-dashboard') return location.pathname.startsWith('/summary-dashboard')
     return path.includes('?') ? path === currentPath : path === location.pathname && !location.search
   }
 

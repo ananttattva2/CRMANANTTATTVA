@@ -31,3 +31,14 @@ export function inPipelinePeriod(value, range) {
   const timestamp = new Date(value).getTime();
   return timestamp >= range.start && timestamp < range.end;
 }
+
+export function previousPipelinePeriodRange(period, value) {
+  if (!['week', 'month'].includes(period)) return null;
+  const current = pipelinePeriodRange(period, value);
+  if (current.invalid || current.start === undefined) return null;
+  const previousDate = new Date(current.start);
+  if (period === 'week') previousDate.setDate(previousDate.getDate() - 7);
+  else previousDate.setMonth(previousDate.getMonth() - 1);
+  const localValue = `${previousDate.getFullYear()}-${String(previousDate.getMonth() + 1).padStart(2, '0')}-${String(previousDate.getDate()).padStart(2, '0')}`;
+  return pipelinePeriodRange(period, localValue);
+}
