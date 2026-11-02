@@ -52,8 +52,9 @@ function getTeamThought(user = {}, visitNumber = 1) {
   return { label: `${key} thought`, text: thoughts[Math.floor((visitNumber - 1) / 5) % thoughts.length] }
 }
 
-export default function ProfileModal({ user, saving, onClose, onLogout, onSave, onUpdatePassword }) {
+export default function ProfileModal({ user, saving, error = '', onClose, onLogout, onSave, onUpdatePassword }) {
   const name = splitName(user?.name)
+  const [profileError, setProfileError] = useState('')
   const [editing, setEditing] = useState(false)
   const [securityOpen, setSecurityOpen] = useState(false)
   const [form, setForm] = useState({
@@ -70,18 +71,18 @@ export default function ProfileModal({ user, saving, onClose, onLogout, onSave, 
   const [passwordError, setPasswordError] = useState('')
   const [profileVisit] = useState(() => {
     const storageKey = `crm-profile-visits-${user?._id || user?.id || user?.email || 'current'}`
-    const nextVisit = Number(window.localStorage.getItem(storageKey) || 0) + 1
-    window.localStorage.setItem(storageKey, String(nextVisit))
-    return nextVisit
+    try {
+      const nextVisit = Number(window.localStorage.getItem(storageKey) || 0) + 1
+      window.localStorage.setItem(storageKey, String(nextVisit))
+      return nextVisit
+    } catch { return 1 }
   })
   const teamThought = getTeamThought(user, profileVisit)
 
-  function submit(event) {
-    event.preventDefault()
-    onSave({
-      name: `${form.firstName} ${form.lastName}`.trim(),
-      email: form.email
-    }).then(() => setEditing(false))
+  async function submit(event) {
+    event.preventDefault(); setProfileError('');
+    try { await onSave({ name: `${form.firstName} ${form.lastName}`.trim(), email: form.email }); setEditing(false); }
+    catch (error) { setProfileError(error.message || 'Unable to update your profile.'); }
   }
 
   async function submitPassword(event) {
@@ -99,7 +100,7 @@ export default function ProfileModal({ user, saving, onClose, onLogout, onSave, 
   }
 
   return (
-    <div className="profile-modal-overlay fixed inset-0 z-50 grid place-items-center bg-slate-950/50 px-4 py-6">
+    <div role="dialog" aria-modal="true" aria-labelledby="profile-settings-title" className="profile-modal-overlay fixed inset-0 z-[120] grid place-items-center bg-slate-950/50 px-4 py-6">
       <div className="profile-modal-card max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-3xl bg-white shadow-2xl shadow-slate-900/20">
         <div className="profile-modal-head flex items-center justify-between border-b border-slate-100 px-6 py-5">
           <div className="flex items-center gap-3">
@@ -111,7 +112,7 @@ export default function ProfileModal({ user, saving, onClose, onLogout, onSave, 
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
-            <h2 className="text-2xl font-black text-slate-950">Profile</h2>
+            <h2 id="profile-settings-title" className="text-2xl font-black text-slate-950">Profile Settings</h2>
           </div>
           <button
             type="button"
@@ -123,6 +124,7 @@ export default function ProfileModal({ user, saving, onClose, onLogout, onSave, 
           </button>
         </div>
 
+        {(profileError || error) && <p role="alert" className="mx-6 mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{profileError || error}</p>}
         <div className="profile-modal-body grid gap-8 p-6 lg:grid-cols-[280px_1fr] lg:p-10">
           <aside className="profile-identity-card rounded-2xl bg-gradient-to-br from-emerald-700 to-teal-600 p-6 text-white shadow-xl shadow-emerald-700/20">
             <div className="profile-summary-card">

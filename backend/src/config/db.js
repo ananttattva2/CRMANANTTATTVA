@@ -60,6 +60,7 @@ const connectDB = async () => {
     await ensureQuotationIndexes();
     await ensurePiboCategoryIndexes();
     await ReminderDelivery.createIndexes();
+    await require('../models/ConsentReminderDelivery').createIndexes();
     // Add only non-unique read indexes; an unrelated legacy unique-index
     // problem must not prevent the CRM from starting.
     await Promise.all([

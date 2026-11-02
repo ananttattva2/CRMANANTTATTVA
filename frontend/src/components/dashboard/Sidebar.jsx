@@ -7,6 +7,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
   const location = useLocation()
   const navigate = useNavigate()
   const currentPath = `${location.pathname}${location.search}`
+  const [closedSections, setClosedSections] = useState({})
   const [openGroups, setOpenGroups] = useState({})
   const [activeFlyout, setActiveFlyout] = useState(null)
   const [activeItem, setActiveItem] = useState('')
@@ -22,6 +23,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
     const activeGroups = navSections.flatMap(section => section.items).filter(item => item.children?.length && containsRoute(item));
     setOpenGroups(value => ({ ...value, ...Object.fromEntries(activeGroups.map(item => [item.label, true])) }));
     setActiveItem('');
+    setClosedSections(value => { const next = { ...value }; navSections.filter(section => section.items.some(containsRoute)).forEach(section => { next[section.label] = false; }); return next; });
   }, [currentPath, location.pathname]);
 
   function toggleGroup(item, hasChildren) {
@@ -60,7 +62,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
 
   function chooseDashboard(mode) {
     onDashboardModeChange?.(mode)
-    setActiveItem(mode === 'sales' ? 'Sales Dashboard' : 'Operations Dashboard')
+    setActiveItem('Sales Dashboard')
     navigate('/dashboard')
     onClose?.()
   }
@@ -102,8 +104,8 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
       <nav className={`sidebar-scrollbar flex-1 space-y-5 px-3 pb-5 ${collapsed ? 'overflow-visible px-2 pt-5' : 'overflow-y-auto px-4 pt-5'}`}>
         {navSections.filter(section => section.items.some(canShowItem)).map((section) => (
           <div key={section.label}>
-            {!collapsed && <p className="mb-3 border-b border-white/15 px-1 pb-2 text-[11px] font-black uppercase tracking-[0.16em] text-emerald-100/80">{section.label}</p>}
-            <div className="space-y-2">
+            {!collapsed && <button type="button" onClick={() => setClosedSections(value => ({ ...value, [section.label]: !value[section.label] }))} aria-expanded={!closedSections[section.label]} aria-controls={`nav-section-${section.label.replace(/[^a-z0-9]/gi, '-')}`} className="mb-3 flex w-full items-center justify-between gap-2 border-b border-white/15 px-1 pb-2 text-left text-[11px] font-black uppercase tracking-[0.16em] text-emerald-100/80 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-200">{section.label}<ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-300 motion-reduce:transition-none ${closedSections[section.label] ? '-rotate-90' : ''}`}/></button>}
+            <div id={`nav-section-${section.label.replace(/[^a-z0-9]/gi, '-')}`} aria-hidden={!collapsed && Boolean(closedSections[section.label])} inert={!collapsed && closedSections[section.label] ? '' : undefined} className={`grid transition-[grid-template-rows,opacity] duration-300 ease-in-out motion-reduce:transition-none ${!collapsed && closedSections[section.label] ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`}><div className="min-h-0 overflow-hidden"><div className="space-y-2">
               {section.items.filter(canShowItem).map((item) => {
                 const Icon = item.icon
                 const isOpen = Boolean(openGroups[item.label])
@@ -116,7 +118,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
                   const choiceClass = active => `sidebar-dashboard-choice flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-black transition ${active ? 'sidebar-dashboard-choice-active bg-[#f45b0b] text-white' : 'text-emerald-50/90 hover:bg-white/10 hover:text-white'}`;
                   return <div key={item.label} className="grid gap-1">
                     <button type="button" onClick={() => { navigate('/overall-dashboard'); onClose?.(); }} aria-current={location.pathname === '/overall-dashboard' ? 'page' : undefined} className={choiceClass(location.pathname === '/overall-dashboard')}><BarChart3 className="h-4 w-4 shrink-0"/>Overall Dashboard</button>
-                    {canChooseDashboard ? <>{[['operations', 'Operations Dashboard', Gauge], ['sales', 'Sales Dashboard', BriefcaseBusiness]].map(([mode, label, ModeIcon]) => <button type="button" key={mode} onClick={() => chooseDashboard(mode)} className={choiceClass(dashboardMode === mode && location.pathname === '/dashboard')}><ModeIcon className="h-4 w-4 shrink-0"/>{label}</button>)}</> : <button type="button" onClick={() => { navigate('/dashboard'); onClose?.(); }} className={choiceClass(location.pathname === '/dashboard')}><Gauge className="h-4 w-4 shrink-0"/>My Dashboard</button>}
+                    {canChooseDashboard ? <>{[['sales', 'Sales Dashboard', BriefcaseBusiness]].map(([mode, label, ModeIcon]) => <button type="button" key={mode} onClick={() => chooseDashboard(mode)} className={choiceClass(dashboardMode === mode && location.pathname === '/dashboard')}><ModeIcon className="h-4 w-4 shrink-0"/>{label}</button>)}</> : <button type="button" onClick={() => { navigate('/dashboard'); onClose?.(); }} className={choiceClass(location.pathname === '/dashboard')}><Gauge className="h-4 w-4 shrink-0"/>My Dashboard</button>}
                     {renderDashboardReports(item)}
                   </div>;
                 }
@@ -187,18 +189,6 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
                                       <div className="mt-1 grid gap-1 pl-5">
                                         <button type="button" onClick={() => { setActiveItem('Overall Dashboard'); navigate('/overall-dashboard'); onClose?.() }} aria-current={location.pathname === '/overall-dashboard' ? 'page' : undefined} className={`sidebar-dashboard-choice flex min-h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-black transition ${location.pathname === '/overall-dashboard' ? 'sidebar-dashboard-choice-active bg-[#f45b0b] text-white' : 'text-emerald-50/75 hover:bg-white/10 hover:text-white'}`}><BarChart3 className="h-3.5 w-3.5" />Overall Dashboard</button>
                                         {canChooseDashboard && <>
-                                        <button
-                                          type="button"
-                                          onClick={() => chooseDashboard('operations')}
-                                          className={`sidebar-dashboard-choice flex min-h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-black transition ${
-                                            dashboardMode === 'operations' && location.pathname === '/dashboard'
-                                              ? 'sidebar-dashboard-choice-active bg-[#f45b0b] text-white'
-                                              : 'text-emerald-50/75 hover:bg-white/10 hover:text-white'
-                                          }`}
-                                        >
-                                          <Gauge className="h-3.5 w-3.5" />
-                                          Operations Dashboard
-                                        </button>
                                         <button
                                           type="button"
                                           onClick={() => chooseDashboard('sales')}
@@ -289,21 +279,6 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    chooseDashboard('operations')
-                                    setActiveFlyout(null)
-                                  }}
-                                  className={`flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-black transition ${
-                                    dashboardMode === 'operations' && location.pathname === '/dashboard'
-                                      ? 'bg-[#f45b0b] text-white'
-                                      : 'text-slate-700 hover:bg-emerald-50 hover:text-[#0f5d46]'
-                                  }`}
-                                >
-                                  <Gauge className="h-4 w-4 shrink-0" />
-                                  Operations Dashboard
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
                                     chooseDashboard('sales')
                                     setActiveFlyout(null)
                                   }}
@@ -349,7 +324,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
                   </div>
                 )
               })}
-            </div>
+            </div></div></div>
           </div>
         ))}
       </nav>

@@ -1,3 +1,4 @@
+import ConnectedProfileSettings from './ConnectedProfileSettings'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bell, CalendarCheck2, CheckCircle2, Clock3, FileText, Info, LogOut, Menu, UserRound, X } from 'lucide-react'
@@ -79,8 +80,11 @@ function readBellData(currentUser) {
   return { reminders, announcements, count: reminders.length + announcements.length }
 }
 
-export default function Topbar({ currentUser, onOpenProfile, onOpenSidebar, onLogout }) {
+export default function Topbar({ currentUser: providedUser, onOpenSidebar, onLogout }) {
   const navigate = useNavigate()
+  const [updatedUser, setUpdatedUser] = useState(null)
+  const currentUser = updatedUser || providedUser
+  const [profileOpen, setProfileOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [reminderOpen, setReminderOpen] = useState(false)
   const [bellData, setBellData] = useState(() => readBellData(currentUser))
@@ -210,7 +214,7 @@ export default function Topbar({ currentUser, onOpenProfile, onOpenSidebar, onLo
 
   function handleProfile() {
     setMenuOpen(false)
-    onOpenProfile?.()
+    setProfileOpen(true)
   }
 
   function handleLogout() {
@@ -381,6 +385,7 @@ export default function Topbar({ currentUser, onOpenProfile, onOpenSidebar, onLo
         </div>
       </div>
     </header>
+    {profileOpen && <ConnectedProfileSettings user={currentUser} onUpdated={setUpdatedUser} onClose={() => setProfileOpen(false)} onLogout={handleLogout}/>}
     </>
   )
 }

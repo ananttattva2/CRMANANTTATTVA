@@ -1,3 +1,4 @@
+const { runConsentExpiryReminders, startConsentExpiryReminderScheduler } = require('./services/consentExpiryReminders');
 require('./config/loadEnv')();
 const { safeMongoError } = require('./config/mongoConfig');
 const { singleFlight } = require('./config/databaseReadiness');
@@ -107,6 +108,7 @@ const connectAndStartServices = singleFlight(function () {
     // Persistent interval schedulers must never run inside short-lived serverless
     // function instances. Their work is handled by explicit cron endpoints.
     if (!schedulerStarted && !isServerlessRuntime) {
+      startConsentExpiryReminderScheduler();
       startPendingApprovalReminderScheduler();
       startClientComplianceCorrectionReminderScheduler();
       startClientOnboardingReminderScheduler();
@@ -145,6 +147,14 @@ app.get('/api/health', (req, res) => res.json({
   cache: cacheStatus(),
   release: String(process.env.DEPLOY_COMMIT || process.env.RENDER_GIT_COMMIT || process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 12) || undefined
 }));
+
+app.get('/api/internal/consent-expiry-reminders', async (req, res) => {
+  const secret = String(process.env.CRON_SECRET || '').trim();
+  if (!secret) return res.status(503).json({ ok:false, error:'CRON_SECRET is not configured' });
+  if (String(req.get('authorization') || '') !== `Bearer ${secret}`) return res.status(401).json({ ok:false, error:'Unauthorized cron request' });
+  try { return res.json({ ok:true, ...await runConsentExpiryReminders() }); }
+  catch (error) { return res.status(500).json({ ok:false, error:'Consent reminder run failed' }); }
+});
 
 app.get('/api/internal/client-onboarding-reminders', async (req, res) => {
   const cronSecret = String(process.env.CRON_SECRET || '').trim();
