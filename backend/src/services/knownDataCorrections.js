@@ -26,10 +26,40 @@ async function correctTataMotorsLeadCreator() {
   return { updated: true, leadCode: lead.leadCode, company: lead.company, createdBy: creator.name };
 }
 
-async function applyKnownDataCorrections() {
-  const result = await correctTataMotorsLeadCreator();
-  if (result.updated) console.log('Applied guarded CRM data correction', result);
-  return result;
+const LEAD_OWNER_CORRECTIONS = [
+  { company: /^BOSCH HOME COMFORT$/i, owner: /^GAURAV CHANDRA$/i },
+  { company: /^ACTIONWARE INDIA PVT\.?\s+LTD\.?$/i, owner: /^RITUL BHUVA$/i },
+  { company: /^SINTEX INDUSTRIES LTD\.?$/i, owner: /^MIHIRDEVSINH ZALA$/i },
+  { company: /^TDS LITHIUM-ION BATTERY GUJARAT PRIVATE LIMITED$/i, owner: /^GAURAV CHANDRA$/i }
+];
+
+async function correctKnownLeadOwners() {
+  const results = [];
+  for (const correction of LEAD_OWNER_CORRECTIONS) {
+    const owner = await User.findOne({ name: correction.owner, isActive: { $ne: false } }).select('_id name email').lean();
+    if (!owner) { results.push({ updated: false, reason: 'owner_not_found', owner: String(correction.owner) }); continue; }
+    const result = await Lead.updateMany({ company: correction.company, $or: [
+      { generatedForUser: { $ne: owner._id } },
+      { generatedForUser: { $exists: false } },
+      { generatedForUser: null }
+    ] }, { $set: {
+      generatedForUser: owner._id,
+      generatedForName: owner.name,
+      generatedForEmail: String(owner.email || '').toLowerCase(),
+      createdOnBehalfOfUser: owner._id,
+      createdOnBehalfOfName: owner.name,
+      createdOnBehalfOfEmail: String(owner.email || '').toLowerCase()
+    } });
+    results.push({ updated: result.modifiedCount > 0, count: result.modifiedCount, owner: owner.name });
+  }
+  return results;
 }
 
-module.exports = { applyKnownDataCorrections, correctTataMotorsLeadCreator };
+async function applyKnownDataCorrections() {
+  const creatorResult = await correctTataMotorsLeadCreator();
+  const ownerResults = await correctKnownLeadOwners();
+  if (creatorResult.updated || ownerResults.some((result) => result.updated)) console.log('Applied guarded CRM data correction', { creatorResult, ownerResults });
+  return { creatorResult, ownerResults };
+}
+
+module.exports = { applyKnownDataCorrections, correctTataMotorsLeadCreator, correctKnownLeadOwners, LEAD_OWNER_CORRECTIONS };

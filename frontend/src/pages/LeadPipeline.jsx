@@ -42,6 +42,7 @@ function SalesRepTable({ reps, comparisonLabel, range, previousRange, onMetricCl
     </div>}
     <div className="sales-rep-table-wrap">
       <table>
+        <colgroup><col className="sales-rep-col-user"/><col className="sales-rep-col-metric"/><col className="sales-rep-col-metric"/><col className="sales-rep-col-cold"/><col className="sales-rep-col-source"/></colgroup>
         <thead><tr><th rowSpan="2">User Name</th><th colSpan="2">Hot Lead</th><th rowSpan="2">Cold Lead<br/><small>Open</small></th><th rowSpan="2">Major Traffic Source<br/><small>Top 3</small></th></tr><tr><th>Open</th><th>Closed</th></tr></thead>
         <tbody>{visibleReps.map((rep) => <tr key={rep.owner}>
           <td><span className="sales-rep-user"><i aria-hidden="true">{rep.owner.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</i><b>{rep.owner.toUpperCase()}</b></span></td>
@@ -89,7 +90,7 @@ export default function LeadPipeline() {
   async function load() {
     const version = ++sequence.current;
     try {
-      const [me, result, modeOptions, userOptions] = await Promise.all([api.get('/auth/me'), api.get('/leads/pipeline-revenue?view=sales-rep-v3'), api.get('/leads/dropdown-options').catch(() => null), api.get('/auth/users').catch(() => null)]);
+      const [me, result, modeOptions, userOptions] = await Promise.all([api.get('/auth/me'), api.get('/leads/pipeline-revenue?view=sales-rep-v4'), api.get('/leads/dropdown-options').catch(() => null), api.get('/auth/users').catch(() => null)]);
       if (version !== sequence.current) return;
       setCurrentUser(me.data.user); setRows(result.data.rows || []); setSourceModes(modeOptions?.data?.options?.communicationMode || []); setActiveUsers(userOptions?.data?.users || null); setSourceOptionsUnavailable(!modeOptions); setError('');
     } catch (e) { if (version === sequence.current) setError(e.response?.data?.error || 'Unable to load pipeline.'); }
@@ -178,8 +179,8 @@ export default function LeadPipeline() {
           <article className="pipeline-kind-card cold"><header><span><Snowflake/></span><button type="button" onClick={() => open('cold')}>Cold Leads<ArrowUpRight/></button></header><div className="pipeline-kind-counts pipeline-kind-counts-single"><button type="button" onClick={() => open('cold')}><small>Open</small><strong>{coldRows.length.toLocaleString('en-IN')}</strong></button></div><div className="pipeline-kind-money"><button type="button" onClick={() => open('cold')}><small>Estimated Revenue</small><strong>{revenueMoney(total(coldRows))}</strong></button></div></article>
         </div>
         <p className="pipeline-note">Cold Lead Open shows the complete Cold pipeline count. Hot Open and Closed remain separate. PO value and estimated revenue are shown separately.</p>
-        <SalesRepTable reps={salesReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)} onSourceClick={openOwnerSource}/>
       </section><TrafficSources sources={trafficSources} onSelect={openSource} optionsUnavailable={sourceOptionsUnavailable}/></div>
+      <SalesRepTable reps={salesReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)} onSourceClick={openOwnerSource}/>
     </>}
     <dialog ref={dialog} className="pipeline-dialog" onCancel={() => setSelection(null)} onClose={() => setSelection(null)}>
       {selection && <><header><div><p className="pipeline-eyebrow">PIPELINE DETAILS</p><h2>{selection.owner ? `${selection.owner.toUpperCase()} · ` : ''}{selection.sourceLabel ? `Traffic Source · ${selection.sourceLabel}` : selection.kind ? `${selection.kind === 'hot' ? 'Hot' : 'Cold'} Leads` : 'All Leads'}{selection.state ? ` · ${selection.state === 'open' ? 'Open' : 'Closed'}` : ''}</h2><p>{selection.owner ? `Lead Owner: ${selection.owner.toUpperCase()} · ` : ''}{listed.length} clients · {revenueMoney(total(listed))} estimated revenue{selection.kind === 'hot' && selection.state === 'closed' ? ` · ${revenueMoney(poTotal(listed))} PO value` : ''}</p></div><div className="pipeline-toolbar"><button type="button" onClick={() => exportRows(listed, 'pipeline-details')} disabled={!listed.length}><Download size={16}/>Excel</button><button type="button" onClick={() => setSelection(null)} aria-label="Close lead list"><X/></button></div></header>

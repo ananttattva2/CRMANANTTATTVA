@@ -12,3 +12,12 @@ test('TATA MOTORS ATPL-LEAD-0409 creator correction is exact, guarded and idempo
   assert.match(service, /already_correct/);
   assert.match(index, /await applyKnownDataCorrections\(\)/);
 });
+
+test('explicit lead-owner corrections are guarded by exact company and active-user mappings', () => {
+  const service = fs.readFileSync(path.resolve(__dirname, '../src/services/knownDataCorrections.js'), 'utf8');
+  for (const company of ['BOSCH HOME COMFORT', 'ACTIONWARE INDIA PVT', 'SINTEX INDUSTRIES LTD', 'TDS LITHIUM-ION BATTERY GUJARAT PRIVATE LIMITED']) assert.match(service, new RegExp(company));
+  for (const owner of ['GAURAV CHANDRA', 'RITUL BHUVA', 'MIHIRDEVSINH ZALA']) assert.match(service, new RegExp(owner));
+  assert.match(service, /generatedForUser: owner\._id/);
+  assert.match(service, /createdOnBehalfOfUser: owner\._id/);
+  assert.match(service, /isActive: \{ \$ne: false \}/);
+});

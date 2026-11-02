@@ -25,6 +25,10 @@ test('service keys survive unrelated edits and partial closure stays open', () =
   assert.equal(hotClosed(lead), true);
   assert.equal(serviceRows({ createdBy: 'owner' }, 'cold')[0].key, 'cold-base');
 });
+test('pipeline owner falls back to the saved on-behalf allocation before the original creator', () => {
+ const {pipelineOwner}=require('../src/controllers/leadRevenueController').__test;
+ assert.equal(pipelineOwner({createdOnBehalfOfUser:{name:'Current Assignee'},createdBy:{name:'Original Creator'}},'hot'),'Current Assignee');
+});
 
 function harness({ lead = {}, entries = [], eligibleOwner = 'u', denied = false, duplicate = false, admin = false, conflict = false } = {}) {
   const inserted = [];

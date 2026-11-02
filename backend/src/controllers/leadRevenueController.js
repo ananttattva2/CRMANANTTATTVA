@@ -9,14 +9,15 @@ const { amountPaise, serviceRows, groupsFrom, hotClosed, purchaseOrders, service
 const { userHasAnyRole } = require('../utils/userRoles');
 
 function pipelineOwner(lead, kind) {
-  const currentOwner = kind === 'hot' ? lead.generatedForUser : lead.createdBy;
+  const currentOwner = kind === 'hot' ? (lead.generatedForUser || lead.createdOnBehalfOfUser || lead.createdBy) : lead.createdBy;
   return currentOwner?.name || currentOwner?.email
     || (kind === 'hot' ? lead.generatedForName : '')
+    || (kind === 'hot' ? lead.createdOnBehalfOfName : '')
     || lead.importedCreatedBy || lead.createdByName || 'Unassigned';
 }
 
 function pipelineOwnerDetails(lead, kind) {
-  const currentOwner = kind === 'hot' ? lead.generatedForUser : lead.createdBy;
+  const currentOwner = kind === 'hot' ? (lead.generatedForUser || lead.createdOnBehalfOfUser || lead.createdBy) : lead.createdBy;
   return {
     id: String(currentOwner?._id || currentOwner || ''),
     name: pipelineOwner(lead, kind),
@@ -93,7 +94,7 @@ exports.pipeline = async (req, res, next) => {
   try {
     const [hotAccess, coldAccess] = await Promise.all([leadAccessFilter(req.user), temporaryLeadAccessFilter(req.user)]);
     const [hot, cold] = await Promise.all([
-      Lead.find(hotAccess).select('communicationModeParent communicationMode leadCode company status serviceSelections.assignedServiceId serviceSelections.closedBy serviceSelections.closedByText serviceSelections.closedAt serviceSelections.status assignments.assignedServiceId assignments.closedBy assignments.closedByText assignments.closedAt assignments.poStatus assignments.poApprovalStatus assignments.poNumber assignments.poDate assignments.poFinancialYear assignments.poAmount assignments.poYearRows.poNumber assignments.poYearRows.poNo assignments.poYearRows.poDate assignments.poYearRows.poFinancialYear assignments.poYearRows.fy assignments.poYearRows.poAmount assignments.originalPoDetails.poNumber assignments.originalPoDetails.poDate assignments.originalPoDetails.poFinancialYear assignments.originalPoDetails.poAmount closedAt closedBy closedByText createdBy createdByName generatedForUser generatedForName importedCreatedBy createdAt').populate('generatedForUser', 'name email isActive').maxTimeMS(15000).lean(),
+      Lead.find(hotAccess).select('communicationModeParent communicationMode leadCode company status serviceSelections.assignedServiceId serviceSelections.closedBy serviceSelections.closedByText serviceSelections.closedAt serviceSelections.status assignments.assignedServiceId assignments.closedBy assignments.closedByText assignments.closedAt assignments.poStatus assignments.poApprovalStatus assignments.poNumber assignments.poDate assignments.poFinancialYear assignments.poAmount assignments.poYearRows.poNumber assignments.poYearRows.poNo assignments.poYearRows.poDate assignments.poYearRows.poFinancialYear assignments.poYearRows.fy assignments.poYearRows.poAmount assignments.originalPoDetails.poNumber assignments.originalPoDetails.poDate assignments.originalPoDetails.poFinancialYear assignments.originalPoDetails.poAmount closedAt closedBy closedByText createdBy createdByName generatedForUser generatedForName createdOnBehalfOfUser createdOnBehalfOfName importedCreatedBy createdAt').populate('generatedForUser', 'name email isActive').populate('createdOnBehalfOfUser', 'name email isActive').populate('createdBy', 'name email isActive').maxTimeMS(15000).lean(),
       TemporaryLead.find(coldAccess).select('communicationMode tempLeadCode clientName status convertedLead pipelineClosedAt createdBy createdByName createdAt').populate('createdBy', 'name email isActive').lean()
 
     ]);
