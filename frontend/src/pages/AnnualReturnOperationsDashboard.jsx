@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AlertTriangle, ArrowUpDown, BarChart3, Building2, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Download, Factory, FileSpreadsheet, Layers3, Leaf, RefreshCw, Recycle, Search, Users, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import DashboardShell from '../components/dashboard/DashboardShell';
+import DashboardViewTabs from '../components/dashboard/DashboardViewTabs';
 import api from '../services/api';
 import { API_ENDPOINTS } from '../services/apiEndpoints';
 import '../styles/annual-return-operations.css';
@@ -161,6 +162,7 @@ export default function AnnualReturnOperationsDashboard() {
 
   const headingPath = ['Annual Return', filters.category, filters.applicantType, filters.subType].filter(Boolean).join(' › ');
   return <DashboardShell currentUser={currentUser}><main className="arops-page">
+    <DashboardViewTabs />
     <header className="arops-header"><div><h1><span><BarChart3 /></span>Operations Dashboard</h1><p>Annual Return Services Overview</p></div><div className="arops-header-actions"><button type="button" onClick={() => setFilters(current => ({ ...current }))}><RefreshCw className={loading ? 'animate-spin' : ''} />Refresh</button><button type="button" onClick={exportExcel} disabled={exporting}><Download />{exporting ? 'Exporting…' : 'Export'}</button></div></header>
 
     <section className="arops-toolbar" aria-label="Dashboard filters">

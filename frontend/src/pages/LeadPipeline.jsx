@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, BadgeIndianRupee, Download, Flame, Search, Snowflake, Users, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import DashboardShell from '../components/dashboard/DashboardShell';
+import DashboardViewTabs from '../components/dashboard/DashboardViewTabs';
 import LeadRevenuePanel, { revenueMoney } from '../components/leads/LeadRevenuePanel';
 import useCrmRefresh from '../hooks/useCrmRefresh';
 import api from '../services/api';
@@ -94,6 +95,7 @@ export default function LeadPipeline() {
     finally { setClosing(false); }
   }
   return <DashboardShell currentUser={currentUser}><div className="pipeline-page">
+    <DashboardViewTabs />
     <header className="pipeline-header"><div className="pipeline-heading"><h1>Revenue Pipeline</h1><p>A clear view of your hot and cold pipeline, with locked revenue history.</p></div><div className="pipeline-filters"><label><Search size={17}/><input aria-label="Search pipeline" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search company, lead ID or owner…"/></label><select aria-label="Filter by owner" value={owner} onChange={e => setOwner(e.target.value)}><option value="">All visible owners</option>{[...new Set(rows.map(r => r.owner))].sort().map(name => <option key={name}>{name}</option>)}</select></div></header>
     <section className="pipeline-period-bar" aria-label="Pipeline date filters">
       <div className="pipeline-period-tabs" role="group" aria-label="Filter period">{[['all', 'All time'], ['week', 'Week'], ['month', 'Month'], ['year', 'Year']].map(([value, label]) => <button key={value} type="button" aria-pressed={period === value} onClick={() => setPeriod(value)}>{label}</button>)}</div>
