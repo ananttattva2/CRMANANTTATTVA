@@ -208,10 +208,14 @@ exports.overall = async (req, res) => {
 
 exports.annualReturnOperations = async (req, res) => {
   const startedAt = Date.now();
+  let stage = 'scope';
   try {
     const scope = await getVisibleUserScope(req.user);
+    stage = 'lead exclusions';
     const excluded = await getAssignmentDashboardLeadReferences();
+    stage = 'client visibility';
     const clientVisibility = await require('./clientController').clientAccessFilter(req.user);
+    stage = 'assignment snapshot';
     const [snapshot, users] = await Promise.all([
       loadDashboardAssignments(
         { Client, Lead },
@@ -220,13 +224,37 @@ exports.annualReturnOperations = async (req, res) => {
       ),
       visibleUsers(scope, req.user)
     ]);
+    stage = 'assignment merge';
     const assignedClients = mergeManagerStaffAllocations(snapshot.clients, snapshot.leads);
-    const clientIds = assignedClients.filter(client => !client.assignmentOnly && client._id).map(client => client._id);
-    const [annualReturns, clientFilings, teams] = await Promise.all([
-      AnnualReturn.find({ client: { $in: clientIds } }).select('client clientKey annualYear status filings approvalWorkflow savedAt updatedAt').lean(),
-      Client.find({ _id: { $in: clientIds } }).select('_id data.annualReturn.filings').lean(),
-      Team.find({ $or: [{ _id: { $in: users.map(user => user.teamId).filter(Boolean) } }, { manager: { $in: users.map(user => user._id) } }] }).select('_id name manager members').lean()
+    const mongoose = require('mongoose');
+    const validObjectIds = values => [...new Map(values
+      .filter(value => value && mongoose.isValidObjectId(value))
+      .map(value => [String(value), value])).values()];
+    const clientIds = validObjectIds(assignedClients
+      .filter(client => !client.assignmentOnly)
+      .map(client => client._id));
+    const teamIds = validObjectIds(users.map(user => user.teamId));
+    const userIds = validObjectIds(users.map(user => user._id));
+    stage = 'supporting records';
+    const supporting = await Promise.allSettled([
+      clientIds.length
+        ? AnnualReturn.find({ client: { $in: clientIds } }).select('client clientKey annualYear status filings approvalWorkflow savedAt updatedAt').maxTimeMS(10000).lean()
+        : Promise.resolve([]),
+      clientIds.length
+        ? Client.find({ _id: { $in: clientIds } }).select('_id data.annualReturn.filings').maxTimeMS(10000).lean()
+        : Promise.resolve([]),
+      teamIds.length || userIds.length
+        ? Team.find({ $or: [{ _id: { $in: teamIds } }, { manager: { $in: userIds } }] }).select('_id name manager members').maxTimeMS(10000).lean()
+        : Promise.resolve([])
     ]);
+    const labels = ['Annual Return filings', 'embedded client filings', 'teams'];
+    supporting.forEach((result, index) => {
+      if (result.status === 'rejected') console.warn('[annual-return-operations-dashboard] optional lookup failed', {
+        lookup: labels[index], name: result.reason?.name, code: result.reason?.code, message: result.reason?.message
+      });
+    });
+    const [annualReturns, clientFilings, teams] = supporting.map(result => result.status === 'fulfilled' ? result.value : []);
+    stage = 'dashboard aggregation';
     const dashboard = require('../services/annualReturnOperationsDashboard');
     const records = dashboard.buildRecords({
       clients: assignedClients,
@@ -238,8 +266,11 @@ exports.annualReturnOperations = async (req, res) => {
     res.set('Server-Timing', `annual-return-operations;dur=${Date.now() - startedAt}`);
     return res.json(dashboard.buildDashboard(records, req.query || {}));
   } catch (error) {
-    console.error('[annual-return-operations-dashboard] load failed', { durationMs: Date.now() - startedAt, name: error.name, code: error.code, message: error.message });
-    return res.status(error.code === 50 ? 503 : 500).json({ error: 'Unable to load the Annual Return operations dashboard. Please refresh and retry.' });
+    console.error('[annual-return-operations-dashboard] load failed', { stage, durationMs: Date.now() - startedAt, name: error.name, code: error.code, message: error.message, stack: error.stack });
+    return res.status(error.code === 50 ? 503 : 500).json({
+      error: 'Unable to load the Annual Return operations dashboard. Please refresh and retry.',
+      ...(process.env.NODE_ENV === 'production' ? {} : { stage, detail: error.message })
+    });
   }
 };
 
