@@ -26,6 +26,10 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
     setClosedSections(value => { const next = { ...value }; navSections.filter(section => section.items.some(containsRoute)).forEach(section => { next[section.label] = false; }); return next; });
   }, [currentPath, location.pathname]);
 
+  useEffect(() => {
+    if (!collapsed) setActiveFlyout(null);
+  }, [collapsed]);
+
   function toggleGroup(item, hasChildren) {
     const label = item.label
     setActiveItem(label)
@@ -37,9 +41,9 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
     if (!hasChildren) return
 
     if (collapsed) {
-      setActiveFlyout(null)
-      setOpenGroups((value) => ({ ...value, [label]: true }))
-      onToggleCollapsed?.()
+      // Compact mode keeps the sidebar narrow. Reveal this group's existing
+      // navigation as a flyout instead of expanding/resetting the full menu.
+      setActiveFlyout((value) => value === label ? null : label)
       return
     }
 
@@ -105,7 +109,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
         {navSections.filter(section => section.items.some(canShowItem)).map((section) => (
           <div key={section.label}>
             {!collapsed && <button type="button" onClick={() => setClosedSections(value => ({ ...value, [section.label]: !value[section.label] }))} aria-expanded={!closedSections[section.label]} aria-controls={`nav-section-${section.label.replace(/[^a-z0-9]/gi, '-')}`} className="mb-3 flex w-full items-center justify-between gap-2 border-b border-white/15 px-1 pb-2 text-left text-[11px] font-black uppercase tracking-[0.16em] text-emerald-100/80 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-200">{section.label}<ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-300 motion-reduce:transition-none ${closedSections[section.label] ? '-rotate-90' : ''}`}/></button>}
-            <div id={`nav-section-${section.label.replace(/[^a-z0-9]/gi, '-')}`} aria-hidden={!collapsed && Boolean(closedSections[section.label])} inert={!collapsed && closedSections[section.label] ? '' : undefined} className={`grid transition-[grid-template-rows,opacity] duration-300 ease-in-out motion-reduce:transition-none ${!collapsed && closedSections[section.label] ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`}><div className="min-h-0 overflow-hidden"><div className="space-y-2">
+            <div id={`nav-section-${section.label.replace(/[^a-z0-9]/gi, '-')}`} aria-hidden={!collapsed && Boolean(closedSections[section.label])} inert={!collapsed && closedSections[section.label] ? '' : undefined} className={`grid transition-[grid-template-rows,opacity] duration-300 ease-in-out motion-reduce:transition-none ${!collapsed && closedSections[section.label] ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`}><div className={`min-h-0 ${collapsed ? 'overflow-visible' : 'overflow-hidden'}`}><div className="space-y-2">
               {section.items.filter(canShowItem).map((item) => {
                 const Icon = item.icon
                 const isOpen = Boolean(openGroups[item.label])
