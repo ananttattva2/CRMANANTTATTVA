@@ -14,7 +14,7 @@ import api from '../services/api';
 import { uploadMedia } from '../services/mediaUpload';
 import { API_ENDPOINTS } from '../services/apiEndpoints';
 import { inferPiboParent, normalizePiboCategories } from '../constants/piboCategories';
-import { adminRoles } from '../constants/dashboard';
+import { adminRoles, hasAnyRole } from '../constants/dashboard';
 import { QUOTATION_SCOPE_PRESET_OPTIONS, QUOTATION_SCOPE_PRESETS } from '../constants/quotationScopePresets';
 import { createQuotationPdf } from '../utils/quotationPdf';
 import { addServiceDays, datesFromAnnualYears, normalizeDateInputValue, normalizePeriodUnit, periodDisplay, renewalDateFrom, serviceEndDateFrom } from '../utils/servicePeriod';
@@ -92,6 +92,15 @@ const PERIOD_UNIT_OPTIONS = [
   { value: 'annual', label: 'Years' }
 ];
 const TRANSITION_PERIOD_OPTIONS = ['Yes', 'No'];
+
+function readStoredQuotationUser() {
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    return user && typeof user === 'object' ? user : null;
+  } catch {
+    return null;
+  }
+}
 
 function periodUnitLabel(unit, quantity = 1) {
   const plural = Number(quantity) === 1 ? '' : 's';
@@ -1018,7 +1027,9 @@ function parseQuotationWorkbook(fileRows, leads = []) {
 }
 
 export default function Quotations() {
-  const [currentUser, setCurrentUser] = useState(null);
+  // Keep review permissions available while the quotation list is loading or
+  // temporarily unavailable. /auth/me refreshes this snapshot below.
+  const [currentUser, setCurrentUser] = useState(readStoredQuotationUser);
   const [profileOpen, setProfileOpen] = useState(false);
   const [leads, setLeads] = useState([]);
   const [quotations, setQuotations] = useState([]);
@@ -1321,15 +1332,19 @@ export default function Quotations() {
       setPiboCategoriesLoading(false);
     });
     try {
-      const [meResponse, quotationsResponse] = await Promise.all([
+      const [meResult, quotationsResult] = await Promise.allSettled([
         api.get(API_ENDPOINTS.auth.me), api.get(API_ENDPOINTS.quotations.list)
       ]);
       if (sequence !== listRequestRef.current) return;
-      setCurrentUser(meResponse.data.user);
-      setQuotations((quotationsResponse.data.quotations || []).map(saved => {
-        const lead = findLeadForQuotation(saved, refreshedLeads || leads);
-        return lead ? syncQuotationWithLead(saved, lead) : saved;
-      }));
+      if (meResult.status === 'fulfilled') setCurrentUser(meResult.value.data.user);
+      if (quotationsResult.status === 'fulfilled') {
+        setQuotations((quotationsResult.value.data.quotations || []).map(saved => {
+          const lead = findLeadForQuotation(saved, refreshedLeads || leads);
+          return lead ? syncQuotationWithLead(saved, lead) : saved;
+        }));
+      } else {
+        throw quotationsResult.reason;
+      }
     } catch (err) {
       if (sequence === listRequestRef.current) setError(err?.response?.data?.error || 'Unable to load quotations.');
     } finally {
@@ -2158,9 +2173,8 @@ export default function Quotations() {
     }
   }
 
-  const quotationUserRoles = [currentUser?.role, ...(currentUser?.roles || [])].map((role) => String(role || '').toLowerCase().replace(/[\s_-]+/g, ''));
-  const isSuperAdminQuotationUser = quotationUserRoles.includes('superadmin');
-  const canApproveQuotation = quotationUserRoles.some((role) => ['admin', 'superadmin'].includes(role));
+  const isSuperAdminQuotationUser = hasAnyRole(currentUser, ['superadmin']);
+  const canApproveQuotation = hasAnyRole(currentUser, adminRoles);
 
   async function uploadManagementApprovalProof(event) {
     const file = event.target.files?.[0];
