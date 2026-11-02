@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   ArrowUpRight, BriefcaseBusiness, CalendarDays, ChevronDown, Compass,
-  Globe2, Handshake, Landmark, Megaphone, Network, PhoneCall, RefreshCw,
+  Globe2, Handshake, Landmark, Megaphone, PhoneCall, RefreshCw,
   Share2, Users
 } from 'lucide-react';
 
@@ -17,8 +17,6 @@ const HUES = [164, 215, 24, 270, 190, 330, 145, 42, 205, 290, 0];
 
 export default function TrafficSources({ sources, total, onSelect, optionsUnavailable }) {
   const [expanded, setExpanded] = useState(() => new Set());
-  const active = [...sources].filter((source) => source.count > 0).sort((a, b) => b.count - a.count);
-  const leading = active.slice(0, 5);
   function toggle(key) {
     setExpanded((current) => {
       const next = new Set(current);
@@ -27,12 +25,7 @@ export default function TrafficSources({ sources, total, onSelect, optionsUnavai
     });
   }
   return <aside className="traffic-sources" aria-labelledby="traffic-source-heading">
-    <header><span className="traffic-source-icon"><Network size={21}/></span><div><p>CLIENT ACQUISITION</p><h2 id="traffic-source-heading">Traffic Source</h2></div><span className="traffic-source-total">{total.toLocaleString('en-IN')}</span></header>
-    <section className="traffic-source-insight" aria-label="Traffic source infographic">
-      <div className="traffic-source-ring" style={{ '--active-share': `${sources.length ? active.length / sources.length * 100 : 0}%` }}><strong>{active.length}</strong><span>active<br/>parents</span></div>
-      <div className="traffic-source-mix"><strong>Acquisition mix</strong><span>Parent categories across visible leads</span><div className="traffic-source-stack" aria-hidden="true">{leading.map((source) => <i key={source.key} style={{ width: `${source.percentage}%`, '--source-hue': HUES[sources.indexOf(source) % HUES.length] }}/>)}</div></div>
-    </section>
-    <p className="traffic-source-intro">Communication hierarchy <span>Expand a parent to view its sub-categories.</span></p>
+    <header><div><h2 id="traffic-source-heading">Traffic Source</h2><p>Expand a parent to view sub-categories</p></div><span className="traffic-source-total">{total.toLocaleString('en-IN')}</span></header>
     <div className="traffic-source-list">{sources.map((source, index) => {
       const isExpanded = expanded.has(source.key);
       const Icon = PARENT_ICONS[source.label] || Compass;

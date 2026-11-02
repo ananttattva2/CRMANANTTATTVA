@@ -2,7 +2,7 @@ import TrafficSources from '../components/leads/TrafficSources';
 import { trafficSourceHierarchy, trafficSourceKey } from '../utils/trafficSources.mjs';
 import { uniquePipelineRows } from '../utils/leadPipeline.mjs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, BarChart3, CheckCircle2, Download, Flame, Search, Snowflake, Users, X } from 'lucide-react';
+import { ArrowUpRight, BadgeIndianRupee, Download, Flame, Search, Snowflake, Users, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import DashboardShell from '../components/dashboard/DashboardShell';
 import LeadRevenuePanel, { revenueMoney } from '../components/leads/LeadRevenuePanel';
@@ -55,6 +55,12 @@ export default function LeadPipeline() {
   const listed = selection ? (selection.kind ? filtered : unique).filter(r => (!selection.kind || r.kind === selection.kind) && (!selection.state || r.state === selection.state) && (!selection.sources?.length || selection.sources.includes(trafficSourceKey(r.communicationMode)))) : [];
   const total = source => source.reduce((n, r) => n + r.revenuePaise, 0);
   const poTotal = source => source.reduce((n, r) => n + (r.poAmountPaise || 0), 0);
+  const hotRows = filtered.filter((row) => row.kind === 'hot');
+  const coldRows = filtered.filter((row) => row.kind === 'cold');
+  const hotOpen = hotRows.filter((row) => row.state === 'open');
+  const hotClosed = hotRows.filter((row) => row.state === 'closed');
+  const coldOpen = coldRows.filter((row) => row.state === 'open');
+  const coldClosed = coldRows.filter((row) => row.state === 'closed');
   async function showServices(row) {
     const request = ++serviceRequest.current;
     setServiceView({ row, loading: true });
@@ -88,17 +94,23 @@ export default function LeadPipeline() {
     <header className="pipeline-header"><div className="pipeline-heading"><h1>Revenue Pipeline</h1><p>A clear view of your hot and cold pipeline, with locked revenue history.</p></div><div className="pipeline-filters"><label><Search size={17}/><input aria-label="Search pipeline" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search company, lead ID or owner…"/></label><select aria-label="Filter by owner" value={owner} onChange={e => setOwner(e.target.value)}><option value="">All visible owners</option>{[...new Set(rows.map(r => r.owner))].sort().map(name => <option key={name}>{name}</option>)}</select><span><Users size={15}/>{unique.length} unique leads</span></div></header>
     {error && <p role="alert" className="pipeline-error">{error}</p>}
     {loading ? <div role="status" className="pipeline-empty">Loading your lead pipeline…</div> : <>
-      <div className="pipeline-content-layout"><section className="pipeline-revenue-column" aria-label="Revenue Pipeline">
-      <button type="button" onClick={() => open()} className="pipeline-root"><span className="pipeline-root-icon"><BarChart3 size={28}/></span><span><small>COMPLETE PIPELINE</small><strong>{revenueMoney(total(unique))}</strong><span>Total estimated revenue · {unique.length} unique leads</span></span><span className="pipeline-root-breakdown"><span><Flame size={17}/>Hot Leads<b>{filtered.filter(r => r.kind === 'hot').length}</b></span><span><Snowflake size={17}/>Cold Leads<b>{filtered.filter(r => r.kind === 'cold').length}</b></span></span><ArrowUpRight size={20}/></button>
-      <div className="pipeline-branches">{['hot', 'cold'].map(kind => {
-        const source = filtered.filter(r => r.kind === kind);
-        const Icon = kind === 'hot' ? Flame : Snowflake;
-        return <section key={kind} className={`pipeline-branch ${kind}`}>
-          <button type="button" onClick={() => open(kind)} className="pipeline-category"><div><p>{kind === 'hot' ? 'HIGH PRIORITY' : 'NURTURE PIPELINE'}</p><h2>{kind === 'hot' ? 'Hot Leads' : 'Cold Leads'}</h2><strong>{revenueMoney(total(source))}</strong><small>Total estimated revenue</small><span className="pipeline-category-count"><Users size={19}/><b>{source.length}</b>{kind === 'hot' ? 'hot leads' : 'cold leads'}</span></div><span className="pipeline-category-icon"><Icon size={43}/></span></button>
-          <div className="pipeline-states">{['open', 'closed'].map(state => { const items = source.filter(r => r.state === state); return <button type="button" key={state} onClick={() => open(kind, state)} className={`pipeline-state ${state}`}><span><i/>{state === 'open' ? 'Open + Revenue' : kind === 'hot' ? 'Closed · PO / Revenue' : 'Closed + Revenue'}<ArrowUpRight size={19}/></span>{kind === 'hot' && state === 'closed' ? <div className="pipeline-closed-money"><div><small>PO value</small><strong>{revenueMoney(poTotal(items))}</strong></div><span>/</span><div><small>Estimated revenue</small><strong>{revenueMoney(total(items))}</strong></div></div> : <strong>{revenueMoney(total(items))}</strong>}<small>{state === 'closed' ? <CheckCircle2 size={18}/> : <Users size={18}/>}<b>{items.length}</b> {state} leads</small></button>; })}</div>
-        </section>;
-      })}</div>
-      <p className="pipeline-note">Cold Closed includes leads converted to Hot. Conversion history may appear in both branches; the overall count and revenue count each business lead once. PO value and estimated revenue are shown separately. A Hot Lead is closed when all services are closed.</p>
+      <section className="pipeline-summary-grid" aria-label="Pipeline summary">
+        <button type="button" onClick={() => open()}><span className="is-green"><Users/></span><small>Unique Leads</small><strong>{unique.length.toLocaleString('en-IN')}</strong></button>
+        <button type="button" onClick={() => open()}><span className="is-emerald"><BadgeIndianRupee/></span><small>Estimated Revenue</small><strong>{revenueMoney(total(unique))}</strong></button>
+        <button type="button" onClick={() => open('hot')}><span className="is-orange"><Flame/></span><small>Hot Leads</small><strong>{hotRows.length.toLocaleString('en-IN')}</strong></button>
+        <button type="button" onClick={() => open('cold')}><span className="is-blue"><Snowflake/></span><small>Cold Leads</small><strong>{coldRows.length.toLocaleString('en-IN')}</strong></button>
+      </section>
+      <div className="pipeline-content-layout"><section className="pipeline-overview" aria-label="Pipeline Overview">
+        <h2>Pipeline Overview</h2>
+        <div className="pipeline-overview-table"><table><thead><tr>{['Pipeline', 'Total Leads', 'Open', 'Closed', 'Estimated Revenue', 'PO Value'].map((label) => <th key={label}>{label}</th>)}</tr></thead><tbody>
+          <tr><td><button type="button" onClick={() => open('hot')}><Flame/>Hot Leads</button></td><td>{hotRows.length.toLocaleString('en-IN')}</td><td><button type="button" onClick={() => open('hot', 'open')}>{hotOpen.length.toLocaleString('en-IN')}</button></td><td><button type="button" onClick={() => open('hot', 'closed')}>{hotClosed.length.toLocaleString('en-IN')}</button></td><td>{revenueMoney(total(hotRows))}</td><td>{revenueMoney(poTotal(hotClosed))}</td></tr>
+          <tr><td><button type="button" onClick={() => open('cold')}><Snowflake/>Cold Leads</button></td><td>{coldRows.length.toLocaleString('en-IN')}</td><td><button type="button" onClick={() => open('cold', 'open')}>{coldOpen.length.toLocaleString('en-IN')}</button></td><td><button type="button" onClick={() => open('cold', 'closed')}>{coldClosed.length.toLocaleString('en-IN')}</button></td><td>{revenueMoney(total(coldRows))}</td><td>—</td></tr>
+        </tbody></table></div>
+        <div className="pipeline-kind-grid">
+          <article className="pipeline-kind-card hot"><header><span><Flame/></span><button type="button" onClick={() => open('hot')}>Hot Leads<ArrowUpRight/></button></header><div className="pipeline-kind-counts"><button type="button" onClick={() => open('hot', 'open')}><small>Open</small><strong>{hotOpen.length.toLocaleString('en-IN')}</strong></button><button type="button" onClick={() => open('hot', 'closed')}><small>Closed</small><strong>{hotClosed.length.toLocaleString('en-IN')}</strong></button></div><div className="pipeline-kind-money"><button type="button" onClick={() => open('hot')}><small>Estimated Revenue</small><strong>{revenueMoney(total(hotRows))}</strong></button><button type="button" onClick={() => open('hot', 'closed')}><small>PO Value</small><strong>{revenueMoney(poTotal(hotClosed))}</strong></button></div></article>
+          <article className="pipeline-kind-card cold"><header><span><Snowflake/></span><button type="button" onClick={() => open('cold')}>Cold Leads<ArrowUpRight/></button></header><div className="pipeline-kind-counts"><button type="button" onClick={() => open('cold', 'open')}><small>Open</small><strong>{coldOpen.length.toLocaleString('en-IN')}</strong></button><button type="button" onClick={() => open('cold', 'closed')}><small>Closed</small><strong>{coldClosed.length.toLocaleString('en-IN')}</strong></button></div><div className="pipeline-kind-money"><button type="button" onClick={() => open('cold')}><small>Estimated Revenue</small><strong>{revenueMoney(total(coldRows))}</strong></button></div></article>
+        </div>
+        <p className="pipeline-note">Cold Closed includes leads converted to Hot. The overall count and revenue count each business lead once. PO value and estimated revenue are shown separately.</p>
       </section><TrafficSources sources={trafficSources} total={unique.length} onSelect={openSource} optionsUnavailable={sourceOptionsUnavailable}/></div>
     </>}
     <dialog ref={dialog} className="pipeline-dialog" onCancel={() => setSelection(null)} onClose={() => setSelection(null)}>
