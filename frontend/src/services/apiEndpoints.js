@@ -138,6 +138,11 @@ const API_ENDPOINTS = {
     purchaseSales: '/dashboard-insights/purchase-sales',
     annualReturnOperations: '/dashboard-insights/annual-return-operations'
   },
+  documents: {
+    list: '/documents',
+    create: '/documents',
+    file: (id) => `/documents/${encodePathValue(id)}/file`
+  },
   notifications: {
     unreadAnnouncements: '/notifications/unread-announcements',
     markRead: (id) => `/notifications/${encodePathValue(id)}/read`,

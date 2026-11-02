@@ -166,7 +166,7 @@ export const navSections = [
   { label: 'Quotations & Billing', items: [{ label: 'Quotation List', icon: FileText, path: '/sales/quotations' }, ...pick(customerItems, ['Add Quotation', 'Proforma Invoice'])] },
   { label: 'Approvals', items: pick(homeItems, ['Pending Approval']) },
   originalNavSections[2],
-  { label: 'Communication & Planning', items: pick(homeItems, ['Notifications', 'Announcements', 'Calendar']) },
+  { label: 'Communication & Planning', items: [...pick(homeItems, ['Notifications', 'Announcements', 'Calendar']), { label: 'Documents', icon: FileText, path: '/documents' }] },
   { label: 'Administration', items: pick(homeItems, ['User Management']) },
   { label: 'Help & Support', items: pick(originalNavSections[3].items, ['Tickets', 'Help Yourself', 'Dummey']) }
 ];

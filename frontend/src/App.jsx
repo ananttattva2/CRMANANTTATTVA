@@ -41,6 +41,7 @@ const OverallDashboard = lazy(() => import('./pages/OverallDashboard'))
 const AnnualReturnOperationsDashboard = lazy(() => import('./pages/AnnualReturnOperationsDashboard'))
 const PurchaseOrderDashboard = lazy(() => import('./pages/PurchaseOrderDashboard'))
 const PurchaseSalesDashboard = lazy(() => import('./pages/PurchaseSalesDashboard'))
+const DocumentsLibrary = lazy(() => import('./pages/DocumentsLibrary'))
 import api, { API_ENDPOINTS, hasStoredAuthToken } from './services/api'
 import SupportTicketMilestoneCelebration from './components/SupportTicketMilestoneCelebration'
 
@@ -145,6 +146,7 @@ function App(){
         <Route path="/notifications" element={<ProtectedRoute><Notifications/></ProtectedRoute>} />
         <Route path="/announcements" element={<ProtectedRoute><Notifications mode="announcements"/></ProtectedRoute>} />
         <Route path="/calendar" element={<ProtectedRoute><CalendarTodo/></ProtectedRoute>} />
+        <Route path="/documents" element={<ProtectedRoute><DocumentsLibrary/></ProtectedRoute>} />
         <Route path="/assistant" element={<ProtectedRoute><AssistantPage/></ProtectedRoute>} />
         <Route path="/sales/lead-pipeline" element={<ProtectedRoute><LeadPipeline/></ProtectedRoute>} />
         <Route path="/sales/lead-generation" element={<ProtectedRoute><LeadGeneration/></ProtectedRoute>} />

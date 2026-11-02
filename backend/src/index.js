@@ -31,6 +31,7 @@ const purchaseProofRoutes = require('./routes/purchaseProofs');
 const healthReportAssignmentRoutes = require('./routes/healthReportAssignments');
 const salesMisRoutes = require('./routes/salesMis');
 const dashboardInsightsRoutes = require('./routes/dashboardInsights');
+const documentRoutes = require('./routes/documents');
 const { startPendingApprovalReminderScheduler } = require('./services/pendingApprovalNotifications');
 const { runWeeklyPendingQuotationDigest } = require('./services/weeklyPendingQuotationDigest');
 const { runClientComplianceCorrectionReminders, startClientComplianceCorrectionReminderScheduler } = require('./services/clientComplianceCorrectionReminders');
@@ -216,6 +217,7 @@ app.use('/api/purchase-proofs', purchaseProofRoutes);
 app.use('/api/health-report-assignments', healthReportAssignmentRoutes);
 app.use('/api/sales-mis', salesMisRoutes);
 app.use('/api/dashboard-insights', dashboardInsightsRoutes);
+app.use('/api/documents', documentRoutes);
 
 app.get('/', (req, res) => res.send({
   ok: true,
