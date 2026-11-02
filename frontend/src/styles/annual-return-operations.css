@@ -8,3 +8,66 @@
 .arops-service-breakdown{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:7px;border-top:1px solid #e3ebe8;padding-top:6px}
 .arops-service-breakdown span{display:flex;min-width:0;align-items:center;justify-content:space-between;gap:5px;border-radius:5px;background:#f5f9f7;padding:4px 6px;color:#5a6b7f;font-size:7px;font-weight:800}
 .arops-service-breakdown b{color:#14213a;font-size:8px}
+
+/* Readability pass: retain the dense dashboard layout without micro text. */
+.arops-filter>span{margin-bottom:5px;font-size:11px}
+.arops-filter select,.arops-filter input,.arops-search input{height:40px;font-size:13px}
+.arops-search svg{width:16px}
+.arops-reset{height:40px;font-size:12px}
+.arops-reset svg{width:15px}
+.arops-chips{min-height:40px;font-size:11px}
+.arops-chips span{padding:6px 10px}
+.arops-summary-card{min-height:82px;gap:12px;padding:13px 14px}
+.arops-summary-icon{width:42px;height:42px;flex-basis:42px}
+.arops-summary-icon svg{width:22px}
+.arops-summary-card p{font-size:11px}
+.arops-summary-card strong{margin-top:3px;font-size:26px}
+.arops-summary-card small{font-size:10px}
+.arops-summary-card em{font-size:9px}
+.arops-category-photo{height:76px;padding:11px 13px}
+.arops-category-photo h3{font-size:17px}
+.arops-category-photo p{font-size:10px}
+.arops-category-body{gap:10px;padding:10px 11px}
+.arops-breakdown{gap:5px}
+.arops-breakdown span{grid-template-columns:8px 1fr auto;gap:6px;font-size:10px}
+.arops-breakdown i{width:6px;height:6px}
+.arops-category-completion,.arops-completion{padding-left:10px}
+.arops-category-completion strong,.arops-completion strong{font-size:17px}
+.arops-category-completion small,.arops-completion small{font-size:10px}
+.arops-breadcrumb{min-height:38px;font-size:11px}
+.arops-panel>header{min-height:54px;padding:9px 12px}
+.arops-panel>header>span{width:30px;height:30px}
+.arops-panel>header svg{width:17px}
+.arops-panel h2{font-size:16px}
+.arops-panel header p{font-size:10px}
+.arops-drill-grid{gap:10px;padding:10px}
+.arops-drill-card{min-height:148px;padding:12px}
+.arops-drill-heading>span{width:36px;height:36px}
+.arops-drill-heading svg{width:18px}
+.arops-drill-heading h3{font-size:15px}
+.arops-drill-heading p{font-size:10px}
+.arops-drill-heading p b{font-size:12px}
+.arops-drill-body{gap:10px;margin-top:10px}
+.arops-service-breakdown{gap:7px;margin-top:9px;padding-top:8px}
+.arops-service-breakdown span{padding:6px 8px;font-size:9px}
+.arops-service-breakdown b{font-size:10px}
+.arops-overdue-note{margin-top:6px;font-size:10px}
+.arops-empty{font-size:12px}
+.arops-chart-panel{min-height:240px}
+.arops-chart{height:184px}
+.arops-chart button{grid-template-rows:20px 1fr 34px}
+.arops-chart button>b{font-size:11px}
+.arops-chart button small{font-size:9px;line-height:1.15}
+.arops-workload header em{font-size:9px}
+.arops-workload>div{gap:8px;padding:11px 13px}
+.arops-workload>div>button{grid-template-columns:minmax(115px,1fr) 2.2fr 32px;font-size:10px}
+.arops-workload button>strong{font-size:11px}
+.arops-table-panel h2{font-size:14px}
+.arops-table-panel header p{font-size:10px}
+.arops-table-panel table{font-size:10px}
+.arops-table-panel th button,.arops-table-panel th:last-child{padding:9px 9px;font-size:10px}
+.arops-table-panel td{height:40px;padding:7px 9px}
+.arops-lead-link{font-size:10px}
+.arops-status,.arops-open{font-size:9px}
+.arops-table-panel>footer{font-size:10px}
+@media(max-width:1200px){.arops-summary-card strong{font-size:22px}.arops-category-photo h3{font-size:15px}.arops-drill-card{min-height:140px}}
