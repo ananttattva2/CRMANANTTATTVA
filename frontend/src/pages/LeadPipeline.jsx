@@ -15,10 +15,18 @@ import '../styles/lead-pipeline.css';
 function RepMetric({ value, previous, comparisonLabel, tone, onClick, label }) {
   const difference = value - previous;
   const TrendIcon = difference > 0 ? ArrowUp : difference < 0 ? ArrowDown : Minus;
+  const percentChange = previous > 0 ? Math.round((difference / previous) * 100) : null;
+  const changeText = difference === 0
+    ? 'No change'
+    : previous === 0
+      ? `New +${value.toLocaleString('en-IN')}`
+      : `${difference > 0 ? '+' : ''}${difference.toLocaleString('en-IN')} (${percentChange > 0 ? '+' : ''}${percentChange}%)`;
   return <button type="button" className={`sales-rep-metric ${tone || ''}`} onClick={onClick} disabled={!value} aria-label={`${label}: ${value} leads. View clients`}>
+    {comparisonLabel && <small>This {comparisonLabel}</small>}
     <strong>{value.toLocaleString('en-IN')}</strong>
-    {comparisonLabel && <span className={difference > 0 ? 'is-up' : difference < 0 ? 'is-down' : 'is-flat'} title={`${previous} in the previous ${comparisonLabel}`}>
-      <TrendIcon aria-hidden="true" />{previous.toLocaleString('en-IN')} last {comparisonLabel}
+    {comparisonLabel && <span className="sales-rep-previous">Previous: <b>{previous.toLocaleString('en-IN')}</b></span>}
+    {comparisonLabel && <span className={`sales-rep-change ${difference > 0 ? 'is-up' : difference < 0 ? 'is-down' : 'is-flat'}`} title={`${value} this ${comparisonLabel}; ${previous} in the previous ${comparisonLabel}`}>
+      <TrendIcon aria-hidden="true" />{changeText}
     </span>}
   </button>;
 }
@@ -37,8 +45,10 @@ function SalesRepTable({ reps, comparisonLabel, range, previousRange, onMetricCl
       <span className="sales-rep-total"><Users aria-hidden="true" />{reps.length} sales reps</span>
     </header>
     {comparisonLabel && <div className="sales-rep-comparison" role="note">
-      <strong>Selected {comparisonLabel} vs previous {comparisonLabel}</strong>
-      <span>{range.label} compared with {previousRange.label}. Each smaller figure is the previous {comparisonLabel} count.</span>
+      <div><small>This {comparisonLabel}</small><strong>{range.label}</strong></div>
+      <span aria-hidden="true">vs</span>
+      <div><small>Previous {comparisonLabel}</small><strong>{previousRange.label}</strong></div>
+      <p>Each cell shows the current count, previous count and exact change.</p>
     </div>}
     <div className="sales-rep-table-wrap">
       <table>
