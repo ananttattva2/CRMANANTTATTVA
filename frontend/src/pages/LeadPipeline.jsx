@@ -31,6 +31,22 @@ function RepMetric({ value, previous, comparisonLabel, tone, onClick, label }) {
   </button>;
 }
 
+function CardPeriodComparison({ value, previous, comparisonLabel }) {
+  if (!comparisonLabel) return null;
+  const difference = value - previous;
+  const percent = previous > 0 ? Math.round((difference / previous) * 100) : null;
+  const text = difference === 0
+    ? 'No change'
+    : previous === 0
+      ? `New +${value.toLocaleString('en-IN')}`
+      : `${difference > 0 ? '+' : ''}${difference.toLocaleString('en-IN')} (${percent > 0 ? '+' : ''}${percent}%)`;
+  const TrendIcon = difference > 0 ? ArrowUp : difference < 0 ? ArrowDown : Minus;
+  return <span className={`pipeline-card-comparison ${difference > 0 ? 'is-up' : difference < 0 ? 'is-down' : 'is-flat'}`}>
+    <span>Previous {comparisonLabel}: <b>{previous.toLocaleString('en-IN')}</b></span>
+    <em><TrendIcon aria-hidden="true" />{text}</em>
+  </span>;
+}
+
 function SalesRepTable({ reps, comparisonLabel, range, previousRange, onMetricClick, onSourceClick }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -128,6 +144,10 @@ export default function LeadPipeline() {
   const coldRows = filtered.filter((row) => row.kind === 'cold');
   const hotOpen = hotRows.filter((row) => row.state === 'open');
   const hotClosed = hotRows.filter((row) => row.state === 'closed');
+  const previousHotRows = previousFiltered.filter((row) => row.kind === 'hot');
+  const previousColdRows = previousFiltered.filter((row) => row.kind === 'cold');
+  const previousHotOpen = previousHotRows.filter((row) => row.state === 'open');
+  const previousHotClosed = previousHotRows.filter((row) => row.state === 'closed');
   const activeOwnerIndex = useMemo(() => activeUsers ? {
     ids: new Set(activeUsers.flatMap((user) => [user._id, user.id, user.crmUserId].filter(Boolean).map(String))),
     names: new Set(activeUsers.flatMap((user) => [user.name, user.email].filter(Boolean).map((value) => String(value).trim().toLowerCase())))
@@ -185,8 +205,8 @@ export default function LeadPipeline() {
       <div className="pipeline-content-layout"><section className="pipeline-sales-workspace" aria-label="Sales pipeline">
         {!unique.length && <p role="status" className="pipeline-filter-empty">No leads match these filters. Try another period or owner.</p>}
         <div className="pipeline-kind-grid">
-          <article className="pipeline-kind-card hot"><header><span><Flame/></span><button type="button" onClick={() => open('hot')}>Hot Leads<ArrowUpRight/></button></header><div className="pipeline-kind-counts"><button type="button" onClick={() => open('hot', 'open')}><small>Open</small><strong>{hotOpen.length.toLocaleString('en-IN')}</strong></button><button type="button" onClick={() => open('hot', 'closed')}><small>Closed</small><strong>{hotClosed.length.toLocaleString('en-IN')}</strong></button></div><div className="pipeline-kind-money"><button type="button" onClick={() => open('hot')}><small>Estimated Revenue</small><strong>{revenueMoney(total(hotRows))}</strong></button><button type="button" onClick={() => open('hot', 'closed')}><small>PO Value</small><strong>{revenueMoney(poTotal(hotClosed))}</strong></button></div></article>
-          <article className="pipeline-kind-card cold"><header><span><Snowflake/></span><button type="button" onClick={() => open('cold')}>Cold Leads<ArrowUpRight/></button></header><div className="pipeline-kind-counts pipeline-kind-counts-single"><button type="button" onClick={() => open('cold')}><small>Open</small><strong>{coldRows.length.toLocaleString('en-IN')}</strong></button></div><div className="pipeline-kind-money"><button type="button" onClick={() => open('cold')}><small>Estimated Revenue</small><strong>{revenueMoney(total(coldRows))}</strong></button></div></article>
+          <article className="pipeline-kind-card hot"><header><span><Flame/></span><button type="button" onClick={() => open('hot')}>Hot Leads<ArrowUpRight/></button>{comparisonLabel && <small className="pipeline-card-period">{comparisonLabel} comparison</small>}</header><div className="pipeline-kind-counts"><button type="button" onClick={() => open('hot', 'open')}><small>Open</small><strong>{hotOpen.length.toLocaleString('en-IN')}</strong><CardPeriodComparison value={hotOpen.length} previous={previousHotOpen.length} comparisonLabel={comparisonLabel}/></button><button type="button" onClick={() => open('hot', 'closed')}><small>Closed</small><strong>{hotClosed.length.toLocaleString('en-IN')}</strong><CardPeriodComparison value={hotClosed.length} previous={previousHotClosed.length} comparisonLabel={comparisonLabel}/></button></div><div className="pipeline-kind-money"><button type="button" onClick={() => open('hot')}><small>Estimated Revenue</small><strong>{revenueMoney(total(hotRows))}</strong></button><button type="button" onClick={() => open('hot', 'closed')}><small>PO Value</small><strong>{revenueMoney(poTotal(hotClosed))}</strong></button></div></article>
+          <article className="pipeline-kind-card cold"><header><span><Snowflake/></span><button type="button" onClick={() => open('cold')}>Cold Leads<ArrowUpRight/></button>{comparisonLabel && <small className="pipeline-card-period">{comparisonLabel} comparison</small>}</header><div className="pipeline-kind-counts pipeline-kind-counts-single"><button type="button" onClick={() => open('cold')}><small>Open</small><strong>{coldRows.length.toLocaleString('en-IN')}</strong><CardPeriodComparison value={coldRows.length} previous={previousColdRows.length} comparisonLabel={comparisonLabel}/></button></div><div className="pipeline-kind-money"><button type="button" onClick={() => open('cold')}><small>Estimated Revenue</small><strong>{revenueMoney(total(coldRows))}</strong></button></div></article>
         </div>
         <p className="pipeline-note">Cold Lead Open shows the complete Cold pipeline count. Hot Open and Closed remain separate. PO value and estimated revenue are shown separately.</p>
       </section><TrafficSources sources={trafficSources} onSelect={openSource} optionsUnavailable={sourceOptionsUnavailable}/></div>
