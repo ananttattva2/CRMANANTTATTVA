@@ -122,9 +122,6 @@ jobs:
       - name: Transfer verified frontend artifact
         timeout-minutes: 5
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ARTIFACT_ID: ${{ needs.verify.outputs.artifact-id }}
         run: |
           set -Eeuo pipefail
           port="${DO_PORT:-22}"
@@ -138,33 +135,11 @@ jobs:
             -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
             -p "$port" "$DO_USER@$DO_HOST" "$driver_command" < deployment-artifact/scripts/deploy-production.sh
 
-          # The server pulls the verified archive over HTTPS; only a small driver uses SSH.
-          # Keep the GitHub token on the runner and mask the short-lived download URL.
-          headers="$(curl --fail --silent --show-error --dump-header - --output /dev/null \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H 'Accept: application/vnd.github+json' \
-            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip")"
-          download_url="$(printf '%s\n' "$headers" | sed -n 's/^[Ll]ocation: *//p' | tr -d '\r')"
-          test -n "$download_url"
-          [[ "$download_url" == https://* ]]
-          echo "::add-mask::$download_url"
-          remote_zip="/tmp/crm-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.zip"
-          {
-            printf 'set -Eeuo pipefail\numask 077\n'
-            printf 'download_url=%q\nremote_zip=%q\nremote_artifact=%q\nremote_script=%q\n' \
-              "$download_url" "$remote_zip" "$remote_artifact" "$remote_deploy_script"
-            cat <<'REMOTE'
-          trap 'rm -f -- "$remote_zip"' EXIT
-          if curl --fail --silent --show-error --location --connect-timeout 15 --max-time 30 "$download_url" -o "$remote_zip"; then
-            unzip -p "$remote_zip" frontend-dist.tgz > "$remote_artifact"
-            test -s "$remote_artifact"
-          else
-            echo 'Artifact download is too slow; using the guarded server build fallback.'
-            rm -f -- "$remote_artifact"
-          fi
-          test -s "$remote_script"
-          REMOTE
-          } | ssh \
+          # actions/download-artifact already extracted the verified workflow
+          # artifact on this runner. Copy the exact packaged frontend archive
+          # over the authenticated SSH channel; the deploy script verifies its
+          # SHA-256 before using it. This avoids requiring unzip on the Droplet.
+          scp \
             -i "$HOME/.ssh/digitalocean_deploy" \
             -o BatchMode=yes \
             -o IdentitiesOnly=yes \
@@ -172,8 +147,16 @@ jobs:
             -o ConnectTimeout=15 \
             -o ServerAliveInterval=15 \
             -o ServerAliveCountMax=3 \
-            -p "$port" \
-            "$DO_USER@$DO_HOST" 'bash -s'
+            -P "$port" \
+            deployment-artifact/frontend-dist.tgz \
+            "$DO_USER@$DO_HOST:$remote_artifact"
+
+          printf -v verify_command 'umask 077; test -s %q && test -s %q && chmod 600 %q %q' \
+            "$remote_artifact" "$remote_deploy_script" "$remote_artifact" "$remote_deploy_script"
+          ssh -i "$HOME/.ssh/digitalocean_deploy" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+            -p "$port" "$DO_USER@$DO_HOST" "$verify_command"
 
           echo "REMOTE_FRONTEND_ARTIFACT=$remote_artifact" >> "$GITHUB_ENV"
           echo "REMOTE_DEPLOY_SCRIPT=$remote_deploy_script" >> "$GITHUB_ENV"
