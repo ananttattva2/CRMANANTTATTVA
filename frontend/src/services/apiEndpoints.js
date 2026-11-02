@@ -135,7 +135,8 @@ const API_ENDPOINTS = {
   },
   dashboardInsights: {
     purchaseOrders: '/dashboard-insights/purchase-orders',
-    purchaseSales: '/dashboard-insights/purchase-sales'
+    purchaseSales: '/dashboard-insights/purchase-sales',
+    annualReturnOperations: '/dashboard-insights/annual-return-operations'
   },
   notifications: {
     unreadAnnouncements: '/notifications/unread-announcements',

@@ -38,6 +38,7 @@ const SalesManagementDashboard = lazy(() => import('./pages/SalesManagementDashb
 const ClientDailyMIS = lazy(() => import('./pages/ClientDailyMIS'))
 const Dummey = lazy(() => import('./pages/Dummey'))
 const OverallDashboard = lazy(() => import('./pages/OverallDashboard'))
+const AnnualReturnOperationsDashboard = lazy(() => import('./pages/AnnualReturnOperationsDashboard'))
 const PurchaseOrderDashboard = lazy(() => import('./pages/PurchaseOrderDashboard'))
 const PurchaseSalesDashboard = lazy(() => import('./pages/PurchaseSalesDashboard'))
 import api, { API_ENDPOINTS, hasStoredAuthToken } from './services/api'
@@ -131,6 +132,7 @@ function App(){
         <Route path="/mis/sales-management" element={<Navigate to="/mis" replace />} />
         <Route path="/dashboard/activity-logs" element={<ProtectedRoute allowedRoles={['admin', 'superadmin']}><ActivityLogs/></ProtectedRoute>} />
         <Route path="/overall-dashboard" element={<ProtectedRoute><OverallDashboard/></ProtectedRoute>} />
+        <Route path="/summary-dashboard" element={<ProtectedRoute><AnnualReturnOperationsDashboard/></ProtectedRoute>} />
         <Route path="/po-dashboard" element={<ProtectedRoute><PurchaseOrderDashboard/></ProtectedRoute>} />
         <Route path="/purchase-sales-dashboard" element={<ProtectedRoute><PurchaseSalesDashboard/></ProtectedRoute>} />
         <Route path="/pending-approval" element={<ProtectedRoute><PendingApproval/></ProtectedRoute>} />

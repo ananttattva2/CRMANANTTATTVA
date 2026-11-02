@@ -11,7 +11,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
   const [openGroups, setOpenGroups] = useState({})
   const [activeFlyout, setActiveFlyout] = useState(null)
   const [activeItem, setActiveItem] = useState('')
-  const isDashboardRoute = ['/dashboard', '/overall-dashboard', '/superadmin-dashboard', '/mis', '/mis/complete', '/mis/client-daily'].includes(location.pathname)
+  const isDashboardRoute = ['/dashboard', '/overall-dashboard', '/summary-dashboard', '/superadmin-dashboard', '/mis', '/mis/complete', '/mis/client-daily'].includes(location.pathname)
   const [dashboardChoicesOpen, setDashboardChoicesOpen] = useState(() => isDashboardRoute)
   const [openNestedGroups, setOpenNestedGroups] = useState(() => ({
     'Pending Leads': location.pathname.startsWith('/pending-leads') || location.pathname === '/sales/lead-pipeline',
@@ -117,7 +117,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
                 if (item.label === 'Dashboard' && !collapsed) {
                   const choiceClass = active => `sidebar-dashboard-choice flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-black transition ${active ? 'sidebar-dashboard-choice-active bg-[#f45b0b] text-white' : 'text-emerald-50/90 hover:bg-white/10 hover:text-white'}`;
                   return <div key={item.label} className="grid gap-1">
-                    <button type="button" onClick={() => { navigate('/overall-dashboard'); onClose?.(); }} aria-current={location.pathname === '/overall-dashboard' ? 'page' : undefined} className={choiceClass(location.pathname === '/overall-dashboard')}><BarChart3 className="h-4 w-4 shrink-0"/>Overall Dashboard</button>
+                    <button type="button" onClick={() => { navigate('/overall-dashboard'); onClose?.(); }} aria-current={location.pathname === '/overall-dashboard' ? 'page' : undefined} className={choiceClass(location.pathname === '/overall-dashboard')}><BarChart3 className="h-4 w-4 shrink-0"/>Application Dashboard</button>
                     {canChooseDashboard ? <>{[['sales', 'Sales Dashboard', BriefcaseBusiness]].map(([mode, label, ModeIcon]) => <button type="button" key={mode} onClick={() => chooseDashboard(mode)} className={choiceClass(dashboardMode === mode && location.pathname === '/dashboard')}><ModeIcon className="h-4 w-4 shrink-0"/>{label}</button>)}</> : <button type="button" onClick={() => { navigate('/dashboard'); onClose?.(); }} className={choiceClass(location.pathname === '/dashboard')}><Gauge className="h-4 w-4 shrink-0"/>My Dashboard</button>}
                     {renderDashboardReports(item)}
                   </div>;
@@ -187,7 +187,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
                                     </button>
                                     {dashboardChoicesOpen && (
                                       <div className="mt-1 grid gap-1 pl-5">
-                                        <button type="button" onClick={() => { setActiveItem('Overall Dashboard'); navigate('/overall-dashboard'); onClose?.() }} aria-current={location.pathname === '/overall-dashboard' ? 'page' : undefined} className={`sidebar-dashboard-choice flex min-h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-black transition ${location.pathname === '/overall-dashboard' ? 'sidebar-dashboard-choice-active bg-[#f45b0b] text-white' : 'text-emerald-50/75 hover:bg-white/10 hover:text-white'}`}><BarChart3 className="h-3.5 w-3.5" />Overall Dashboard</button>
+                                        <button type="button" onClick={() => { setActiveItem('Application Dashboard'); navigate('/overall-dashboard'); onClose?.() }} aria-current={location.pathname === '/overall-dashboard' ? 'page' : undefined} className={`sidebar-dashboard-choice flex min-h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-black transition ${location.pathname === '/overall-dashboard' ? 'sidebar-dashboard-choice-active bg-[#f45b0b] text-white' : 'text-emerald-50/75 hover:bg-white/10 hover:text-white'}`}><BarChart3 className="h-3.5 w-3.5" />Application Dashboard</button>
                                         {canChooseDashboard && <>
                                         <button
                                           type="button"
@@ -274,7 +274,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
                             return (
                               <div key={child.label} className="rounded-lg bg-slate-50 p-1">
                                 <div className="px-2 py-1 text-xs font-black uppercase tracking-[0.12em] text-slate-400">Dashboard</div>
-                                <button type="button" onClick={() => { setActiveItem('Overall Dashboard'); navigate('/overall-dashboard'); setActiveFlyout(null); onClose?.() }} aria-current={location.pathname === '/overall-dashboard' ? 'page' : undefined} className={`flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-black transition ${location.pathname === '/overall-dashboard' ? 'bg-[#f45b0b] text-white' : 'text-slate-700 hover:bg-emerald-50 hover:text-[#0f5d46]'}`}><BarChart3 className="h-4 w-4 shrink-0" />Overall Dashboard</button>
+                                <button type="button" onClick={() => { setActiveItem('Application Dashboard'); navigate('/overall-dashboard'); setActiveFlyout(null); onClose?.() }} aria-current={location.pathname === '/overall-dashboard' ? 'page' : undefined} className={`flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-black transition ${location.pathname === '/overall-dashboard' ? 'bg-[#f45b0b] text-white' : 'text-slate-700 hover:bg-emerald-50 hover:text-[#0f5d46]'}`}><BarChart3 className="h-4 w-4 shrink-0" />Application Dashboard</button>
                                 {canChooseDashboard && <>
                                 <button
                                   type="button"

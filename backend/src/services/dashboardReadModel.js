@@ -24,7 +24,7 @@ function assignmentProjection(prefix) {
 const leadProjection = {
   ...Object.fromEntries('_id company companyName clientName companyIdentity leadCode sourceLeadId status closedAt closedBy closedByText closedByEmail assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail firstAnnualReturnYearApplicable servicesOffered applicableService applicantType subApplicantType piboCategory industryType eprCategory plantUnit'.split(' ').map(field => [field, 1])),
   assignments: { $map: { input: { $ifNull: ['$assignments', []] }, as: 'assignment', in: assignmentProjection('$$assignment') } },
-  serviceSelections: { $map: { input: { $ifNull: ['$serviceSelections', []] }, as: 'service', in: compactFields('$$service', 'assignedServiceId serviceAssignmentId subApplicantType piboCategory applicantType piboParent firstAnnualReturnYearApplicable financialYear servicesForYear servicesOffered applicableService industryType eprCategory plantUnit') } }
+  serviceSelections: { $map: { input: { $ifNull: ['$serviceSelections', []] }, as: 'service', in: compactFields('$$service', 'assignedServiceId serviceAssignmentId subApplicantType piboCategory applicantType piboParent firstAnnualReturnYearApplicable financialYear servicesForYear annualReturnYears servicesOffered applicableService industryType eprCategory plantUnit serviceStartDate serviceEndDate dueDate') } }
 };
 const statusFields = prefix => compactFields(prefix, 'status approvalStatus applicationStatus');
 function scopedStatus(path) {
@@ -71,7 +71,7 @@ function invalidateDashboardReads() { for (const invalidate of caches) invalidat
 // v4 discards snapshots captured before permanent service-staff ownership was
 // made authoritative (for example ATUL LTD retaining Nitin import metadata
 // after its live service was assigned to Tushar).
-const cachedAssignments = createDashboardCache({ name: 'dashboard-assignments-v4', maxEntries: 2 });
+const cachedAssignments = createDashboardCache({ name: 'dashboard-assignments-v5', maxEntries: 2 });
 const staffFields = ['assignedStaff', 'assignedStaffText', 'assignedStaffEmail'];
 const legacyClosedOwnerFields = ['closedBy', 'closedByText', 'closedByEmail'];
 const present = field => ({ [field]: { $exists: true, $nin: [null, ''] } });

@@ -90,7 +90,7 @@ export async function createOverallDashboardPdf(data, { generatedAt = new Date()
     // names and lead references remain available only in the authenticated UI.
   }
   if (view === 'overall') {
-    heading('Overall Dashboard', `${scopeLabel(data.visibility)} | Closed POs only | Generated ${date} IST`)
+    heading('Application Dashboard', `${scopeLabel(data.visibility)} | Closed POs only | Generated ${date} IST`)
     doc.setFontSize(8); doc.setTextColor(100, 116, 139)
     doc.text('Each company counts once per financial year. Inactive status reflects the current client status.', margin, 43)
     const trends = data.trends || []

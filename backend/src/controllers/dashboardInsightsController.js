@@ -5,6 +5,8 @@ const PurchaseData = require('../models/PurchaseData');
 const Quotation = require('../models/Quotation');
 const SalesData = require('../models/SalesData');
 const User = require('../models/User');
+const AnnualReturn = require('../models/AnnualReturn');
+const Team = require('../models/Team');
 const { loadPurchaseOrders } = require('./purchaseOrderController');
 const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
 const { loadOverallRecords } = require('../services/overallDashboardData');
@@ -200,7 +202,44 @@ exports.overall = async (req, res) => {
     return res.json({ ...require('../services/overallDashboard').buildOverall(records, requests, req.query.financialYear), userSections: canViewUsers ? require('../services/overallDashboardUsers').buildUserSections(records, requests, users, teams, mergeManagerStaffAllocations(allocatedClients, staffLeads)) : [], canViewUsers, visibility });
   } catch (error) {
     console.error('[overall-dashboard] load failed', { durationMs: Date.now() - startedAt, name: error.name, code: error.code });
-    return res.status(error.code === 50 ? 503 : 500).json({ error: 'Unable to load Overall Dashboard. Please refresh and retry.' });
+    return res.status(error.code === 50 ? 503 : 500).json({ error: 'Unable to load Application Dashboard. Please refresh and retry.' });
+  }
+};
+
+exports.annualReturnOperations = async (req, res) => {
+  const startedAt = Date.now();
+  try {
+    const scope = await getVisibleUserScope(req.user);
+    const excluded = await getAssignmentDashboardLeadReferences();
+    const clientVisibility = await require('./clientController').clientAccessFilter(req.user);
+    const [snapshot, users] = await Promise.all([
+      loadDashboardAssignments(
+        { Client, Lead },
+        combineFilters(clientMasterSourceRecordFilter(), clientVisibility, dashboardClientExclusionFilter(excluded)),
+        combineFilters(overallLeadFilter(scope), dashboardLeadExclusionFilter(excluded))
+      ),
+      visibleUsers(scope, req.user)
+    ]);
+    const assignedClients = mergeManagerStaffAllocations(snapshot.clients, snapshot.leads);
+    const clientIds = assignedClients.filter(client => !client.assignmentOnly && client._id).map(client => client._id);
+    const [annualReturns, clientFilings, teams] = await Promise.all([
+      AnnualReturn.find({ client: { $in: clientIds } }).select('client clientKey annualYear status filings approvalWorkflow savedAt updatedAt').lean(),
+      Client.find({ _id: { $in: clientIds } }).select('_id data.annualReturn.filings').lean(),
+      Team.find({ $or: [{ _id: { $in: users.map(user => user.teamId).filter(Boolean) } }, { manager: { $in: users.map(user => user._id) } }] }).select('_id name manager members').lean()
+    ]);
+    const dashboard = require('../services/annualReturnOperationsDashboard');
+    const records = dashboard.buildRecords({
+      clients: assignedClients,
+      users,
+      teams,
+      filings: dashboard.filingIndex(annualReturns, clientFilings)
+    });
+    res.set('Cache-Control', 'private, no-store');
+    res.set('Server-Timing', `annual-return-operations;dur=${Date.now() - startedAt}`);
+    return res.json(dashboard.buildDashboard(records, req.query || {}));
+  } catch (error) {
+    console.error('[annual-return-operations-dashboard] load failed', { durationMs: Date.now() - startedAt, name: error.name, code: error.code, message: error.message });
+    return res.status(error.code === 50 ? 503 : 500).json({ error: 'Unable to load the Annual Return operations dashboard. Please refresh and retry.' });
   }
 };
 

@@ -78,7 +78,7 @@ const originalNavSections = [
             icon: Gauge,
             path: '/dashboard',
             children: [
-
+              { label: 'Summary Dashboard', icon: BarChart3, path: '/summary-dashboard' },
               { label: 'Sales Management MIS', icon: TrendingUp, path: '/mis', roles: [...adminRoles, 'manager', 'operation head', 'operations head'] },
               { label: 'Complete MIS', icon: BarChart3, path: '/mis/complete', roles: [...adminRoles, 'manager', 'operation head', 'operations head'] },
               { label: 'Client Daily MIS', icon: ClipboardList, path: '/mis/client-daily', roles: [...adminRoles, 'manager', 'operation head', 'operations head'] }
