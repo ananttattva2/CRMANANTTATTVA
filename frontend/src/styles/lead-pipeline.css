@@ -910,7 +910,8 @@
 .sales-rep-metric>span.is-up { color:#07855f; }
 .sales-rep-metric>span.is-down { color:#d64b45; }
 .sales-rep-sources { display:flex; flex-wrap:wrap; justify-content:center; gap:5px; min-width:210px; }
-.sales-rep-sources>span { display:inline-flex; align-items:center; gap:5px; padding:5px 7px; border:1px solid #d9e9e4; border-radius:999px; color:#3c5968; background:#f8fbfa; font-size:8px; font-weight:800; }
+.sales-rep-sources>button { display:inline-flex; align-items:center; gap:5px; padding:5px 7px; border:1px solid #d9e9e4; border-radius:999px; color:#3c5968; background:#f8fbfa; font-size:8px; font-weight:800; transition:border-color .18s,background .18s,transform .18s; }
+.sales-rep-sources>button:hover { border-color:#55bda4; background:#eaf9f4; transform:translateY(-1px); }
 .sales-rep-sources em { display:grid; width:14px; height:14px; place-items:center; border-radius:50%; color:#fff; background:#18a37f; font-size:7px; font-style:normal; }
 .sales-rep-sources b { color:#0d755f; font-size:9px; }
 .sales-rep-sources>small { color:#92a0aa; font-size:9px; }

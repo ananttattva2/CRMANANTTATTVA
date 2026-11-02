@@ -23,7 +23,7 @@ function RepMetric({ value, previous, comparisonLabel, tone, onClick, label }) {
   </button>;
 }
 
-function SalesRepTable({ reps, comparisonLabel, range, previousRange, onMetricClick }) {
+function SalesRepTable({ reps, comparisonLabel, range, previousRange, onMetricClick, onSourceClick }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const pageCount = Math.max(1, Math.ceil(reps.length / pageSize));
@@ -48,7 +48,7 @@ function SalesRepTable({ reps, comparisonLabel, range, previousRange, onMetricCl
           <td><RepMetric value={rep.hotOpen} previous={rep.previousHotOpen} comparisonLabel={comparisonLabel} tone="hot" label={`${rep.owner} Hot Open`} onClick={() => onMetricClick(rep.owner, 'hot', 'open')} /></td>
           <td><RepMetric value={rep.hotClosed} previous={rep.previousHotClosed} comparisonLabel={comparisonLabel} tone="closed" label={`${rep.owner} Hot Closed`} onClick={() => onMetricClick(rep.owner, 'hot', 'closed')} /></td>
           <td><RepMetric value={rep.coldOpen} previous={rep.previousColdOpen} comparisonLabel={comparisonLabel} tone="cold" label={`${rep.owner} Cold Open`} onClick={() => onMetricClick(rep.owner, 'cold', '')} /></td>
-          <td><div className="sales-rep-sources">{rep.trafficSources.length ? rep.trafficSources.map((source, index) => <span key={source.label}><em>{index + 1}</em>{source.label}<b>{source.count}</b></span>) : <small>No source recorded in this period</small>}</div></td>
+          <td><div className="sales-rep-sources">{rep.trafficSources.length ? rep.trafficSources.map((source, index) => <button type="button" key={source.label} onClick={() => onSourceClick(rep.owner, source)} aria-label={`View ${rep.owner} clients from ${source.label}`}><em>{index + 1}</em>{source.label}<b>{source.count}</b></button>) : <small>No source recorded in this period</small>}</div></td>
         </tr>)}</tbody>
       </table>
       {!reps.length && <p className="pipeline-empty">No sales representatives match these filters.</p>}
@@ -65,6 +65,7 @@ export default function LeadPipeline() {
   const [currentUser, setCurrentUser] = useState(null);
   const [rows, setRows] = useState([]);
   const [sourceModes, setSourceModes] = useState([]);
+  const [activeUsers, setActiveUsers] = useState(null);
   const [sourceOptionsUnavailable, setSourceOptionsUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -88,9 +89,9 @@ export default function LeadPipeline() {
   async function load() {
     const version = ++sequence.current;
     try {
-      const [me, result, modeOptions] = await Promise.all([api.get('/auth/me'), api.get('/leads/pipeline-revenue'), api.get('/leads/dropdown-options').catch(() => null)]);
+      const [me, result, modeOptions, userOptions] = await Promise.all([api.get('/auth/me'), api.get('/leads/pipeline-revenue?view=sales-rep-v3'), api.get('/leads/dropdown-options').catch(() => null), api.get('/auth/users').catch(() => null)]);
       if (version !== sequence.current) return;
-      setCurrentUser(me.data.user); setRows(result.data.rows || []); setSourceModes(modeOptions?.data?.options?.communicationMode || []); setSourceOptionsUnavailable(!modeOptions); setError('');
+      setCurrentUser(me.data.user); setRows(result.data.rows || []); setSourceModes(modeOptions?.data?.options?.communicationMode || []); setActiveUsers(userOptions?.data?.users || null); setSourceOptionsUnavailable(!modeOptions); setError('');
     } catch (e) { if (version === sequence.current) setError(e.response?.data?.error || 'Unable to load pipeline.'); }
     finally { if (version === sequence.current) setLoading(false); }
   }
@@ -116,7 +117,19 @@ export default function LeadPipeline() {
   const coldRows = filtered.filter((row) => row.kind === 'cold');
   const hotOpen = hotRows.filter((row) => row.state === 'open');
   const hotClosed = hotRows.filter((row) => row.state === 'closed');
-  const salesReps = useMemo(() => salesRepSummary(filtered, previousFiltered, sourceModes), [filtered, previousFiltered, sourceModes]);
+  const activeOwnerIndex = useMemo(() => activeUsers ? {
+    ids: new Set(activeUsers.flatMap((user) => [user._id, user.id, user.crmUserId].filter(Boolean).map(String))),
+    names: new Set(activeUsers.flatMap((user) => [user.name, user.email].filter(Boolean).map((value) => String(value).trim().toLowerCase())))
+  } : null, [activeUsers]);
+  const activeOwnerRows = useMemo(() => (source) => source.filter((row) => {
+    if (row.owner === 'Unassigned') return true;
+    if (row.ownerActive === false) return false;
+    if (!activeOwnerIndex) return true;
+    return (row.ownerId && activeOwnerIndex.ids.has(String(row.ownerId))) || activeOwnerIndex.names.has(String(row.owner || '').trim().toLowerCase());
+  }), [activeOwnerIndex]);
+  const ownerOptions = useMemo(() => [...new Set(activeOwnerRows(rows).map((row) => row.owner).filter((name) => name && name !== 'Unassigned'))].sort(), [activeOwnerRows, rows]);
+  useEffect(() => { if (owner && !ownerOptions.includes(owner)) setOwner(''); }, [owner, ownerOptions]);
+  const salesReps = useMemo(() => salesRepSummary(activeOwnerRows(filtered), activeOwnerRows(previousFiltered), sourceModes), [activeOwnerRows, filtered, previousFiltered, sourceModes]);
   const comparisonLabel = period === 'week' ? 'week' : period === 'month' ? 'month' : '';
   async function showServices(row) {
     const request = ++serviceRequest.current;
@@ -127,6 +140,7 @@ export default function LeadPipeline() {
   function closeServices() { serviceRequest.current++; setServiceView(null); }
   function open(kind = '', state = '', selectedOwner = '') { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ kind, state, owner: selectedOwner }); }
   function openSource(source) { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ sources: source.keys || [source.key], sourceLabel: source.label }); }
+  function openOwnerSource(selectedOwner, source) { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ owner: selectedOwner, sources: source.keys || [source.key], sourceLabel: source.label }); }
   function exportRows(source, name) {
     const data = source.map(r => ({
       'Lead ID': r.code, Company: r.company, 'Client Communication Mode': r.communicationMode || 'Other / Not specified', Status: r.converted ? 'Closed — Converted to Hot' : r.state, Owner: r.owner,
@@ -149,7 +163,7 @@ export default function LeadPipeline() {
   }
   return <DashboardShell currentUser={currentUser}><div className="pipeline-page">
     <DashboardViewTabs />
-    <header className="pipeline-header"><div className="pipeline-heading"><h1>Revenue Pipeline</h1><p>A clear view of your hot and cold pipeline, with locked revenue history.</p></div><div className="pipeline-filters"><label><Search size={17}/><input aria-label="Search pipeline" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search company, lead ID or owner…"/></label><select aria-label="Filter by owner" value={owner} onChange={e => setOwner(e.target.value)}><option value="">All visible owners</option>{[...new Set(rows.map(r => r.owner))].sort().map(name => <option key={name}>{name}</option>)}</select></div></header>
+    <header className="pipeline-header"><div className="pipeline-heading"><h1>Revenue Pipeline</h1><p>A clear view of your hot and cold pipeline, with locked revenue history.</p></div><div className="pipeline-filters"><label><Search size={17}/><input aria-label="Search pipeline" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search company, lead ID or owner…"/></label><select aria-label="Filter by owner" value={owner} onChange={e => setOwner(e.target.value)}><option value="">All active owners</option>{ownerOptions.map(name => <option key={name} value={name}>{name.toUpperCase()}</option>)}</select></div></header>
     <section className="pipeline-period-bar" aria-label="Pipeline date filters">
       <div className="pipeline-period-tabs" role="group" aria-label="Filter period">{[['all', 'All time'], ['week', 'Week'], ['month', 'Month'], ['year', 'Year']].map(([value, label]) => <button key={value} type="button" aria-pressed={period === value} onClick={() => setPeriod(value)}>{label}</button>)}</div>
       <div className="pipeline-period-context">{period !== 'all' && <label>Choose {period}{period === 'year' ? <select aria-label="Choose year" value={periodDate.slice(0, 4)} onChange={e => setPeriodDate(`${e.target.value}-01-01`)}>{[...new Set([new Date().getFullYear(), Number(periodDate.slice(0, 4)), ...rows.map(row => new Date(row.createdAt).getFullYear()).filter(Number.isFinite)])].sort((a, b) => b - a).map(year => <option key={year} value={year}>{year}</option>)}</select> : <input aria-label={`Choose ${period}`} type={period === 'month' ? 'month' : 'date'} value={period === 'month' ? periodDate.slice(0, 7) : periodDate} onChange={e => { if (e.target.value) setPeriodDate(period === 'month' ? `${e.target.value}-01` : e.target.value); }}/>}</label>}<span>{range.label} · Lead creation date</span></div>
@@ -164,7 +178,7 @@ export default function LeadPipeline() {
           <article className="pipeline-kind-card cold"><header><span><Snowflake/></span><button type="button" onClick={() => open('cold')}>Cold Leads<ArrowUpRight/></button></header><div className="pipeline-kind-counts pipeline-kind-counts-single"><button type="button" onClick={() => open('cold')}><small>Open</small><strong>{coldRows.length.toLocaleString('en-IN')}</strong></button></div><div className="pipeline-kind-money"><button type="button" onClick={() => open('cold')}><small>Estimated Revenue</small><strong>{revenueMoney(total(coldRows))}</strong></button></div></article>
         </div>
         <p className="pipeline-note">Cold Lead Open shows the complete Cold pipeline count. Hot Open and Closed remain separate. PO value and estimated revenue are shown separately.</p>
-        <SalesRepTable reps={salesReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)}/>
+        <SalesRepTable reps={salesReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)} onSourceClick={openOwnerSource}/>
       </section><TrafficSources sources={trafficSources} onSelect={openSource} optionsUnavailable={sourceOptionsUnavailable}/></div>
     </>}
     <dialog ref={dialog} className="pipeline-dialog" onCancel={() => setSelection(null)} onClose={() => setSelection(null)}>

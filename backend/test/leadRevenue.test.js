@@ -100,6 +100,8 @@ test('converted cold leads remain in Cold Closed history and link to one unique 
  assert.equal(res.data.rows.length,3);
  assert.equal(res.data.rows.find(r=>r.kind==='hot').revenuePaise,1500000);
  assert.equal(res.data.rows.find(r=>r.kind==='hot').owner,'Current Owner');
+ assert.equal(res.data.rows.find(r=>r.kind==='hot').ownerId,'owner');
+ assert.equal(res.data.rows.find(r=>r.kind==='hot').ownerActive,true);
  assert.equal(res.data.rows.find(r=>r.kind==='cold'&&r.id==='c').state,'closed');
  assert.equal(res.data.rows.find(r=>r.kind==='cold'&&r.id==='c').canonicalKey,'hot:h');
  assert.equal(res.data.rows.find(r=>r.kind==='cold'&&r.id==='c2').state,'open');

@@ -35,7 +35,7 @@ export function salesRepSummary(currentRows = [], previousRows = [], configuredS
       .filter((source) => source.count > 0)
       .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
       .slice(0, 3)
-      .map(({ label, count }) => ({ label, count }));
+      .map(({ label, count, keys }) => ({ label, count, keys }));
   }
   return [...reps.values()].sort((a, b) => {
     const aHot = a.hotOpen + a.hotClosed;
