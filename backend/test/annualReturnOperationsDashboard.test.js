@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildDashboard, workflowState, categoryName, isAnnual } = require('../src/services/annualReturnOperationsDashboard');
+const { buildRecords, buildDashboard, workflowState, categoryName, isAnnual } = require('../src/services/annualReturnOperationsDashboard');
 
 function record(id, overrides = {}) {
   return {
@@ -49,4 +49,22 @@ test('overdue is a deadline condition and does not overwrite workflow status', (
   assert.equal(result.summary.overdue, 1);
   assert.equal(result.records[0].status, 'In Progress');
   assert.equal(result.records[0].overdue, true);
+});
+
+test('legacy malformed assignment arrays do not crash or hide later valid services', () => {
+  const clients = [
+    { _id: 'bad', assignedServiceId: 'bad-service', selectedLead: { _id: 'bad-lead', serviceSelections: { servicesOffered: 'Annual Return' }, assignments: 'invalid' } },
+    {
+      _id: 'client-2', assignedServiceId: 'service-2',
+      selectedLead: {
+        _id: 'lead-2', company: 'Valid Client', leadCode: 'ATPL-2',
+        serviceSelections: [{ assignedServiceId: 'service-2', servicesOffered: 'Annual Return Filling', eprCategory: 'Plastic Waste', applicantType: 'PIBO', subApplicantType: 'Producer', annualReturnYears: ['2025-26'] }],
+        assignments: [{ assignedServiceId: 'service-2', poYearRows: [null] }]
+      }
+    }
+  ];
+  const records = buildRecords({ clients, users: [], teams: [], filings: new Map() });
+  assert.equal(records.length, 1);
+  assert.equal(records[0].company, 'Valid Client');
+  assert.deepEqual(records[0].years, ['2025-26']);
 });

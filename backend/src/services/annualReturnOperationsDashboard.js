@@ -4,6 +4,7 @@ const { normalizeYear } = require('./overallDashboard');
 const CATEGORY_ORDER = ['Plastic Waste', 'E-Waste', 'Tyre Waste', 'Used Oil', 'Battery Waste'];
 const text = value => String(value?._id || value?.id || value || '').trim();
 const key = value => text(value).toLowerCase().replace(/[^a-z0-9]+/g, '');
+const array = value => Array.isArray(value) ? value : [];
 const list = value => (Array.isArray(value) ? value : [value]).flatMap(item => String(item || '').split(/[,;\n]/)).map(item => item.trim()).filter(Boolean);
 const isAnnual = value => list(value).some(item => /annual(?:return(?:fill?ing)?|fill?ing)/.test(key(item)));
 
@@ -39,7 +40,7 @@ function workflowState(filing = {}) {
 
 function ownerIndex(users = []) {
   const index = new Map();
-  users.forEach(user => [user._id, user.id, user.crmUserId, user.email, user.name].filter(Boolean).forEach(value => index.set(key(value), user)));
+  array(users).forEach(user => [user?._id, user?.id, user?.crmUserId, user?.email, user?.name].filter(Boolean).forEach(value => index.set(key(value), user)));
   return index;
 }
 
@@ -57,36 +58,38 @@ function filingIndex(documents = [], clients = []) {
     const time = value => new Date(value?.savedAt || value?.updatedAt || 0).getTime() || 0;
     if (!previous || time(filing) >= time(previous)) index.set(compound, filing);
   };
-  documents.forEach(document => {
+  array(documents).forEach(document => {
     Object.entries(document.filings || {}).forEach(([year, filing]) => add(document.client || document.clientKey, year, filing));
     if (document.annualYear) add(document.client || document.clientKey, document.annualYear, document);
   });
-  clients.forEach(client => Object.entries(client.data?.annualReturn?.filings || {}).forEach(([year, filing]) => add(client._id, year, filing)));
+  array(clients).forEach(client => Object.entries(client?.data?.annualReturn?.filings || {}).forEach(([year, filing]) => add(client._id, year, filing)));
   return index;
 }
 
 function buildRecords({ clients = [], users = [], filings = new Map(), teams = [] }) {
   const usersByIdentity = ownerIndex(users);
-  const usersById = new Map(users.map(user => [text(user), user]));
-  const teamsById = new Map(teams.map(team => [text(team), team.name || 'Team']));
+  const usersById = new Map(array(users).map(user => [text(user), user]));
+  const teamsById = new Map(array(teams).map(team => [text(team), team?.name || 'Team']));
   const records = new Map();
-  mergeManagerStaffAllocations(clients, []).forEach(client => {
+  for (const client of mergeManagerStaffAllocations(array(clients), [])) {
+    try {
     const lead = client.selectedLead || client.data?.selectedLeadSnapshot || {};
-    const services = lead.serviceSelections || [];
+    const services = array(lead.serviceSelections).filter(service => service && typeof service === 'object');
     const selectedId = text(client.assignedServiceId || client.data?.assignedServiceId || client.data?.selectedLeadSnapshot?.assignedServiceId);
     let serviceIndex = services.findIndex(service => text(service.assignedServiceId || service.serviceAssignmentId) === selectedId);
     if (serviceIndex < 0 && services.length === 1) serviceIndex = 0;
     const service = services[serviceIndex] || {};
-    if (!isAnnual(service.servicesOffered || service.applicableService || client.data?.basic?.servicesOffered)) return;
+    if (!isAnnual(service.servicesOffered || service.applicableService || client.data?.basic?.servicesOffered)) continue;
     const category = categoryName(service.eprCategory || lead.eprCategory || client.data?.basic?.eprCategory);
-    if (!category) return;
-    const assignments = lead.assignments || [];
+    if (!category) continue;
+    const assignments = array(lead.assignments).filter(assignment => assignment && typeof assignment === 'object');
     const assignment = assignments.find(row => text(row.assignedServiceId || row.serviceAssignmentId) === text(service.assignedServiceId || service.serviceAssignmentId || selectedId)) || assignments[serviceIndex] || {};
     const serviceId = text(service.assignedServiceId || service.serviceAssignmentId || assignment.assignedServiceId || assignment.serviceAssignmentId || selectedId || `service-${serviceIndex}`);
     const recordKey = `${text(lead._id || lead.id || client.selectedLead)}:${serviceId}`;
-    const poRows = [...(assignment.poYearRows || []), ...(assignment.originalPoDetails ? [assignment.originalPoDetails] : [])];
+    const poRows = [...array(assignment.poYearRows), ...(assignment.originalPoDetails && typeof assignment.originalPoDetails === 'object' ? [assignment.originalPoDetails] : [])]
+      .filter(row => row && typeof row === 'object');
     const years = yearsFrom(service.annualReturnYears, service.firstAnnualReturnYearApplicable, service.financialYear, service.servicesForYear, ...poRows.flatMap(row => [row.annualReturnYear, row.poFinancialYear, row.fy]));
-    if (!years.length) return;
+    if (!years.length) continue;
     const owner = findOwner(usersByIdentity, assignment.assignedStaff, assignment.assignedStaffEmail, assignment.assignedStaffText, lead.assignedStaff, lead.assignedStaffEmail, lead.assignedStaffText);
     const manager = owner ? usersById.get(text(owner.managerId)) : null;
     const team = owner?.teamId ? teamsById.get(text(owner.teamId)) : '';
@@ -97,7 +100,7 @@ function buildRecords({ clients = [], users = [], filings = new Map(), teams = [
     const leadId = text(lead.leadCode || lead.sourceLeadId || client.data?.importMeta?.leadNumber || '-');
     const dueDate = isoDate(service.dueDate || service.serviceEndDate || poRows.map(row => row.poEndDate).filter(Boolean).sort().at(0));
     const yearStates = Object.fromEntries(years.map(year => {
-      const filing = clientId ? filings.get(`${clientId}:${year}`) : null;
+      const filing = clientId && typeof filings?.get === 'function' ? filings.get(`${clientId}:${year}`) : null;
       return [year, workflowState(filing)];
     }));
     records.set(recordKey, {
@@ -107,16 +110,22 @@ function buildRecords({ clients = [], users = [], filings = new Map(), teams = [
       managerId: manager ? text(manager) : '', dueDate, yearStates,
       openPath: clientId ? `/sales/client-data-processing/${encodeURIComponent(clientId)}/{year}` : `/sales/client-master?search=${encodeURIComponent(leadId)}`
     });
-  });
+    } catch (error) {
+      console.warn('[annual-return-operations-dashboard] skipped malformed assignment record', {
+        clientId: text(client?._id), name: error.name, message: error.message
+      });
+    }
+  }
   return [...records.values()];
 }
 
 function decorate(records, year, now = new Date()) {
   const today = new Date(now); today.setHours(0, 0, 0, 0);
   const soon = new Date(today); soon.setDate(soon.getDate() + 7);
-  return records.flatMap(record => {
-    const selectedYear = normalizeYear(year) || record.years.at(-1);
-    if (!record.years.includes(selectedYear)) return [];
+  return array(records).flatMap(record => {
+    const recordYears = array(record?.years);
+    const selectedYear = normalizeYear(year) || recordYears[recordYears.length - 1];
+    if (!recordYears.includes(selectedYear)) return [];
     const state = record.yearStates[selectedYear] || { status: 'Pending', progress: 0 };
     const due = record.dueDate ? new Date(`${record.dueDate}T00:00:00`) : null;
     const incomplete = state.status !== 'Completed';
@@ -130,7 +139,7 @@ function applyFilters(records, query = {}, omit = []) {
   const ignored = new Set(omit);
   const search = text(query.search).toLowerCase();
   const status = text(query.status).toLowerCase();
-  return records.filter(record => {
+  return array(records).filter(record => {
     if (!ignored.has('user') && query.user && record.assignedUserId !== query.user) return false;
     if (!ignored.has('team') && query.team && ![record.teamId, record.managerId, record.team].includes(query.team)) return false;
     if (!ignored.has('category') && query.category && record.category !== query.category) return false;
@@ -146,7 +155,7 @@ function applyFilters(records, query = {}, omit = []) {
 
 function aggregate(records, field) {
   const groups = new Map();
-  records.forEach(record => {
+  array(records).forEach(record => {
     const label = record[field] || 'Not specified';
     const row = groups.get(label) || { label, count: 0, completed: 0, inProgress: 0, pending: 0, overdue: 0 };
     row.count += 1;
@@ -160,12 +169,13 @@ function aggregate(records, field) {
 }
 
 function summary(records) {
+  records = array(records);
   const total = records.length;
-  const completed = records.filter(row => row.status === 'Completed').length;
-  const inProgress = records.filter(row => row.status === 'In Progress').length;
-  const pending = records.filter(row => row.status === 'Pending').length;
-  const overdue = records.filter(row => row.overdue).length;
-  const dueSoon = records.filter(row => row.dueSoon).length;
+  const completed = records.filter(row => row?.status === 'Completed').length;
+  const inProgress = records.filter(row => row?.status === 'In Progress').length;
+  const pending = records.filter(row => row?.status === 'Pending').length;
+  const overdue = records.filter(row => row?.overdue).length;
+  const dueSoon = records.filter(row => row?.dueSoon).length;
   return { total, completed, inProgress, pending, overdue, dueSoon, completion: total ? Math.round((completed / total) * 1000) / 10 : 0 };
 }
 
@@ -177,6 +187,7 @@ function previousYear(year) {
 }
 
 function buildDashboard(records, query = {}) {
+  records = array(records);
   const years = [...new Set(records.flatMap(record => record.years))].sort().reverse();
   const selectedYear = normalizeYear(query.year) || years[0] || '';
   const decorated = decorate(records, selectedYear);
