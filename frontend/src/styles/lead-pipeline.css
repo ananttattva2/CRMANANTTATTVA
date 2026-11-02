@@ -899,7 +899,9 @@
 .sales-rep-user { display:flex; align-items:center; gap:9px; text-align:left; }
 .sales-rep-user i { display:grid; width:31px; height:31px; flex:none; place-items:center; border-radius:50%; color:#08745f; background:#dff7ee; font-size:9px; font-style:normal; font-weight:950; }
 .sales-rep-user b { font-size:11px; font-weight:900; }
-.sales-rep-metric { display:grid; justify-items:center; gap:3px; }
+.sales-rep-metric { display:grid; width:100%; justify-items:center; gap:3px; padding:4px; border-radius:8px; transition:background .18s,transform .18s; }
+.sales-rep-metric:not(:disabled):hover { background:#eff8f5; transform:translateY(-1px); }
+.sales-rep-metric:disabled { cursor:default; }
 .sales-rep-metric>strong { color:#f05c19; font-size:17px; font-weight:950; }
 .sales-rep-metric.closed>strong { color:#07855f; }
 .sales-rep-metric.cold>strong { color:#1264e9; }
@@ -912,7 +914,15 @@
 .sales-rep-sources em { display:grid; width:14px; height:14px; place-items:center; border-radius:50%; color:#fff; background:#18a37f; font-size:7px; font-style:normal; }
 .sales-rep-sources b { color:#0d755f; font-size:9px; }
 .sales-rep-sources>small { color:#92a0aa; font-size:9px; }
+.sales-rep-pagination { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:11px 16px; border-top:1px solid #dfe9e6; color:#65798d; background:#fbfdfc; font-size:10px; font-weight:750; }
+.sales-rep-pagination b { color:#0b715d; }
+.sales-rep-pagination label,.sales-rep-pagination>div { display:flex; align-items:center; gap:8px; }
+.sales-rep-pagination select { padding:6px 24px 6px 8px; border:1px solid #cfe0dc; border-radius:8px; color:#24485a; background:#fff; font-weight:850; }
+.sales-rep-pagination button { padding:7px 10px; border:1px solid #cce0da; border-radius:8px; color:#08745f; background:#fff; font-size:9px; font-weight:900; }
+.sales-rep-pagination button:hover:not(:disabled) { border-color:#0b8b70; background:#edf9f5; }
+.sales-rep-pagination button:disabled { opacity:.4; cursor:not-allowed; }
 @media(max-width:760px) {
   .sales-rep-panel>header,.sales-rep-comparison { align-items:flex-start; flex-direction:column; }
   .pipeline-sales-workspace .pipeline-kind-card { min-height:200px; }
+  .sales-rep-pagination { align-items:flex-start; flex-direction:column; }
 }

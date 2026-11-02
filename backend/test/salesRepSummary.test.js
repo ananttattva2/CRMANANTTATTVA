@@ -26,6 +26,16 @@ test('sales rep summary exposes previous-period counts and includes reps with on
   assert.equal(rows.find(row => row.owner === 'Previous only').previousHotClosed, 1);
 });
 
+test('sales reps are ranked by total Hot Leads before Cold volume', async () => {
+  const { salesRepSummary } = await import('../../frontend/src/utils/salesRepSummary.mjs');
+  const rows = salesRepSummary([
+    ...Array.from({ length: 8 }, (_, index) => ({ id: `cold-${index}`, kind: 'cold', state: 'open', owner: 'Cold Heavy' })),
+    { id: 'hot-1', kind: 'hot', state: 'open', owner: 'Hot Leader' },
+    { id: 'hot-2', kind: 'hot', state: 'closed', owner: 'Hot Leader' }
+  ]);
+  assert.deepEqual(rows.map(row => row.owner), ['Hot Leader', 'Cold Heavy']);
+});
+
 test('week and month comparison ranges use the immediately preceding calendar period', async () => {
   const { previousPipelinePeriodRange } = await import('../../frontend/src/utils/leadPipeline.mjs');
   const week = previousPipelinePeriodRange('week', '2026-11-02');

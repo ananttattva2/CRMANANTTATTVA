@@ -38,8 +38,8 @@ export function salesRepSummary(currentRows = [], previousRows = [], configuredS
       .map(({ label, count }) => ({ label, count }));
   }
   return [...reps.values()].sort((a, b) => {
-    const aTotal = a.hotOpen + a.hotClosed + a.coldOpen;
-    const bTotal = b.hotOpen + b.hotClosed + b.coldOpen;
-    return bTotal - aTotal || a.owner.localeCompare(b.owner);
+    const aHot = a.hotOpen + a.hotClosed;
+    const bHot = b.hotOpen + b.hotClosed;
+    return bHot - aHot || b.hotOpen - a.hotOpen || a.owner.localeCompare(b.owner);
   });
 }

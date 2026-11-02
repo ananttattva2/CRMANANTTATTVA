@@ -12,18 +12,25 @@ import useCrmRefresh from '../hooks/useCrmRefresh';
 import api from '../services/api';
 import '../styles/lead-pipeline.css';
 
-function RepMetric({ value, previous, comparisonLabel, tone }) {
+function RepMetric({ value, previous, comparisonLabel, tone, onClick, label }) {
   const difference = value - previous;
   const TrendIcon = difference > 0 ? ArrowUp : difference < 0 ? ArrowDown : Minus;
-  return <div className={`sales-rep-metric ${tone || ''}`}>
+  return <button type="button" className={`sales-rep-metric ${tone || ''}`} onClick={onClick} disabled={!value} aria-label={`${label}: ${value} leads. View clients`}>
     <strong>{value.toLocaleString('en-IN')}</strong>
     {comparisonLabel && <span className={difference > 0 ? 'is-up' : difference < 0 ? 'is-down' : 'is-flat'} title={`${previous} in the previous ${comparisonLabel}`}>
       <TrendIcon aria-hidden="true" />{previous.toLocaleString('en-IN')} last {comparisonLabel}
     </span>}
-  </div>;
+  </button>;
 }
 
-function SalesRepTable({ reps, comparisonLabel, range, previousRange }) {
+function SalesRepTable({ reps, comparisonLabel, range, previousRange, onMetricClick }) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const pageCount = Math.max(1, Math.ceil(reps.length / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const first = (safePage - 1) * pageSize;
+  const visibleReps = reps.slice(first, first + pageSize);
+  useEffect(() => { setPage(1); }, [reps, pageSize]);
   return <section className="sales-rep-panel" aria-labelledby="sales-rep-heading">
     <header>
       <div><p className="pipeline-eyebrow">OWNER PERFORMANCE</p><h2 id="sales-rep-heading">Sales Rep</h2><p>Lead counts use the actual lead owner. Major traffic source shows each owner&rsquo;s top three parent sources.</p></div>
@@ -36,16 +43,21 @@ function SalesRepTable({ reps, comparisonLabel, range, previousRange }) {
     <div className="sales-rep-table-wrap">
       <table>
         <thead><tr><th rowSpan="2">User Name</th><th colSpan="2">Hot Lead</th><th rowSpan="2">Cold Lead<br/><small>Open</small></th><th rowSpan="2">Major Traffic Source<br/><small>Top 3</small></th></tr><tr><th>Open</th><th>Closed</th></tr></thead>
-        <tbody>{reps.map((rep) => <tr key={rep.owner}>
-          <td><span className="sales-rep-user"><i aria-hidden="true">{rep.owner.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</i><b>{rep.owner}</b></span></td>
-          <td><RepMetric value={rep.hotOpen} previous={rep.previousHotOpen} comparisonLabel={comparisonLabel} tone="hot" /></td>
-          <td><RepMetric value={rep.hotClosed} previous={rep.previousHotClosed} comparisonLabel={comparisonLabel} tone="closed" /></td>
-          <td><RepMetric value={rep.coldOpen} previous={rep.previousColdOpen} comparisonLabel={comparisonLabel} tone="cold" /></td>
+        <tbody>{visibleReps.map((rep) => <tr key={rep.owner}>
+          <td><span className="sales-rep-user"><i aria-hidden="true">{rep.owner.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</i><b>{rep.owner.toUpperCase()}</b></span></td>
+          <td><RepMetric value={rep.hotOpen} previous={rep.previousHotOpen} comparisonLabel={comparisonLabel} tone="hot" label={`${rep.owner} Hot Open`} onClick={() => onMetricClick(rep.owner, 'hot', 'open')} /></td>
+          <td><RepMetric value={rep.hotClosed} previous={rep.previousHotClosed} comparisonLabel={comparisonLabel} tone="closed" label={`${rep.owner} Hot Closed`} onClick={() => onMetricClick(rep.owner, 'hot', 'closed')} /></td>
+          <td><RepMetric value={rep.coldOpen} previous={rep.previousColdOpen} comparisonLabel={comparisonLabel} tone="cold" label={`${rep.owner} Cold Open`} onClick={() => onMetricClick(rep.owner, 'cold', '')} /></td>
           <td><div className="sales-rep-sources">{rep.trafficSources.length ? rep.trafficSources.map((source, index) => <span key={source.label}><em>{index + 1}</em>{source.label}<b>{source.count}</b></span>) : <small>No source recorded in this period</small>}</div></td>
         </tr>)}</tbody>
       </table>
       {!reps.length && <p className="pipeline-empty">No sales representatives match these filters.</p>}
     </div>
+    {!!reps.length && <footer className="sales-rep-pagination">
+      <span>Showing <b>{first + 1}</b>–<b>{Math.min(first + pageSize, reps.length)}</b> of <b>{reps.length}</b> users</span>
+      <label>Rows per page<select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value="10">10</option><option value="25">25</option><option value="50">50</option></select></label>
+      <div><button type="button" onClick={() => setPage(value => Math.max(1, value - 1))} disabled={safePage === 1} aria-label="Previous Sales Rep page">Previous</button><span>Page {safePage} of {pageCount}</span><button type="button" onClick={() => setPage(value => Math.min(pageCount, value + 1))} disabled={safePage === pageCount} aria-label="Next Sales Rep page">Next</button></div>
+    </footer>}
   </section>;
 }
 
@@ -97,7 +109,7 @@ export default function LeadPipeline() {
   const previousFiltered = useMemo(() => previousRange ? baseFiltered.filter(r => inPipelinePeriod(r.createdAt, previousRange)) : [], [baseFiltered, previousRange]);
   const unique = uniquePipelineRows(filtered);
   const trafficSources = useMemo(() => trafficSourceHierarchy(filtered, sourceModes), [filtered, sourceModes]);
-  const listed = selection ? (selection.kind ? filtered : unique).filter(r => (!selection.kind || r.kind === selection.kind) && (!selection.state || r.state === selection.state) && (!selection.sources?.length || selection.sources.includes(trafficSourceKey(r.communicationMode)))) : [];
+  const listed = selection ? (selection.kind ? filtered : unique).filter(r => (!selection.kind || r.kind === selection.kind) && (!selection.state || r.state === selection.state) && (!selection.owner || r.owner === selection.owner) && (!selection.sources?.length || selection.sources.includes(trafficSourceKey(r.communicationMode)))) : [];
   const total = source => source.reduce((n, r) => n + r.revenuePaise, 0);
   const poTotal = source => source.reduce((n, r) => n + (r.poAmountPaise || 0), 0);
   const hotRows = filtered.filter((row) => row.kind === 'hot');
@@ -113,7 +125,7 @@ export default function LeadPipeline() {
     catch (e) { if (request === serviceRequest.current) setServiceView({ row, loading: false, error: e.response?.data?.error || 'Unable to load services.' }); }
   }
   function closeServices() { serviceRequest.current++; setServiceView(null); }
-  function open(kind = '', state = '') { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ kind, state }); }
+  function open(kind = '', state = '', selectedOwner = '') { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ kind, state, owner: selectedOwner }); }
   function openSource(source) { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ sources: source.keys || [source.key], sourceLabel: source.label }); }
   function exportRows(source, name) {
     const data = source.map(r => ({
@@ -152,12 +164,12 @@ export default function LeadPipeline() {
           <article className="pipeline-kind-card cold"><header><span><Snowflake/></span><button type="button" onClick={() => open('cold')}>Cold Leads<ArrowUpRight/></button></header><div className="pipeline-kind-counts pipeline-kind-counts-single"><button type="button" onClick={() => open('cold')}><small>Open</small><strong>{coldRows.length.toLocaleString('en-IN')}</strong></button></div><div className="pipeline-kind-money"><button type="button" onClick={() => open('cold')}><small>Estimated Revenue</small><strong>{revenueMoney(total(coldRows))}</strong></button></div></article>
         </div>
         <p className="pipeline-note">Cold Lead Open shows the complete Cold pipeline count. Hot Open and Closed remain separate. PO value and estimated revenue are shown separately.</p>
-        <SalesRepTable reps={salesReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange}/>
+        <SalesRepTable reps={salesReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)}/>
       </section><TrafficSources sources={trafficSources} onSelect={openSource} optionsUnavailable={sourceOptionsUnavailable}/></div>
     </>}
     <dialog ref={dialog} className="pipeline-dialog" onCancel={() => setSelection(null)} onClose={() => setSelection(null)}>
-      {selection && <><header><div><p className="pipeline-eyebrow">PIPELINE DETAILS</p><h2>{selection.sourceLabel ? `Traffic Source · ${selection.sourceLabel}` : selection.kind ? `${selection.kind === 'hot' ? 'Hot' : 'Cold'} Leads` : 'All Leads'}{selection.state ? ` · ${selection.state === 'open' ? 'Open' : 'Closed'}` : ''}</h2><p>{listed.length} leads · {revenueMoney(total(listed))} estimated revenue{selection.kind === 'hot' && selection.state === 'closed' ? ` · ${revenueMoney(poTotal(listed))} PO value` : ''}</p></div><div className="pipeline-toolbar"><button type="button" onClick={() => exportRows(listed, 'pipeline-details')} disabled={!listed.length}><Download size={16}/>Excel</button><button type="button" onClick={() => setSelection(null)} aria-label="Close lead list"><X/></button></div></header>
-      <div className="pipeline-dialog-body"><div className="pipeline-table-wrap"><table><thead><tr>{['Lead / Company', 'Status', 'Actual Lead Owner', 'PO amount', 'Estimated revenue', 'Actions'].map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{listed.map(r => <tr key={`${r.kind}-${r.id}`}><td><button type="button" className="pipeline-company-button" onClick={() => showServices(r)}><b>{r.company}</b><ArrowUpRight size={14}/></button><small>{r.code}</small></td><td><span className={`pipeline-badge ${r.state}`}>{r.state}</span>{r.converted && <small>Converted to Hot Lead</small>}</td><td><span className="pipeline-owner"><Users size={14}/>{r.owner}</span></td><td className="font-bold">{r.kind === 'hot' ? revenueMoney(r.poAmountPaise) : '—'}</td><td className="font-black">{revenueMoney(r.revenuePaise)}</td><td><button type="button" onClick={() => { setRevenueRow(r); setCloseRow(null); }}>Revenue history</button>{r.kind === 'cold' && r.state === 'open' && <button type="button" onClick={() => { setCloseRow(r); setRevenueRow(null); setRemarks(''); setModalError(''); }}>Close cold lead</button>}</td></tr>)}</tbody></table>{!listed.length && <p className="pipeline-empty">No leads in this category.</p>}</div>
+      {selection && <><header><div><p className="pipeline-eyebrow">PIPELINE DETAILS</p><h2>{selection.owner ? `${selection.owner.toUpperCase()} · ` : ''}{selection.sourceLabel ? `Traffic Source · ${selection.sourceLabel}` : selection.kind ? `${selection.kind === 'hot' ? 'Hot' : 'Cold'} Leads` : 'All Leads'}{selection.state ? ` · ${selection.state === 'open' ? 'Open' : 'Closed'}` : ''}</h2><p>{selection.owner ? `Lead Owner: ${selection.owner.toUpperCase()} · ` : ''}{listed.length} clients · {revenueMoney(total(listed))} estimated revenue{selection.kind === 'hot' && selection.state === 'closed' ? ` · ${revenueMoney(poTotal(listed))} PO value` : ''}</p></div><div className="pipeline-toolbar"><button type="button" onClick={() => exportRows(listed, 'pipeline-details')} disabled={!listed.length}><Download size={16}/>Excel</button><button type="button" onClick={() => setSelection(null)} aria-label="Close lead list"><X/></button></div></header>
+      <div className="pipeline-dialog-body"><div className="pipeline-table-wrap"><table><thead><tr>{['Lead / Company', 'Status', 'Actual Lead Owner', 'PO amount', 'Estimated revenue', 'Actions'].map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{listed.map(r => <tr key={`${r.kind}-${r.id}`}><td><button type="button" className="pipeline-company-button" onClick={() => showServices(r)}><b>{r.company}</b><ArrowUpRight size={14}/></button><small>{r.code}</small></td><td><span className={`pipeline-badge ${r.state}`}>{r.state}</span>{r.converted && <small>Converted to Hot Lead</small>}</td><td><span className="pipeline-owner"><Users size={14}/>{r.owner.toUpperCase()}</span></td><td className="font-bold">{r.kind === 'hot' ? revenueMoney(r.poAmountPaise) : '—'}</td><td className="font-black">{revenueMoney(r.revenuePaise)}</td><td><button type="button" onClick={() => { setRevenueRow(r); setCloseRow(null); }}>Revenue history</button>{r.kind === 'cold' && r.state === 'open' && <button type="button" onClick={() => { setCloseRow(r); setRevenueRow(null); setRemarks(''); setModalError(''); }}>Close cold lead</button>}</td></tr>)}</tbody></table>{!listed.length && <p className="pipeline-empty">No leads in this category.</p>}</div>
 
         {revenueRow && <section className="mt-4"><h3 className="font-black">{revenueRow.company} · Revenue</h3><LeadRevenuePanel key={`${revenueRow.kind}-${revenueRow.id}`} kind={revenueRow.kind} leadId={revenueRow.id} onSaved={load}/></section>}
         {closeRow && <section className="mt-5 rounded-2xl border bg-slate-50 p-5"><h3 className="font-black">Close cold lead: {closeRow.company}</h3><p className="mt-2 text-sm text-slate-500">This moves the lead to Closed Cold Leads and locks its estimate. It does not convert it to a Hot Lead.</p><label className="mt-3 block text-sm font-bold">Closing remarks<textarea value={remarks} onChange={e => setRemarks(e.target.value)} maxLength={1000} className="mt-2 block w-full rounded-xl border bg-white p-3"/></label><button type="button" disabled={closing || !remarks.trim()} onClick={closeCold} className="mt-3 rounded-xl bg-emerald-800 px-4 py-3 font-bold text-white disabled:opacity-40">{closing ? 'Closing…' : 'Confirm close'}</button><button type="button" onClick={() => setCloseRow(null)} className="ml-3">Cancel</button></section>}
