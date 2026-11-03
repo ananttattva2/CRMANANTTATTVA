@@ -1167,3 +1167,24 @@
   .sales-traffic-children>div,.sales-traffic-children>button { width:100%; min-width:0; }
   .sales-traffic-children>div { border-right:0; border-bottom:1px solid #d9e6e3; padding-bottom:8px; }
 }
+
+.pipeline-page.is-sales-dashboard .sales-priority-metrics .pipeline-card-comparison { display:grid; grid-template-columns:1fr; gap:3px; margin:6px 0 0; }
+.pipeline-page.is-sales-dashboard .sales-priority-metrics .pipeline-card-comparison>span { display:block; color:#667d8f; font-size:9px; }
+.pipeline-page.is-sales-dashboard .sales-priority-metrics .pipeline-card-comparison>em { width:max-content; }
+.pipeline-page.is-sales-dashboard .sales-dashboard-reps td { height:68px; }
+.sales-dashboard-value { display:grid; width:100%; justify-items:center; gap:2px; color:#17384e; }
+.sales-dashboard-value>strong { color:#17384e; font-size:12px; font-weight:950; }
+.sales-dashboard-value.is-hot>strong { color:#f45d1b; font-size:14px; }
+.sales-dashboard-value.is-closed>strong { color:#079363; font-size:14px; }
+.sales-dashboard-value.is-cold>strong { color:#1668e8; font-size:14px; }
+.sales-dashboard-value>small { color:#7b8d9d; font-size:7px; font-weight:750; }
+.sales-dashboard-value>em { padding:2px 5px; border-radius:999px; font-size:7px; font-style:normal; font-weight:900; }
+.sales-dashboard-value>em.is-up { color:#08775f; background:#e7f7f1; }
+.sales-dashboard-value>em.is-down { color:#c84742; background:#fff0ef; }
+.sales-dashboard-value>em.is-flat { color:#647586; background:#edf2f4; }
+.sales-period-comparison { display:flex; align-items:center; justify-content:center; gap:12px; padding:8px 12px; border:1px solid #cfe8df; border-radius:11px; color:#315f55; background:linear-gradient(90deg,#f0fbf7,#fbfefd); box-shadow:0 5px 14px #173e3508; }
+.sales-period-comparison>div { display:grid; gap:1px; text-align:center; }
+.sales-period-comparison small { color:#718a82; font-size:8px; font-weight:900; text-transform:uppercase; letter-spacing:.05em; }
+.sales-period-comparison strong { color:#173e36; font-size:10px; }
+.sales-period-comparison>span { padding:4px 8px; border-radius:999px; color:#08745f; background:#dff5ed; font-size:8px; font-weight:950; text-transform:uppercase; }
+@media(max-width:620px) { .sales-period-comparison { align-items:stretch; flex-direction:column; }.sales-period-comparison>span { align-self:center; } }

@@ -47,21 +47,22 @@ function SummaryKpi({ label, value, previous, comparisonLabel, icon: Icon, tone,
   </button>;
 }
 
-function SummaryStatusChart({ items }) {
+function SummaryStatusChart({ items, previousItems = [], comparisonLabel = '' }) {
   const totalValue = items.reduce((sum, item) => sum + item.value, 0);
   return <section className="summary-chart-card summary-status-card" aria-labelledby="lead-status-heading">
     <header><span><WalletCards/></span><div><h2 id="lead-status-heading">Lead Status</h2><p>Overall lead distribution</p></div></header>
     <div className="summary-status-body">
       <div className="summary-donut"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={items} dataKey="value" innerRadius="62%" outerRadius="88%" paddingAngle={2} stroke="none">{items.map(item => <Cell key={item.label} fill={item.color}/>)}</Pie><Tooltip formatter={(value) => `${Number(value).toLocaleString('en-IN')} leads`}/></PieChart></ResponsiveContainer><span><strong>{totalValue.toLocaleString('en-IN')}</strong><small>Total Leads</small></span></div>
-      <div className="summary-status-legend">{items.map(item => <div key={item.label}><i style={{ background:item.color }}/><span>{item.label}</span><b>{item.value.toLocaleString('en-IN')}</b><small>{totalValue ? `${(item.value / totalValue * 100).toFixed(1)}%` : '0%'}</small></div>)}</div>
+      <div className="summary-status-legend">{items.map(item => { const previous = previousItems.find((entry) => entry.label === item.label)?.value || 0; return <div key={item.label}><i style={{ background:item.color }}/><span>{item.label}</span><b>{item.value.toLocaleString('en-IN')}</b><small>{comparisonLabel ? `Prev ${previous.toLocaleString('en-IN')}` : totalValue ? `${(item.value / totalValue * 100).toFixed(1)}%` : '0%'}</small></div>; })}</div>
     </div>
   </section>;
 }
 
-function PipelineTrendChart({ data }) {
+function PipelineTrendChart({ data, previousData = [], comparisonLabel = '' }) {
+  const chartData = data.map((item, index) => ({ ...item, previousHot:previousData[index]?.hot || 0, previousCold:previousData[index]?.cold || 0 }));
   return <section className="summary-chart-card summary-trend-card" aria-labelledby="pipeline-overview-heading">
-    <header><div><h2 id="pipeline-overview-heading">Revenue Pipeline Overview</h2><p>Lead and revenue movement across the selected period</p></div></header>
-    <div className="summary-trend-chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={data} margin={{ top:10, right:10, left:-18, bottom:0 }}><defs><linearGradient id="hotArea" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#ff7a38" stopOpacity=".28"/><stop offset="95%" stopColor="#ff7a38" stopOpacity="0"/></linearGradient><linearGradient id="coldArea" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity=".22"/><stop offset="95%" stopColor="#3b82f6" stopOpacity="0"/></linearGradient></defs><CartesianGrid stroke="#e8eef2" strokeDasharray="3 3" vertical={false}/><XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize:9, fill:'#789' }}/><YAxis yAxisId="leads" axisLine={false} tickLine={false} tick={{ fontSize:9, fill:'#789' }} allowDecimals={false}/><YAxis yAxisId="money" orientation="right" hide/><Tooltip formatter={(value, name) => name === 'Revenue' ? revenueMoney(Number(value) * 100) : `${Number(value).toLocaleString('en-IN')} leads`}/><Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize:10 }}/><Area yAxisId="leads" type="monotone" dataKey="hot" name="Hot Leads" stroke="#ff6a24" strokeWidth={2.5} fill="url(#hotArea)"/><Area yAxisId="leads" type="monotone" dataKey="cold" name="Cold Leads" stroke="#3485f6" strokeWidth={2.5} fill="url(#coldArea)"/><Line yAxisId="money" type="monotone" dataKey="revenue" name="Revenue" stroke="#22b573" strokeWidth={2.5} dot={false}/></AreaChart></ResponsiveContainer></div>
+    <header><div><h2 id="pipeline-overview-heading">Revenue Pipeline Overview</h2><p>{comparisonLabel ? `Solid lines: this ${comparisonLabel} · Dashed lines: previous ${comparisonLabel}` : 'Lead and revenue movement across the selected period'}</p></div></header>
+    <div className="summary-trend-chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData} margin={{ top:10, right:10, left:-18, bottom:0 }}><defs><linearGradient id="hotArea" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#ff7a38" stopOpacity=".28"/><stop offset="95%" stopColor="#ff7a38" stopOpacity="0"/></linearGradient><linearGradient id="coldArea" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity=".22"/><stop offset="95%" stopColor="#3b82f6" stopOpacity="0"/></linearGradient></defs><CartesianGrid stroke="#e8eef2" strokeDasharray="3 3" vertical={false}/><XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize:9, fill:'#789' }}/><YAxis yAxisId="leads" axisLine={false} tickLine={false} tick={{ fontSize:9, fill:'#789' }} allowDecimals={false}/><YAxis yAxisId="money" orientation="right" hide/><Tooltip formatter={(value, name) => name === 'Revenue' ? revenueMoney(Number(value) * 100) : `${Number(value).toLocaleString('en-IN')} leads`}/><Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize:10 }}/><Area yAxisId="leads" type="monotone" dataKey="hot" name="Hot Leads" stroke="#ff6a24" strokeWidth={2.5} fill="url(#hotArea)"/><Area yAxisId="leads" type="monotone" dataKey="cold" name="Cold Leads" stroke="#3485f6" strokeWidth={2.5} fill="url(#coldArea)"/>{comparisonLabel && <Line yAxisId="leads" type="monotone" dataKey="previousHot" name={`Previous ${comparisonLabel} Hot`} stroke="#ff9b70" strokeWidth={1.7} strokeDasharray="5 4" dot={false}/>} {comparisonLabel && <Line yAxisId="leads" type="monotone" dataKey="previousCold" name={`Previous ${comparisonLabel} Cold`} stroke="#82b8fa" strokeWidth={1.7} strokeDasharray="5 4" dot={false}/>}<Line yAxisId="money" type="monotone" dataKey="revenue" name="Revenue" stroke="#22b573" strokeWidth={2.5} dot={false}/></AreaChart></ResponsiveContainer></div>
   </section>;
 }
 
@@ -117,18 +118,18 @@ function RepMetric({ value, previous, comparisonLabel, tone, onClick, label }) {
   </button>;
 }
 
-function CardPeriodComparison({ value, previous, comparisonLabel }) {
+function CardPeriodComparison({ value, previous, comparisonLabel, money = false }) {
   if (!comparisonLabel) return null;
   const difference = value - previous;
   const percent = previous > 0 ? Math.round((difference / previous) * 100) : null;
   const text = difference === 0
     ? 'No change'
     : previous === 0
-      ? `New +${value.toLocaleString('en-IN')}`
-      : `${difference > 0 ? '+' : ''}${difference.toLocaleString('en-IN')} (${percent > 0 ? '+' : ''}${percent}%)`;
+      ? `New +${money ? revenueMoney(value) : value.toLocaleString('en-IN')}`
+      : `${difference > 0 ? '+' : difference < 0 && money ? '-' : ''}${money ? revenueMoney(Math.abs(difference)) : difference.toLocaleString('en-IN')} (${percent > 0 ? '+' : ''}${percent}%)`;
   const TrendIcon = difference > 0 ? ArrowUp : difference < 0 ? ArrowDown : Minus;
   return <span className={`pipeline-card-comparison ${difference > 0 ? 'is-up' : difference < 0 ? 'is-down' : 'is-flat'}`}>
-    <span>Previous {comparisonLabel}: <b>{previous.toLocaleString('en-IN')}</b></span>
+    <span>Previous {comparisonLabel}: <b>{money ? revenueMoney(previous) : previous.toLocaleString('en-IN')}</b></span>
     <em><TrendIcon aria-hidden="true" />{text}</em>
   </span>;
 }
@@ -179,7 +180,7 @@ function SalesRepTable({ reps, comparisonLabel, range, previousRange, onMetricCl
   </section>;
 }
 
-function SalesPriorityCard({ kind, open, closed, revenue, poValue, previousOpen, previousClosed, comparisonLabel, onOpen }) {
+function SalesPriorityCard({ kind, open, closed, revenue, poValue, previousOpen, previousClosed, previousRevenue, previousPoValue, comparisonLabel, onOpen }) {
   const hot = kind === 'hot';
   const Icon = hot ? Flame : Snowflake;
   return <article className={`sales-priority-card ${kind}`}>
@@ -187,13 +188,19 @@ function SalesPriorityCard({ kind, open, closed, revenue, poValue, previousOpen,
     <div className={`sales-priority-metrics ${hot ? '' : 'is-cold'}`}>
       <button type="button" onClick={() => onOpen(kind, hot ? 'open' : '')}><Target/><span><small>Lead Open</small><strong>{open.toLocaleString('en-IN')}</strong><CardPeriodComparison value={open} previous={previousOpen} comparisonLabel={comparisonLabel}/></span></button>
       {hot && <button type="button" onClick={() => onOpen('hot', 'closed')}><span className="sales-priority-metric-icon is-closed">✓</span><span><small>Lead Closed</small><strong>{closed.toLocaleString('en-IN')}</strong><CardPeriodComparison value={closed} previous={previousClosed} comparisonLabel={comparisonLabel}/></span></button>}
-      <button type="button" onClick={() => onOpen(kind)}><CircleDollarSign/><span><small>Expected Revenue</small><strong>{revenueMoney(revenue)}</strong></span></button>
-      {hot && <button type="button" onClick={() => onOpen('hot', 'closed')}><WalletCards/><span><small>PO Value</small><strong>{revenueMoney(poValue)}</strong></span></button>}
+      <button type="button" onClick={() => onOpen(kind)}><CircleDollarSign/><span><small>Expected Revenue</small><strong>{revenueMoney(revenue)}</strong><CardPeriodComparison value={revenue} previous={previousRevenue} comparisonLabel={comparisonLabel} money/></span></button>
+      {hot && <button type="button" onClick={() => onOpen('hot', 'closed')}><WalletCards/><span><small>PO Value</small><strong>{revenueMoney(poValue)}</strong><CardPeriodComparison value={poValue} previous={previousPoValue} comparisonLabel={comparisonLabel} money/></span></button>}
     </div>
   </article>;
 }
 
-function SalesDashboardRepTable({ reps, onMetricClick }) {
+function SalesDashboardValue({ value, previous = 0, comparisonLabel, tone = '', money = false, onClick }) {
+  const difference = value - previous;
+  const formatted = money ? revenueMoney(value) : value.toLocaleString('en-IN');
+  return <button type="button" className={`sales-dashboard-value ${tone}`} onClick={onClick}><strong>{formatted}</strong>{comparisonLabel && <><small>Prev: {money ? revenueMoney(previous) : previous.toLocaleString('en-IN')}</small><em className={difference > 0 ? 'is-up' : difference < 0 ? 'is-down' : 'is-flat'}>{difference > 0 ? '↑' : difference < 0 ? '↓' : '–'} {money ? revenueMoney(Math.abs(difference)) : Math.abs(difference).toLocaleString('en-IN')}</em></>}</button>;
+}
+
+function SalesDashboardRepTable({ reps, onMetricClick, comparisonLabel }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
   const pageCount = Math.max(1, Math.ceil(reps.length / pageSize));
@@ -203,21 +210,21 @@ function SalesDashboardRepTable({ reps, onMetricClick }) {
   useEffect(() => { setPage(1); }, [reps, pageSize]);
   function exportReps() {
     const sheet = XLSX.utils.json_to_sheet(reps.map((rep) => ({
-      'Sales Representative': rep.owner, 'Total Leads': rep.totalLeads, 'Hot Open': rep.hotOpen, 'Hot Closed': rep.hotClosed, 'Cold Open': rep.coldOpen,
-      'Expected Revenue (INR)': rep.expectedRevenuePaise / 100, 'PO Value (INR)': rep.poValuePaise / 100, 'Major Service Interest': rep.serviceInterests.map((item) => `${item.label} (${item.count})`).join(', ')
+      'Sales Representative': rep.owner, 'Total Leads': rep.totalLeads, 'Previous Total Leads': rep.previousTotalLeads, 'Hot Open': rep.hotOpen, 'Previous Hot Open': rep.previousHotOpen, 'Hot Closed': rep.hotClosed, 'Previous Hot Closed': rep.previousHotClosed, 'Cold Open': rep.coldOpen, 'Previous Cold Open': rep.previousColdOpen,
+      'Expected Revenue (INR)': rep.expectedRevenuePaise / 100, 'Previous Expected Revenue (INR)': rep.previousExpectedRevenuePaise / 100, 'PO Value (INR)': rep.poValuePaise / 100, 'Previous PO Value (INR)': rep.previousPoValuePaise / 100, 'Major Service Interest': rep.serviceInterests.map((item) => `${item.label} (${item.count})`).join(', ')
     })));
     sheet['!cols'] = [{ wch:25 }, { wch:12 }, { wch:12 }, { wch:12 }, { wch:12 }, { wch:22 }, { wch:20 }, { wch:55 }];
     const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, 'Sales Reps'); XLSX.writeFile(book, 'sales-rep-performance.xlsx');
   }
   return <section className="sales-dashboard-reps" aria-labelledby="sales-performance-heading">
-    <header><div><span><Users/></span><div><h2 id="sales-performance-heading">Sales Rep Performance</h2><p>Lead summary, conversion and revenue by sales representative.</p></div></div><button type="button" onClick={exportReps} disabled={!reps.length}><Download/>Export</button></header>
+    <header><div><span><Users/></span><div><h2 id="sales-performance-heading">Sales Rep Performance</h2><p>{comparisonLabel ? `This ${comparisonLabel} compared with the previous ${comparisonLabel}.` : 'Lead summary, conversion and revenue by sales representative.'}</p></div></div><button type="button" onClick={exportReps} disabled={!reps.length}><Download/>Export</button></header>
     <div className="sales-dashboard-reps-table"><table><thead><tr><th>Sales Representative</th><th>Total<br/>Leads</th><th colSpan="2">Hot Leads<div><small>Open</small><small>Closed</small></div></th><th>Cold Leads<br/><small>Open</small></th><th>Expected Revenue</th><th>PO Value</th><th>Major Service Interest</th></tr></thead>
-      <tbody>{visible.map((rep) => <tr key={rep.owner}><td><span className="sales-dashboard-rep"><i>{rep.owner.split(/\s+/).slice(0,2).map(part => part[0]).join('').toUpperCase()}</i><b>{rep.owner.toUpperCase()}</b></span></td><td><button onClick={() => onMetricClick(rep.owner, '', '')}>{rep.totalLeads}</button></td><td className="is-hot"><button onClick={() => onMetricClick(rep.owner, 'hot', 'open')}>{rep.hotOpen}</button></td><td className="is-closed"><button onClick={() => onMetricClick(rep.owner, 'hot', 'closed')}>{rep.hotClosed}</button></td><td className="is-cold"><button onClick={() => onMetricClick(rep.owner, 'cold', '')}>{rep.coldOpen}</button></td><td>{revenueMoney(rep.expectedRevenuePaise)}</td><td>{revenueMoney(rep.poValuePaise)}</td><td><div className="sales-service-tags">{rep.serviceInterests.length ? rep.serviceInterests.map((item, index) => <span key={item.label}><i>{index + 1}</i>{item.label}<b>{item.count}</b></span>) : <small>Not recorded</small>}</div></td></tr>)}</tbody></table>{!reps.length && <p className="pipeline-empty">No sales representatives match these filters.</p>}</div>
+      <tbody>{visible.map((rep) => <tr key={rep.owner}><td><span className="sales-dashboard-rep"><i>{rep.owner.split(/\s+/).slice(0,2).map(part => part[0]).join('').toUpperCase()}</i><b>{rep.owner.toUpperCase()}</b></span></td><td><SalesDashboardValue value={rep.totalLeads} previous={rep.previousTotalLeads} comparisonLabel={comparisonLabel} onClick={() => onMetricClick(rep.owner, '', '')}/></td><td><SalesDashboardValue value={rep.hotOpen} previous={rep.previousHotOpen} comparisonLabel={comparisonLabel} tone="is-hot" onClick={() => onMetricClick(rep.owner, 'hot', 'open')}/></td><td><SalesDashboardValue value={rep.hotClosed} previous={rep.previousHotClosed} comparisonLabel={comparisonLabel} tone="is-closed" onClick={() => onMetricClick(rep.owner, 'hot', 'closed')}/></td><td><SalesDashboardValue value={rep.coldOpen} previous={rep.previousColdOpen} comparisonLabel={comparisonLabel} tone="is-cold" onClick={() => onMetricClick(rep.owner, 'cold', '')}/></td><td><SalesDashboardValue value={rep.expectedRevenuePaise} previous={rep.previousExpectedRevenuePaise} comparisonLabel={comparisonLabel} money onClick={() => onMetricClick(rep.owner, '', '')}/></td><td><SalesDashboardValue value={rep.poValuePaise} previous={rep.previousPoValuePaise} comparisonLabel={comparisonLabel} money onClick={() => onMetricClick(rep.owner, 'hot', 'closed')}/></td><td><div className="sales-service-tags">{rep.serviceInterests.length ? rep.serviceInterests.map((item, index) => <span key={item.label}><i>{index + 1}</i>{item.label}<b>{item.count}</b></span>) : <small>Not recorded</small>}</div></td></tr>)}</tbody></table>{!reps.length && <p className="pipeline-empty">No sales representatives match these filters.</p>}</div>
     {!!reps.length && <footer><span>Showing {first + 1}–{Math.min(first + pageSize, reps.length)} of {reps.length} records</span><label>Rows per page<select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value="5">5</option><option value="10">10</option><option value="25">25</option></select></label><div><button onClick={() => setPage(value => Math.max(1, value - 1))} disabled={safePage === 1}>‹</button><b>{safePage}</b><button onClick={() => setPage(value => Math.min(pageCount, value + 1))} disabled={safePage === pageCount}>›</button></div></footer>}
   </section>;
 }
 
-function SalesTrafficStrip({ sources, onSelect }) {
+function SalesTrafficStrip({ sources, previousSources = [], comparisonLabel = '', onSelect }) {
   const [expandedKey, setExpandedKey] = useState('');
   const visible = sources.filter((source) => source.count > 0).slice(0, 4);
   const total = sources.reduce((sum, source) => sum + source.count, 0);
@@ -230,8 +237,8 @@ function SalesTrafficStrip({ sources, onSelect }) {
   }
   return <section className={`sales-traffic-strip ${expanded ? 'is-expanded' : ''}`} aria-labelledby="sales-traffic-heading">
     <header><span><LayoutGrid/></span><div><h2 id="sales-traffic-heading">Traffic Source</h2><p>Click a source to view sub-categories</p></div></header>
-    {visible.map((source, index) => { const percent = total ? Math.round(source.count / total * 100) : 0; const isExpanded = source.key === expandedKey; return <button type="button" key={source.key || source.label} onClick={() => selectParent(source)} aria-expanded={isExpanded} style={{ '--source-color':['#ff762e','#2387ed','#31b75f','#8756e8'][index] }}><span>{index + 1}</span><div><strong>{source.label}</strong><small>{source.count.toLocaleString('en-IN')} ({percent}%)</small><i><em style={{ width:`${percent}%` }}/></i></div><b aria-hidden="true">{isExpanded ? '−' : '+'}</b></button>; })}
-    {expanded && <div className="sales-traffic-children" role="region" aria-label={`${expanded.label} sub-categories`}><div><strong>{expanded.label}</strong><small>Sub-categories</small></div>{children.map((child) => <button type="button" key={child.key} onClick={() => onSelect(child)}><span>{child.label}</span><b>{child.count.toLocaleString('en-IN')}</b><small>{child.percentage.toFixed(1)}%</small><ArrowUpRight/></button>)}</div>}
+    {visible.map((source, index) => { const percent = total ? Math.round(source.count / total * 100) : 0; const isExpanded = source.key === expandedKey; const previous = previousSources.find((item) => item.key === source.key)?.count || 0; return <button type="button" key={source.key || source.label} onClick={() => selectParent(source)} aria-expanded={isExpanded} style={{ '--source-color':['#ff762e','#2387ed','#31b75f','#8756e8'][index] }}><span>{index + 1}</span><div><strong>{source.label}</strong><small>{source.count.toLocaleString('en-IN')} ({percent}%){comparisonLabel ? ` · Prev ${previous.toLocaleString('en-IN')}` : ''}</small><i><em style={{ width:`${percent}%` }}/></i></div><b aria-hidden="true">{isExpanded ? '−' : '+'}</b></button>; })}
+    {expanded && <div className="sales-traffic-children" role="region" aria-label={`${expanded.label} sub-categories`}><div><strong>{expanded.label}</strong><small>{comparisonLabel ? `This ${comparisonLabel} vs previous` : 'Sub-categories'}</small></div>{children.map((child) => { const previousParent = previousSources.find((item) => item.key === expanded.key); const previous = previousParent?.children?.find((item) => item.key === child.key)?.count || 0; return <button type="button" key={child.key} onClick={() => onSelect(child)}><span>{child.label}</span><b>{child.count.toLocaleString('en-IN')}</b><small>{comparisonLabel ? `Prev ${previous.toLocaleString('en-IN')}` : `${child.percentage.toFixed(1)}%`}</small><ArrowUpRight/></button>; })}</div>}
   </section>;
 }
 
@@ -305,10 +312,11 @@ export default function LeadPipeline() {
   const previousFiltered = useMemo(() => previousRange ? currentPipelineRows(baseFiltered.filter(r => inPipelinePeriod(r.createdAt, previousRange))) : [], [baseFiltered, previousRange]);
   const unique = useMemo(() => uniquePipelineRows(filtered), [filtered]);
   const trafficSources = useMemo(() => trafficSourceHierarchy(filtered, sourceModes), [filtered, sourceModes]);
+  const previousTrafficSources = useMemo(() => trafficSourceHierarchy(previousFiltered, sourceModes), [previousFiltered, sourceModes]);
   const listed = useMemo(() => selection ? (selection.kind ? filtered : unique).filter(r => (!selection.kind || r.kind === selection.kind) && (!selection.state || r.state === selection.state) && (!selection.owner || r.owner === selection.owner) && (!selection.sources?.length || selection.sources.includes(trafficSourceKey(r.communicationMode)))) : [], [filtered, selection, unique]);
   const total = source => source.reduce((n, r) => n + r.revenuePaise, 0);
   const poTotal = source => source.reduce((n, r) => n + (r.poAmountPaise || 0), 0);
-  const { hotRows, coldRows, hotOpen, hotClosed, previousColdRows, previousHotOpen, previousHotClosed } = useMemo(() => {
+  const { hotRows, coldRows, hotOpen, hotClosed, previousHotRows, previousColdRows, previousHotOpen, previousHotClosed } = useMemo(() => {
     const nextHotRows = filtered.filter((row) => row.kind === 'hot');
     const nextColdRows = filtered.filter((row) => row.kind === 'cold');
     const priorHotRows = previousFiltered.filter((row) => row.kind === 'hot');
@@ -318,6 +326,7 @@ export default function LeadPipeline() {
       coldRows: nextColdRows,
       hotOpen: nextHotRows.filter((row) => row.state === 'open'),
       hotClosed: nextHotRows.filter((row) => row.state === 'closed'),
+      previousHotRows: priorHotRows,
       previousColdRows: priorColdRows,
       previousHotOpen: priorHotRows.filter((row) => row.state === 'open'),
       previousHotClosed: priorHotRows.filter((row) => row.state === 'closed')
@@ -332,17 +341,29 @@ export default function LeadPipeline() {
   const salesReps = useMemo(() => salesRepSummary(activeOwnerRows(filtered), activeOwnerRows(previousFiltered), sourceModes), [activeOwnerRows, filtered, previousFiltered, sourceModes]);
   const comparisonLabel = period === 'week' ? 'week' : period === 'month' ? 'month' : period === 'quarter' ? 'quarter' : '';
   const trendData = useMemo(() => pipelineTrend(filtered, period, periodDate, range), [filtered, period, periodDate, range]);
+  const previousTrendData = useMemo(() => {
+    if (!comparisonLabel || !previousRange) return [];
+    const date = new Date(previousRange.start);
+    const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    return pipelineTrend(previousFiltered, period, value, previousRange);
+  }, [comparisonLabel, period, previousFiltered, previousRange]);
   const statusItems = useMemo(() => [
     { label: 'Hot Open', value: hotOpen.length, color: '#ff762e' },
     { label: 'Hot Closed', value: hotClosed.length, color: '#16a66f' },
     { label: 'Cold Open', value: coldRows.length, color: '#3284f6' }
   ], [hotOpen.length, hotClosed.length, coldRows.length]);
+  const previousStatusItems = useMemo(() => [
+    { label: 'Hot Open', value: previousHotOpen.length },
+    { label: 'Hot Closed', value: previousHotClosed.length },
+    { label: 'Cold Open', value: previousColdRows.length }
+  ], [previousHotOpen.length, previousHotClosed.length, previousColdRows.length]);
   const salesDashboardReps = useMemo(() => salesReps.map((rep) => {
     const ownerRows = activeOwnerRows(filtered).filter((row) => row.owner === rep.owner);
+    const previousOwnerRows = activeOwnerRows(previousFiltered).filter((row) => row.owner === rep.owner);
     const interests = new Map();
     ownerRows.forEach((row) => (row.serviceInterests || []).forEach((label) => interests.set(label, (interests.get(label) || 0) + 1)));
-    return { ...rep, totalLeads: ownerRows.length, expectedRevenuePaise: total(ownerRows), poValuePaise: poTotal(ownerRows), serviceInterests:[...interests.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)).slice(0, 2) };
-  }), [activeOwnerRows, filtered, salesReps]);
+    return { ...rep, totalLeads: ownerRows.length, previousTotalLeads:previousOwnerRows.length, expectedRevenuePaise: total(ownerRows), previousExpectedRevenuePaise:total(previousOwnerRows), poValuePaise: poTotal(ownerRows), previousPoValuePaise:poTotal(previousOwnerRows), serviceInterests:[...interests.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)).slice(0, 2) };
+  }), [activeOwnerRows, filtered, previousFiltered, salesReps]);
   async function showServices(row) {
     const request = ++serviceRequest.current;
     setServiceView({ row, loading: true });
@@ -398,15 +419,16 @@ export default function LeadPipeline() {
       </section></>}
       {salesDesignView && <>
         {!unique.length && <p role="status" className="pipeline-filter-empty">No leads match these filters. Try another period or owner.</p>}
+        {comparisonLabel && previousRange && <div className="sales-period-comparison" role="note"><div><small>Selected {comparisonLabel}</small><strong>{range.label}</strong></div><span>compared with</span><div><small>Previous {comparisonLabel}</small><strong>{previousRange.label}</strong></div></div>}
         <section className="sales-priority-grid" aria-label="Sales pipeline priorities">
-          <SalesPriorityCard kind="hot" open={hotOpen.length} closed={hotClosed.length} revenue={total(hotRows)} poValue={poTotal(hotClosed)} previousOpen={previousHotOpen.length} previousClosed={previousHotClosed.length} comparisonLabel={comparisonLabel} onOpen={open}/>
-          <SalesPriorityCard kind="cold" open={coldRows.length} closed={0} revenue={total(coldRows)} poValue={0} previousOpen={previousColdRows.length} previousClosed={0} comparisonLabel={comparisonLabel} onOpen={open}/>
+          <SalesPriorityCard kind="hot" open={hotOpen.length} closed={hotClosed.length} revenue={total(hotRows)} poValue={poTotal(hotClosed)} previousOpen={previousHotOpen.length} previousClosed={previousHotClosed.length} previousRevenue={total(previousHotRows)} previousPoValue={poTotal(previousHotClosed)} comparisonLabel={comparisonLabel} onOpen={open}/>
+          <SalesPriorityCard kind="cold" open={coldRows.length} closed={0} revenue={total(coldRows)} poValue={0} previousOpen={previousColdRows.length} previousClosed={0} previousRevenue={total(previousColdRows)} previousPoValue={0} comparisonLabel={comparisonLabel} onOpen={open}/>
         </section>
         <section className="sales-dashboard-main">
-          <div className="sales-dashboard-charts"><PipelineTrendChart data={trendData}/><SummaryStatusChart items={statusItems}/></div>
-          <SalesDashboardRepTable reps={salesDashboardReps} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)}/>
+          <div className="sales-dashboard-charts"><PipelineTrendChart data={trendData} previousData={previousTrendData} comparisonLabel={comparisonLabel}/><SummaryStatusChart items={statusItems} previousItems={previousStatusItems} comparisonLabel={comparisonLabel}/></div>
+          <SalesDashboardRepTable reps={salesDashboardReps} comparisonLabel={comparisonLabel} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)}/>
         </section>
-        <SalesTrafficStrip sources={trafficSources} onSelect={openSource}/>
+        <SalesTrafficStrip sources={trafficSources} previousSources={previousTrafficSources} comparisonLabel={comparisonLabel} onSelect={openSource}/>
       </>}
       {!summaryView && !salesDashboardView && <div className="pipeline-content-layout"><section className="pipeline-sales-workspace" aria-label="Sales pipeline">
         {!unique.length && <p role="status" className="pipeline-filter-empty">No leads match these filters. Try another period or owner.</p>}

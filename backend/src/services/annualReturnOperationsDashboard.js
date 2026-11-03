@@ -105,13 +105,14 @@ function buildRecords({ clients = [], users = [], filings = new Map(), teams = [
     const clientId = client.assignmentOnly ? text(client.statusSourceClientId) : text(client._id);
     const company = text(lead.company || lead.companyName || client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || 'Untitled client');
     const leadId = text(lead.leadCode || lead.sourceLeadId || client.data?.importMeta?.leadNumber || '-');
+    const uniqueId = text(client.data?.importMeta?.uniqueId || client.uniqueId || '-');
     const dueDate = isoDate(service.dueDate || service.serviceEndDate || poRows.map(row => row.poEndDate).filter(Boolean).sort().at(0));
     const yearStates = Object.fromEntries(years.map(year => {
       const filing = clientId && typeof filings?.get === 'function' ? filings.get(`${clientId}:${year}`) : null;
       return [year, workflowState(filing)];
     }));
     records.set(recordKey, {
-      id: recordKey, clientId, company, leadId, category, applicantType, subType, serviceName, years,
+      id: recordKey, clientId, company, uniqueId, leadId, category, applicantType, subType, serviceName, years,
       assignedUserId: owner ? text(owner) : '', assignedUser: owner?.name || owner?.email || assignment.assignedStaffText || 'Unassigned',
       teamId: owner?.teamId ? text(owner.teamId) : '', team: team || manager?.name || manager?.email || 'No team assigned',
       managerId: manager ? text(manager) : '', dueDate, yearStates,
@@ -155,7 +156,7 @@ function applyFilters(records, query = {}, omit = []) {
     if (!ignored.has('status') && status && !(status === 'overdue' ? record.overdue : status === 'due soon' ? record.dueSoon : record.status.toLowerCase() === status)) return false;
     if (!ignored.has('due') && query.dueFrom && (!record.dueDate || record.dueDate < query.dueFrom)) return false;
     if (!ignored.has('due') && query.dueTo && (!record.dueDate || record.dueDate > query.dueTo)) return false;
-    if (search && ![record.company, record.leadId, record.assignedUser].join(' ').toLowerCase().includes(search)) return false;
+    if (search && ![record.company, record.uniqueId, record.leadId, record.assignedUser].join(' ').toLowerCase().includes(search)) return false;
     return true;
   });
 }
@@ -238,7 +239,7 @@ function buildDashboard(records, query = {}) {
   const priorYear = previousYear(selectedYear);
   const previous = priorYear ? summary(applyFilters(decorate(records, priorYear), { ...query, year: priorYear })) : null;
   const comparisons = previous && previous.total ? Object.fromEntries(['total', 'completed', 'inProgress', 'pending', 'overdue', 'dueSoon'].map(metric => [metric, { previous: previous[metric], change: previous[metric] ? Math.round(((currentSummary[metric] - previous[metric]) / previous[metric]) * 1000) / 10 : null }])) : {};
-  const sortBy = ['company', 'leadId', 'category', 'applicantType', 'subType', 'annualReturnYear', 'assignedUser', 'dueDate', 'status', 'progress'].includes(query.sortBy) ? query.sortBy : 'company';
+  const sortBy = ['company', 'uniqueId', 'leadId', 'category', 'applicantType', 'subType', 'annualReturnYear', 'assignedUser', 'dueDate', 'status', 'progress'].includes(query.sortBy) ? query.sortBy : 'company';
   const direction = query.sortDir === 'desc' ? -1 : 1;
   const sorted = [...matching].sort((a, b) => String(a[sortBy] ?? '').localeCompare(String(b[sortBy] ?? ''), undefined, { numeric: true }) * direction);
   const limit = Math.min(100, Math.max(5, Number(query.limit) || 10));

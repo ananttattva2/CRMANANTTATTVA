@@ -71,3 +71,4 @@
 .arops-status,.arops-open{font-size:9px}
 .arops-table-panel>footer{font-size:10px}
 @media(max-width:1200px){.arops-summary-card strong{font-size:22px}.arops-category-photo h3{font-size:15px}.arops-drill-card{min-height:140px}}
+.arops-unique-id { color:#0f4665; font-weight:900; white-space:nowrap; }
