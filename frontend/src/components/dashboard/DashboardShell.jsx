@@ -6,7 +6,7 @@ import Topbar from './Topbar';
 export default function DashboardShell({ currentUser, onOpenProfile, onLogout, children, hideSidebar = false }) {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     if (!sidebarOpen) return undefined;

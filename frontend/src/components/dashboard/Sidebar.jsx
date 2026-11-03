@@ -1,339 +1,127 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { BarChart3, BriefcaseBusiness, ChevronDown, ChevronsLeft, Gauge, X } from 'lucide-react'
+import { BarChart3, BriefcaseBusiness, ChevronDown, ChevronsLeft, ClipboardList, FileText, Gauge, LifeBuoy, MessagesSquare, ShieldCheck, UserRound, Users, X } from 'lucide-react'
 import { adminRoles, hasAnyRole, navSections } from '../../constants/dashboard'
+import './Sidebar.css'
+
+const sectionIcons = [BarChart3, ClipboardList, UserRound, FileText, ShieldCheck, ClipboardList, MessagesSquare, Users, LifeBuoy]
+const sectionId = label => `nav-section-${label.replace(/[^a-z0-9]/gi, '-')}`
 
 export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onClose, dashboardMode = 'operations', onDashboardModeChange }) {
   const location = useLocation()
   const navigate = useNavigate()
-  const currentPath = `${location.pathname}${location.search}`
-  const [closedSections, setClosedSections] = useState({})
+  const [openSection, setOpenSection] = useState(null)
   const [openGroups, setOpenGroups] = useState({})
-  const [activeFlyout, setActiveFlyout] = useState(null)
-  const [activeItem, setActiveItem] = useState('')
-  const isDashboardRoute = location.pathname.startsWith('/summary-dashboard') || ['/dashboard', '/overall-dashboard', '/superadmin-dashboard', '/mis', '/mis/complete', '/mis/client-daily'].includes(location.pathname)
-  const [dashboardChoicesOpen, setDashboardChoicesOpen] = useState(() => isDashboardRoute)
-  const [openNestedGroups, setOpenNestedGroups] = useState(() => ({
-    'Pending Leads': location.pathname.startsWith('/pending-leads') || location.pathname === '/sales/lead-pipeline',
-    Tickets: location.pathname.includes('tickets')
-  }))
+  const [flyout, setFlyout] = useState(null)
+  const sidebarRef = useRef(null)
+  const flyoutRef = useRef(null)
+  const triggerRef = useRef(null)
+  const currentPath = `${location.pathname}${location.search}`
+  const canChooseDashboard = hasAnyRole(currentUser, adminRoles)
+
+  useEffect(() => { setFlyout(null) }, [currentPath, collapsed])
   useEffect(() => {
-    const matchesRoute = item => item.path && (item.path === '/summary-dashboard' ? location.pathname.startsWith('/summary-dashboard') : item.path.includes('?') ? item.path === currentPath : item.path === location.pathname);
-    const containsRoute = item => matchesRoute(item) || item.children?.some(containsRoute);
-    const activeGroups = navSections.flatMap(section => section.items).filter(item => item.children?.length && containsRoute(item));
-    setOpenGroups(value => ({ ...value, ...Object.fromEntries(activeGroups.map(item => [item.label, true])) }));
-    setActiveItem('');
-    setClosedSections(value => { const next = { ...value }; navSections.filter(section => section.items.some(containsRoute)).forEach(section => { next[section.label] = false; }); return next; });
-  }, [currentPath, location.pathname]);
-
-  useEffect(() => {
-    if (!collapsed) setActiveFlyout(null);
-  }, [collapsed]);
-
-  function toggleGroup(item, hasChildren) {
-    const label = item.label
-    setActiveItem(label)
-    if (item.path) {
-      navigate(item.path)
-      onClose?.()
+    if (!flyout) return undefined
+    flyoutRef.current?.querySelector('div.space-y-1 button')?.focus()
+    function dismiss(event) {
+      if (!sidebarRef.current?.contains(event.target) && !flyoutRef.current?.contains(event.target)) setFlyout(null)
     }
-
-    if (!hasChildren) return
-
-    if (collapsed) {
-      // Compact mode keeps the sidebar narrow. Reveal this group's existing
-      // navigation as a flyout instead of expanding/resetting the full menu.
-      setActiveFlyout((value) => value === label ? null : label)
-      return
+    function keydown(event) {
+      if (event.key === 'Escape') { setFlyout(null); triggerRef.current?.focus() }
     }
-
-    setOpenGroups((value) => ({ ...value, [label]: !value[label] }))
-  }
+    function close() { setFlyout(null) }
+    document.addEventListener('pointerdown', dismiss)
+    document.addEventListener('keydown', keydown)
+    window.addEventListener('resize', close)
+    return () => {
+      document.removeEventListener('pointerdown', dismiss)
+      document.removeEventListener('keydown', keydown)
+      window.removeEventListener('resize', close)
+    }
+  }, [flyout])
 
   function pathMatches(path) {
     if (!path) return false
     if (path === '/summary-dashboard') return location.pathname.startsWith('/summary-dashboard')
     return path.includes('?') ? path === currentPath : path === location.pathname && !location.search
   }
-
   function canShowItem(item) {
     if (Array.isArray(item.roles) && !hasAnyRole(currentUser, item.roles)) return false
-    if (item.children?.length && item.label !== 'Dashboard' && !item.children.some(canShowItem)) return false
-    if (item.label !== 'User Management') return true
-    return hasAnyRole(currentUser, adminRoles)
+    if (item.label === 'User Management' && !canChooseDashboard) return false
+    return !item.children?.length || item.children.some(canShowItem)
   }
-
-  const canChooseDashboard = hasAnyRole(currentUser, adminRoles)
-
-  function chooseDashboard(mode) {
-    onDashboardModeChange?.(mode)
-    setActiveItem('Sales Dashboard')
-    navigate('/dashboard')
+  function containsRoute(item) { return pathMatches(item.path) || item.children?.some(containsRoute) }
+  function visit(item) {
+    if (item.dashboardMode) onDashboardModeChange?.(item.dashboardMode)
+    navigate(item.path)
+    setFlyout(null)
     onClose?.()
   }
-
-  function renderDashboardReports(child, flyout = false) {
-    return child.children.filter(canShowItem).map((entry) => {
-      const EntryIcon = entry.icon
-      const active = pathMatches(entry.path)
-      return <button key={entry.path} type="button" onClick={() => { setActiveItem(entry.label); navigate(entry.path); setActiveFlyout(null); onClose?.() }} aria-current={active ? 'page' : undefined} className={flyout
-        ? `flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-black transition ${active ? 'bg-[#f45b0b] text-white' : 'text-slate-700 hover:bg-emerald-50 hover:text-[#0f5d46]'}`
-        : `sidebar-dashboard-choice flex min-h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-black transition ${active ? 'sidebar-dashboard-choice-active bg-[#f45b0b] text-white' : 'text-emerald-50/75 hover:bg-white/10 hover:text-white'}`}><EntryIcon className={flyout ? 'h-4 w-4 shrink-0' : 'h-3.5 w-3.5 shrink-0'} /><span>{entry.label}</span></button>
+  function sectionItems(section) {
+    return section.items.filter(canShowItem).flatMap(item => item.label === 'Dashboard' ? [
+      { label: 'Application Dashboard', icon: BarChart3, path: '/overall-dashboard' },
+      canChooseDashboard
+        ? { label: 'Sales Dashboard', icon: BriefcaseBusiness, path: '/dashboard', dashboardMode: 'sales' }
+        : { label: 'My Dashboard', icon: Gauge, path: '/dashboard' },
+      ...item.children.filter(canShowItem)
+    ] : [item])
+  }
+  function renderItems(items, light = false, prefix = '') {
+    return items.filter(canShowItem).map(item => {
+      const Icon = item.icon
+      const key = `${prefix}/${item.label}`
+      const hasChildren = Boolean(item.children?.length)
+      const expanded = Boolean(openGroups[key])
+      const active = pathMatches(item.path) && (!item.dashboardMode || dashboardMode === item.dashboardMode)
+      return <div key={key}>
+        <button type="button" onClick={() => hasChildren ? setOpenGroups(value => ({ ...value, [key]: !value[key] })) : visit(item)}
+          aria-expanded={hasChildren ? expanded : undefined} aria-controls={hasChildren ? sectionId(key) : undefined} aria-current={active ? 'page' : undefined}
+          className={`sidebar-menu-button flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold transition-colors ${active ? 'bg-[#f45b0b] text-white' : light ? 'text-slate-700 hover:bg-emerald-50' : 'text-emerald-50/90 hover:bg-white/10'}`}>
+          <Icon className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1">{item.label}</span>
+          {hasChildren && <ChevronDown className={`h-4 w-4 shrink-0 transition-transform motion-reduce:transition-none ${expanded ? 'rotate-180' : ''}`} />}
+        </button>
+        {hasChildren && expanded && <div id={sectionId(key)} className="sidebar-section-reveal ml-4 mt-1 space-y-1 border-l border-current/15 pl-2">{renderItems(item.children, light, key)}</div>}
+      </div>
     })
   }
+  function toggleSection(section, event) {
+    if (!collapsed) { setOpenSection(value => value === section.label ? null : section.label); return }
+    triggerRef.current = event.currentTarget
+    const bounds = event.currentTarget.getBoundingClientRect()
+    setOpenGroups({})
+    setFlyout(value => value?.label === section.label ? null : {
+      label: section.label, left: bounds.right + 12, top: Math.max(12, Math.min(bounds.top, window.innerHeight - 440))
+    })
+  }
+  const visibleSections = navSections.map((section, index) => ({ ...section, icon: sectionIcons[index] })).filter(section => section.items.some(canShowItem))
+  const selectedSection = visibleSections.find(section => section.label === flyout?.label)
 
-  return (
-    <div className="relative flex h-full min-h-0 flex-col overflow-visible bg-[#16805f] pt-4 text-white">
-      {!collapsed && <div className="border-b border-white/10 px-5 pb-4 pr-16 lg:hidden"><p className="text-[10px] font-black uppercase tracking-[.22em] text-emerald-200">Workspace</p><strong className="mt-1 block text-lg font-black">CRM Navigation</strong><span className="mt-1 block truncate text-xs font-semibold text-emerald-100/70">{currentUser?.name || currentUser?.email}</span></div>}
-      <div className={`relative z-50 hidden h-9 shrink-0 items-center lg:flex ${collapsed ? 'justify-center px-2' : 'justify-between px-5'}`}>
-        {!collapsed && <p className="text-xs font-black uppercase leading-none tracking-[0.24em] text-emerald-100/70">Navigation</p>}
-        <button
-          type="button"
-          onClick={onToggleCollapsed}
-          className={`btn-lift inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-[#116c51] text-white shadow-lg shadow-emerald-950/15 transition hover:bg-[#0f6048] ${collapsed ? 'rotate-180' : ''}`}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          <ChevronsLeft className="h-4 w-4 transition-transform duration-300" />
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute right-3 top-0 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white transition hover:bg-white/15 lg:hidden"
-          aria-label="Close sidebar"
-        >
-          <X className="h-5 w-5" />
-        </button>
-      </div>
-
-      <nav className={`sidebar-scrollbar flex-1 space-y-5 px-3 pb-5 ${collapsed ? 'overflow-visible px-2 pt-5' : 'overflow-y-auto px-4 pt-5'}`}>
-        {navSections.filter(section => section.items.some(canShowItem)).map((section) => (
-          <div key={section.label}>
-            {!collapsed && <button type="button" onClick={() => setClosedSections(value => ({ ...value, [section.label]: !value[section.label] }))} aria-expanded={!closedSections[section.label]} aria-controls={`nav-section-${section.label.replace(/[^a-z0-9]/gi, '-')}`} className="mb-3 flex w-full items-center justify-between gap-2 border-b border-white/15 px-1 pb-2 text-left text-[11px] font-black uppercase tracking-[0.16em] text-emerald-100/80 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-200">{section.label}<ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-300 motion-reduce:transition-none ${closedSections[section.label] ? '-rotate-90' : ''}`}/></button>}
-            <div id={`nav-section-${section.label.replace(/[^a-z0-9]/gi, '-')}`} aria-hidden={!collapsed && Boolean(closedSections[section.label])} inert={!collapsed && closedSections[section.label] ? '' : undefined} className={`grid transition-[grid-template-rows,opacity] duration-300 ease-in-out motion-reduce:transition-none ${!collapsed && closedSections[section.label] ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`}><div className={`min-h-0 ${collapsed ? 'overflow-visible' : 'overflow-hidden'}`}><div className="space-y-2">
-              {section.items.filter(canShowItem).map((item) => {
-                const Icon = item.icon
-                const isOpen = Boolean(openGroups[item.label])
-                const hasChildren = Boolean(item.children?.length)
-                const isFlyoutOpen = activeFlyout === item.label
-                // Child routes already have their own active treatment. Keep the
-                // parent highlighted only when the parent itself is selected.
-                const isPrimaryActive = activeItem === item.label || pathMatches(item.path)
-                if (item.label === 'Dashboard' && !collapsed) {
-                  const choiceClass = active => `sidebar-dashboard-choice flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-black transition ${active ? 'sidebar-dashboard-choice-active bg-[#f45b0b] text-white' : 'text-emerald-50/90 hover:bg-white/10 hover:text-white'}`;
-                  return <div key={item.label} className="grid gap-1">
-                    <button type="button" onClick={() => { navigate('/overall-dashboard'); onClose?.(); }} aria-current={location.pathname === '/overall-dashboard' ? 'page' : undefined} className={choiceClass(location.pathname === '/overall-dashboard')}><BarChart3 className="h-4 w-4 shrink-0"/>Application Dashboard</button>
-                    {canChooseDashboard ? <>{[['sales', 'Sales Dashboard', BriefcaseBusiness]].map(([mode, label, ModeIcon]) => <button type="button" key={mode} onClick={() => chooseDashboard(mode)} className={choiceClass(dashboardMode === mode && location.pathname === '/dashboard')}><ModeIcon className="h-4 w-4 shrink-0"/>{label}</button>)}</> : <button type="button" onClick={() => { navigate('/dashboard'); onClose?.(); }} className={choiceClass(location.pathname === '/dashboard')}><Gauge className="h-4 w-4 shrink-0"/>My Dashboard</button>}
-                    {renderDashboardReports(item)}
-                  </div>;
-                }
-                return (
-                  <div key={item.label} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => toggleGroup(item, hasChildren)}
-                      className={`sidebar-menu-button group flex min-h-12 w-full items-center rounded-[18px] text-left font-black transition-all duration-200 ${
-                        collapsed ? 'justify-center px-0' : 'justify-between px-4'
-                      } ${
-                        isPrimaryActive
-                          ? 'sidebar-menu-button-active bg-[#f45b0b] text-white shadow-xl shadow-orange-950/20'
-                          : 'text-white hover:bg-white/10'
-                      }`}
-                      aria-expanded={hasChildren ? (collapsed ? isFlyoutOpen : isOpen) : undefined}
-                      title={collapsed ? item.label : undefined}
-                    >
-                      <span className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}>
-                        <Icon className="h-5 w-5 shrink-0" />
-                        <span className={collapsed ? 'sr-only' : ''}>{item.label}</span>
-                      </span>
-                      {hasChildren && !collapsed && (
-                        <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-                      )}
-                    </button>
-
-                    {hasChildren && !collapsed && (
-                      <div className={`grid transition-all duration-300 ease-out ${isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
-                        <div className="overflow-hidden">
-                          <div className="mt-2 space-y-1 pl-6">
-                            {item.children.filter(canShowItem).map((child) => {
-                              const ChildIcon = child.icon
-                              const isDashboardChild = child.label === 'Dashboard'
-                              const isChildActive = child.path ? pathMatches(child.path) : activeItem === child.label
-                              if (child.children?.length && !isDashboardChild) {
-                                const nestedActive = child.children.some((entry) => pathMatches(entry.path))
-                                return (
-                                  <div key={child.label}>
-                                    <button type="button" onClick={() => setOpenNestedGroups((value) => ({ ...value, [child.label]: !value[child.label] }))} className={`sidebar-child-button flex min-h-10 w-full items-center justify-between gap-3 rounded-xl px-3 text-left text-sm font-black transition ${nestedActive ? 'bg-white/14 text-white' : 'text-emerald-50/78 hover:bg-white/10 hover:text-white'}`}>
-                                      <span className="flex items-center gap-3"><ChildIcon className="h-4 w-4 shrink-0" />{child.label}</span>
-                                      <ChevronDown className={`h-4 w-4 transition ${openNestedGroups[child.label] ? 'rotate-180' : ''}`} />
-                                    </button>
-                                    {openNestedGroups[child.label] && <div className="mt-1 grid gap-1 pl-6">{child.children.filter(canShowItem).map((entry) => { const EntryIcon = entry.icon; return <button type="button" key={entry.label} onClick={() => { setActiveItem(entry.label); navigate(entry.path); onClose?.() }} className={`flex min-h-9 items-center gap-2 rounded-xl px-3 text-left text-xs font-black ${pathMatches(entry.path) ? 'bg-[#f45b0b] text-white' : 'text-emerald-50/75 hover:bg-white/10'}`}><EntryIcon className="h-3.5 w-3.5" />{entry.label}</button> })}</div>}
-                                  </div>
-                                )
-                              }
-                              if (isDashboardChild) {
-                                return (
-                                  <div key={child.label}>
-                                    <button
-                                      type="button"
-                                      onClick={() => setDashboardChoicesOpen((value) => !value)}
-                                      className={`sidebar-child-button flex min-h-10 w-full items-center justify-between gap-3 rounded-xl px-3 text-left text-sm font-black transition ${
-                                        isDashboardRoute
-                                          ? 'sidebar-child-button-current bg-white/14 text-white'
-                                          : 'text-emerald-50/78 hover:bg-white/10 hover:text-white'
-                                      }`}
-                                      aria-expanded={dashboardChoicesOpen}
-                                    >
-                                      <span className="flex items-center gap-3">
-                                        <ChildIcon className="h-4 w-4 shrink-0" />
-                                        Dashboard
-                                      </span>
-                                      <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${dashboardChoicesOpen ? 'rotate-180' : ''}`} />
-                                    </button>
-                                    {dashboardChoicesOpen && (
-                                      <div className="mt-1 grid gap-1 pl-5">
-                                        <button type="button" onClick={() => { setActiveItem('Application Dashboard'); navigate('/overall-dashboard'); onClose?.() }} aria-current={location.pathname === '/overall-dashboard' ? 'page' : undefined} className={`sidebar-dashboard-choice flex min-h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-black transition ${location.pathname === '/overall-dashboard' ? 'sidebar-dashboard-choice-active bg-[#f45b0b] text-white' : 'text-emerald-50/75 hover:bg-white/10 hover:text-white'}`}><BarChart3 className="h-3.5 w-3.5" />Application Dashboard</button>
-                                        {canChooseDashboard && <>
-                                        <button
-                                          type="button"
-                                          onClick={() => chooseDashboard('sales')}
-                                          className={`sidebar-dashboard-choice flex min-h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-black transition ${
-                                            dashboardMode === 'sales' && location.pathname === '/dashboard'
-                                              ? 'sidebar-dashboard-choice-active bg-[#f45b0b] text-white'
-                                              : 'text-emerald-50/75 hover:bg-white/10 hover:text-white'
-                                          }`}
-                                        >
-                                          <BriefcaseBusiness className="h-3.5 w-3.5" />
-                                          Sales Dashboard
-                                        </button>
-                                        </>}
-                                        {renderDashboardReports(child)}
-                                      </div>
-                                    )}
-                                  </div>
-                                )
-                              }
-                              return (
-                                <button
-                                  type="button"
-                                  key={child.label}
-                                  onClick={() => {
-                                    setActiveItem(child.label)
-                                    if (child.path) {
-                                      navigate(child.path)
-                                      onClose?.()
-                                    }
-                                  }}
-                                  className={`sidebar-child-button flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-black transition ${
-                                    isChildActive
-                                      ? 'sidebar-child-button-current bg-[#f45b0b] text-white'
-                                      : 'text-emerald-50/78 hover:bg-white/10 hover:text-white'
-                                  }`}
-                                >
-                                  <ChildIcon className="h-4 w-4 shrink-0" />
-                                  {child.label}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {hasChildren && collapsed && isFlyoutOpen && (
-                      <div className="absolute left-[68px] top-0 z-50 w-56 rounded-xl border border-slate-100 bg-white p-2 text-slate-900 shadow-2xl shadow-slate-900/15">
-                        <div className="px-3 py-2 font-black text-slate-900">{item.label}</div>
-                        {item.children.filter(canShowItem).map((child) => {
-                          const ChildIcon = child.icon
-                          const isDashboardChild = child.label === 'Dashboard'
-                          const isChildActive = child.path ? pathMatches(child.path) : activeItem === child.label
-                          if (child.children?.length && !isDashboardChild) {
-                            return (
-                              <div key={child.label} className="rounded-lg bg-slate-50 p-1">
-                                <div className="px-2 py-1 text-xs font-black uppercase tracking-[0.12em] text-slate-400">{child.label}</div>
-                                {child.children.filter(canShowItem).map((entry) => {
-                                  const EntryIcon = entry.icon
-                                  return (
-                                    <button
-                                      type="button"
-                                      key={entry.label}
-                                      onClick={() => {
-                                        setActiveItem(entry.label)
-                                        navigate(entry.path)
-                                        setActiveFlyout(null)
-                                        onClose?.()
-                                      }}
-                                      className={`mt-1 flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-black ${
-                                        pathMatches(entry.path) ? 'bg-[#f45b0b] text-white' : 'text-slate-600 hover:bg-white'
-                                      }`}
-                                    >
-                                      <EntryIcon className="h-4 w-4" />
-                                      {entry.label}
-                                    </button>
-                                  )
-                                })}
-                              </div>
-                            )
-                          }
-                          if (isDashboardChild) {
-                            return (
-                              <div key={child.label} className="rounded-lg bg-slate-50 p-1">
-                                <div className="px-2 py-1 text-xs font-black uppercase tracking-[0.12em] text-slate-400">Dashboard</div>
-                                <button type="button" onClick={() => { setActiveItem('Application Dashboard'); navigate('/overall-dashboard'); setActiveFlyout(null); onClose?.() }} aria-current={location.pathname === '/overall-dashboard' ? 'page' : undefined} className={`flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-black transition ${location.pathname === '/overall-dashboard' ? 'bg-[#f45b0b] text-white' : 'text-slate-700 hover:bg-emerald-50 hover:text-[#0f5d46]'}`}><BarChart3 className="h-4 w-4 shrink-0" />Application Dashboard</button>
-                                {canChooseDashboard && <>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    chooseDashboard('sales')
-                                    setActiveFlyout(null)
-                                  }}
-                                  className={`flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-black transition ${
-                                    dashboardMode === 'sales' && location.pathname === '/dashboard'
-                                      ? 'bg-[#f45b0b] text-white'
-                                      : 'text-slate-700 hover:bg-emerald-50 hover:text-[#0f5d46]'
-                                  }`}
-                                >
-                                  <BriefcaseBusiness className="h-4 w-4 shrink-0" />
-                                  Sales Dashboard
-                                </button>
-                                </>}
-                                {renderDashboardReports(child, true)}
-                              </div>
-                            )
-                          }
-                          return (
-                            <button
-                              type="button"
-                              key={child.label}
-                              onClick={() => {
-                                setActiveItem(child.label)
-                                if (child.path) {
-                                  navigate(child.path)
-                                  onClose?.()
-                                }
-                                setActiveFlyout(null)
-                              }}
-                              className={`flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-black transition ${
-                                isChildActive
-                                  ? 'bg-[#f45b0b] text-white'
-                                  : 'text-slate-700 hover:bg-emerald-50 hover:text-[#0f5d46]'
-                              }`}
-                            >
-                              <ChildIcon className="h-4 w-4 shrink-0" />
-                              {child.label}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div></div></div>
-          </div>
-        ))}
-      </nav>
-
+  return <div ref={sidebarRef} className="relative flex h-full min-h-0 flex-col bg-[#16805f] pt-4 text-white">
+    <div className={`flex h-9 shrink-0 items-center ${collapsed ? 'justify-center px-2' : 'justify-between px-5'}`}>
+      {!collapsed && <p className="text-xs font-black uppercase tracking-[0.24em] text-emerald-100/70">Navigation</p>}
+      <button type="button" onClick={onToggleCollapsed} className={`hidden h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-[#116c51] transition hover:bg-[#0f6048] lg:inline-flex ${collapsed ? 'rotate-180' : ''}`} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}><ChevronsLeft className="h-4 w-4" /></button>
+      <button type="button" onClick={onClose} className="ml-auto rounded-xl p-2 hover:bg-white/10 lg:hidden" aria-label="Close sidebar"><X className="h-5 w-5" /></button>
     </div>
-  )
+    <nav aria-label="Main navigation" className={`sidebar-scrollbar flex-1 overflow-y-auto pb-5 pt-5 ${collapsed ? 'space-y-2 px-2' : 'space-y-5 px-4'}`} onScroll={() => setFlyout(null)}>
+      {visibleSections.map(section => {
+        const Icon = section.icon
+        const expanded = collapsed ? flyout?.label === section.label : openSection === section.label
+        const active = section.items.some(containsRoute)
+        return <div key={section.label}>
+          <button type="button" onClick={event => toggleSection(section, event)} aria-label={section.label} aria-expanded={Boolean(expanded)} aria-controls={sectionId(section.label)} title={collapsed ? section.label : undefined}
+            className={collapsed
+              ? `flex min-h-12 w-full items-center justify-center rounded-2xl transition-colors ${expanded ? 'bg-white/20' : active ? 'bg-white/10' : 'hover:bg-white/10'} focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-200`
+              : 'flex w-full items-center justify-between gap-2 border-b border-white/15 px-1 pb-2 text-left text-[11px] font-black uppercase tracking-[0.16em] text-emerald-100/80 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-200'}>
+            {collapsed ? <Icon className="h-5 w-5" /> : <><span>{section.label}</span><ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-200 motion-reduce:transition-none ${expanded ? '' : '-rotate-90'}`} /></>}
+          </button>
+          {!collapsed && expanded && <div id={sectionId(section.label)} className="sidebar-section-reveal mt-3 space-y-1">{renderItems(sectionItems(section), false, section.label)}</div>}
+        </div>
+      })}
+    </nav>
+    {collapsed && selectedSection && createPortal(<div ref={flyoutRef} id={sectionId(selectedSection.label)} role="region" aria-label={selectedSection.label} className="sidebar-section-reveal fixed z-[100] w-72 overflow-y-auto rounded-2xl border border-emerald-100 bg-white p-3 text-slate-900 shadow-2xl shadow-slate-900/20" style={{ left: flyout.left, top: flyout.top, maxHeight: `calc(100dvh - ${flyout.top + 16}px)`, maxWidth: `calc(100vw - ${flyout.left + 12}px)` }}>
+      <div className="mb-2 flex items-center justify-between gap-2 border-b border-slate-100 px-2 pb-3"><h2 className="text-xs font-black uppercase tracking-wider text-emerald-800">{selectedSection.label}</h2><button type="button" onClick={() => { setFlyout(null); triggerRef.current?.focus() }} aria-label="Close section" className="rounded-lg p-1 hover:bg-emerald-50"><X className="h-4 w-4" /></button></div>
+      <div className="space-y-1">{renderItems(sectionItems(selectedSection), true, selectedSection.label)}</div>
+    </div>, document.body)}
+  </div>
 }

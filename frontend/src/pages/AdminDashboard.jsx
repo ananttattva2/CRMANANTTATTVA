@@ -5490,7 +5490,7 @@ export default function AdminDashboard() {
   const [modalOpen, setModalOpen] = useState(false)
   const [teamModalOpen, setTeamModalOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [activeActionUser, setActiveActionUser] = useState(null)
   const [detailsUser, setDetailsUser] = useState(null)
   const [editingUser, setEditingUser] = useState(null)
@@ -6206,7 +6206,7 @@ export default function AdminDashboard() {
         >
           <Sidebar
             currentUser={currentUser}
-            collapsed={sidebarCollapsed}
+            collapsed={sidebarCollapsed && !sidebarOpen}
             dashboardMode={dashboardMode}
             onDashboardModeChange={setDashboardMode}
             onToggleCollapsed={() => setSidebarCollapsed((value) => !value)}
