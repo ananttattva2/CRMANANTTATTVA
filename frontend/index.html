@@ -30,26 +30,40 @@
         }
 
         window.__CRM_SHOULD_IGNORE_BROWSER_NOISE__ = shouldIgnore;
+        function recoverStaleAsset() {
+          var retryKey = 'crm_asset_recovery_at';
+          var lastAttempt = Number(sessionStorage.getItem(retryKey) || 0);
+          if (Date.now() - lastAttempt < 60000) return;
+          sessionStorage.setItem(retryKey, String(Date.now()));
+          var url = new URL(window.location.href);
+          url.searchParams.set('_asset_refresh', String(Date.now()));
+          window.location.replace(url.toString());
+        }
+
         window.addEventListener('unhandledrejection', function (event) {
           if (shouldIgnore(event.reason)) {
             event.preventDefault();
+            return;
+          }
+          var message = getMessage(event.reason);
+          if (/failed to fetch dynamically imported module|importing a module script failed|chunkloaderror/i.test(message)) {
+            event.preventDefault();
+            recoverStaleAsset();
           }
         }, true);
 
         window.addEventListener('error', function (event) {
           var target = event.target;
           var assetUrl = target && (target.src || target.href) || '';
-          if (!/\/assets\/index-[^/]+\.(?:css|js)(?:\?.*)?$/i.test(assetUrl)) return;
-          var retryKey = 'crm_asset_recovery_attempted';
-          if (sessionStorage.getItem(retryKey)) return;
-          sessionStorage.setItem(retryKey, '1');
-          var url = new URL(window.location.href);
-          url.searchParams.set('_asset_refresh', String(Date.now()));
-          window.location.replace(url.toString());
+          if (/\/assets\/[^/]+\.(?:css|js)(?:\?.*)?$/i.test(assetUrl) || /failed to fetch dynamically imported module|module script.*mime type/i.test(String(event.message || ''))) {
+            recoverStaleAsset();
+          }
         }, true);
-        window.setTimeout(function () {
-          sessionStorage.removeItem('crm_asset_recovery_attempted');
-        }, 15000);
+
+        window.addEventListener('vite:preloadError', function (event) {
+          event.preventDefault();
+          recoverStaleAsset();
+        });
       })();
     </script>
   </head>

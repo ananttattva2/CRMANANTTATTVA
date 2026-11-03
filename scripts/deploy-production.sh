@@ -156,6 +156,32 @@ if [[ "$SERVER_BUILD" == true ]]; then
   CRM_FRONTEND_OUT_DIR="$NEXT_DIST" NODE_OPTIONS=--max-old-space-size=2048 npm run build --prefix frontend
   test -s "$NEXT_DIST/index.html"
 fi
+
+# Fail before the release switch if index.html references an entry asset that
+# is absent from the verified bundle. Returning the SPA fallback for a missing
+# module would otherwise surface in browsers as a misleading MIME-type error.
+mapfile -t FRONTEND_ENTRY_ASSETS < <(grep -oE '(src|href)="/assets/[^"?]+\.(js|css)' "$NEXT_DIST/index.html" | sed -E 's/^(src|href)="\///' | sort -u)
+if (( ${#FRONTEND_ENTRY_ASSETS[@]} == 0 )); then
+  echo "Frontend index does not reference a built JavaScript or CSS entry asset."
+  false
+fi
+for asset in "${FRONTEND_ENTRY_ASSETS[@]}"; do
+  if [[ ! -s "$NEXT_DIST/$asset" ]]; then
+    echo "Frontend entry asset is missing from the release: $asset"
+    false
+  fi
+done
+
+# Browsers with an already-open CRM tab may request the previous release's
+# lazy chunks after this switch. Keep recent content-hashed assets alongside
+# the new release; --no-clobber guarantees that the verified release wins.
+if [[ -d "$APP_DIR/frontend/dist/assets" ]]; then
+  mkdir -p "$NEXT_DIST/assets"
+  while IFS= read -r -d '' previous_asset; do
+    cp --preserve=timestamps --no-clobber -- "$previous_asset" "$NEXT_DIST/assets/"
+  done < <(find "$APP_DIR/frontend/dist/assets" -maxdepth 1 -type f -mtime -14 -print0)
+fi
+
 # mktemp creates a private directory; Nginx must be able to traverse the release root.
 chmod 755 "$NEXT_DIST"
 
@@ -208,6 +234,12 @@ nginx -t
 systemctl reload nginx
 curl --fail --silent --show-error --location --retry 5 --retry-delay 3 --retry-all-errors --max-time 20 "$PUBLIC_URL/api/health" >/dev/null
 curl --fail --silent --show-error --location --retry 5 --retry-delay 3 --retry-all-errors --max-time 20 "$PUBLIC_URL/" >/dev/null
+PUBLIC_ENTRY_ASSET="/${FRONTEND_ENTRY_ASSETS[0]}"
+ENTRY_CONTENT_TYPE="$(curl --fail --silent --show-error --location --retry 5 --retry-delay 2 --retry-all-errors --max-time 20 --head "$PUBLIC_URL$PUBLIC_ENTRY_ASSET" | tr -d '\r' | awk -F': *' 'tolower($1)=="content-type" { print tolower($2); exit }')"
+if [[ ! "$ENTRY_CONTENT_TYPE" =~ (javascript|text/css) ]]; then
+  echo "Production served an invalid module MIME type for $PUBLIC_ENTRY_ASSET: ${ENTRY_CONTENT_TYPE:-missing}"
+  false
+fi
 pm2 save
 
 FRONTEND_SWAPPED=false
