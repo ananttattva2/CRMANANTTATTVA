@@ -308,7 +308,7 @@ export default function LeadPipeline() {
       <section className="summary-kpi-grid" aria-label="Sales summary">
         <SummaryKpi label="Hot Leads" value={hotOpen.length} previous={previousHotOpen.length} comparisonLabel={comparisonLabel} icon={Flame} tone="hot" trend={trendData.map(item => item.hot)} onClick={() => open('hot', 'open')}/>
         <SummaryKpi label="Cold Leads" value={coldRows.length} previous={previousColdRows.length} comparisonLabel={comparisonLabel} icon={Snowflake} tone="cold" trend={trendData.map(item => item.cold)} onClick={() => open('cold')}/>
-        <SummaryKpi label="Total Revenue" value={total(unique)} previous={total(previousFiltered)} comparisonLabel={comparisonLabel} icon={CircleDollarSign} tone="revenue" trend={trendData.map(item => item.revenue)} money onClick={() => open()}/>
+        <SummaryKpi label="Total Expected Revenue" value={total(unique)} previous={total(previousFiltered)} comparisonLabel={comparisonLabel} icon={CircleDollarSign} tone="revenue" trend={trendData.map(item => item.revenue)} money onClick={() => open()}/>
         <SummaryKpi label="PO Value" value={poTotal(hotClosed)} previous={poTotal(previousHotClosed)} comparisonLabel={comparisonLabel} icon={WalletCards} tone="po" trend={trendData.map(item => item.revenue)} money onClick={() => open('hot', 'closed')}/>
       </section>
       <section className="summary-analytics-grid">
