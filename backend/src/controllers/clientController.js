@@ -1771,7 +1771,9 @@ exports.listClientMasterServices = async (req, res, options = {}) => {
   const leadId = String(baseIdentity?.selectedLead || (mongoose.Types.ObjectId.isValid(identity) && !explicitClientId ? identity : '')).trim();
   const lead = mongoose.Types.ObjectId.isValid(leadId)
     ? await Lead.findOne(combineAccessFilters({ _id: leadId }, leadVisibility))
-      .select('leadCode sourceLeadId company serviceSelections')
+      .select('leadCode sourceLeadId company serviceSelections closedBy closedByText closedAt '
+        + 'assignments.assignedServiceId assignments.serviceAssignmentId assignments.assignmentId '
+        + 'assignments.closedBy assignments.closedByText assignments.closedAt')
       .lean()
     : null;
   const leadCode = String(lead?.leadCode || lead?.sourceLeadId || baseIdentity?.leadCode || '').trim();
