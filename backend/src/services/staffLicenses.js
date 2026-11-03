@@ -59,7 +59,7 @@ async function ensureLicense(user) {
 }
 
 async function deliverLicense(user, license) {
-  if (!user.isActive || license.deliveredAt) return false;
+  if (license.deliveredAt) return false;
   // Never silently skip real delivery in development, and never log keys.
   const now = new Date();
   const claimed = await StaffLicense.findOneAndUpdate({
@@ -70,7 +70,7 @@ async function deliverLicense(user, license) {
   try {
     const code = decryptCode(claimed.encryptedCode);
     const url = String(process.env.PUBLIC_URL || 'https://crmananttattva.com').replace(/\/$/, '') + '/license';
-    await mailer.sendMail(user.email, 'Your Anant Tattva CRM access license', `<div style="background:#f0f7f5;padding:32px 16px;font-family:Arial,sans-serif;color:#12332e"><div style="max-width:560px;margin:auto;background:white;border-radius:24px;padding:32px"><p style="color:#087f72;letter-spacing:2px;font-size:12px">ANANT TATTVA · CRM ACCESS</p><h1>Your workspace is ready</h1><p>Hello ${escapeHtml(user.name || 'team member')},</p><p>This is your personal <b>${LABELS[claimed.roleTag]}</b> license. Enter it before signing in with your registered email, password and OTP.</p><div style="padding:24px 10px;background:#e8f7f1;border:1px solid #a4d9c8;border-radius:14px;text-align:center;font-family:monospace;font-size:20px;font-weight:bold;word-break:break-all">${code}</div><p style="margin-top:28px"><a style="background:#087f72;color:white;padding:14px 24px;border-radius:10px;text-decoration:none;display:inline-block" href="${escapeHtml(url)}">Open secure sign in</a></p><p style="font-size:13px;color:#526660">Keep this license private. It only works with your account. If your access role or registered email changes, a replacement will be emailed to you.</p></div></div>`);
+    await mailer.sendMail(user.email, 'Your Anant Tattva CRM access license', `<div style="background:#f0f7f5;padding:32px 16px;font-family:Arial,sans-serif;color:#12332e"><div style="max-width:560px;margin:auto;background:white;border-radius:24px;padding:32px"><p style="color:#087f72;letter-spacing:2px;font-size:12px">ANANT TATTVA · CRM ACCESS</p><h1>${user.isActive ? 'Your workspace is ready' : 'Your personal CRM license'}</h1><p>Hello ${escapeHtml(user.name || 'team member')},</p><p>This is your personal <b>${LABELS[claimed.roleTag]}</b> license. Enter it before signing in with your registered email, password and OTP.</p><div style="padding:24px 10px;background:#e8f7f1;border:1px solid #a4d9c8;border-radius:14px;text-align:center;font-family:monospace;font-size:20px;font-weight:bold;word-break:break-all">${code}</div>${!user.isActive ? '<p><b>Your account is currently inactive.</b> Keep this key for your records. Sign in remains disabled until your administrator reactivates your account.</p>' : ''}<p style="margin-top:28px"><a style="background:#087f72;color:white;padding:14px 24px;border-radius:10px;text-decoration:none;display:inline-block" href="${escapeHtml(url)}">Open secure sign in</a></p><p style="font-size:13px;color:#526660">Keep this license private. It only works with your account. If your access role or registered email changes, a replacement will be emailed to you.</p></div></div>`);
     await StaffLicense.updateOne({ _id: claimed._id, codeHash: claimed.codeHash }, { $set: { deliveredAt: new Date() }, $unset: { leaseUntil: 1, retryAt: 1 } });
     return true;
   } catch (error) {
@@ -92,7 +92,7 @@ function syncStaffLicenses() {
         const license = await ensureLicense(user);
         summary.accounts++;
         if (await deliverLicense(user, license)) summary.delivered++;
-        else if (user.isActive && !license.deliveredAt) summary.pending++;
+        else if (!license.deliveredAt) summary.pending++;
       } catch (error) {
         summary.failed++;
         console.error('Staff license reconciliation failed', { userId: String(user._id), code: error.code || 'SYNC_FAILED' });

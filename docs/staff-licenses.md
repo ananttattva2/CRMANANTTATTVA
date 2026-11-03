@@ -17,10 +17,10 @@ keys nor ciphertext are included in user DTOs or logs. Preserve `JWT_SECRET`
 with the existing production secrets: it also derives the encryption key.
 
 Deployment runs `node backend/src/scripts/syncStaffLicenses.js` before switching
-the frontend. It creates keys for existing accounts, emails active accounts, and
-stops the rollout if any active account remains pending or provisioning fails.
-Inactive accounts receive a key but cannot validate it or receive access emails
-until reactivated. Email status records mail-provider acceptance, not inbox
+the frontend. It creates keys for existing accounts, emails every account, and
+stops the rollout if any account remains pending or provisioning fails.
+Inactive accounts also receive their key by email, with an inactive-account
+notice. Their key cannot be validated until the account is reactivated. Email status records mail-provider acceptance, not inbox
 delivery or a read receipt.
 
 New accounts are provisioned immediately. Role-family or email changes rotate

@@ -10,24 +10,24 @@ export default function AuthLayout({ eyebrow, title, subtitle, children }) {
   useEffect(() => {
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const context = gsap.context(() => {
-    if (reducedMotion) return
-    gsap.fromTo(panelRef.current, { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: 'power3.out' })
-    gsap.fromTo(visualRef.current, { scale: 0.97, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.9, ease: 'power3.out' })
-    gsap.to(visualRef.current?.querySelectorAll('.eco-float'), {
-      y: -12,
-      duration: 2.8,
-      ease: 'sine.inOut',
-      repeat: -1,
-      yoyo: true,
-      stagger: 0.18
-    })
+      if (reducedMotion) return
+      gsap.fromTo(panelRef.current, { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: 'power3.out' })
+      gsap.fromTo(visualRef.current, { scale: 0.97, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.9, ease: 'power3.out' })
+      gsap.to(visualRef.current?.querySelectorAll('.eco-float'), {
+        y: -12,
+        duration: 2.8,
+        ease: 'sine.inOut',
+        repeat: -1,
+        yoyo: true,
+        stagger: 0.18
+      })
     })
     return () => context.revert()
   }, [])
 
   return (
     <main className="auth-page min-h-[100dvh] overflow-hidden bg-[#f7faf8] text-slate-950">
-      <div className="auth-page-grid grid min-h-[100dvh] lg:h-[100dvh] lg:grid-cols-[1.08fr_0.92fr]">
+      <div className="auth-page-grid grid min-h-[100dvh] lg:grid-cols-[1.08fr_0.92fr]">
         <section ref={visualRef} className="relative hidden min-h-0 overflow-hidden bg-[#f5fbf8] px-8 py-6 lg:block">
           <div className="relative z-10 flex h-full flex-col">
             <div className="flex items-center gap-5">

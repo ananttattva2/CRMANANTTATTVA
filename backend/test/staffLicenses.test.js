@@ -94,7 +94,6 @@ test('unchanged accounts keep the same key without repeated writes or emails', a
   t.mock.method(StaffLicense, 'findOneAndUpdate', () => assert.fail('Must not regenerate unchanged key'));
   assert.equal((await service.ensureLicense(user))._id, license._id);
   assert.equal(await service.deliverLicense(user, { ...license, deliveredAt: new Date() }), false);
-  assert.equal(await service.deliverLicense({ ...user, isActive: false }, license), false);
 });
 test('role or email changes rotate the key and reset delivery markers atomically', async t => {
   t.mock.method(StaffLicense, 'findOne', () => query(license));
@@ -126,6 +125,15 @@ test('delivery sends the encrypted personal key only to its owner and records ac
   assert.ok(sent[2].includes('/license'));
   assert.ok(update.$set.deliveredAt instanceof Date);
 });
+test('inactive accounts receive their personal key while validation still blocks access', async t => {
+  t.mock.method(StaffLicense, 'findOneAndUpdate', () => query({ ...license, encryptedCode: service.encryptCode(code), attempts: 1 }));
+  let html;
+  t.mock.method(require('../src/utils/mailer'), 'sendMail', async (_to, _subject, body) => { html = body; });
+  t.mock.method(StaffLicense, 'updateOne', async () => ({}));
+  assert.equal(await service.deliverLicense({ ...user, isActive: false }, license), true);
+  assert.ok(html.includes('Your account is currently inactive'));
+});
+
 test('failed emails stay pending with backoff; another worker cannot duplicate a leased delivery', async t => {
   t.mock.method(StaffLicense, 'findOneAndUpdate', () => query({ ...license, encryptedCode: service.encryptCode(code), attempts: 2 }));
   t.mock.method(require('../src/utils/mailer'), 'sendMail', async () => { throw Object.assign(new Error('Unavailable'), { code: 'TEST_MAIL_FAILURE' }); });
