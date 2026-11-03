@@ -91,27 +91,41 @@ exports.closeCold = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 exports.pipeline = async (req, res, next) => {
+  const startedAt = Date.now();
   try {
     const [hotAccess, coldAccess] = await Promise.all([leadAccessFilter(req.user), temporaryLeadAccessFilter(req.user)]);
     const [hot, cold] = await Promise.all([
       Lead.find(hotAccess).select('communicationModeParent communicationMode leadCode company status serviceSelections.assignedServiceId serviceSelections.closedBy serviceSelections.closedByText serviceSelections.closedAt serviceSelections.status assignments.assignedServiceId assignments.closedBy assignments.closedByText assignments.closedAt assignments.poStatus assignments.poApprovalStatus assignments.poNumber assignments.poDate assignments.poFinancialYear assignments.poAmount assignments.poYearRows.poNumber assignments.poYearRows.poNo assignments.poYearRows.poDate assignments.poYearRows.poFinancialYear assignments.poYearRows.fy assignments.poYearRows.poAmount assignments.originalPoDetails.poNumber assignments.originalPoDetails.poDate assignments.originalPoDetails.poFinancialYear assignments.originalPoDetails.poAmount closedAt closedBy closedByText createdBy createdByName generatedForUser generatedForName createdOnBehalfOfUser createdOnBehalfOfName importedCreatedBy createdAt').populate('generatedForUser', 'name email isActive').populate('createdOnBehalfOfUser', 'name email isActive').populate('createdBy', 'name email isActive').maxTimeMS(15000).lean(),
-      TemporaryLead.find(coldAccess).select('communicationMode tempLeadCode clientName status convertedLead pipelineClosedAt createdBy createdByName createdAt').populate('createdBy', 'name email isActive').lean()
+      TemporaryLead.find(coldAccess).select('communicationMode tempLeadCode clientName status convertedLead pipelineClosedAt createdBy createdByName createdAt').populate('createdBy', 'name email isActive').maxTimeMS(15000).lean()
 
     ]);
-    const entries = await Revenue.find({ $or: [{ leadKind: 'hot', leadId: { $in: hot.map(l => l._id) } }, { leadKind: 'cold', leadId: { $in: cold.map(l => l._id) } }] }).sort({ createdAt: 1 }).lean();
-    // Converted Cold records remain visible as closed conversion history; Hot owns current business revenue.
-    const origins = await TemporaryLead.find({ status: 'CONVERTED', convertedLead: { $in: hot.map(l => l._id) } }).select('_id convertedLead').lean();
-    const inherited = await Revenue.find({ leadKind: 'cold', leadId: { $in: origins.map(l => l._id) } }).lean();
+    const entries = await Revenue.find({ $or: [{ leadKind: 'hot', leadId: { $in: hot.map(l => l._id) } }, { leadKind: 'cold', leadId: { $in: cold.map(l => l._id) } }] })
+      .select('leadKind leadId amountPaise').sort({ createdAt: 1 }).maxTimeMS(15000).lean();
+    const revenueByLead = new Map();
+    for (const entry of entries) {
+      const key = `${entry.leadKind}:${entry.leadId}`;
+      revenueByLead.set(key, (revenueByLead.get(key) || 0) + Number(entry.amountPaise || 0));
+    }
+    // Converted Cold records remain available as audit history, while their
+    // revenue is inherited by the current Hot business lead.
+    const originIdsByHot = new Map();
+    for (const lead of cold) {
+      if (lead.status !== 'CONVERTED' || !lead.convertedLead) continue;
+      const key = String(lead.convertedLead);
+      if (!originIdsByHot.has(key)) originIdsByHot.set(key, []);
+      originIdsByHot.get(key).push(String(lead._id));
+    }
     const rows = [
-      ...hot.map(lead => ({ kind: 'hot', lead, closed: hotClosed(lead), inheritedIds: origins.filter(o => String(o.convertedLead) === String(lead._id)).map(o => String(o._id)) })),
+      ...hot.map(lead => ({ kind: 'hot', lead, closed: hotClosed(lead), inheritedIds: originIdsByHot.get(String(lead._id)) || [] })),
       ...cold.map(lead => ({ kind: 'cold', lead, closed: lead.status === 'CONVERTED' || Boolean(lead.pipelineClosedAt), inheritedIds: [] }))
     ].map(({ kind, lead, closed, inheritedIds }) => {
-      const own = entries.filter(e => e.leadKind === kind && String(e.leadId) === String(lead._id));
-      const groups = groupsFrom([...own, ...inherited.filter(e => inheritedIds.includes(String(e.leadId)))]);
       const owner = pipelineOwnerDetails(lead, kind);
-      return { communicationModeParent: String(lead.communicationModeParent || '').trim(), communicationMode: String(lead.communicationMode || '').trim(), canonicalKey: kind === 'cold' && lead.status === 'CONVERTED' && lead.convertedLead ? `hot:${lead.convertedLead}` : `${kind}:${lead._id}`, converted: kind === 'cold' && lead.status === 'CONVERTED', convertedLeadId: kind === 'cold' && lead.convertedLead ? String(lead.convertedLead) : undefined, poAmountPaise: kind === 'hot' ? purchaseOrders(lead).reduce((n, po) => n + po.amountPaise, 0) : 0, id: String(lead._id), kind, state: closed ? 'closed' : 'open', code: lead.leadCode || lead.tempLeadCode, company: lead.company || lead.clientName, owner: owner.name, ownerId: owner.id, ownerActive: owner.active, serviceCount: kind === 'hot' ? lead.serviceSelections?.length || 1 : 0, groups, revenuePaise: groups.reduce((n, g) => n + g.amountPaise, 0), createdAt: lead.createdAt };
+      const ownRevenue = revenueByLead.get(`${kind}:${lead._id}`) || 0;
+      const inheritedRevenue = inheritedIds.reduce((sum, id) => sum + (revenueByLead.get(`cold:${id}`) || 0), 0);
+      return { communicationModeParent: String(lead.communicationModeParent || '').trim(), communicationMode: String(lead.communicationMode || '').trim(), canonicalKey: kind === 'cold' && lead.status === 'CONVERTED' && lead.convertedLead ? `hot:${lead.convertedLead}` : `${kind}:${lead._id}`, converted: kind === 'cold' && lead.status === 'CONVERTED', convertedLeadId: kind === 'cold' && lead.convertedLead ? String(lead.convertedLead) : undefined, poAmountPaise: kind === 'hot' ? purchaseOrders(lead).reduce((n, po) => n + po.amountPaise, 0) : 0, id: String(lead._id), kind, state: closed ? 'closed' : 'open', code: lead.leadCode || lead.tempLeadCode, company: lead.company || lead.clientName, owner: owner.name, ownerId: owner.id, ownerActive: owner.active, serviceCount: kind === 'hot' ? lead.serviceSelections?.length || 1 : 0, revenuePaise: ownRevenue + inheritedRevenue, createdAt: lead.createdAt };
 
     });
+    res.set('Server-Timing', `pipeline;dur=${Date.now() - startedAt}`);
     res.json({ ok: true, rows });
   } catch (error) { next(error); }
 };

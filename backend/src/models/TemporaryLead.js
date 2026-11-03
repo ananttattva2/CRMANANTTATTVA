@@ -32,5 +32,6 @@ const TemporaryLeadSchema = new mongoose.Schema({
 
 TemporaryLeadSchema.index({ createdBy: 1, createdAt: -1 });
 TemporaryLeadSchema.index({ status: 1, createdAt: -1 });
+TemporaryLeadSchema.index({ status: 1, convertedLead: 1 });
 
 module.exports = mongoose.model('TemporaryLead', TemporaryLeadSchema);

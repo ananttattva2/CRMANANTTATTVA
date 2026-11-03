@@ -99,7 +99,7 @@ test('converted cold leads remain in Cold Closed history and link to one unique 
  };
  const context={exports:{},require:name=>deps[name]};
  vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../src/controllers/leadRevenueController.js'),'utf8'),context);
- const res={json(data){this.data=data}};
+ const res={set(){},json(data){this.data=data}};
  await context.exports.pipeline({user:{_id:'u'}},res,e=>{throw e});
  assert.equal(res.data.rows.length,3);
  assert.equal(res.data.rows.find(r=>r.kind==='hot').revenuePaise,1500000);
@@ -117,6 +117,9 @@ test('converted cold leads remain in Cold Closed history and link to one unique 
  assert.equal(current.some(r=>r.kind==='cold'&&r.converted),false);
  assert.equal(current.filter(r=>r.kind==='hot').length,1);
  assert.equal(current.filter(r=>r.kind==='cold').length,1);
+ assert.equal(coldReads,1);
+ assert.equal(revenueReads,1);
+ assert.equal(Object.hasOwn(res.data.rows[0],'groups'),false);
 });
 
 

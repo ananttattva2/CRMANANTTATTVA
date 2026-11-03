@@ -870,6 +870,14 @@
 @media(prefers-reduced-motion:reduce) { .pipeline-page *, .pipeline-page *::before, .pipeline-page *::after { transition:none!important; animation:none!important; } }
 .pipeline-period-context select { padding:8px 12px; border:1px solid #d7e5e0; border-radius:8px; background:white; color:#183c40; }
 .pipeline-filter-empty { margin-top:14px; padding:14px; border-radius:10px; background:#f0f7f5; color:#42685d; font-size:13px; }
+.pipeline-skeleton { display:grid; gap:16px; animation:pipeline-skeleton-in .2s ease-out; }
+.pipeline-skeleton-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.pipeline-skeleton-cards i,.pipeline-skeleton-table i { display:block; border-radius:18px; background:linear-gradient(90deg,#eef5f3 25%,#f8fbfa 45%,#eef5f3 65%); background-size:220% 100%; animation:pipeline-skeleton-shimmer 1.2s linear infinite; }
+.pipeline-skeleton-cards i { height:220px; }
+.pipeline-skeleton-table { display:grid; gap:1px; overflow:hidden; padding:16px; border:1px solid #dce9e6; border-radius:18px; background:#fff; }
+.pipeline-skeleton-table i { height:48px; border-radius:5px; }
+@keyframes pipeline-skeleton-shimmer { to { background-position:-220% 0; } }
+@keyframes pipeline-skeleton-in { from { opacity:0; } }
 @media(min-width:1001px) { .pipeline-content-layout .traffic-source-list { max-height:max(340px,calc(100dvh - 470px)); overflow:auto; } }
 
 /* Sales summary workspace */
@@ -910,10 +918,11 @@
 .sales-rep-table-wrap th { position:sticky; top:0; z-index:2; padding:12px 14px; border-right:1px solid #d9e5e8; border-bottom:1px solid #d5e2e5; color:#405872; background:#edf4f6; font-size:10px; font-weight:950; text-align:center; text-transform:uppercase; letter-spacing:.035em; }
 .sales-rep-table-wrap thead tr:nth-child(2) th { top:39px; background:#f5f9fa; }
 .sales-rep-table-wrap thead tr:first-child th:first-child { text-align:left; }
-.sales-rep-col-user { width:24%; }
-.sales-rep-col-metric { width:10%; }
-.sales-rep-col-cold { width:12%; }
-.sales-rep-col-source { width:44%; }
+.sales-rep-col-user { width:22%; }
+.sales-rep-col-total { width:10%; }
+.sales-rep-col-metric { width:9%; }
+.sales-rep-col-cold { width:11%; }
+.sales-rep-col-source { width:39%; }
 .sales-rep-table-wrap th small { color:#8192a5; font-size:8px; text-transform:uppercase; letter-spacing:.05em; }
 .sales-rep-table-wrap td { height:86px; padding:11px 14px; border-right:1px solid #e8eeee; border-bottom:1px solid #e5edeb; color:#203650; background:#fff; font-size:11px; vertical-align:middle; text-align:center; }
 .sales-rep-table-wrap tbody tr:nth-child(even) td { background:#fbfdfc; }
@@ -928,6 +937,7 @@
 .sales-rep-metric:disabled { cursor:default; }
 .sales-rep-metric>small { color:#7e91a3; font-size:7px; font-weight:900; text-transform:uppercase; letter-spacing:.05em; }
 .sales-rep-metric>strong { color:#f05c19; font-size:17px; font-weight:950; }
+.sales-rep-metric.total>strong { color:#0e405d; }
 .sales-rep-metric.closed>strong { color:#07855f; }
 .sales-rep-metric.cold>strong { color:#1264e9; }
 .sales-rep-metric>span { display:inline-flex; align-items:center; gap:3px; color:#7b8d9e; font-size:8px; font-weight:800; white-space:nowrap; }
@@ -956,4 +966,5 @@
   .sales-rep-comparison p { margin-left:0; }
   .pipeline-sales-workspace .pipeline-kind-card { min-height:200px; }
   .sales-rep-pagination { align-items:flex-start; flex-direction:column; }
+  .pipeline-skeleton-cards { grid-template-columns:1fr; }
 }

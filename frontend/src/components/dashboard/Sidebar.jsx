@@ -62,7 +62,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
     return section.items.filter(canShowItem).flatMap(item => item.label === 'Dashboard' ? [
       { label: 'Application Dashboard', icon: BarChart3, path: '/overall-dashboard' },
       canChooseDashboard
-        ? { label: 'Sales Dashboard', icon: BriefcaseBusiness, path: '/dashboard', dashboardMode: 'sales' }
+        ? { label: 'Sales Dashboard', icon: BriefcaseBusiness, path: '/sales-dashboard', dashboardMode: 'sales' }
         : { label: 'My Dashboard', icon: Gauge, path: '/dashboard' },
       ...item.children.filter(canShowItem)
     ] : [item])

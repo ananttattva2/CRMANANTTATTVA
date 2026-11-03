@@ -2,7 +2,8 @@ import TrafficSources from '../components/leads/TrafficSources';
 import { trafficSourceHierarchy, trafficSourceKey } from '../utils/trafficSources.mjs';
 import { currentPipelineRows, uniquePipelineRows, pipelinePeriodRange, previousPipelinePeriodRange, inPipelinePeriod } from '../utils/leadPipeline.mjs';
 import { salesRepSummary } from '../utils/salesRepSummary.mjs';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { ArrowDown, ArrowUp, ArrowUpRight, Download, Flame, Minus, Search, Snowflake, Users, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import DashboardShell from '../components/dashboard/DashboardShell';
@@ -10,7 +11,19 @@ import DashboardViewTabs from '../components/dashboard/DashboardViewTabs';
 import LeadRevenuePanel, { revenueMoney } from '../components/leads/LeadRevenuePanel';
 import useCrmRefresh from '../hooks/useCrmRefresh';
 import api from '../services/api';
+import { adminRoles, hasAnyRole } from '../constants/dashboard';
 import '../styles/lead-pipeline.css';
+
+function storedUser() {
+  try { return JSON.parse(localStorage.getItem('user') || 'null'); } catch { return null; }
+}
+
+function PipelineSkeleton() {
+  return <div className="pipeline-skeleton" role="status" aria-label="Loading Summary Dashboard">
+    <div className="pipeline-skeleton-cards"><i/><i/></div>
+    <div className="pipeline-skeleton-table"><i/><i/><i/><i/></div>
+  </div>;
+}
 
 function RepMetric({ value, previous, comparisonLabel, tone, onClick, label }) {
   const difference = value - previous;
@@ -68,15 +81,20 @@ function SalesRepTable({ reps, comparisonLabel, range, previousRange, onMetricCl
     </div>}
     <div className="sales-rep-table-wrap">
       <table>
-        <colgroup><col className="sales-rep-col-user"/><col className="sales-rep-col-metric"/><col className="sales-rep-col-metric"/><col className="sales-rep-col-cold"/><col className="sales-rep-col-source"/></colgroup>
-        <thead><tr><th rowSpan="2">User Name</th><th colSpan="2">Hot Lead</th><th rowSpan="2">Cold Lead<br/><small>Open</small></th><th rowSpan="2">Major Traffic Source<br/><small>Top 3</small></th></tr><tr><th>Open</th><th>Closed</th></tr></thead>
-        <tbody>{visibleReps.map((rep) => <tr key={rep.owner}>
-          <td><span className="sales-rep-user"><i aria-hidden="true">{rep.owner.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</i><b>{rep.owner.toUpperCase()}</b></span></td>
-          <td><RepMetric value={rep.hotOpen} previous={rep.previousHotOpen} comparisonLabel={comparisonLabel} tone="hot" label={`${rep.owner} Hot Open`} onClick={() => onMetricClick(rep.owner, 'hot', 'open')} /></td>
-          <td><RepMetric value={rep.hotClosed} previous={rep.previousHotClosed} comparisonLabel={comparisonLabel} tone="closed" label={`${rep.owner} Hot Closed`} onClick={() => onMetricClick(rep.owner, 'hot', 'closed')} /></td>
-          <td><RepMetric value={rep.coldOpen} previous={rep.previousColdOpen} comparisonLabel={comparisonLabel} tone="cold" label={`${rep.owner} Cold Open`} onClick={() => onMetricClick(rep.owner, 'cold', '')} /></td>
-          <td><div className="sales-rep-sources">{rep.trafficSources.length ? rep.trafficSources.map((source, index) => <button type="button" key={source.label} onClick={() => onSourceClick(rep.owner, source)} aria-label={`View ${rep.owner} clients from ${source.label}`}><em>{index + 1}</em>{source.label}<b>{source.count}</b></button>) : <small>No source recorded in this period</small>}</div></td>
-        </tr>)}</tbody>
+        <colgroup><col className="sales-rep-col-user"/><col className="sales-rep-col-total"/><col className="sales-rep-col-metric"/><col className="sales-rep-col-metric"/><col className="sales-rep-col-cold"/><col className="sales-rep-col-source"/></colgroup>
+        <thead><tr><th rowSpan="2">User Name</th><th rowSpan="2">Total Hot Leads</th><th colSpan="2">Hot Lead</th><th rowSpan="2">Cold Lead<br/><small>Open</small></th><th rowSpan="2">Major Traffic Source<br/><small>Top 3</small></th></tr><tr><th>Open</th><th>Closed</th></tr></thead>
+        <tbody>{visibleReps.map((rep) => {
+          const totalHot = rep.hotOpen + rep.hotClosed;
+          const previousTotalHot = rep.previousHotOpen + rep.previousHotClosed;
+          return <tr key={rep.owner}>
+            <td><span className="sales-rep-user"><i aria-hidden="true">{rep.owner.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</i><b>{rep.owner.toUpperCase()}</b></span></td>
+            <td><RepMetric value={totalHot} previous={previousTotalHot} comparisonLabel={comparisonLabel} tone="total" label={`${rep.owner} Total Hot Leads`} onClick={() => onMetricClick(rep.owner, 'hot', '')} /></td>
+            <td><RepMetric value={rep.hotOpen} previous={rep.previousHotOpen} comparisonLabel={comparisonLabel} tone="hot" label={`${rep.owner} Hot Open`} onClick={() => onMetricClick(rep.owner, 'hot', 'open')} /></td>
+            <td><RepMetric value={rep.hotClosed} previous={rep.previousHotClosed} comparisonLabel={comparisonLabel} tone="closed" label={`${rep.owner} Hot Closed`} onClick={() => onMetricClick(rep.owner, 'hot', 'closed')} /></td>
+            <td><RepMetric value={rep.coldOpen} previous={rep.previousColdOpen} comparisonLabel={comparisonLabel} tone="cold" label={`${rep.owner} Cold Open`} onClick={() => onMetricClick(rep.owner, 'cold', '')} /></td>
+            <td><div className="sales-rep-sources">{rep.trafficSources.length ? rep.trafficSources.map((source, index) => <button type="button" key={source.label} onClick={() => onSourceClick(rep.owner, source)} aria-label={`View ${rep.owner} clients from ${source.label}`}><em>{index + 1}</em>{source.label}<b>{source.count}</b></button>) : <small>No source recorded in this period</small>}</div></td>
+          </tr>;
+        })}</tbody>
       </table>
       {!reps.length && <p className="pipeline-empty">No sales representatives match these filters.</p>}
     </div>
@@ -89,14 +107,16 @@ function SalesRepTable({ reps, comparisonLabel, range, previousRange, onMetricCl
 }
 
 export default function LeadPipeline() {
-  const [currentUser, setCurrentUser] = useState(null);
+  const location = useLocation();
+  const summaryView = location.pathname.startsWith('/summary-dashboard');
+  const [currentUser] = useState(storedUser);
   const [rows, setRows] = useState([]);
   const [sourceModes, setSourceModes] = useState([]);
-  const [activeUsers, setActiveUsers] = useState(null);
   const [sourceOptionsUnavailable, setSourceOptionsUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
+  const deferredQuery = useDeferredValue(query);
   const [owner, setOwner] = useState('');
   const [period, setPeriod] = useState('all');
   const [periodDate, setPeriodDate] = useState(() => `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`);
@@ -116,13 +136,20 @@ export default function LeadPipeline() {
   async function load() {
     const version = ++sequence.current;
     try {
-      const [me, result, modeOptions, userOptions] = await Promise.all([api.get('/auth/me'), api.get('/leads/pipeline-revenue?view=sales-rep-v4'), api.get('/leads/dropdown-options').catch(() => null), api.get('/auth/users').catch(() => null)]);
+      const result = await api.get(summaryView ? '/leads/summary-dashboard' : '/leads/pipeline-revenue?view=sales-rep-v6');
       if (version !== sequence.current) return;
-      setCurrentUser(me.data.user); setRows(result.data.rows || []); setSourceModes(modeOptions?.data?.options?.communicationMode || []); setActiveUsers(userOptions?.data?.users || null); setSourceOptionsUnavailable(!modeOptions); setError('');
+      setRows(result.data.rows || []); setError('');
     } catch (e) { if (version === sequence.current) setError(e.response?.data?.error || 'Unable to load pipeline.'); }
     finally { if (version === sequence.current) setLoading(false); }
   }
   useEffect(() => { void load(); return () => { sequence.current++; }; }, []);
+  useEffect(() => {
+    let active = true;
+    api.get('/leads/dropdown-options').then((response) => {
+      if (active) setSourceModes(response.data?.options?.communicationMode || []);
+    }).catch(() => { if (active) setSourceOptionsUnavailable(true); });
+    return () => { active = false; };
+  }, []);
   useCrmRefresh(load);
   useEffect(() => {
     if (selection && dialog.current && !dialog.current.open) dialog.current.showModal();
@@ -132,32 +159,33 @@ export default function LeadPipeline() {
     if (serviceView && serviceDialog.current && !serviceDialog.current.open) serviceDialog.current.showModal();
     if (!serviceView && serviceDialog.current?.open) serviceDialog.current.close();
   }, [serviceView]);
-  const baseFiltered = useMemo(() => rows.filter(r => (!owner || r.owner === owner) && `${r.company} ${r.code} ${r.owner}`.toLowerCase().includes(query.trim().toLowerCase())), [rows, query, owner]);
+  const baseFiltered = useMemo(() => rows.filter(r => (!owner || r.owner === owner) && `${r.company} ${r.code} ${r.owner}`.toLowerCase().includes(deferredQuery.trim().toLowerCase())), [rows, deferredQuery, owner]);
   const filtered = useMemo(() => currentPipelineRows(baseFiltered.filter(r => inPipelinePeriod(r.createdAt, range))), [baseFiltered, range]);
   const previousFiltered = useMemo(() => previousRange ? currentPipelineRows(baseFiltered.filter(r => inPipelinePeriod(r.createdAt, previousRange))) : [], [baseFiltered, previousRange]);
-  const unique = uniquePipelineRows(filtered);
+  const unique = useMemo(() => uniquePipelineRows(filtered), [filtered]);
   const trafficSources = useMemo(() => trafficSourceHierarchy(filtered, sourceModes), [filtered, sourceModes]);
-  const listed = selection ? (selection.kind ? filtered : unique).filter(r => (!selection.kind || r.kind === selection.kind) && (!selection.state || r.state === selection.state) && (!selection.owner || r.owner === selection.owner) && (!selection.sources?.length || selection.sources.includes(trafficSourceKey(r.communicationMode)))) : [];
+  const listed = useMemo(() => selection ? (selection.kind ? filtered : unique).filter(r => (!selection.kind || r.kind === selection.kind) && (!selection.state || r.state === selection.state) && (!selection.owner || r.owner === selection.owner) && (!selection.sources?.length || selection.sources.includes(trafficSourceKey(r.communicationMode)))) : [], [filtered, selection, unique]);
   const total = source => source.reduce((n, r) => n + r.revenuePaise, 0);
   const poTotal = source => source.reduce((n, r) => n + (r.poAmountPaise || 0), 0);
-  const hotRows = filtered.filter((row) => row.kind === 'hot');
-  const coldRows = filtered.filter((row) => row.kind === 'cold');
-  const hotOpen = hotRows.filter((row) => row.state === 'open');
-  const hotClosed = hotRows.filter((row) => row.state === 'closed');
-  const previousHotRows = previousFiltered.filter((row) => row.kind === 'hot');
-  const previousColdRows = previousFiltered.filter((row) => row.kind === 'cold');
-  const previousHotOpen = previousHotRows.filter((row) => row.state === 'open');
-  const previousHotClosed = previousHotRows.filter((row) => row.state === 'closed');
-  const activeOwnerIndex = useMemo(() => activeUsers ? {
-    ids: new Set(activeUsers.flatMap((user) => [user._id, user.id, user.crmUserId].filter(Boolean).map(String))),
-    names: new Set(activeUsers.flatMap((user) => [user.name, user.email].filter(Boolean).map((value) => String(value).trim().toLowerCase())))
-  } : null, [activeUsers]);
+  const { hotRows, coldRows, hotOpen, hotClosed, previousColdRows, previousHotOpen, previousHotClosed } = useMemo(() => {
+    const nextHotRows = filtered.filter((row) => row.kind === 'hot');
+    const nextColdRows = filtered.filter((row) => row.kind === 'cold');
+    const priorHotRows = previousFiltered.filter((row) => row.kind === 'hot');
+    const priorColdRows = previousFiltered.filter((row) => row.kind === 'cold');
+    return {
+      hotRows: nextHotRows,
+      coldRows: nextColdRows,
+      hotOpen: nextHotRows.filter((row) => row.state === 'open'),
+      hotClosed: nextHotRows.filter((row) => row.state === 'closed'),
+      previousColdRows: priorColdRows,
+      previousHotOpen: priorHotRows.filter((row) => row.state === 'open'),
+      previousHotClosed: priorHotRows.filter((row) => row.state === 'closed')
+    };
+  }, [filtered, previousFiltered]);
   const activeOwnerRows = useMemo(() => (source) => source.filter((row) => {
     if (row.owner === 'Unassigned') return true;
-    if (row.ownerActive === false) return false;
-    if (!activeOwnerIndex) return true;
-    return (row.ownerId && activeOwnerIndex.ids.has(String(row.ownerId))) || activeOwnerIndex.names.has(String(row.owner || '').trim().toLowerCase());
-  }), [activeOwnerIndex]);
+    return row.ownerActive !== false;
+  }), []);
   const ownerOptions = useMemo(() => [...new Set(activeOwnerRows(rows).map((row) => row.owner).filter((name) => name && name !== 'Unassigned'))].sort(), [activeOwnerRows, rows]);
   useEffect(() => { if (owner && !ownerOptions.includes(owner)) setOwner(''); }, [owner, ownerOptions]);
   const salesReps = useMemo(() => salesRepSummary(activeOwnerRows(filtered), activeOwnerRows(previousFiltered), sourceModes), [activeOwnerRows, filtered, previousFiltered, sourceModes]);
@@ -193,7 +221,7 @@ export default function LeadPipeline() {
     finally { setClosing(false); }
   }
   return <DashboardShell currentUser={currentUser}><div className="pipeline-page">
-    <DashboardViewTabs />
+    {(summaryView || hasAnyRole(currentUser, adminRoles)) && <DashboardViewTabs />}
     <header className="pipeline-header"><div className="pipeline-heading"><h1>Revenue Pipeline</h1><p>A clear view of your hot and cold pipeline, with locked revenue history.</p></div><div className="pipeline-filters"><label><Search size={17}/><input aria-label="Search pipeline" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search company, lead ID or owner…"/></label><select aria-label="Filter by owner" value={owner} onChange={e => setOwner(e.target.value)}><option value="">All active owners</option>{ownerOptions.map(name => <option key={name} value={name}>{name.toUpperCase()}</option>)}</select></div></header>
     <section className="pipeline-period-bar" aria-label="Pipeline date filters">
       <div className="pipeline-period-tabs" role="group" aria-label="Filter period">{[['all', 'All time'], ['week', 'Week'], ['month', 'Month'], ['year', 'Year']].map(([value, label]) => <button key={value} type="button" aria-pressed={period === value} onClick={() => setPeriod(value)}>{label}</button>)}</div>
@@ -201,7 +229,7 @@ export default function LeadPipeline() {
       <button className="pipeline-export" type="button" disabled={loading || !unique.length} onClick={() => exportRows(unique, `pipeline-${period}`)}><Download size={16}/>Export</button>
     </section>
     {error && <p role="alert" className="pipeline-error">{error}</p>}
-    {loading ? <div role="status" className="pipeline-empty">Loading your lead pipeline…</div> : <>
+    {loading ? <PipelineSkeleton /> : <>
       <div className="pipeline-content-layout"><section className="pipeline-sales-workspace" aria-label="Sales pipeline">
         {!unique.length && <p role="status" className="pipeline-filter-empty">No leads match these filters. Try another period or owner.</p>}
         <div className="pipeline-kind-grid">

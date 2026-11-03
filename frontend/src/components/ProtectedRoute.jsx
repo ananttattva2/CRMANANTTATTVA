@@ -5,6 +5,7 @@ import AnnouncementGate from './AnnouncementGate'
 import api, { clearStoredSession, hasStoredAuthToken, storeSessionUser } from '../services/api'
 import { API_ENDPOINTS } from '../services/apiEndpoints'
 import { hasAnyRole } from '../constants/dashboard'
+import { defaultLandingPath } from '../utils/defaultLanding.mjs'
 
 export default function ProtectedRoute({ children, allowedRoles }) {
   const roleAllowed = (user) => !allowedRoles?.length || hasAnyRole(user, allowedRoles)
@@ -12,7 +13,7 @@ export default function ProtectedRoute({ children, allowedRoles }) {
     if (!hasStoredAuthToken()) return { loading: true, allowed: false }
     try {
       const storedUser = JSON.parse(localStorage.getItem('user') || 'null')
-      return storedUser ? { loading: false, allowed: roleAllowed(storedUser), authenticated: true } : { loading: true, allowed: false }
+      return storedUser ? { loading: false, allowed: roleAllowed(storedUser), authenticated: true, user: storedUser } : { loading: true, allowed: false }
     } catch {
       return { loading: true, allowed: false }
     }
@@ -30,7 +31,7 @@ export default function ProtectedRoute({ children, allowedRoles }) {
         if (response.data?.user) {
           storeSessionUser(response.data.user)
         }
-        setState({ loading: false, allowed: roleAllowed(response.data?.user), authenticated: true })
+        setState({ loading: false, allowed: roleAllowed(response.data?.user), authenticated: true, user: response.data?.user })
       })
       .catch((error) => {
         const status = error?.response?.status
@@ -43,7 +44,7 @@ export default function ProtectedRoute({ children, allowedRoles }) {
         // The API interceptor will still clear genuinely invalid tokens.
         try {
           const storedUser = JSON.parse(localStorage.getItem('user') || 'null')
-          setState({ loading: false, allowed: Boolean(storedUser) && roleAllowed(storedUser), authenticated: Boolean(storedUser) })
+          setState({ loading: false, allowed: Boolean(storedUser) && roleAllowed(storedUser), authenticated: Boolean(storedUser), user: storedUser })
         } catch {
           setState({ loading: false, allowed: false })
         }
@@ -55,5 +56,5 @@ export default function ProtectedRoute({ children, allowedRoles }) {
   }
 
   if (state.allowed) return <AnnouncementGate>{children}</AnnouncementGate>
-  return <Navigate to={state.authenticated ? '/overall-dashboard' : '/login'} replace />
+  return <Navigate to={state.authenticated ? defaultLandingPath(state.user) : '/login'} replace />
 }

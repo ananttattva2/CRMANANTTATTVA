@@ -9,6 +9,7 @@ const temporaryAssignmentCtrl = require('../controllers/temporaryLeadAssignmentC
 const temporaryLeadCtrl = require('../controllers/temporaryLeadController');
 
 const revenueCtrl = require('../controllers/leadRevenueController');
+router.get('/summary-dashboard', requireAuth, requireRoles(ADMIN_ROLES), cacheRead, revenueCtrl.pipeline);
 router.get('/pipeline-revenue', requireAuth, cacheRead, revenueCtrl.pipeline);
 router.get('/pipeline-revenue/:kind/:id/services', requireAuth, revenueCtrl.services);
 router.get('/revenue/:kind/:id', requireAuth, revenueCtrl.get);

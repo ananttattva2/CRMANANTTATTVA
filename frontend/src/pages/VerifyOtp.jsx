@@ -6,6 +6,7 @@ import ToastMessage from '../components/ToastMessage'
 import api, { readApiError, storeSessionUser } from '../services/api'
 import { API_ENDPOINTS } from '../services/apiEndpoints'
 import { readLicenseSession, clearLicenseSession } from '../utils/licenseSession.mjs'
+import { defaultLandingPath } from '../utils/defaultLanding.mjs'
 
 export default function VerifyOtp(){
   const [otp, setOtp] = useState('')
@@ -47,7 +48,7 @@ export default function VerifyOtp(){
       localStorage.removeItem('login_mode')
       localStorage.removeItem('dev_otp')
       clearLicenseSession()
-      navigate('/overall-dashboard')
+      navigate(defaultLandingPath(res.data.user), { replace: true })
     }catch(err){
       if (err.response?.data?.code === 'LICENSE_REQUIRED') { clearLicenseSession(); navigate('/license', { replace: true }); return }
       const message = readApiError(err, 'Invalid OTP')

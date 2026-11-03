@@ -45,6 +45,14 @@ const PurchaseSalesDashboard = lazy(() => import('./pages/PurchaseSalesDashboard
 const DocumentsLibrary = lazy(() => import('./pages/DocumentsLibrary'))
 import api, { API_ENDPOINTS, hasStoredAuthToken } from './services/api'
 import SupportTicketMilestoneCelebration from './components/SupportTicketMilestoneCelebration'
+import { defaultLandingPath } from './utils/defaultLanding.mjs'
+
+function DefaultDashboardRoute() {
+  let user = null
+  try { user = JSON.parse(localStorage.getItem('user') || 'null') } catch {}
+  const landing = defaultLandingPath(user)
+  return landing === '/summary-dashboard' ? <Navigate to={landing} replace /> : <AdminDashboard />
+}
 
 function ActiveCrmTracker() {
   useEffect(() => {
@@ -126,7 +134,8 @@ function App(){
         <Route path="/forgot-password" element={<ForgotPassword/>} />
         <Route path="/forget-password" element={<Navigate to="/forgot-password" replace />} />
         <Route path="/forgotpassword" element={<Navigate to="/forgot-password" replace />} />
-        <Route path="/dashboard" element={<ProtectedRoute><AdminDashboard/></ProtectedRoute>} />
+        <Route path="/dashboard" element={<ProtectedRoute><DefaultDashboardRoute/></ProtectedRoute>} />
+        <Route path="/sales-dashboard" element={<ProtectedRoute allowedRoles={['admin', 'superadmin']}><AdminDashboard/></ProtectedRoute>} />
         <Route path="/dashboard/users" element={<ProtectedRoute allowedRoles={['admin', 'superadmin']}><AdminDashboard/></ProtectedRoute>} />
         <Route path="/superadmin-dashboard" element={<ProtectedRoute allowedRoles={['admin', 'superadmin']}><SuperAdminDashboard/></ProtectedRoute>} />
         <Route path="/mis" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'manager', 'operation head', 'operations head']}><SalesManagementDashboard /></ProtectedRoute>} />
@@ -135,8 +144,8 @@ function App(){
         <Route path="/mis/sales-management" element={<Navigate to="/mis" replace />} />
         <Route path="/dashboard/activity-logs" element={<ProtectedRoute allowedRoles={['admin', 'superadmin']}><ActivityLogs/></ProtectedRoute>} />
         <Route path="/overall-dashboard" element={<ProtectedRoute><OverallDashboard/></ProtectedRoute>} />
-        <Route path="/summary-dashboard" element={<ProtectedRoute><LeadPipeline/></ProtectedRoute>} />
-        <Route path="/summary-dashboard/operations" element={<ProtectedRoute><AnnualReturnOperationsDashboard/></ProtectedRoute>} />
+        <Route path="/summary-dashboard" element={<ProtectedRoute allowedRoles={['admin', 'superadmin']}><LeadPipeline/></ProtectedRoute>} />
+        <Route path="/summary-dashboard/operations" element={<ProtectedRoute allowedRoles={['admin', 'superadmin']}><AnnualReturnOperationsDashboard/></ProtectedRoute>} />
         <Route path="/po-dashboard" element={<ProtectedRoute><PurchaseOrderDashboard/></ProtectedRoute>} />
         <Route path="/purchase-sales-dashboard" element={<ProtectedRoute><PurchaseSalesDashboard/></ProtectedRoute>} />
         <Route path="/pending-approval" element={<ProtectedRoute><PendingApproval/></ProtectedRoute>} />

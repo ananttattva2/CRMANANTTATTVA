@@ -16,5 +16,6 @@ const schema = new mongoose.Schema({
   createdByName: { type: String, immutable: true }
 }, { timestamps: true });
 schema.index({ leadKind: 1, leadId: 1, serviceKeys: 1 }, { unique: true });
+schema.index({ leadKind: 1, leadId: 1, createdAt: 1 });
 schema.index({ requestId: 1 }, { unique: true });
 module.exports = mongoose.model('LeadRevenue', schema);
