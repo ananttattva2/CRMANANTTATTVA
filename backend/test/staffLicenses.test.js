@@ -13,7 +13,7 @@ const originalSecret = process.env.JWT_SECRET;
 process.env.JWT_SECRET = crypto.randomBytes(32).toString('hex');
 const user = { _id: '507f1f77bcf86cd799439011', name: 'Riya', email: 'riya@example.test', role: 'operation', isActive: true };
 const code = service.generateCode(user);
-const license = { _id: 'license-id', userId: user._id, codeHash: service.hashCode(code), roleTag: 'USR', email: user.email };
+const license = { _id: 'license-id', userId: user._id, codeHash: service.hashCode(code), roleTag: 'USR', email: user.email, issuedAt: new Date(), expiresAt: new Date(Date.now() + service.LICENSE_VALIDITY_MS) };
 const query = value => ({ select: async () => value, then: (resolve, reject) => Promise.resolve(value).then(resolve, reject) });
 function res() { return { status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; }, set() {} }; }
 afterEach(() => require('node:test').mock.restoreAll());
@@ -123,6 +123,8 @@ test('delivery sends the encrypted personal key only to its owner and records ac
   assert.equal(sent[0], user.email);
   assert.ok(sent[2].includes(code));
   assert.ok(sent[2].includes('/license'));
+  assert.ok(sent[2].includes('Valid for 180 days'));
+  assert.ok(sent[2].includes('emailed automatically'));
   assert.ok(update.$set.deliveredAt instanceof Date);
 });
 test('inactive accounts receive their personal key while validation still blocks access', async t => {
@@ -165,7 +167,7 @@ test('license → password → OTP issues a real staff session for all three rol
   for (const role of ['operation', 'admin', 'superadmin']) {
     account = { ...user, role, roles: [role], password: hashed, crmUserId: 'AT-TEST', save: async () => {} };
     key = service.generateCode(account);
-    current = { ...license, roleTag: service.roleTag(account), codeHash: service.hashCode(key) };
+    current = { ...license, roleTag: service.roleTag(account), codeHash: service.hashCode(key), expiresAt: new Date(Date.now() + 10 * 60000) };
     const gate = await post('license/validate', { license: key });
     assert.equal(gate.status, 200);
     assert.equal(gate.data.loginMode, role === 'operation' ? 'user' : 'admin');
@@ -179,8 +181,126 @@ test('license → password → OTP issues a real staff session for all three rol
     assert.equal(verified.status, 200);
     const claims = jwt.verify(verified.data.token, process.env.JWT_SECRET);
     assert.equal(claims.sub, user._id);
+    assert.ok(claims.exp <= Math.floor(current.expiresAt.getTime() / 1000));
     assert.equal(claims.purpose, undefined);
     assert.equal(verified.data.user.role, role);
     assert.equal(account.otp, undefined);
   }
+});
+
+test('licenses expire exactly at 180 days, including legacy creation-date fallback', t => {
+  const issued = Date.UTC(2030, 0, 1);
+  const clock = t.mock.method(Date, 'now', () => issued + service.LICENSE_VALIDITY_MS - 1);
+  const original = { createdAt: new Date(issued) };
+  assert.equal(service.isLicenseExpired(original), false);
+  clock.mock.mockImplementation(() => issued + service.LICENSE_VALIDITY_MS);
+  assert.equal(service.isLicenseExpired(original), true);
+  assert.equal(service.isLicenseExpired({}), true);
+});
+
+test('expired keys and their still-signed gate tokens are rejected before renewal scan', async t => {
+  const now = Date.now();
+  const record = { ...license, expiresAt: new Date(now + 60000) };
+  const token = service.signGate(record);
+  t.mock.method(Date, 'now', () => now + 60000);
+  t.mock.method(StaffLicense, 'findOne', () => query(record));
+  t.mock.method(User, 'findById', () => query(user));
+  assert.equal(await service.validateCode(code), null);
+  await assert.rejects(service.verifyGate(token, user.email));
+  assert.throws(() => service.signGate(record), /expired/);
+});
+
+test('legacy migration preserves the original key, delivery state and original 180-day deadline', async t => {
+  const createdAt = new Date(Date.now() - 86400000);
+  const legacy = { ...license, createdAt, issuedAt: undefined, expiresAt: undefined, deliveredAt: new Date() };
+  t.mock.method(StaffLicense, 'findOne', () => query(legacy));
+  t.mock.method(StaffLicense, 'findOneAndUpdate', (filter, update) => {
+    assert.equal(filter.codeHash, license.codeHash);
+    assert.equal(update.$set.codeHash, undefined);
+    assert.equal(update.$unset, undefined);
+    assert.equal(update.$set.issuedAt.getTime(), createdAt.getTime());
+    assert.equal(update.$set.expiresAt.getTime(), createdAt.getTime() + service.LICENSE_VALIDITY_MS);
+    return Promise.resolve({ ...legacy, ...update.$set });
+  });
+  const migrated = await service.ensureLicense(user);
+  assert.equal(migrated.codeHash, license.codeHash);
+  assert.equal(migrated.deliveredAt, legacy.deliveredAt);
+});
+
+test('expiry rotates every role once and retries the same replacement without extending its lifetime', async t => {
+  const now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  for (const role of ['operation', 'admin', 'superadmin']) {
+    const account = { ...user, role };
+    let stored = { ...license, roleTag: service.roleTag(account), expiresAt: new Date(now), renewalCount: 0, deliveredAt: new Date(now - 1000) };
+    let rotations = 0;
+    t.mock.method(StaffLicense, 'findOne', () => query(stored));
+    t.mock.method(StaffLicense, 'findOneAndUpdate', (filter, update) => {
+      rotations++;
+      assert.equal(filter.codeHash, stored.codeHash);
+      const { deliveredAt, ...remaining } = stored;
+      stored = { ...remaining, ...update.$set };
+      assert.equal(update.$unset.deliveredAt, 1);
+      return Promise.resolve(stored);
+    });
+    const renewed = await service.ensureLicense(account);
+    assert.notEqual(renewed.codeHash, license.codeHash);
+    assert.equal(renewed.issuedAt.getTime(), now);
+    assert.equal(renewed.expiresAt.getTime(), now + service.LICENSE_VALIDITY_MS);
+    assert.equal(renewed.renewalCount, 1);
+    assert.equal(renewed.deliveredAt, undefined);
+    assert.equal((await service.ensureLicense(account)).codeHash, renewed.codeHash);
+    assert.equal(rotations, 1);
+  }
+});
+
+test('a concurrent renewal uses the winning replacement without rotating it again', async t => {
+  const expired = { ...license, expiresAt: new Date(Date.now() - 1) };
+  const replacement = { ...license, codeHash: 'winning-new-hash' };
+  let reads = 0;
+  t.mock.method(StaffLicense, 'findOne', () => query(reads++ ? replacement : expired));
+  t.mock.method(StaffLicense, 'findOneAndUpdate', async filter => {
+    assert.equal(filter.codeHash, expired.codeHash);
+    return null;
+  });
+  assert.equal((await service.ensureLicense(user)).codeHash, replacement.codeHash);
+});
+
+test('renewal emails state expiry and invalidate the previous key', async t => {
+  t.mock.method(StaffLicense, 'findOneAndUpdate', () => query({ ...license, encryptedCode: service.encryptCode(code), attempts: 1, renewalCount: 1 }));
+  let subject, body;
+  t.mock.method(require('../src/utils/mailer'), 'sendMail', async (_to, title, html) => { subject = title; body = html; });
+  t.mock.method(StaffLicense, 'updateOne', async () => ({}));
+  assert.equal(await service.deliverLicense(user, license), true);
+  assert.match(subject, /renewed/);
+  assert.match(body, /old key is no longer valid/);
+  assert.match(body, /Expires .* IST/);
+});
+
+test('a complete scheduled renewal emails the replacement and accepts only its new key', async t => {
+  let now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  let stored = { ...license, expiresAt: new Date(now + 60000), deliveredAt: new Date(now - 1000) };
+  const oldGate = service.signGate(stored);
+  t.mock.method(User, 'findById', () => query(user));
+  t.mock.method(StaffLicense, 'findOne', filter => query(filter.codeHash && filter.codeHash !== stored.codeHash ? null : stored));
+  t.mock.method(StaffLicense, 'findOneAndUpdate', (_filter, update) => {
+    stored = { ...stored, ...update.$set };
+    for (const key of Object.keys(update.$unset || {})) delete stored[key];
+    return query(stored);
+  });
+  t.mock.method(StaffLicense, 'updateOne', async (_filter, update) => { stored = { ...stored, ...update.$set }; });
+  let emailedKey;
+  t.mock.method(require('../src/utils/mailer'), 'sendMail', async (_to, _subject, body) => {
+    emailedKey = body.match(/RIYA(?:-[A-Z2-9]{4}){3}-USR/)[0];
+  });
+  now += 60000;
+  const replacement = await service.ensureLicense(user);
+  assert.equal(await service.deliverLicense(user, replacement), true);
+  assert.notEqual(emailedKey, code);
+  assert.equal(await service.validateCode(code), null);
+  await assert.rejects(service.verifyGate(oldGate, user.email));
+  const result = await service.validateCode(emailedKey);
+  assert.equal(result.user.email, user.email);
+  assert.equal(await service.verifyGate(service.signGate(result.license), user.email), 'user');
 });

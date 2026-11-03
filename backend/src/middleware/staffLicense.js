@@ -1,4 +1,4 @@
-const { validateCode, signGate, verifyGate } = require('../services/staffLicenses');
+const { validateCode, signGate, verifyGate, gateExpiresAt, licenseDates } = require('../services/staffLicenses');
 
 const attempts = new Map();
 function licenseRateLimit(req, res, next) {
@@ -21,13 +21,14 @@ async function validateLicense(req, res, next) {
     if (!result) return res.status(401).json({ error: 'Invalid or inactive license. Check the license sent to your registered email.' });
     const { license, user } = result;
     res.set('Cache-Control', 'no-store');
-    return res.json({ ok: true, licenseToken: signGate(license), email: user.email, loginMode: license.roleTag === 'USR' ? 'user' : 'admin', roleTag: license.roleTag, expiresAt: Date.now() + 30 * 60000 });
+    return res.json({ ok: true, licenseToken: signGate(license), email: user.email, loginMode: license.roleTag === 'USR' ? 'user' : 'admin', roleTag: license.roleTag, expiresAt: gateExpiresAt(license), licenseExpiresAt: licenseDates(license).expiresAt.toISOString() });
   } catch (error) { next(error); }
 }
 async function requireLicense(req, res, next) {
   if (!req.body.licenseToken) return res.status(403).json({ error: 'Please verify your license before signing in.', code: 'LICENSE_REQUIRED' });
   try {
-    const mode = await verifyGate(req.body.licenseToken, req.body.email);
+    const { loginMode: mode, license } = await verifyGate(req.body.licenseToken, req.body.email, { includeLicense: true });
+    req.staffLicenseExpiresAt = licenseDates(license).expiresAt;
     if (req.body.loginMode && req.body.loginMode !== mode) throw new Error('License does not allow this login type');
     req.body.loginMode = mode;
     next();

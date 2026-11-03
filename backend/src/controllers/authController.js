@@ -437,7 +437,9 @@ exports.verifyOtp = async (req, res) => {
     path: '/api/auth/verify-otp', statusCode: 200, description: 'Logged in to CRM', ipAddress: clientIp(req),
     userName: user.name || user.email, userEmail: user.email, role: user.role, department: user.team
   });
-  const token = jwt.sign({ sub: user._id, role: user.role, email: user.email, sid: sessionId }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
+  const sessionExpiry = Math.min(Date.now() + 7 * 24 * 60 * 60 * 1000,
+    req.staffLicenseExpiresAt ? new Date(req.staffLicenseExpiresAt).getTime() : Infinity);
+  const token = jwt.sign({ sub: user._id, role: user.role, email: user.email, sid: sessionId, exp: Math.floor(sessionExpiry / 1000) }, process.env.JWT_SECRET || 'secret');
   console.info('OTP verified', { email, userId: String(user._id), role: user.role });
   res.json({ ok: true, token, user: publicUser(user) });
 };
