@@ -166,6 +166,12 @@ if [[ "$BACKEND_CHANGED" == true ]]; then
   node --check backend/src/index.js
 fi
 
+# Deliver personal access keys before enabling the license-first login UI.
+# Later deployments keep existing keys and skip accepted emails.
+if [[ -f backend/src/scripts/syncStaffLicenses.js ]]; then
+  node backend/src/scripts/syncStaffLicenses.js
+fi
+
 BACKUP_DIST="$APP_DIR/frontend/.dist-previous-$(date +%s)"
 if [[ -d "$APP_DIR/frontend/dist" ]]; then
   HAD_PREVIOUS_DIST=true

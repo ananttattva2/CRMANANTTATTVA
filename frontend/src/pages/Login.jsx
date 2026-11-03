@@ -1,14 +1,17 @@
 import React, { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Eye, EyeOff, KeyRound, Mail, ShieldCheck } from 'lucide-react'
 import AuthLayout from '../components/AuthLayout'
 import ToastMessage from '../components/ToastMessage'
 import api, { readApiError } from '../services/api'
 import { API_ENDPOINTS } from '../services/apiEndpoints'
+import { readLicenseSession, clearLicenseSession } from '../utils/licenseSession.mjs'
+import '../styles/license.css'
 
 export default function Login(){
-  const [loginMode, setLoginMode] = useState('user')
-  const [email, setEmail] = useState('')
+  const license = readLicenseSession()
+  const loginMode = license?.loginMode || 'user'
+  const email = license?.email || ''
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -20,7 +23,7 @@ export default function Login(){
     setLoading(true)
     setError('')
     try{
-      const res = await api.post(API_ENDPOINTS.auth.requestOtp, { email, password, loginMode })
+      const res = await api.post(API_ENDPOINTS.auth.requestOtp, { email, password, loginMode, licenseToken: license.licenseToken })
       localStorage.setItem('login_email', email)
       localStorage.setItem('login_mode', loginMode)
       if (import.meta.env.DEV && res.data?.devOtp) {
@@ -31,14 +34,17 @@ export default function Login(){
       navigate('/verify', { state: { email, loginMode } })
     }catch(err){
       console.error(err)
+      if (err.response?.data?.code === 'LICENSE_REQUIRED') { clearLicenseSession(); navigate('/license', { replace: true }); return }
       setError(readApiError(err, 'Unable to send OTP'))
     }finally{ setLoading(false) }
   }
 
+  if (!license) return <Navigate to="/license" replace />
+
   return (
     <AuthLayout
       eyebrow={loginMode === 'admin' ? 'Admin login' : 'User login'}
-      title="Sign in to CRM"
+      title={loginMode === 'admin' ? 'Admin sign in' : 'Welcome back.'}
       subtitle={loginMode === 'admin'
         ? 'Use Admin Login for Admin and Super Admin accounts only. We will send a secure one-time code for this session.'
         : 'Use User Login for team accounts. We will send a secure one-time code for this session.'}
@@ -47,28 +53,7 @@ export default function Login(){
         <ArrowLeft className="h-4 w-4" /> Back to website
       </Link>
       <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-        <div>
-          <span className="text-sm font-black text-slate-700">Login type</span>
-          <div className="mt-2 grid grid-cols-2 gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-2 shadow-sm">
-            {[
-              { value: 'admin', label: 'Admin Login', note: 'Admin and Super Admin only' },
-              { value: 'user', label: 'User Login', note: 'All non-admin team users' }
-            ].map((option) => {
-              const active = loginMode === option.value
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setLoginMode(option.value)}
-                  className={`rounded-xl px-4 py-3 text-left transition ${active ? 'bg-white text-emerald-700 shadow-md ring-1 ring-emerald-200' : 'text-slate-600 hover:bg-white/70'}`}
-                >
-                  <strong className="block text-sm font-black">{option.label}</strong>
-                  <span className="mt-1 block text-xs font-bold text-slate-500">{option.note}</span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
+        <div className="license-verified"><ShieldCheck className="h-5 w-5" /><span>{license.roleTag === 'SADM' ? 'Super Admin' : loginMode === 'admin' ? 'Admin' : 'User'} license verified</span><Link to="/license" onClick={clearLicenseSession}>Change license</Link></div>
         <label className="block">
           <span className="text-sm font-black text-slate-700">Work email</span>
           <div className="group mt-2 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 shadow-sm transition duration-300 focus-within:-translate-y-0.5 focus-within:border-emerald-500 focus-within:bg-white focus-within:shadow-lg focus-within:shadow-emerald-900/10 focus-within:ring-4 focus-within:ring-emerald-100">
@@ -80,7 +65,7 @@ export default function Login(){
               placeholder="name@company.com"
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              readOnly
               className="min-w-0 flex-1 bg-transparent font-semibold outline-none placeholder:text-slate-400"
             />
           </div>

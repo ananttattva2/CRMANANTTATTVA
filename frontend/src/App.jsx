@@ -5,6 +5,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import ScrollToTop from './components/ScrollToTop'
 const ClientPortal = lazy(() => import('./pages/ClientPortal'))
 const ClientLogin = lazy(() => import('./pages/ClientPortal').then(module => ({ default: module.ClientLogin })))
+const License = lazy(() => import('./pages/License'))
 const Login = lazy(() => import('./pages/Login'))
 const LandingPage = lazy(() => import('./pages/LandingPage'))
 const VerifyOtp = lazy(() => import('./pages/VerifyOtp'))
@@ -119,6 +120,7 @@ function App(){
         <Route path="/" element={<LandingPage/>} />
         <Route path="/client-login" element={<ClientLogin />} />
         <Route path="/client/*" element={<ClientPortal />} />
+        <Route path="/license" element={<License/>} />
         <Route path="/login" element={<Login/>} />
         <Route path="/verify" element={<VerifyOtp/>} />
         <Route path="/forgot-password" element={<ForgotPassword/>} />

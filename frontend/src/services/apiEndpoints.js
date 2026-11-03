@@ -4,6 +4,7 @@ function encodePathValue(value) {
 
 const API_ENDPOINTS = {
   auth: {
+    validateLicense: '/auth/license/validate',
     me: '/auth/me',
     claimMilestone: (key) => `/auth/milestones/${encodePathValue(key)}/claim`,
     password: '/auth/me/password',

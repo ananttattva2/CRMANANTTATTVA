@@ -8,9 +8,12 @@ export default function AuthLayout({ eyebrow, title, subtitle, children }) {
   const visualRef = useRef(null)
 
   useEffect(() => {
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const context = gsap.context(() => {
+    if (reducedMotion) return
     gsap.fromTo(panelRef.current, { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: 'power3.out' })
     gsap.fromTo(visualRef.current, { scale: 0.97, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.9, ease: 'power3.out' })
-    gsap.to('.eco-float', {
+    gsap.to(visualRef.current?.querySelectorAll('.eco-float'), {
       y: -12,
       duration: 2.8,
       ease: 'sine.inOut',
@@ -18,6 +21,8 @@ export default function AuthLayout({ eyebrow, title, subtitle, children }) {
       yoyo: true,
       stagger: 0.18
     })
+    })
+    return () => context.revert()
   }, [])
 
   return (

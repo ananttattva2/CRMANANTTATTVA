@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, LockKeyhole, RefreshCw, ShieldCheck } from 'lucide-react'
 import AuthLayout from '../components/AuthLayout'
 import ToastMessage from '../components/ToastMessage'
 import api, { readApiError, storeSessionUser } from '../services/api'
 import { API_ENDPOINTS } from '../services/apiEndpoints'
+import { readLicenseSession, clearLicenseSession } from '../utils/licenseSession.mjs'
 
 export default function VerifyOtp(){
   const [otp, setOtp] = useState('')
@@ -17,6 +18,7 @@ export default function VerifyOtp(){
   const otpInputRef = useRef(null)
   const navigate = useNavigate()
   const location = useLocation()
+  const license = readLicenseSession()
   const email = location.state?.email || localStorage.getItem('login_email') || ''
   const loginMode = location.state?.loginMode || localStorage.getItem('login_mode') || 'user'
   const [devOtp, setDevOtp] = useState(() => import.meta.env.DEV ? localStorage.getItem('dev_otp') || '' : '')
@@ -38,14 +40,16 @@ export default function VerifyOtp(){
         setError('Session expired. Please login again.')
         return
       }
-      const res = await api.post(API_ENDPOINTS.auth.verifyOtp, { email, otp, loginMode })
+      const res = await api.post(API_ENDPOINTS.auth.verifyOtp, { email, otp, loginMode, licenseToken: license.licenseToken })
       localStorage.setItem('token', res.data.token)
       storeSessionUser(res.data.user)
       localStorage.removeItem('login_email')
       localStorage.removeItem('login_mode')
       localStorage.removeItem('dev_otp')
+      clearLicenseSession()
       navigate('/overall-dashboard')
     }catch(err){
+      if (err.response?.data?.code === 'LICENSE_REQUIRED') { clearLicenseSession(); navigate('/license', { replace: true }); return }
       const message = readApiError(err, 'Invalid OTP')
       setError(message)
       if (/invalid otp|expired|no active otp/i.test(message)) {
@@ -60,7 +64,7 @@ export default function VerifyOtp(){
     setError('')
     setNotice('')
     try {
-      const res = await api.post(API_ENDPOINTS.auth.resendOtp, { email, loginMode })
+      const res = await api.post(API_ENDPOINTS.auth.resendOtp, { email, loginMode, licenseToken: license.licenseToken })
       setOtp('')
       setNotice(res.data?.message || 'A new OTP has been sent to your email.')
       setResendCooldown(60)
@@ -72,6 +76,7 @@ export default function VerifyOtp(){
         setDevOtp('')
       }
     } catch (err) {
+      if (err.response?.data?.code === 'LICENSE_REQUIRED') { clearLicenseSession(); navigate('/license', { replace: true }); return }
       const message = readApiError(err, 'Unable to resend OTP')
       setError(message)
       const match = String(message).match(/(\d+)\s*seconds/i)
@@ -80,6 +85,8 @@ export default function VerifyOtp(){
       setResending(false)
     }
   }
+
+  if (!license) return <Navigate to="/license" replace />
 
   return (
     <AuthLayout
@@ -150,9 +157,9 @@ export default function VerifyOtp(){
           <RefreshCw className={`h-4 w-4 ${resending ? 'animate-spin' : ''}`} />
           {resending ? 'Resending OTP...' : resendCooldown > 0 ? `Resend OTP in ${resendCooldown}s` : 'Resend OTP'}
         </button>
-        <Link to="/" className="inline-flex items-center gap-2 text-sm font-bold text-teal-700 hover:text-teal-900">
+        <Link to="/login" className="inline-flex items-center gap-2 text-sm font-bold text-teal-700 hover:text-teal-900">
           <ArrowLeft className="h-4 w-4" />
-          Use a different email
+          Back to sign in
         </Link>
       </form>
     </AuthLayout>

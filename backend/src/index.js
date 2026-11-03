@@ -13,6 +13,7 @@ const { getCrmCache } = require('./services/crmCache');
 const { cacheStatus, getClient } = require('./services/redisStore');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/auth');
+const { startStaffLicenseScheduler } = require('./services/staffLicenses');
 const leadRoutes = require('./routes/leads');
 const clientRoutes = require('./routes/clients');
 const quotationRoutes = require('./routes/quotations');
@@ -53,6 +54,8 @@ process.on('unhandledRejection', (err) => {
 });
 
 const app = express();
+// Nginx is a local reverse proxy; trust only loopback when resolving client IPs.
+app.set('trust proxy', 'loopback');
 const configuredOrigins = [
   process.env.CLIENT_ORIGIN,
   process.env.CLIENT_URLS
@@ -109,6 +112,7 @@ const connectAndStartServices = singleFlight(function () {
     // Persistent interval schedulers must never run inside short-lived serverless
     // function instances. Their work is handled by explicit cron endpoints.
     if (!schedulerStarted && !isServerlessRuntime) {
+      startStaffLicenseScheduler();
       startConsentExpiryReminderScheduler();
       startPendingApprovalReminderScheduler();
       startClientComplianceCorrectionReminderScheduler();

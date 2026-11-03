@@ -4,11 +4,13 @@ const router = express.Router();
 const authCtrl = require('../controllers/authController');
 const { requireAuth, requireRoles } = require('../middleware/auth');
 const { ADMIN_ROLES } = require('../constants/roles');
+const { licenseRateLimit, validateLicense, requireLicense } = require('../middleware/staffLicense');
 
 
-router.post('/request-otp', authCtrl.requestOtp);
-router.post('/resend-otp', authCtrl.resendOtp);
-router.post('/verify-otp', authCtrl.verifyOtp);
+router.post('/license/validate', licenseRateLimit, validateLicense);
+router.post('/request-otp', licenseRateLimit, requireLicense, authCtrl.requestOtp);
+router.post('/resend-otp', licenseRateLimit, requireLicense, authCtrl.resendOtp);
+router.post('/verify-otp', licenseRateLimit, requireLicense, authCtrl.verifyOtp);
 router.post('/forgot-password', authCtrl.forgotPassword);
 router.post('/reset-password', authCtrl.resetPassword);
 router.post('/logout', requireAuth, authCtrl.logout);

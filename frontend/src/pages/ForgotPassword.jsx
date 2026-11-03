@@ -48,7 +48,7 @@ export default function ForgotPassword() {
       <Submit loading={loading} label="Reset password" />
       <button type="button" onClick={() => { setStep('request'); setMessage({ type: '', text: '' }) }} className="w-full text-sm font-black text-slate-600">Request another code</button>
     </form>}
-    <Link to="/" className="mt-6 flex items-center justify-center gap-2 text-sm font-black text-emerald-700"><ArrowLeft className="h-4 w-4" /> Back to sign in</Link>
+    <Link to="/login" className="mt-6 flex items-center justify-center gap-2 text-sm font-black text-emerald-700"><ArrowLeft className="h-4 w-4" /> Back to sign in</Link>
   </AuthLayout>
 }
 

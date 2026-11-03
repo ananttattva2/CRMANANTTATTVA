@@ -13,6 +13,17 @@ const { clientIp } = require('../middleware/activityAudit');
 const { getUserProductivityReport, getUserWorkReport } = require('../services/userProductivityReport');
 const { getUserRoles } = require('../utils/userRoles');
 const { getVisibleUserScope } = require('../utils/visibilityScope');
+const staffLicenses = require('../services/staffLicenses');
+async function provisionStaffLicense(user) {
+  try {
+    const license = await staffLicenses.ensureLicense(user);
+    return Boolean(license.deliveredAt || await staffLicenses.deliverLicense(user, license));
+  } catch (error) {
+    // Reconciliation retries without duplicating an already saved account.
+    console.error('Staff license provisioning queued for retry', { userId: String(user._id), code: error.code || 'PROVISION_FAILED' });
+    return false;
+  }
+}
  
 function generateOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -460,7 +471,8 @@ exports.createUserByAdmin = async (req, res) => {
   const user = new User({ name, email, contactNumber, password: await bcrypt.hash(password, 10), role, roles, team, teamId, managerId, operationHeadId, isActive, avatarUrl, createdBy: req.user?._id });
   await user.save();
   await ensureCrmUserId(user);
-  res.status(201).json({ ok: true, user: publicUser(user) });
+  const licenseEmailSent = await provisionStaffLicense(user);
+  res.status(201).json({ ok: true, user: publicUser(user), licenseEmailSent });
 };
  
 exports.updateUserByAdmin = async (req, res) => {
@@ -508,6 +520,7 @@ exports.updateUserByAdmin = async (req, res) => {
   if (req.body.avatarUrl !== undefined) user.avatarUrl = avatarUrl;
   await user.save();
   await ensureCrmUserId(user);
+  await provisionStaffLicense(user);
   res.json({ ok: true, user: publicUser(user) });
 };
 

@@ -1,6 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const User = require('../src/models/User');
+const licenses = require('../src/services/staffLicenses');
+test.beforeEach(t => { t.mock.method(licenses, 'ensureLicense', async () => ({ deliveredAt: new Date() })); });
 const ctrl = require('../src/controllers/authController');
 const { buildPortalData } = require('../src/services/clientPortal');
 const res = () => ({ code:200, status(code){this.code=code;return this},json(body){this.body=body;return this} });
