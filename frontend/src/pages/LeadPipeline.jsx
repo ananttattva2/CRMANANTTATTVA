@@ -4,7 +4,7 @@ import { currentPipelineRows, uniquePipelineRows, pipelinePeriodRange, previousP
 import { salesRepSummary } from '../utils/salesRepSummary.mjs';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ArrowDown, ArrowUp, ArrowUpRight, CalendarDays, CircleDollarSign, Download, Flame, LayoutGrid, Minus, Search, Snowflake, Users, WalletCards, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpRight, CalendarDays, CircleDollarSign, Download, Flame, LayoutGrid, Minus, RefreshCw, Search, Snowflake, Target, Users, WalletCards, X } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, Cell, Legend, Line, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import * as XLSX from 'xlsx';
 import DashboardShell from '../components/dashboard/DashboardShell';
@@ -12,7 +12,6 @@ import DashboardViewTabs from '../components/dashboard/DashboardViewTabs';
 import LeadRevenuePanel, { revenueMoney } from '../components/leads/LeadRevenuePanel';
 import useCrmRefresh from '../hooks/useCrmRefresh';
 import api from '../services/api';
-import { adminRoles, hasAnyRole } from '../constants/dashboard';
 import '../styles/lead-pipeline.css';
 
 function storedUser() {
@@ -75,13 +74,20 @@ function pipelineTrend(rows, period, periodDate, range) {
     const start = new Date(`${periodDate.slice(0, 7)}-01T00:00:00`);
     const days = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
     for (let day = 1; day <= days; day += 1) { const date = new Date(start.getFullYear(), start.getMonth(), day); addBucket(date, String(day)); }
+  } else if (period === 'quarter' && range.start !== undefined) {
+    const start = new Date(range.start);
+    for (let index = 0; index < 3; index += 1) { const date = new Date(start.getFullYear(), start.getMonth() + index, 1); addBucket(date, date.toLocaleDateString('en-IN', { month:'short' })); }
+  } else if (period === 'custom' && range.start !== undefined && !range.invalid) {
+    const start = new Date(range.start); const end = new Date(range.end); const days = Math.ceil((end - start) / 86400000);
+    if (days <= 31) for (let index = 0; index < days; index += 1) { const date = new Date(start); date.setDate(date.getDate() + index); addBucket(date, date.toLocaleDateString('en-IN', { day:'numeric', month:'short' })); }
+    else { const cursor = new Date(start.getFullYear(), start.getMonth(), 1); while (cursor < end && buckets.length < 24) { addBucket(new Date(cursor), cursor.toLocaleDateString('en-IN', { month:'short', year:'2-digit' })); cursor.setMonth(cursor.getMonth() + 1); } }
   } else {
     const timestamps = rows.map(row => new Date(row.createdAt).getTime()).filter(Number.isFinite);
     const anchor = period === 'year' ? new Date(`${periodDate.slice(0, 4)}-12-01T00:00:00`) : new Date(timestamps.length ? Math.max(...timestamps) : Date.now());
     const firstMonth = period === 'year' ? 0 : anchor.getMonth() - 11;
     for (let index = 0; index < 12; index += 1) { const date = new Date(anchor.getFullYear(), firstMonth + index, 1); addBucket(date, date.toLocaleDateString('en-IN', { month:'short' })); }
   }
-  const endFor = (bucket, index) => index + 1 < buckets.length ? buckets[index + 1].start : (() => { const date = new Date(bucket.start); period === 'week' || period === 'month' ? date.setDate(date.getDate() + 1) : date.setMonth(date.getMonth() + 1); return date.getTime(); })();
+  const endFor = (bucket, index) => index + 1 < buckets.length ? buckets[index + 1].start : (() => { if (period === 'custom' && range.end) return range.end; const date = new Date(bucket.start); period === 'week' || period === 'month' ? date.setDate(date.getDate() + 1) : date.setMonth(date.getMonth() + 1); return date.getTime(); })();
   rows.forEach(row => {
     const timestamp = new Date(row.createdAt).getTime();
     const index = buckets.findIndex((bucket, bucketIndex) => timestamp >= bucket.start && timestamp < endFor(bucket, bucketIndex));
@@ -173,9 +179,54 @@ function SalesRepTable({ reps, comparisonLabel, range, previousRange, onMetricCl
   </section>;
 }
 
+function SalesPriorityCard({ kind, open, closed, revenue, poValue, previousOpen, previousClosed, comparisonLabel, onOpen }) {
+  const hot = kind === 'hot';
+  const Icon = hot ? Flame : Snowflake;
+  return <article className={`sales-priority-card ${kind}`}>
+    <header><span className="sales-priority-icon"><Icon aria-hidden="true"/></span><div><h2>{hot ? 'Hot Leads' : 'Cold Leads'}</h2><p>{hot ? 'High priority leads with active engagement.' : 'Nurturing leads for future opportunities.'}</p></div><em>{hot ? 'High Priority' : 'Low Priority'}</em></header>
+    <div className={`sales-priority-metrics ${hot ? '' : 'is-cold'}`}>
+      <button type="button" onClick={() => onOpen(kind, hot ? 'open' : '')}><Target/><span><small>Lead Open</small><strong>{open.toLocaleString('en-IN')}</strong><CardPeriodComparison value={open} previous={previousOpen} comparisonLabel={comparisonLabel}/></span></button>
+      {hot && <button type="button" onClick={() => onOpen('hot', 'closed')}><span className="sales-priority-metric-icon is-closed">✓</span><span><small>Lead Closed</small><strong>{closed.toLocaleString('en-IN')}</strong><CardPeriodComparison value={closed} previous={previousClosed} comparisonLabel={comparisonLabel}/></span></button>}
+      <button type="button" onClick={() => onOpen(kind)}><CircleDollarSign/><span><small>Expected Revenue</small><strong>{revenueMoney(revenue)}</strong></span></button>
+      {hot && <button type="button" onClick={() => onOpen('hot', 'closed')}><WalletCards/><span><small>PO Value</small><strong>{revenueMoney(poValue)}</strong></span></button>}
+    </div>
+  </article>;
+}
+
+function SalesDashboardRepTable({ reps, onMetricClick }) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(5);
+  const pageCount = Math.max(1, Math.ceil(reps.length / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const first = (safePage - 1) * pageSize;
+  const visible = reps.slice(first, first + pageSize);
+  useEffect(() => { setPage(1); }, [reps, pageSize]);
+  function exportReps() {
+    const sheet = XLSX.utils.json_to_sheet(reps.map((rep) => ({
+      'Sales Representative': rep.owner, 'Total Leads': rep.totalLeads, 'Hot Open': rep.hotOpen, 'Hot Closed': rep.hotClosed, 'Cold Open': rep.coldOpen,
+      'Expected Revenue (INR)': rep.expectedRevenuePaise / 100, 'PO Value (INR)': rep.poValuePaise / 100, 'Major Service Interest': rep.serviceInterests.map((item) => `${item.label} (${item.count})`).join(', ')
+    })));
+    sheet['!cols'] = [{ wch:25 }, { wch:12 }, { wch:12 }, { wch:12 }, { wch:12 }, { wch:22 }, { wch:20 }, { wch:55 }];
+    const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, 'Sales Reps'); XLSX.writeFile(book, 'sales-rep-performance.xlsx');
+  }
+  return <section className="sales-dashboard-reps" aria-labelledby="sales-performance-heading">
+    <header><div><span><Users/></span><div><h2 id="sales-performance-heading">Sales Rep Performance</h2><p>Lead summary, conversion and revenue by sales representative.</p></div></div><button type="button" onClick={exportReps} disabled={!reps.length}><Download/>Export</button></header>
+    <div className="sales-dashboard-reps-table"><table><thead><tr><th>Sales Representative</th><th>Total<br/>Leads</th><th colSpan="2">Hot Leads<div><small>Open</small><small>Closed</small></div></th><th>Cold Leads<br/><small>Open</small></th><th>Expected Revenue</th><th>PO Value</th><th>Major Service Interest</th></tr></thead>
+      <tbody>{visible.map((rep) => <tr key={rep.owner}><td><span className="sales-dashboard-rep"><i>{rep.owner.split(/\s+/).slice(0,2).map(part => part[0]).join('').toUpperCase()}</i><b>{rep.owner.toUpperCase()}</b></span></td><td><button onClick={() => onMetricClick(rep.owner, '', '')}>{rep.totalLeads}</button></td><td className="is-hot"><button onClick={() => onMetricClick(rep.owner, 'hot', 'open')}>{rep.hotOpen}</button></td><td className="is-closed"><button onClick={() => onMetricClick(rep.owner, 'hot', 'closed')}>{rep.hotClosed}</button></td><td className="is-cold"><button onClick={() => onMetricClick(rep.owner, 'cold', '')}>{rep.coldOpen}</button></td><td>{revenueMoney(rep.expectedRevenuePaise)}</td><td>{revenueMoney(rep.poValuePaise)}</td><td><div className="sales-service-tags">{rep.serviceInterests.length ? rep.serviceInterests.map((item, index) => <span key={item.label}><i>{index + 1}</i>{item.label}<b>{item.count}</b></span>) : <small>Not recorded</small>}</div></td></tr>)}</tbody></table>{!reps.length && <p className="pipeline-empty">No sales representatives match these filters.</p>}</div>
+    {!!reps.length && <footer><span>Showing {first + 1}–{Math.min(first + pageSize, reps.length)} of {reps.length} records</span><label>Rows per page<select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value="5">5</option><option value="10">10</option><option value="25">25</option></select></label><div><button onClick={() => setPage(value => Math.max(1, value - 1))} disabled={safePage === 1}>‹</button><b>{safePage}</b><button onClick={() => setPage(value => Math.min(pageCount, value + 1))} disabled={safePage === pageCount}>›</button></div></footer>}
+  </section>;
+}
+
+function SalesTrafficStrip({ sources, onSelect }) {
+  const visible = sources.filter((source) => source.count > 0).slice(0, 4);
+  const total = sources.reduce((sum, source) => sum + source.count, 0);
+  return <section className="sales-traffic-strip" aria-labelledby="sales-traffic-heading"><header><span><LayoutGrid/></span><div><h2 id="sales-traffic-heading">Traffic Source</h2><p>Where your leads are coming from</p></div></header>{visible.map((source, index) => { const percent = total ? Math.round(source.count / total * 100) : 0; return <button type="button" key={source.key || source.label} onClick={() => onSelect(source)} style={{ '--source-color':['#ff762e','#2387ed','#31b75f','#8756e8'][index] }}><span>{index + 1}</span><div><strong>{source.label}</strong><small>{source.count.toLocaleString('en-IN')} ({percent}%)</small><i><em style={{ width:`${percent}%` }}/></i></div></button>; })}</section>;
+}
+
 export default function LeadPipeline() {
   const location = useLocation();
   const summaryView = location.pathname.startsWith('/summary-dashboard');
+  const salesDashboardView = location.pathname === '/sales-dashboard';
   const [currentUser] = useState(storedUser);
   const [rows, setRows] = useState([]);
   const [sourceModes, setSourceModes] = useState([]);
@@ -187,8 +238,17 @@ export default function LeadPipeline() {
   const [owner, setOwner] = useState('');
   const [period, setPeriod] = useState('all');
   const [periodDate, setPeriodDate] = useState(() => `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`);
-  const range = useMemo(() => pipelinePeriodRange(period, periodDate), [period, periodDate]);
-  const previousRange = useMemo(() => previousPipelinePeriodRange(period, periodDate), [period, periodDate]);
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const range = useMemo(() => {
+    if (period !== 'custom') return pipelinePeriodRange(period, periodDate);
+    const start = new Date(`${customFrom}T00:00:00`); const end = new Date(`${customTo}T00:00:00`); end.setDate(end.getDate() + 1);
+    if (!customFrom || !customTo || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) return { label:'Choose a valid custom range', invalid:true };
+    const format = (date) => date.toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
+    const last = new Date(end); last.setDate(last.getDate() - 1);
+    return { start:start.getTime(), end:end.getTime(), label:`${format(start)} – ${format(last)}` };
+  }, [period, periodDate, customFrom, customTo]);
+  const previousRange = useMemo(() => period === 'custom' ? null : previousPipelinePeriodRange(period, periodDate), [period, periodDate]);
   const [selection, setSelection] = useState(null);
   const [revenueRow, setRevenueRow] = useState(null);
   const [closeRow, setCloseRow] = useState(null);
@@ -203,7 +263,7 @@ export default function LeadPipeline() {
   async function load() {
     const version = ++sequence.current;
     try {
-      const result = await api.get(summaryView ? '/leads/summary-dashboard' : '/leads/pipeline-revenue?view=sales-rep-v6');
+      const result = await api.get(summaryView || salesDashboardView ? '/leads/summary-dashboard' : '/leads/pipeline-revenue?view=sales-rep-v6');
       if (version !== sequence.current) return;
       setRows(result.data.rows || []); setError('');
     } catch (e) { if (version === sequence.current) setError(e.response?.data?.error || 'Unable to load pipeline.'); }
@@ -257,13 +317,19 @@ export default function LeadPipeline() {
   const ownerOptions = useMemo(() => [...new Set(activeOwnerRows(dashboardRows).map((row) => row.owner).filter((name) => name && name !== 'Unassigned'))].sort(), [activeOwnerRows, dashboardRows]);
   useEffect(() => { if (owner && !ownerOptions.includes(owner)) setOwner(''); }, [owner, ownerOptions]);
   const salesReps = useMemo(() => salesRepSummary(activeOwnerRows(filtered), activeOwnerRows(previousFiltered), sourceModes), [activeOwnerRows, filtered, previousFiltered, sourceModes]);
-  const comparisonLabel = period === 'week' ? 'week' : period === 'month' ? 'month' : '';
+  const comparisonLabel = period === 'week' ? 'week' : period === 'month' ? 'month' : period === 'quarter' ? 'quarter' : '';
   const trendData = useMemo(() => pipelineTrend(filtered, period, periodDate, range), [filtered, period, periodDate, range]);
   const statusItems = useMemo(() => [
     { label: 'Hot Open', value: hotOpen.length, color: '#ff762e' },
     { label: 'Hot Closed', value: hotClosed.length, color: '#16a66f' },
     { label: 'Cold Open', value: coldRows.length, color: '#3284f6' }
   ], [hotOpen.length, hotClosed.length, coldRows.length]);
+  const salesDashboardReps = useMemo(() => salesReps.map((rep) => {
+    const ownerRows = activeOwnerRows(filtered).filter((row) => row.owner === rep.owner);
+    const interests = new Map();
+    ownerRows.forEach((row) => (row.serviceInterests || []).forEach((label) => interests.set(label, (interests.get(label) || 0) + 1)));
+    return { ...rep, totalLeads: ownerRows.length, expectedRevenuePaise: total(ownerRows), poValuePaise: poTotal(ownerRows), serviceInterests:[...interests.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)).slice(0, 2) };
+  }), [activeOwnerRows, filtered, salesReps]);
   async function showServices(row) {
     const request = ++serviceRequest.current;
     setServiceView({ row, loading: true });
@@ -294,12 +360,13 @@ export default function LeadPipeline() {
     } catch (e) { setModalError(e.response?.data?.error || 'Unable to close cold lead.'); }
     finally { setClosing(false); }
   }
-  return <DashboardShell currentUser={currentUser}><div className={`pipeline-page ${summaryView ? 'is-summary' : ''}`}>
-    {(summaryView || hasAnyRole(currentUser, adminRoles)) && <DashboardViewTabs />}
-    <header className="pipeline-header summary-dashboard-heading"><div className="pipeline-heading">{summaryView && <span className="summary-heading-icon"><LayoutGrid/></span>}<div><h1>{summaryView ? 'Summary Dashboard' : 'Revenue Pipeline'}</h1><p>{summaryView ? 'Overview of leads, revenue, team performance and pipeline in real time.' : 'A clear view of your hot and cold pipeline, with locked revenue history.'}</p></div></div><div className="pipeline-filters"><label><Search size={17}/><input aria-label="Search pipeline" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search company, lead ID or owner…"/></label><select aria-label="Filter by owner" value={owner} onChange={e => setOwner(e.target.value)}><option value="">All active owners</option>{ownerOptions.map(name => <option key={name} value={name}>{name.toUpperCase()}</option>)}</select></div></header>
+  return <DashboardShell currentUser={currentUser}><div className={`pipeline-page ${summaryView ? 'is-summary' : ''} ${salesDashboardView ? 'is-sales-dashboard' : ''}`}>
+    {summaryView && <DashboardViewTabs />}
+    <header className="pipeline-header summary-dashboard-heading"><div className="pipeline-heading">{(summaryView || salesDashboardView) && <span className="summary-heading-icon"><LayoutGrid/></span>}<div><h1>{salesDashboardView ? 'Sales Dashboard' : summaryView ? 'Summary Dashboard' : 'Revenue Pipeline'}</h1><p>{salesDashboardView ? 'Real-time overview of leads, revenue, team performance and pipeline.' : summaryView ? 'Overview of leads, revenue, team performance and pipeline in real time.' : 'A clear view of your hot and cold pipeline, with locked revenue history.'}</p></div></div><div className="pipeline-filters"><label><Search size={17}/><input aria-label="Search pipeline" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search company, lead ID or owner…"/></label><select aria-label="Filter by owner" value={owner} onChange={e => setOwner(e.target.value)}><option value="">All active owners</option>{ownerOptions.map(name => <option key={name} value={name}>{name.toUpperCase()}</option>)}</select></div></header>
     <section className="pipeline-period-bar" aria-label="Pipeline date filters">
-      <div className="pipeline-period-tabs" role="group" aria-label="Filter period">{[['all', 'All time'], ['week', 'Week'], ['month', 'Month'], ['year', 'Year']].map(([value, label]) => <button key={value} type="button" aria-pressed={period === value} onClick={() => setPeriod(value)}>{label}</button>)}</div>
-      <div className="pipeline-period-context">{period !== 'all' && <label>Choose {period}{period === 'year' ? <select aria-label="Choose year" value={periodDate.slice(0, 4)} onChange={e => setPeriodDate(`${e.target.value}-01-01`)}>{[...new Set([new Date().getFullYear(), Number(periodDate.slice(0, 4)), ...rows.map(row => new Date(row.createdAt).getFullYear()).filter(Number.isFinite)])].sort((a, b) => b - a).map(year => <option key={year} value={year}>{year}</option>)}</select> : <input aria-label={`Choose ${period}`} type={period === 'month' ? 'month' : 'date'} value={period === 'month' ? periodDate.slice(0, 7) : periodDate} onChange={e => { if (e.target.value) setPeriodDate(period === 'month' ? `${e.target.value}-01` : e.target.value); }}/>}</label>}<span>{range.label} · Lead creation date</span></div>
+      <div className="pipeline-period-tabs" role="group" aria-label="Filter period">{(salesDashboardView ? [['all', 'All Data'], ['month', 'This Month'], ['quarter', 'This Quarter'], ['year', 'This Year'], ['custom', 'Custom Range']] : [['all', 'All time'], ['week', 'Week'], ['month', 'Month'], ['year', 'Year']]).map(([value, label]) => <button key={value} type="button" aria-pressed={period === value} onClick={() => setPeriod(value)}>{value === 'custom' && <CalendarDays/>}{label}</button>)}</div>
+      <div className="pipeline-period-context">{period === 'custom' ? <label className="sales-custom-range"><input aria-label="Custom range start" type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)}/><span>to</span><input aria-label="Custom range end" type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)}/></label> : period !== 'all' && !salesDashboardView ? <label>Choose {period}{period === 'year' ? <select aria-label="Choose year" value={periodDate.slice(0, 4)} onChange={e => setPeriodDate(`${e.target.value}-01-01`)}>{[...new Set([new Date().getFullYear(), Number(periodDate.slice(0, 4)), ...rows.map(row => new Date(row.createdAt).getFullYear()).filter(Number.isFinite)])].sort((a, b) => b - a).map(year => <option key={year} value={year}>{year}</option>)}</select> : <input aria-label={`Choose ${period}`} type={period === 'month' ? 'month' : 'date'} value={period === 'month' ? periodDate.slice(0, 7) : periodDate} onChange={e => { if (e.target.value) setPeriodDate(period === 'month' ? `${e.target.value}-01` : e.target.value); }}/>}</label> : null}<span>{range.label} · Lead creation date</span></div>
+      {salesDashboardView && <button className="pipeline-refresh" type="button" onClick={load} disabled={loading}><RefreshCw size={15}/>Refresh</button>}
       <button className="pipeline-export" type="button" disabled={loading || !unique.length} onClick={() => exportRows(unique, `pipeline-${period}`)}><Download size={16}/>Export</button>
     </section>
     {error && <p role="alert" className="pipeline-error">{error}</p>}
@@ -316,7 +383,19 @@ export default function LeadPipeline() {
         <SummaryStatusChart items={statusItems}/>
         <TrafficSources sources={trafficSources} onSelect={openSource} optionsUnavailable={sourceOptionsUnavailable}/>
       </section></>}
-      {!summaryView && <div className="pipeline-content-layout"><section className="pipeline-sales-workspace" aria-label="Sales pipeline">
+      {salesDashboardView && <>
+        {!unique.length && <p role="status" className="pipeline-filter-empty">No leads match these filters. Try another period or owner.</p>}
+        <section className="sales-priority-grid" aria-label="Sales pipeline priorities">
+          <SalesPriorityCard kind="hot" open={hotOpen.length} closed={hotClosed.length} revenue={total(hotRows)} poValue={poTotal(hotClosed)} previousOpen={previousHotOpen.length} previousClosed={previousHotClosed.length} comparisonLabel={comparisonLabel} onOpen={open}/>
+          <SalesPriorityCard kind="cold" open={coldRows.length} closed={0} revenue={total(coldRows)} poValue={0} previousOpen={previousColdRows.length} previousClosed={0} comparisonLabel={comparisonLabel} onOpen={open}/>
+        </section>
+        <section className="sales-dashboard-main">
+          <div className="sales-dashboard-charts"><PipelineTrendChart data={trendData}/><SummaryStatusChart items={statusItems}/></div>
+          <SalesDashboardRepTable reps={salesDashboardReps} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)}/>
+        </section>
+        <SalesTrafficStrip sources={trafficSources} onSelect={openSource}/>
+      </>}
+      {!summaryView && !salesDashboardView && <div className="pipeline-content-layout"><section className="pipeline-sales-workspace" aria-label="Sales pipeline">
         {!unique.length && <p role="status" className="pipeline-filter-empty">No leads match these filters. Try another period or owner.</p>}
         <div className="pipeline-kind-grid">
           <article className="pipeline-kind-card hot"><header><span><Flame/></span><button type="button" onClick={() => open('hot')}>Hot Leads<ArrowUpRight/></button>{comparisonLabel && <small className="pipeline-card-period">{comparisonLabel} comparison</small>}</header><div className="pipeline-kind-counts"><button type="button" onClick={() => open('hot', 'open')}><small>Open</small><strong>{hotOpen.length.toLocaleString('en-IN')}</strong><CardPeriodComparison value={hotOpen.length} previous={previousHotOpen.length} comparisonLabel={comparisonLabel}/></button><button type="button" onClick={() => open('hot', 'closed')}><small>Closed</small><strong>{hotClosed.length.toLocaleString('en-IN')}</strong><CardPeriodComparison value={hotClosed.length} previous={previousHotClosed.length} comparisonLabel={comparisonLabel}/></button></div><div className="pipeline-kind-money"><button type="button" onClick={() => open('hot')}><small>Estimated Revenue</small><strong>{revenueMoney(total(hotRows))}</strong></button><button type="button" onClick={() => open('hot', 'closed')}><small>PO Value</small><strong>{revenueMoney(poTotal(hotClosed))}</strong></button></div></article>
@@ -324,7 +403,7 @@ export default function LeadPipeline() {
         </div>
         <p className="pipeline-note">Converted leads appear only in the Hot pipeline. Hot plus Cold therefore matches the unique Traffic Source total. PO value and estimated revenue are shown separately.</p>
       </section><TrafficSources sources={trafficSources} onSelect={openSource} optionsUnavailable={sourceOptionsUnavailable}/></div>}
-      <SalesRepTable reps={salesReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)} onSourceClick={openOwnerSource}/>
+      {!salesDashboardView && <SalesRepTable reps={salesReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)} onSourceClick={openOwnerSource}/>}
     </>}
     <dialog ref={dialog} className="pipeline-dialog" onCancel={() => setSelection(null)} onClose={() => setSelection(null)}>
       {selection && <><header><div><p className="pipeline-eyebrow">PIPELINE DETAILS</p><h2>{selection.owner ? `${selection.owner.toUpperCase()} · ` : ''}{selection.sourceLabel ? `Traffic Source · ${selection.sourceLabel}` : selection.kind ? `${selection.kind === 'hot' ? 'Hot' : 'Cold'} Leads` : 'All Leads'}{selection.state ? ` · ${selection.state === 'open' ? 'Open' : 'Closed'}` : ''}</h2><p>{selection.owner ? `Lead Owner: ${selection.owner.toUpperCase()} · ` : ''}{listed.length} clients · {revenueMoney(total(listed))} estimated revenue{selection.kind === 'hot' && selection.state === 'closed' ? ` · ${revenueMoney(poTotal(listed))} PO value` : ''}</p></div><div className="pipeline-toolbar"><button type="button" onClick={() => exportRows(listed, 'pipeline-details')} disabled={!listed.length}><Download size={16}/>Excel</button><button type="button" onClick={() => setSelection(null)} aria-label="Close lead list"><X/></button></div></header>

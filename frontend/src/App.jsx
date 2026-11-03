@@ -135,7 +135,7 @@ function App(){
         <Route path="/forget-password" element={<Navigate to="/forgot-password" replace />} />
         <Route path="/forgotpassword" element={<Navigate to="/forgot-password" replace />} />
         <Route path="/dashboard" element={<ProtectedRoute><DefaultDashboardRoute/></ProtectedRoute>} />
-        <Route path="/sales-dashboard" element={<ProtectedRoute allowedRoles={['admin', 'superadmin']}><AdminDashboard/></ProtectedRoute>} />
+        <Route path="/sales-dashboard" element={<ProtectedRoute allowedRoles={['admin', 'superadmin']}><LeadPipeline/></ProtectedRoute>} />
         <Route path="/dashboard/users" element={<ProtectedRoute allowedRoles={['admin', 'superadmin']}><AdminDashboard/></ProtectedRoute>} />
         <Route path="/superadmin-dashboard" element={<ProtectedRoute allowedRoles={['admin', 'superadmin']}><SuperAdminDashboard/></ProtectedRoute>} />
         <Route path="/mis" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'manager', 'operation head', 'operations head']}><SalesManagementDashboard /></ProtectedRoute>} />

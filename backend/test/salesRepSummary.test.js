@@ -36,7 +36,7 @@ test('sales reps are ranked by total Hot Leads before Cold volume', async () => 
   assert.deepEqual(rows.map(row => row.owner), ['Hot Leader', 'Cold Heavy']);
 });
 
-test('week and month comparison ranges use the immediately preceding calendar period', async () => {
+test('week, month and quarter comparisons use the immediately preceding calendar period', async () => {
   const { previousPipelinePeriodRange } = await import('../../frontend/src/utils/leadPipeline.mjs');
   const week = previousPipelinePeriodRange('week', '2026-11-02');
   assert.equal(new Date(week.start).getFullYear(), 2026);
@@ -45,5 +45,8 @@ test('week and month comparison ranges use the immediately preceding calendar pe
   const month = previousPipelinePeriodRange('month', '2026-11-15');
   assert.equal(new Date(month.start).getMonth(), 9);
   assert.equal(new Date(month.end).getMonth(), 10);
+  const quarter = previousPipelinePeriodRange('quarter', '2026-11-15');
+  assert.equal(new Date(quarter.start).getMonth(), 6);
+  assert.equal(new Date(quarter.end).getMonth(), 9);
   assert.equal(previousPipelinePeriodRange('year', '2026-01-01'), null);
 });
