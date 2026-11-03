@@ -9,6 +9,12 @@ function blankRep(owner) {
     previousHotOpen: 0,
     previousHotClosed: 0,
     previousColdOpen: 0,
+    totalLeads: 0,
+    previousTotalLeads: 0,
+    expectedRevenuePaise: 0,
+    previousExpectedRevenuePaise: 0,
+    poValuePaise: 0,
+    previousPoValuePaise: 0,
     trafficSources: []
   };
 }
@@ -19,6 +25,9 @@ function count(rows, reps, previous = false) {
     if (!reps.has(owner)) reps.set(owner, blankRep(owner));
     const rep = reps.get(owner);
     const prefix = previous ? 'previous' : '';
+    rep[previous ? 'previousTotalLeads' : 'totalLeads'] += 1;
+    rep[previous ? 'previousExpectedRevenuePaise' : 'expectedRevenuePaise'] += Number(row.revenuePaise) || 0;
+    rep[previous ? 'previousPoValuePaise' : 'poValuePaise'] += Number(row.poAmountPaise) || 0;
     if (row.kind === 'hot' && row.state === 'closed') rep[`${prefix}${previous ? 'HotClosed' : 'hotClosed'}`] += 1;
     else if (row.kind === 'hot') rep[`${prefix}${previous ? 'HotOpen' : 'hotOpen'}`] += 1;
     // Cold Closed is intentionally included in Open for the sales summary.
