@@ -227,6 +227,7 @@ export default function LeadPipeline() {
   const location = useLocation();
   const summaryView = location.pathname.startsWith('/summary-dashboard');
   const salesDashboardView = location.pathname === '/sales-dashboard';
+  const salesDesignView = summaryView || salesDashboardView;
   const [currentUser] = useState(storedUser);
   const [rows, setRows] = useState([]);
   const [sourceModes, setSourceModes] = useState([]);
@@ -360,18 +361,18 @@ export default function LeadPipeline() {
     } catch (e) { setModalError(e.response?.data?.error || 'Unable to close cold lead.'); }
     finally { setClosing(false); }
   }
-  return <DashboardShell currentUser={currentUser}><div className={`pipeline-page ${summaryView ? 'is-summary' : ''} ${salesDashboardView ? 'is-sales-dashboard' : ''}`}>
+  return <DashboardShell currentUser={currentUser}><div className={`pipeline-page ${summaryView ? 'is-summary' : ''} ${salesDesignView ? 'is-sales-dashboard' : ''}`}>
     {summaryView && <DashboardViewTabs />}
     <header className="pipeline-header summary-dashboard-heading"><div className="pipeline-heading">{(summaryView || salesDashboardView) && <span className="summary-heading-icon"><LayoutGrid/></span>}<div><h1>{salesDashboardView ? 'Sales Dashboard' : summaryView ? 'Summary Dashboard' : 'Revenue Pipeline'}</h1><p>{salesDashboardView ? 'Real-time overview of leads, revenue, team performance and pipeline.' : summaryView ? 'Overview of leads, revenue, team performance and pipeline in real time.' : 'A clear view of your hot and cold pipeline, with locked revenue history.'}</p></div></div><div className="pipeline-filters"><label><Search size={17}/><input aria-label="Search pipeline" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search company, lead ID or owner…"/></label><select aria-label="Filter by owner" value={owner} onChange={e => setOwner(e.target.value)}><option value="">All active owners</option>{ownerOptions.map(name => <option key={name} value={name}>{name.toUpperCase()}</option>)}</select></div></header>
     <section className="pipeline-period-bar" aria-label="Pipeline date filters">
-      <div className="pipeline-period-tabs" role="group" aria-label="Filter period">{(salesDashboardView ? [['all', 'All Data'], ['month', 'This Month'], ['quarter', 'This Quarter'], ['year', 'This Year'], ['custom', 'Custom Range']] : [['all', 'All time'], ['week', 'Week'], ['month', 'Month'], ['year', 'Year']]).map(([value, label]) => <button key={value} type="button" aria-pressed={period === value} onClick={() => setPeriod(value)}>{value === 'custom' && <CalendarDays/>}{label}</button>)}</div>
-      <div className="pipeline-period-context">{period === 'custom' ? <label className="sales-custom-range"><input aria-label="Custom range start" type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)}/><span>to</span><input aria-label="Custom range end" type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)}/></label> : period !== 'all' && !salesDashboardView ? <label>Choose {period}{period === 'year' ? <select aria-label="Choose year" value={periodDate.slice(0, 4)} onChange={e => setPeriodDate(`${e.target.value}-01-01`)}>{[...new Set([new Date().getFullYear(), Number(periodDate.slice(0, 4)), ...rows.map(row => new Date(row.createdAt).getFullYear()).filter(Number.isFinite)])].sort((a, b) => b - a).map(year => <option key={year} value={year}>{year}</option>)}</select> : <input aria-label={`Choose ${period}`} type={period === 'month' ? 'month' : 'date'} value={period === 'month' ? periodDate.slice(0, 7) : periodDate} onChange={e => { if (e.target.value) setPeriodDate(period === 'month' ? `${e.target.value}-01` : e.target.value); }}/>}</label> : null}<span>{range.label} · Lead creation date</span></div>
-      {salesDashboardView && <button className="pipeline-refresh" type="button" onClick={load} disabled={loading}><RefreshCw size={15}/>Refresh</button>}
+      <div className="pipeline-period-tabs" role="group" aria-label="Filter period">{(salesDesignView ? [['all', 'All Data'], ['month', 'This Month'], ['quarter', 'This Quarter'], ['year', 'This Year'], ['custom', 'Custom Range']] : [['all', 'All time'], ['week', 'Week'], ['month', 'Month'], ['year', 'Year']]).map(([value, label]) => <button key={value} type="button" aria-pressed={period === value} onClick={() => setPeriod(value)}>{value === 'custom' && <CalendarDays/>}{label}</button>)}</div>
+      <div className="pipeline-period-context">{period === 'custom' ? <label className="sales-custom-range"><input aria-label="Custom range start" type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)}/><span>to</span><input aria-label="Custom range end" type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)}/></label> : period !== 'all' && !salesDesignView ? <label>Choose {period}{period === 'year' ? <select aria-label="Choose year" value={periodDate.slice(0, 4)} onChange={e => setPeriodDate(`${e.target.value}-01-01`)}>{[...new Set([new Date().getFullYear(), Number(periodDate.slice(0, 4)), ...rows.map(row => new Date(row.createdAt).getFullYear()).filter(Number.isFinite)])].sort((a, b) => b - a).map(year => <option key={year} value={year}>{year}</option>)}</select> : <input aria-label={`Choose ${period}`} type={period === 'month' ? 'month' : 'date'} value={period === 'month' ? periodDate.slice(0, 7) : periodDate} onChange={e => { if (e.target.value) setPeriodDate(period === 'month' ? `${e.target.value}-01` : e.target.value); }}/>}</label> : null}<span>{range.label} · Lead creation date</span></div>
+      {salesDesignView && <button className="pipeline-refresh" type="button" onClick={load} disabled={loading}><RefreshCw size={15}/>Refresh</button>}
       <button className="pipeline-export" type="button" disabled={loading || !unique.length} onClick={() => exportRows(unique, `pipeline-${period}`)}><Download size={16}/>Export</button>
     </section>
     {error && <p role="alert" className="pipeline-error">{error}</p>}
     {loading ? <PipelineSkeleton /> : <>
-      {summaryView && <>{!unique.length && <p role="status" className="pipeline-filter-empty">No leads match these filters. Try another period or owner.</p>}
+      {summaryView && !salesDesignView && <>{!unique.length && <p role="status" className="pipeline-filter-empty">No leads match these filters. Try another period or owner.</p>}
       <section className="summary-kpi-grid" aria-label="Sales summary">
         <SummaryKpi label="Hot Leads" value={hotOpen.length} previous={previousHotOpen.length} comparisonLabel={comparisonLabel} icon={Flame} tone="hot" trend={trendData.map(item => item.hot)} onClick={() => open('hot', 'open')}/>
         <SummaryKpi label="Cold Leads" value={coldRows.length} previous={previousColdRows.length} comparisonLabel={comparisonLabel} icon={Snowflake} tone="cold" trend={trendData.map(item => item.cold)} onClick={() => open('cold')}/>
@@ -383,7 +384,7 @@ export default function LeadPipeline() {
         <SummaryStatusChart items={statusItems}/>
         <TrafficSources sources={trafficSources} onSelect={openSource} optionsUnavailable={sourceOptionsUnavailable}/>
       </section></>}
-      {salesDashboardView && <>
+      {salesDesignView && <>
         {!unique.length && <p role="status" className="pipeline-filter-empty">No leads match these filters. Try another period or owner.</p>}
         <section className="sales-priority-grid" aria-label="Sales pipeline priorities">
           <SalesPriorityCard kind="hot" open={hotOpen.length} closed={hotClosed.length} revenue={total(hotRows)} poValue={poTotal(hotClosed)} previousOpen={previousHotOpen.length} previousClosed={previousHotClosed.length} comparisonLabel={comparisonLabel} onOpen={open}/>
@@ -403,7 +404,7 @@ export default function LeadPipeline() {
         </div>
         <p className="pipeline-note">Converted leads appear only in the Hot pipeline. Hot plus Cold therefore matches the unique Traffic Source total. PO value and estimated revenue are shown separately.</p>
       </section><TrafficSources sources={trafficSources} onSelect={openSource} optionsUnavailable={sourceOptionsUnavailable}/></div>}
-      {!salesDashboardView && <SalesRepTable reps={salesReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)} onSourceClick={openOwnerSource}/>}
+      {!salesDesignView && <SalesRepTable reps={salesReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)} onSourceClick={openOwnerSource}/>}
     </>}
     <dialog ref={dialog} className="pipeline-dialog" onCancel={() => setSelection(null)} onClose={() => setSelection(null)}>
       {selection && <><header><div><p className="pipeline-eyebrow">PIPELINE DETAILS</p><h2>{selection.owner ? `${selection.owner.toUpperCase()} · ` : ''}{selection.sourceLabel ? `Traffic Source · ${selection.sourceLabel}` : selection.kind ? `${selection.kind === 'hot' ? 'Hot' : 'Cold'} Leads` : 'All Leads'}{selection.state ? ` · ${selection.state === 'open' ? 'Open' : 'Closed'}` : ''}</h2><p>{selection.owner ? `Lead Owner: ${selection.owner.toUpperCase()} · ` : ''}{listed.length} clients · {revenueMoney(total(listed))} estimated revenue{selection.kind === 'hot' && selection.state === 'closed' ? ` · ${revenueMoney(poTotal(listed))} PO value` : ''}</p></div><div className="pipeline-toolbar"><button type="button" onClick={() => exportRows(listed, 'pipeline-details')} disabled={!listed.length}><Download size={16}/>Excel</button><button type="button" onClick={() => setSelection(null)} aria-label="Close lead list"><X/></button></div></header>
