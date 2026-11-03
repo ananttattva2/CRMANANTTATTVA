@@ -8,6 +8,12 @@ const array = value => Array.isArray(value) ? value : [];
 const list = value => (Array.isArray(value) ? value : [value]).flatMap(item => String(item || '').split(/[,;\n]/)).map(item => item.trim()).filter(Boolean);
 const isAnnual = value => list(value).some(item => /annual(?:return(?:fill?ing)?|fill?ing)/.test(key(item)));
 
+function clientMasterUniqueId(value) {
+  const saved = text(value);
+  const match = saved.match(/^ATPL(?:-LEAD)?-(\d+)$/i);
+  return match ? `ATPL-${match[1].padStart(4, '0')}` : saved || '-';
+}
+
 function annualServiceName(...values) {
   const saved = values.flatMap(list).find(item => isAnnual(item));
   if (!saved) return '';
@@ -105,7 +111,7 @@ function buildRecords({ clients = [], users = [], filings = new Map(), teams = [
     const clientId = client.assignmentOnly ? text(client.statusSourceClientId) : text(client._id);
     const company = text(lead.company || lead.companyName || client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || 'Untitled client');
     const leadId = text(lead.leadCode || lead.sourceLeadId || client.data?.importMeta?.leadNumber || '-');
-    const uniqueId = text(client.data?.importMeta?.uniqueId || client.uniqueId || '-');
+    const uniqueId = clientMasterUniqueId(client.data?.importMeta?.uniqueId || client.uniqueId || client.data?.importMeta?.leadNumber);
     const dueDate = isoDate(service.dueDate || service.serviceEndDate || poRows.map(row => row.poEndDate).filter(Boolean).sort().at(0));
     const yearStates = Object.fromEntries(years.map(year => {
       const filing = clientId && typeof filings?.get === 'function' ? filings.get(`${clientId}:${year}`) : null;

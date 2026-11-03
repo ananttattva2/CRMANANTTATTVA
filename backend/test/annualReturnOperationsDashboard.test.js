@@ -86,7 +86,7 @@ test('legacy malformed assignment arrays do not crash or hide later valid servic
   const clients = [
     { _id: 'bad', assignedServiceId: 'bad-service', selectedLead: { _id: 'bad-lead', serviceSelections: { servicesOffered: 'Annual Return' }, assignments: 'invalid' } },
     {
-      _id: 'client-2', assignedServiceId: 'service-2', data: { importMeta: { uniqueId: 'ATPL-0548' } },
+      _id: 'client-2', assignedServiceId: 'service-2', data: { importMeta: { uniqueId: 'ATPL-LEAD-0548' } },
       selectedLead: {
         _id: 'lead-2', company: 'Valid Client', leadCode: 'ATPL-2',
         serviceSelections: [{ assignedServiceId: 'service-2', servicesOffered: 'Annual Return Filling', eprCategory: 'Plastic Waste', applicantType: 'PIBO', subApplicantType: 'Producer', annualReturnYears: ['2025-26'] }],
