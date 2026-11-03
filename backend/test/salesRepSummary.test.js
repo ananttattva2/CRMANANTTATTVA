@@ -36,6 +36,18 @@ test('sales reps are ranked by total Hot Leads before Cold volume', async () => 
   assert.deepEqual(rows.map(row => row.owner), ['Hot Leader', 'Cold Heavy']);
 });
 
+test('sales rep counts and traffic sources exclude existing leads', async () => {
+  const { salesRepSummary } = await import('../../frontend/src/utils/salesRepSummary.mjs');
+  const [asha] = salesRepSummary([
+    { id: 'new-hot', kind: 'hot', state: 'open', owner: 'Asha', communicationMode: 'LinkedIn Ads' },
+    { id: 'existing-flag', kind: 'hot', state: 'open', owner: 'Asha', existingLead: true, communicationMode: 'Cross-Selling' },
+    { id: 'existing-status', kind: 'hot', state: 'closed', owner: 'Asha', status: 'Existing Client', communicationMode: 'Renewal / Additional Services' }
+  ]);
+  assert.equal(asha.hotOpen, 1);
+  assert.equal(asha.hotClosed, 0);
+  assert.deepEqual(asha.trafficSources.map(source => [source.label, source.count]), [['Digital Marketing', 1]]);
+});
+
 test('week and month comparison ranges use the immediately preceding calendar period', async () => {
   const { previousPipelinePeriodRange } = await import('../../frontend/src/utils/leadPipeline.mjs');
   const week = previousPipelinePeriodRange('week', '2026-11-02');
