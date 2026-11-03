@@ -118,8 +118,9 @@ function RepMetric({ value, previous, comparisonLabel, tone, onClick, label }) {
   </button>;
 }
 
-function CardPeriodComparison({ value, previous, comparisonLabel, money = false }) {
+function CardPeriodComparison({ value, previous = 0, comparisonLabel, money = false }) {
   if (!comparisonLabel) return null;
+  const format = money ? revenueMoney : number => number.toLocaleString('en-IN');
   const difference = value - previous;
   const percent = previous > 0 ? Math.round((difference / previous) * 100) : null;
   const text = difference === 0
@@ -185,22 +186,20 @@ function SalesPriorityCard({ kind, open, closed, revenue, poValue, previousOpen,
   const Icon = hot ? Flame : Snowflake;
   return <article className={`sales-priority-card ${kind}`}>
     <header><span className="sales-priority-icon"><Icon aria-hidden="true"/></span><div><h2>{hot ? 'Hot Leads' : 'Cold Leads'}</h2><p>{hot ? 'High priority leads with active engagement.' : 'Nurturing leads for future opportunities.'}</p></div><em>{hot ? 'High Priority' : 'Low Priority'}</em></header>
-    <div className={`sales-priority-metrics ${hot ? '' : 'is-cold'}`}>
-      <button type="button" onClick={() => onOpen(kind, hot ? 'open' : '')}><Target/><span><small>Lead Open</small><strong>{open.toLocaleString('en-IN')}</strong><CardPeriodComparison value={open} previous={previousOpen} comparisonLabel={comparisonLabel}/></span></button>
-      {hot && <button type="button" onClick={() => onOpen('hot', 'closed')}><span className="sales-priority-metric-icon is-closed">✓</span><span><small>Lead Closed</small><strong>{closed.toLocaleString('en-IN')}</strong><CardPeriodComparison value={closed} previous={previousClosed} comparisonLabel={comparisonLabel}/></span></button>}
-      <button type="button" onClick={() => onOpen(kind)}><CircleDollarSign/><span><small>Expected Revenue</small><strong>{revenueMoney(revenue)}</strong><CardPeriodComparison value={revenue} previous={previousRevenue} comparisonLabel={comparisonLabel} money/></span></button>
-      {hot && <button type="button" onClick={() => onOpen('hot', 'closed')}><WalletCards/><span><small>PO Value</small><strong>{revenueMoney(poValue)}</strong><CardPeriodComparison value={poValue} previous={previousPoValue} comparisonLabel={comparisonLabel} money/></span></button>}
+    <div className={`sales-priority-metrics ${hot ? 'is-paired' : 'is-cold'}`}>
+      <section className="sales-priority-pair" aria-label={`${hot ? 'Hot' : 'Cold'} open leads and expected revenue`}>
+        <button type="button" onClick={() => onOpen(kind, hot ? 'open' : '')}><Target/><span><small>Lead Open</small><strong>{open.toLocaleString('en-IN')}</strong><CardPeriodComparison value={open} previous={previousOpen} comparisonLabel={comparisonLabel}/></span></button>
+        <button type="button" onClick={() => onOpen(kind)}><CircleDollarSign/><span><small>Expected Revenue</small><strong>{revenueMoney(revenue)}</strong><CardPeriodComparison value={revenue} previous={previousRevenue} comparisonLabel={comparisonLabel} money/></span></button>
+      </section>
+      {hot && <section className="sales-priority-pair is-closed" aria-label="Hot closed leads and PO value">
+        <button type="button" onClick={() => onOpen('hot', 'closed')}><span className="sales-priority-metric-icon is-closed">✓</span><span><small>Lead Closed</small><strong>{closed.toLocaleString('en-IN')}</strong><CardPeriodComparison value={closed} previous={previousClosed} comparisonLabel={comparisonLabel}/></span></button>
+        <button type="button" onClick={() => onOpen('hot', 'closed')}><WalletCards/><span><small>PO Value</small><strong>{revenueMoney(poValue)}</strong><CardPeriodComparison value={poValue} previous={previousPoValue} comparisonLabel={comparisonLabel} money/></span></button>
+      </section>}
     </div>
   </article>;
 }
 
-function SalesDashboardValue({ value, previous = 0, comparisonLabel, tone = '', money = false, onClick }) {
-  const difference = value - previous;
-  const formatted = money ? revenueMoney(value) : value.toLocaleString('en-IN');
-  return <button type="button" className={`sales-dashboard-value ${tone}`} onClick={onClick}><strong>{formatted}</strong>{comparisonLabel && <><small>Prev: {money ? revenueMoney(previous) : previous.toLocaleString('en-IN')}</small><em className={difference > 0 ? 'is-up' : difference < 0 ? 'is-down' : 'is-flat'}>{difference > 0 ? '↑' : difference < 0 ? '↓' : '–'} {money ? revenueMoney(Math.abs(difference)) : Math.abs(difference).toLocaleString('en-IN')}</em></>}</button>;
-}
-
-function SalesDashboardRepTable({ reps, onMetricClick, comparisonLabel }) {
+function SalesDashboardRepTable({ reps, comparisonLabel, range, previousRange, onMetricClick }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
   const pageCount = Math.max(1, Math.ceil(reps.length / pageSize));
@@ -210,16 +209,20 @@ function SalesDashboardRepTable({ reps, onMetricClick, comparisonLabel }) {
   useEffect(() => { setPage(1); }, [reps, pageSize]);
   function exportReps() {
     const sheet = XLSX.utils.json_to_sheet(reps.map((rep) => ({
-      'Sales Representative': rep.owner, 'Total Leads': rep.totalLeads, 'Previous Total Leads': rep.previousTotalLeads, 'Hot Open': rep.hotOpen, 'Previous Hot Open': rep.previousHotOpen, 'Hot Closed': rep.hotClosed, 'Previous Hot Closed': rep.previousHotClosed, 'Cold Open': rep.coldOpen, 'Previous Cold Open': rep.previousColdOpen,
-      'Expected Revenue (INR)': rep.expectedRevenuePaise / 100, 'Previous Expected Revenue (INR)': rep.previousExpectedRevenuePaise / 100, 'PO Value (INR)': rep.poValuePaise / 100, 'Previous PO Value (INR)': rep.previousPoValuePaise / 100, 'Major Service Interest': rep.serviceInterests.map((item) => `${item.label} (${item.count})`).join(', ')
+      'Sales Representative': rep.owner, 'Total Leads': rep.totalLeads, 'Hot Open': rep.hotOpen, 'Hot Closed': rep.hotClosed, 'Cold Open': rep.coldOpen,
+      'Expected Revenue (INR)': rep.expectedRevenuePaise / 100, 'PO Value (INR)': rep.poValuePaise / 100,
+      ...(comparisonLabel ? { 'Comparison Period': comparisonLabel, 'Current Range': range.label, 'Previous Range': previousRange.label,
+        'Previous Total Leads': rep.previousTotalLeads, 'Previous Hot Open': rep.previousHotOpen, 'Previous Hot Closed': rep.previousHotClosed, 'Previous Cold Open': rep.previousColdOpen,
+        'Previous Expected Revenue (INR)': rep.previousExpectedRevenuePaise / 100, 'Previous PO Value (INR)': rep.previousPoValuePaise / 100 } : {}), 'Major Service Interest': rep.serviceInterests.map((item) => `${item.label} (${item.count})`).join(', ')
     })));
-    sheet['!cols'] = [{ wch:25 }, { wch:12 }, { wch:12 }, { wch:12 }, { wch:12 }, { wch:22 }, { wch:20 }, { wch:55 }];
+    sheet['!cols'] = (XLSX.utils.sheet_to_json(sheet, { header: 1 })[0] || []).map(label => ({ wch: label === 'Major Service Interest' ? 55 : label === 'Sales Representative' ? 25 : Math.max(14, Math.min(30, String(label).length + 2)) }));
     const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, 'Sales Reps'); XLSX.writeFile(book, 'sales-rep-performance.xlsx');
   }
   return <section className="sales-dashboard-reps" aria-labelledby="sales-performance-heading">
-    <header><div><span><Users/></span><div><h2 id="sales-performance-heading">Sales Rep Performance</h2><p>{comparisonLabel ? `This ${comparisonLabel} compared with the previous ${comparisonLabel}.` : 'Lead summary, conversion and revenue by sales representative.'}</p></div></div><button type="button" onClick={exportReps} disabled={!reps.length}><Download/>Export</button></header>
+    <header><div><span><Users/></span><div><h2 id="sales-performance-heading">Sales Rep Performance</h2><p>Lead summary, conversion and revenue by sales representative.</p></div></div><button type="button" onClick={exportReps} disabled={!reps.length}><Download/>Export</button></header>
+    {comparisonLabel && <div className="sales-rep-comparison" role="note"><div><small>This {comparisonLabel}</small><strong>{range.label}</strong></div><span aria-hidden="true">vs</span><div><small>Previous {comparisonLabel}</small><strong>{previousRange.label}</strong></div><p>Current values, previous values and change are shown for every sales metric.</p></div>}
     <div className="sales-dashboard-reps-table"><table><thead><tr><th>Sales Representative</th><th>Total<br/>Leads</th><th colSpan="2">Hot Leads<div><small>Open</small><small>Closed</small></div></th><th>Cold Leads<br/><small>Open</small></th><th>Expected Revenue</th><th>PO Value</th><th>Major Service Interest</th></tr></thead>
-      <tbody>{visible.map((rep) => <tr key={rep.owner}><td><span className="sales-dashboard-rep"><i>{rep.owner.split(/\s+/).slice(0,2).map(part => part[0]).join('').toUpperCase()}</i><b>{rep.owner.toUpperCase()}</b></span></td><td><SalesDashboardValue value={rep.totalLeads} previous={rep.previousTotalLeads} comparisonLabel={comparisonLabel} onClick={() => onMetricClick(rep.owner, '', '')}/></td><td><SalesDashboardValue value={rep.hotOpen} previous={rep.previousHotOpen} comparisonLabel={comparisonLabel} tone="is-hot" onClick={() => onMetricClick(rep.owner, 'hot', 'open')}/></td><td><SalesDashboardValue value={rep.hotClosed} previous={rep.previousHotClosed} comparisonLabel={comparisonLabel} tone="is-closed" onClick={() => onMetricClick(rep.owner, 'hot', 'closed')}/></td><td><SalesDashboardValue value={rep.coldOpen} previous={rep.previousColdOpen} comparisonLabel={comparisonLabel} tone="is-cold" onClick={() => onMetricClick(rep.owner, 'cold', '')}/></td><td><SalesDashboardValue value={rep.expectedRevenuePaise} previous={rep.previousExpectedRevenuePaise} comparisonLabel={comparisonLabel} money onClick={() => onMetricClick(rep.owner, '', '')}/></td><td><SalesDashboardValue value={rep.poValuePaise} previous={rep.previousPoValuePaise} comparisonLabel={comparisonLabel} money onClick={() => onMetricClick(rep.owner, 'hot', 'closed')}/></td><td><div className="sales-service-tags">{rep.serviceInterests.length ? rep.serviceInterests.map((item, index) => <span key={item.label}><i>{index + 1}</i>{item.label}<b>{item.count}</b></span>) : <small>Not recorded</small>}</div></td></tr>)}</tbody></table>{!reps.length && <p className="pipeline-empty">No sales representatives match these filters.</p>}</div>
+      <tbody>{visible.map((rep) => <tr key={rep.owner}><td><span className="sales-dashboard-rep"><i>{rep.owner.split(/\s+/).slice(0,2).map(part => part[0]).join('').toUpperCase()}</i><b>{rep.owner.toUpperCase()}</b></span></td><td><RepMetric value={rep.totalLeads} previous={rep.previousTotalLeads} comparisonLabel={comparisonLabel} label={`${rep.owner} total leads`} onClick={() => onMetricClick(rep.owner, '', '')}/></td><td className="is-hot"><RepMetric value={rep.hotOpen} previous={rep.previousHotOpen} comparisonLabel={comparisonLabel} label={`${rep.owner} hot open leads`} onClick={() => onMetricClick(rep.owner, 'hot', 'open')}/></td><td className="is-closed"><RepMetric value={rep.hotClosed} previous={rep.previousHotClosed} comparisonLabel={comparisonLabel} label={`${rep.owner} hot closed leads`} onClick={() => onMetricClick(rep.owner, 'hot', 'closed')}/></td><td className="is-cold"><RepMetric value={rep.coldOpen} previous={rep.previousColdOpen} comparisonLabel={comparisonLabel} label={`${rep.owner} cold leads`} onClick={() => onMetricClick(rep.owner, 'cold', '')}/></td><td><strong>{revenueMoney(rep.expectedRevenuePaise)}</strong><CardPeriodComparison value={rep.expectedRevenuePaise} previous={rep.previousExpectedRevenuePaise} comparisonLabel={comparisonLabel} money/></td><td><strong>{revenueMoney(rep.poValuePaise)}</strong><CardPeriodComparison value={rep.poValuePaise} previous={rep.previousPoValuePaise} comparisonLabel={comparisonLabel} money/></td><td><div className="sales-service-tags">{rep.serviceInterests.length ? rep.serviceInterests.map((item, index) => <span key={item.label}><i>{index + 1}</i>{item.label}<b>{item.count}</b></span>) : <small>Not recorded</small>}</div></td></tr>)}</tbody></table>{!reps.length && <p className="pipeline-empty">No sales representatives match these filters.</p>}</div>
     {!!reps.length && <footer><span>Showing {first + 1}–{Math.min(first + pageSize, reps.length)} of {reps.length} records</span><label>Rows per page<select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value="5">5</option><option value="10">10</option><option value="25">25</option></select></label><div><button onClick={() => setPage(value => Math.max(1, value - 1))} disabled={safePage === 1}>‹</button><b>{safePage}</b><button onClick={() => setPage(value => Math.min(pageCount, value + 1))} disabled={safePage === pageCount}>›</button></div></footer>}
   </section>;
 }
@@ -418,6 +421,7 @@ export default function LeadPipeline() {
         <TrafficSources sources={trafficSources} onSelect={openSource} optionsUnavailable={sourceOptionsUnavailable}/>
       </section></>}
       {salesDesignView && <>
+        {comparisonLabel ? <section className="sales-period-comparison" aria-label="Dashboard period comparison"><span>{comparisonLabel[0].toUpperCase() + comparisonLabel.slice(1)} comparison</span><strong>{range.label}</strong><small>vs</small><strong>{previousRange.label}</strong></section> : <p className="sales-comparison-hint">Select This Week or This Month above to compare the complete dashboard with the previous period.</p>}
         {!unique.length && <p role="status" className="pipeline-filter-empty">No leads match these filters. Try another period or owner.</p>}
         {comparisonLabel && previousRange && <div className="sales-period-comparison" role="note"><div><small>Selected {comparisonLabel}</small><strong>{range.label}</strong></div><span>compared with</span><div><small>Previous {comparisonLabel}</small><strong>{previousRange.label}</strong></div></div>}
         <section className="sales-priority-grid" aria-label="Sales pipeline priorities">
@@ -426,7 +430,7 @@ export default function LeadPipeline() {
         </section>
         <section className="sales-dashboard-main">
           <div className="sales-dashboard-charts"><PipelineTrendChart data={trendData} previousData={previousTrendData} comparisonLabel={comparisonLabel}/><SummaryStatusChart items={statusItems} previousItems={previousStatusItems} comparisonLabel={comparisonLabel}/></div>
-          <SalesDashboardRepTable reps={salesDashboardReps} comparisonLabel={comparisonLabel} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)}/>
+          <SalesDashboardRepTable reps={salesDashboardReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)}/>
         </section>
         <SalesTrafficStrip sources={trafficSources} previousSources={previousTrafficSources} comparisonLabel={comparisonLabel} onSelect={openSource}/>
       </>}

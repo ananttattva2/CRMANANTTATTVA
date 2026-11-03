@@ -230,7 +230,7 @@ function mergeManagerStaffAllocations(clients = [], leads = []) {
         statusSourceClientId: statusMaster ? value(statusMaster._id) : undefined,
         workflowStatus: workflowMaster?.workflowStatus,
         selectedLead: { ...lead, assignments: [enrichedAssignment], serviceSelections: [service] },
-        data: { cpcb: statusMatch?.status ? { status: statusMatch.status } : {}, registeredAddress: masterData.registeredAddress?.state ? { state: masterData.registeredAddress.state } : {}, basic: { clientLegalName: lead.company || lead.companyName || lead.clientName || 'Untitled client' }, importMeta: { leadNumber: lead.leadCode || lead.sourceLeadId || '' } },
+        data: { cpcb: statusMatch?.status ? { status: statusMatch.status } : {}, registeredAddress: masterData.registeredAddress?.state ? { state: masterData.registeredAddress.state } : {}, basic: { clientLegalName: lead.company || lead.companyName || lead.clientName || 'Untitled client' }, importMeta: { uniqueId: (workflowMaster || statusMaster)?.data?.importMeta?.uniqueId || (workflowMaster || statusMaster)?.uniqueId || '', leadNumber: lead.leadCode || lead.sourceLeadId || '' } },
         adminControls: { visibilityStatus: (workflowMaster || statusMaster)?.adminControls?.visibilityStatus }, sla: {}, assignmentOnly: true
       });
     });

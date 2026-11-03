@@ -1,6 +1,49 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+test('period comparisons include exact revenue and PO amounts and previous-only owners', async () => {
+  const { salesRepSummary } = await import('../../frontend/src/utils/salesRepSummary.mjs');
+  const reps = salesRepSummary([
+    { kind: 'hot', state: 'open', owner: 'Asha', revenuePaise: 105050, poAmountPaise: 0 },
+    { kind: 'hot', state: 'closed', owner: 'Asha', revenuePaise: 230025, poAmountPaise: 700099 },
+    { kind: 'cold', state: 'open', owner: 'Asha' }
+  ], [
+    { kind: 'hot', state: 'closed', owner: 'Asha', revenuePaise: 50000, poAmountPaise: 800000 },
+    { kind: 'cold', state: 'open', owner: 'Previous only', revenuePaise: 12345 }
+  ]);
+  const asha = reps.find(rep => rep.owner === 'Asha');
+  assert.equal(asha.totalLeads, 3);
+  assert.equal(asha.previousTotalLeads, 1);
+  assert.equal(asha.expectedRevenuePaise, 335075);
+  assert.equal(asha.previousExpectedRevenuePaise, 50000);
+  assert.equal(asha.poValuePaise, 700099);
+  assert.equal(asha.previousPoValuePaise, 800000);
+  const prior = reps.find(rep => rep.owner === 'Previous only');
+  assert.equal(prior.totalLeads, 0);
+  assert.equal(prior.previousTotalLeads, 1);
+  assert.equal(prior.expectedRevenuePaise, 0);
+  assert.equal(prior.previousExpectedRevenuePaise, 12345);
+});
+
+test('month comparison uses adjacent non-overlapping periods and omits converted cold history', async () => {
+  const { salesRepSummary } = await import('../../frontend/src/utils/salesRepSummary.mjs');
+  const { currentPipelineRows, pipelinePeriodRange, previousPipelinePeriodRange, inPipelinePeriod } = await import('../../frontend/src/utils/leadPipeline.mjs');
+  const rows = [
+    { kind: 'hot', state: 'open', owner: 'Asha', createdAt: '2026-11-01T12:00:00', revenuePaise: 20000 },
+    { kind: 'cold', owner: 'Asha', createdAt: '2026-11-01T12:00:00', converted: true, revenuePaise: 20000 },
+    { kind: 'hot', state: 'closed', owner: 'Asha', createdAt: '2026-10-31T12:00:00', poAmountPaise: 30000 },
+    { kind: 'hot', state: 'open', owner: 'Asha', createdAt: '2026-09-30T12:00:00', revenuePaise: 990000 }
+  ];
+  const current = pipelinePeriodRange('month', '2026-11-03');
+  const previous = previousPipelinePeriodRange('month', '2026-11-03');
+  const [rep] = salesRepSummary(currentPipelineRows(rows.filter(row => inPipelinePeriod(row.createdAt, current))), currentPipelineRows(rows.filter(row => inPipelinePeriod(row.createdAt, previous))));
+  assert.equal(rep.totalLeads, 1);
+  assert.equal(rep.previousTotalLeads, 1);
+  assert.equal(rep.expectedRevenuePaise, 20000);
+  assert.equal(rep.previousExpectedRevenuePaise, 0);
+  assert.equal(rep.previousPoValuePaise, 30000);
+});
+
 test('sales rep summary keeps Hot states separate and combines every Cold state into Open', async () => {
   const { salesRepSummary } = await import('../../frontend/src/utils/salesRepSummary.mjs');
   const current = [

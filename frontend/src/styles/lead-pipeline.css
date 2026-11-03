@@ -1172,19 +1172,25 @@
 .pipeline-page.is-sales-dashboard .sales-priority-metrics .pipeline-card-comparison>span { display:block; color:#667d8f; font-size:9px; }
 .pipeline-page.is-sales-dashboard .sales-priority-metrics .pipeline-card-comparison>em { width:max-content; }
 .pipeline-page.is-sales-dashboard .sales-dashboard-reps td { height:68px; }
-.sales-dashboard-value { display:grid; width:100%; justify-items:center; gap:2px; color:#17384e; }
-.sales-dashboard-value>strong { color:#17384e; font-size:12px; font-weight:950; }
-.sales-dashboard-value.is-hot>strong { color:#f45d1b; font-size:14px; }
-.sales-dashboard-value.is-closed>strong { color:#079363; font-size:14px; }
-.sales-dashboard-value.is-cold>strong { color:#1668e8; font-size:14px; }
-.sales-dashboard-value>small { color:#7b8d9d; font-size:7px; font-weight:750; }
-.sales-dashboard-value>em { padding:2px 5px; border-radius:999px; font-size:7px; font-style:normal; font-weight:900; }
-.sales-dashboard-value>em.is-up { color:#08775f; background:#e7f7f1; }
-.sales-dashboard-value>em.is-down { color:#c84742; background:#fff0ef; }
-.sales-dashboard-value>em.is-flat { color:#647586; background:#edf2f4; }
-.sales-period-comparison { display:flex; align-items:center; justify-content:center; gap:12px; padding:8px 12px; border:1px solid #cfe8df; border-radius:11px; color:#315f55; background:linear-gradient(90deg,#f0fbf7,#fbfefd); box-shadow:0 5px 14px #173e3508; }
-.sales-period-comparison>div { display:grid; gap:1px; text-align:center; }
-.sales-period-comparison small { color:#718a82; font-size:8px; font-weight:900; text-transform:uppercase; letter-spacing:.05em; }
-.sales-period-comparison strong { color:#173e36; font-size:10px; }
-.sales-period-comparison>span { padding:4px 8px; border-radius:999px; color:#08745f; background:#dff5ed; font-size:8px; font-weight:950; text-transform:uppercase; }
-@media(max-width:620px) { .sales-period-comparison { align-items:stretch; flex-direction:column; }.sales-period-comparison>span { align-self:center; } }
+/* Keep lead counts with their corresponding financial metric. */
+.sales-priority-metrics.is-paired{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:14px}
+.sales-priority-metrics.is-cold{grid-template-columns:1fr;padding:14px}
+.sales-priority-pair{min-width:0;overflow:hidden;border:1px solid #f5d5c3;border-radius:12px;background:#fffaf6;box-shadow:0 3px 10px #25415c05}
+.sales-priority-pair.is-closed{border-color:#cce7db;background:#f5fcf8}
+.cold .sales-priority-pair{border-color:#c9e0f9;background:#f7fbff}
+.sales-priority-pair>button{display:flex;align-items:flex-start;gap:10px;width:100%;min-height:70px;padding:12px 14px;text-align:left;transition:background .18s}
+.sales-priority-pair>button+button{border-top:1px solid #e7ece9}
+.sales-priority-pair>button:hover{background:#ffffffb5}
+.sales-priority-pair>button:focus-visible{outline:2px solid var(--card-accent);outline-offset:-3px}
+.sales-priority-pair>button>svg{width:29px;height:29px;padding:5px;flex-shrink:0;border-radius:50%;color:var(--card-accent);background:color-mix(in srgb,var(--card-accent) 10%,white)}
+.sales-priority-pair>button>span{min-width:0}
+.sales-priority-pair .pipeline-card-comparison{display:flex!important;align-items:flex-start;flex-direction:column;gap:4px;margin:8px 0 0!important;font-size:10px}
+.sales-priority-pair .pipeline-card-comparison>span{display:block!important}
+@media(max-width:620px){.sales-priority-metrics.is-paired{grid-template-columns:1fr}.sales-priority-pair>button{min-height:68px}}
+
+.sales-period-comparison{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:12px 16px;border:1px solid #c8e4da;border-radius:12px;background:#f3fcf8;color:#1e5547}
+.sales-period-comparison>span{padding:5px 10px;border-radius:8px;background:#def2e8;font-size:11px;font-weight:850;text-transform:capitalize}.sales-period-comparison strong{font-size:12px}.sales-period-comparison small{font-size:11px;color:#789087}
+.sales-comparison-hint{margin:0;color:#647989;font-size:11px;font-weight:650}
+.sales-dashboard-reps-table .pipeline-card-comparison{display:flex;align-items:center;flex-direction:column;gap:4px;margin-top:7px;white-space:normal;font-size:10px}
+.sales-dashboard-reps-table .sales-rep-metric{min-width:85px}.sales-dashboard-reps-table .sales-rep-metric:disabled{opacity:1;cursor:default}
+.sales-dashboard-reps-table .sales-rep-metric strong{font-size:16px}.sales-dashboard-reps-table .sales-rep-metric small,.sales-dashboard-reps-table .sales-rep-previous,.sales-dashboard-reps-table .sales-rep-change{font-size:10px;white-space:normal}
