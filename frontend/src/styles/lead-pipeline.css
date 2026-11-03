@@ -1127,3 +1127,43 @@
   .sales-rep-pagination { align-items:flex-start; flex-direction:column; }
   .pipeline-skeleton-cards { grid-template-columns:1fr; }
 }
+
+/* Final Sales Dashboard readability and expandable traffic-source treatment. */
+.pipeline-page.is-sales-dashboard .sales-priority-card>header h2 { font-size:19px; }
+.pipeline-page.is-sales-dashboard .sales-priority-card>header p { font-size:10px; line-height:1.4; }
+.pipeline-page.is-sales-dashboard .sales-priority-card>header>em { padding:6px 10px; font-size:10px; }
+.pipeline-page.is-sales-dashboard .sales-priority-metrics>button { min-height:78px; gap:10px; padding:11px 13px; }
+.pipeline-page.is-sales-dashboard .sales-priority-metrics>button>svg,
+.pipeline-page.is-sales-dashboard .sales-priority-metric-icon { width:31px; height:31px; }
+.pipeline-page.is-sales-dashboard .sales-priority-metrics small { font-size:11px; }
+.pipeline-page.is-sales-dashboard .sales-priority-metrics strong { margin-top:5px; font-size:21px; line-height:1.05; }
+.pipeline-page.is-sales-dashboard .sales-priority-metrics .pipeline-card-comparison { font-size:9px; }
+.pipeline-page.is-sales-dashboard .pipeline-period-tabs button { font-size:11px; }
+
+.pipeline-page.is-sales-dashboard .sales-traffic-strip { transition:min-height .22s ease,box-shadow .22s ease; }
+.pipeline-page.is-sales-dashboard .sales-traffic-strip.is-expanded { box-shadow:0 12px 30px #25415c16; }
+.pipeline-page.is-sales-dashboard .sales-traffic-strip h2 { font-size:16px; }
+.pipeline-page.is-sales-dashboard .sales-traffic-strip header p { font-size:9px; }
+.pipeline-page.is-sales-dashboard .sales-traffic-strip>button { position:relative; padding:12px 13px; }
+.pipeline-page.is-sales-dashboard .sales-traffic-strip>button>span { width:27px; height:27px; font-size:10px; }
+.pipeline-page.is-sales-dashboard .sales-traffic-strip>button>div { padding-right:17px; }
+.pipeline-page.is-sales-dashboard .sales-traffic-strip strong { font-size:11px; }
+.pipeline-page.is-sales-dashboard .sales-traffic-strip small { font-size:10px; }
+.pipeline-page.is-sales-dashboard .sales-traffic-strip>button>b { position:absolute; top:50%; right:9px; display:grid; width:18px; height:18px; place-items:center; border-radius:50%; color:var(--source-color); background:color-mix(in srgb,var(--source-color) 10%,white); font-size:13px; transform:translateY(-50%); }
+.sales-traffic-children { grid-column:1/-1; display:flex; align-items:center; gap:8px; overflow-x:auto; padding:10px 12px; border-top:1px solid #dce8e8; background:linear-gradient(90deg,#fbfefd,#f5fbf9); animation:summary-rise .2s both; scrollbar-width:thin; }
+.sales-traffic-children>div { display:grid; min-width:145px; padding:2px 9px; border-right:1px solid #d9e6e3; }
+.sales-traffic-children>div strong { color:#18384a; font-size:11px; }
+.sales-traffic-children>div small { color:#82939d; font-size:8px; text-transform:uppercase; letter-spacing:.05em; }
+.sales-traffic-children>button { display:grid; grid-template-columns:minmax(90px,1fr) auto auto 13px; align-items:center; gap:7px; min-width:185px; padding:8px 10px; border:1px solid #cee4de; border-radius:9px; color:#29495a; background:#fff; text-align:left; box-shadow:0 3px 9px #173e3509; transition:border-color .18s,transform .18s,box-shadow .18s; }
+.sales-traffic-children>button:hover { border-color:#4bb899; box-shadow:0 5px 12px #173e3512; transform:translateY(-1px); }
+.sales-traffic-children>button span { overflow:hidden; font-size:10px; font-weight:850; text-overflow:ellipsis; white-space:nowrap; }
+.sales-traffic-children>button b { color:#08775f; font-size:12px; }
+.sales-traffic-children>button small { color:#7b8d98; font-size:8px; }
+.sales-traffic-children>button svg { width:12px; height:12px; color:#11936e; }
+
+@media(max-width:760px) {
+  .pipeline-page.is-sales-dashboard .sales-priority-metrics strong { font-size:19px; }
+  .sales-traffic-children { align-items:stretch; flex-direction:column; }
+  .sales-traffic-children>div,.sales-traffic-children>button { width:100%; min-width:0; }
+  .sales-traffic-children>div { border-right:0; border-bottom:1px solid #d9e6e3; padding-bottom:8px; }
+}
