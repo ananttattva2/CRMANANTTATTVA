@@ -1,5 +1,12 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
+test('Summary Dashboard identifies Existing Client traffic sources without excluding leads merely marked as existing clients',async()=>{
+ const {isExistingClientTrafficSource}=await import('../../frontend/src/utils/trafficSources.mjs');
+ assert.equal(isExistingClientTrafficSource({communicationMode:'Existing Client'}),true);
+ assert.equal(isExistingClientTrafficSource({communicationMode:'Cross-Selling'}),true);
+ assert.equal(isExistingClientTrafficSource({communicationMode:'LinkedIn Ads',existingClient:'Yes'}),false);
+ assert.equal(isExistingClientTrafficSource({communicationMode:'Referral',status:'Existing Client'}),false);
+});
 test('Traffic Source preserves all configured modes including zero counts and saved custom channels',async()=>{
  const {trafficSourceSummary,trafficSourceKey}=await import('../../frontend/src/utils/trafficSources.mjs');
  const rows=[{id:'a',kind:'hot',communicationMode:'Tele Calling'},{id:'b',kind:'hot',communicationMode:'WhatsApp'},{id:'c',kind:'cold',communicationMode:''}];

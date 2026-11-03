@@ -1,10 +1,11 @@
 import TrafficSources from '../components/leads/TrafficSources';
-import { trafficSourceHierarchy, trafficSourceKey } from '../utils/trafficSources.mjs';
+import { isExistingClientTrafficSource, trafficSourceHierarchy, trafficSourceKey } from '../utils/trafficSources.mjs';
 import { currentPipelineRows, uniquePipelineRows, pipelinePeriodRange, previousPipelinePeriodRange, inPipelinePeriod } from '../utils/leadPipeline.mjs';
 import { salesRepSummary } from '../utils/salesRepSummary.mjs';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ArrowDown, ArrowUp, ArrowUpRight, Download, Flame, Minus, Search, Snowflake, Users, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpRight, CalendarDays, CircleDollarSign, Download, Flame, LayoutGrid, Minus, Search, Snowflake, Users, WalletCards, X } from 'lucide-react';
+import { Area, AreaChart, CartesianGrid, Cell, Legend, Line, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import * as XLSX from 'xlsx';
 import DashboardShell from '../components/dashboard/DashboardShell';
 import DashboardViewTabs from '../components/dashboard/DashboardViewTabs';
@@ -23,6 +24,72 @@ function PipelineSkeleton() {
     <div className="pipeline-skeleton-cards"><i/><i/></div>
     <div className="pipeline-skeleton-table"><i/><i/><i/><i/></div>
   </div>;
+}
+
+function percentChange(value, previous) {
+  if (!previous) return value ? 100 : 0;
+  return Math.round(((value - previous) / previous) * 100);
+}
+
+function Sparkline({ values, color }) {
+  const safe = values.length ? values : [0];
+  const max = Math.max(...safe, 1);
+  const points = safe.map((value, index) => `${(index / Math.max(1, safe.length - 1)) * 92 + 4},${42 - (value / max) * 32}`).join(' ');
+  return <svg className="summary-kpi-spark" viewBox="0 0 100 48" aria-hidden="true"><polyline points={points} style={{ stroke: color }}/></svg>;
+}
+
+function SummaryKpi({ label, value, previous, comparisonLabel, icon: Icon, tone, trend, onClick, money = false }) {
+  const change = percentChange(value, previous);
+  const formatted = money ? revenueMoney(value) : value.toLocaleString('en-IN');
+  return <button type="button" className={`summary-kpi summary-kpi-${tone}`} onClick={onClick}>
+    <span className="summary-kpi-icon"><Icon aria-hidden="true"/></span>
+    <span className="summary-kpi-copy"><small>{label}</small><strong>{formatted}</strong><em className={change >= 0 ? 'is-up' : 'is-down'}>{comparisonLabel ? `${change >= 0 ? '+' : ''}${change}% vs last ${comparisonLabel}` : 'Current visible total'}</em></span>
+    <Sparkline values={trend} color={`var(--kpi-accent)`}/>
+  </button>;
+}
+
+function SummaryStatusChart({ items }) {
+  const totalValue = items.reduce((sum, item) => sum + item.value, 0);
+  return <section className="summary-chart-card summary-status-card" aria-labelledby="lead-status-heading">
+    <header><span><WalletCards/></span><div><h2 id="lead-status-heading">Lead Status</h2><p>Overall lead distribution</p></div></header>
+    <div className="summary-status-body">
+      <div className="summary-donut"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={items} dataKey="value" innerRadius="62%" outerRadius="88%" paddingAngle={2} stroke="none">{items.map(item => <Cell key={item.label} fill={item.color}/>)}</Pie><Tooltip formatter={(value) => `${Number(value).toLocaleString('en-IN')} leads`}/></PieChart></ResponsiveContainer><span><strong>{totalValue.toLocaleString('en-IN')}</strong><small>Total Leads</small></span></div>
+      <div className="summary-status-legend">{items.map(item => <div key={item.label}><i style={{ background:item.color }}/><span>{item.label}</span><b>{item.value.toLocaleString('en-IN')}</b><small>{totalValue ? `${(item.value / totalValue * 100).toFixed(1)}%` : '0%'}</small></div>)}</div>
+    </div>
+  </section>;
+}
+
+function PipelineTrendChart({ data }) {
+  return <section className="summary-chart-card summary-trend-card" aria-labelledby="pipeline-overview-heading">
+    <header><div><h2 id="pipeline-overview-heading">Revenue Pipeline Overview</h2><p>Lead and revenue movement across the selected period</p></div></header>
+    <div className="summary-trend-chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={data} margin={{ top:10, right:10, left:-18, bottom:0 }}><defs><linearGradient id="hotArea" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#ff7a38" stopOpacity=".28"/><stop offset="95%" stopColor="#ff7a38" stopOpacity="0"/></linearGradient><linearGradient id="coldArea" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity=".22"/><stop offset="95%" stopColor="#3b82f6" stopOpacity="0"/></linearGradient></defs><CartesianGrid stroke="#e8eef2" strokeDasharray="3 3" vertical={false}/><XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize:9, fill:'#789' }}/><YAxis yAxisId="leads" axisLine={false} tickLine={false} tick={{ fontSize:9, fill:'#789' }} allowDecimals={false}/><YAxis yAxisId="money" orientation="right" hide/><Tooltip formatter={(value, name) => name === 'Revenue' ? revenueMoney(Number(value) * 100) : `${Number(value).toLocaleString('en-IN')} leads`}/><Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize:10 }}/><Area yAxisId="leads" type="monotone" dataKey="hot" name="Hot Leads" stroke="#ff6a24" strokeWidth={2.5} fill="url(#hotArea)"/><Area yAxisId="leads" type="monotone" dataKey="cold" name="Cold Leads" stroke="#3485f6" strokeWidth={2.5} fill="url(#coldArea)"/><Line yAxisId="money" type="monotone" dataKey="revenue" name="Revenue" stroke="#22b573" strokeWidth={2.5} dot={false}/></AreaChart></ResponsiveContainer></div>
+  </section>;
+}
+
+function pipelineTrend(rows, period, periodDate, range) {
+  const buckets = [];
+  const addBucket = (date, label) => buckets.push({ key: `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`, start:date.getTime(), label, hot:0, cold:0, revenue:0 });
+  if (period === 'week' && range.start !== undefined) {
+    for (let index = 0; index < 7; index += 1) { const date = new Date(range.start); date.setDate(date.getDate() + index); addBucket(date, date.toLocaleDateString('en-IN', { weekday:'short' })); }
+  } else if (period === 'month') {
+    const start = new Date(`${periodDate.slice(0, 7)}-01T00:00:00`);
+    const days = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+    for (let day = 1; day <= days; day += 1) { const date = new Date(start.getFullYear(), start.getMonth(), day); addBucket(date, String(day)); }
+  } else {
+    const timestamps = rows.map(row => new Date(row.createdAt).getTime()).filter(Number.isFinite);
+    const anchor = period === 'year' ? new Date(`${periodDate.slice(0, 4)}-12-01T00:00:00`) : new Date(timestamps.length ? Math.max(...timestamps) : Date.now());
+    const firstMonth = period === 'year' ? 0 : anchor.getMonth() - 11;
+    for (let index = 0; index < 12; index += 1) { const date = new Date(anchor.getFullYear(), firstMonth + index, 1); addBucket(date, date.toLocaleDateString('en-IN', { month:'short' })); }
+  }
+  const endFor = (bucket, index) => index + 1 < buckets.length ? buckets[index + 1].start : (() => { const date = new Date(bucket.start); period === 'week' || period === 'month' ? date.setDate(date.getDate() + 1) : date.setMonth(date.getMonth() + 1); return date.getTime(); })();
+  rows.forEach(row => {
+    const timestamp = new Date(row.createdAt).getTime();
+    const index = buckets.findIndex((bucket, bucketIndex) => timestamp >= bucket.start && timestamp < endFor(bucket, bucketIndex));
+    if (index < 0) return;
+    buckets[index][row.kind === 'hot' ? 'hot' : 'cold'] += 1;
+    buckets[index].revenue += Number(row.revenuePaise || 0) / 100;
+  });
+  return buckets;
 }
 
 function RepMetric({ value, previous, comparisonLabel, tone, onClick, label }) {
@@ -159,12 +226,13 @@ export default function LeadPipeline() {
     if (serviceView && serviceDialog.current && !serviceDialog.current.open) serviceDialog.current.showModal();
     if (!serviceView && serviceDialog.current?.open) serviceDialog.current.close();
   }, [serviceView]);
-  const baseFiltered = useMemo(() => rows.filter(r => (!owner || r.owner === owner) && `${r.company} ${r.code} ${r.owner}`.toLowerCase().includes(deferredQuery.trim().toLowerCase())), [rows, deferredQuery, owner]);
+  const dashboardRows = useMemo(() => summaryView ? rows.filter((row) => !isExistingClientTrafficSource(row)) : rows, [rows, summaryView]);
+  const baseFiltered = useMemo(() => dashboardRows.filter(r => (!owner || r.owner === owner) && `${r.company} ${r.code} ${r.owner}`.toLowerCase().includes(deferredQuery.trim().toLowerCase())), [dashboardRows, deferredQuery, owner]);
   const filtered = useMemo(() => currentPipelineRows(baseFiltered.filter(r => inPipelinePeriod(r.createdAt, range))), [baseFiltered, range]);
   const previousFiltered = useMemo(() => previousRange ? currentPipelineRows(baseFiltered.filter(r => inPipelinePeriod(r.createdAt, previousRange))) : [], [baseFiltered, previousRange]);
   const unique = useMemo(() => uniquePipelineRows(filtered), [filtered]);
   const trafficSources = useMemo(() => trafficSourceHierarchy(filtered, sourceModes), [filtered, sourceModes]);
-  const listed = useMemo(() => selection ? (selection.kind ? filtered : unique).filter(r => (!selection.excludeExisting || !r.existingLead) && (!selection.kind || r.kind === selection.kind) && (!selection.state || r.state === selection.state) && (!selection.owner || r.owner === selection.owner) && (!selection.sources?.length || selection.sources.includes(trafficSourceKey(r.communicationMode)))) : [], [filtered, selection, unique]);
+  const listed = useMemo(() => selection ? (selection.kind ? filtered : unique).filter(r => (!selection.kind || r.kind === selection.kind) && (!selection.state || r.state === selection.state) && (!selection.owner || r.owner === selection.owner) && (!selection.sources?.length || selection.sources.includes(trafficSourceKey(r.communicationMode)))) : [], [filtered, selection, unique]);
   const total = source => source.reduce((n, r) => n + r.revenuePaise, 0);
   const poTotal = source => source.reduce((n, r) => n + (r.poAmountPaise || 0), 0);
   const { hotRows, coldRows, hotOpen, hotClosed, previousColdRows, previousHotOpen, previousHotClosed } = useMemo(() => {
@@ -186,10 +254,16 @@ export default function LeadPipeline() {
     if (row.owner === 'Unassigned') return true;
     return row.ownerActive !== false;
   }), []);
-  const ownerOptions = useMemo(() => [...new Set(activeOwnerRows(rows).map((row) => row.owner).filter((name) => name && name !== 'Unassigned'))].sort(), [activeOwnerRows, rows]);
+  const ownerOptions = useMemo(() => [...new Set(activeOwnerRows(dashboardRows).map((row) => row.owner).filter((name) => name && name !== 'Unassigned'))].sort(), [activeOwnerRows, dashboardRows]);
   useEffect(() => { if (owner && !ownerOptions.includes(owner)) setOwner(''); }, [owner, ownerOptions]);
   const salesReps = useMemo(() => salesRepSummary(activeOwnerRows(filtered), activeOwnerRows(previousFiltered), sourceModes), [activeOwnerRows, filtered, previousFiltered, sourceModes]);
   const comparisonLabel = period === 'week' ? 'week' : period === 'month' ? 'month' : '';
+  const trendData = useMemo(() => pipelineTrend(filtered, period, periodDate, range), [filtered, period, periodDate, range]);
+  const statusItems = useMemo(() => [
+    { label: 'Hot Open', value: hotOpen.length, color: '#ff762e' },
+    { label: 'Hot Closed', value: hotClosed.length, color: '#16a66f' },
+    { label: 'Cold Open', value: coldRows.length, color: '#3284f6' }
+  ], [hotOpen.length, hotClosed.length, coldRows.length]);
   async function showServices(row) {
     const request = ++serviceRequest.current;
     setServiceView({ row, loading: true });
@@ -197,9 +271,9 @@ export default function LeadPipeline() {
     catch (e) { if (request === serviceRequest.current) setServiceView({ row, loading: false, error: e.response?.data?.error || 'Unable to load services.' }); }
   }
   function closeServices() { serviceRequest.current++; setServiceView(null); }
-  function open(kind = '', state = '', selectedOwner = '', excludeExisting = false) { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ kind, state, owner: selectedOwner, excludeExisting }); }
+  function open(kind = '', state = '', selectedOwner = '') { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ kind, state, owner: selectedOwner }); }
   function openSource(source) { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ sources: source.keys || [source.key], sourceLabel: source.label }); }
-  function openOwnerSource(selectedOwner, source) { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ owner: selectedOwner, sources: source.keys || [source.key], sourceLabel: source.label, excludeExisting: true }); }
+  function openOwnerSource(selectedOwner, source) { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ owner: selectedOwner, sources: source.keys || [source.key], sourceLabel: source.label }); }
   function exportRows(source, name) {
     const data = source.map(r => ({
       'Lead ID': r.code, Company: r.company, 'Client Communication Mode': r.communicationMode || 'Other / Not specified', Status: r.converted ? 'Closed — Converted to Hot' : r.state, Owner: r.owner,
@@ -220,9 +294,9 @@ export default function LeadPipeline() {
     } catch (e) { setModalError(e.response?.data?.error || 'Unable to close cold lead.'); }
     finally { setClosing(false); }
   }
-  return <DashboardShell currentUser={currentUser}><div className="pipeline-page">
+  return <DashboardShell currentUser={currentUser}><div className={`pipeline-page ${summaryView ? 'is-summary' : ''}`}>
     {(summaryView || hasAnyRole(currentUser, adminRoles)) && <DashboardViewTabs />}
-    <header className="pipeline-header"><div className="pipeline-heading"><h1>Revenue Pipeline</h1><p>A clear view of your hot and cold pipeline, with locked revenue history.</p></div><div className="pipeline-filters"><label><Search size={17}/><input aria-label="Search pipeline" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search company, lead ID or owner…"/></label><select aria-label="Filter by owner" value={owner} onChange={e => setOwner(e.target.value)}><option value="">All active owners</option>{ownerOptions.map(name => <option key={name} value={name}>{name.toUpperCase()}</option>)}</select></div></header>
+    <header className="pipeline-header summary-dashboard-heading"><div className="pipeline-heading">{summaryView && <span className="summary-heading-icon"><LayoutGrid/></span>}<div><h1>{summaryView ? 'Summary Dashboard' : 'Revenue Pipeline'}</h1><p>{summaryView ? 'Overview of leads, revenue, team performance and pipeline in real time.' : 'A clear view of your hot and cold pipeline, with locked revenue history.'}</p></div></div><div className="pipeline-filters"><label><Search size={17}/><input aria-label="Search pipeline" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search company, lead ID or owner…"/></label><select aria-label="Filter by owner" value={owner} onChange={e => setOwner(e.target.value)}><option value="">All active owners</option>{ownerOptions.map(name => <option key={name} value={name}>{name.toUpperCase()}</option>)}</select></div></header>
     <section className="pipeline-period-bar" aria-label="Pipeline date filters">
       <div className="pipeline-period-tabs" role="group" aria-label="Filter period">{[['all', 'All time'], ['week', 'Week'], ['month', 'Month'], ['year', 'Year']].map(([value, label]) => <button key={value} type="button" aria-pressed={period === value} onClick={() => setPeriod(value)}>{label}</button>)}</div>
       <div className="pipeline-period-context">{period !== 'all' && <label>Choose {period}{period === 'year' ? <select aria-label="Choose year" value={periodDate.slice(0, 4)} onChange={e => setPeriodDate(`${e.target.value}-01-01`)}>{[...new Set([new Date().getFullYear(), Number(periodDate.slice(0, 4)), ...rows.map(row => new Date(row.createdAt).getFullYear()).filter(Number.isFinite)])].sort((a, b) => b - a).map(year => <option key={year} value={year}>{year}</option>)}</select> : <input aria-label={`Choose ${period}`} type={period === 'month' ? 'month' : 'date'} value={period === 'month' ? periodDate.slice(0, 7) : periodDate} onChange={e => { if (e.target.value) setPeriodDate(period === 'month' ? `${e.target.value}-01` : e.target.value); }}/>}</label>}<span>{range.label} · Lead creation date</span></div>
@@ -230,15 +304,27 @@ export default function LeadPipeline() {
     </section>
     {error && <p role="alert" className="pipeline-error">{error}</p>}
     {loading ? <PipelineSkeleton /> : <>
-      <div className="pipeline-content-layout"><section className="pipeline-sales-workspace" aria-label="Sales pipeline">
+      {summaryView && <>{!unique.length && <p role="status" className="pipeline-filter-empty">No leads match these filters. Try another period or owner.</p>}
+      <section className="summary-kpi-grid" aria-label="Sales summary">
+        <SummaryKpi label="Hot Leads" value={hotOpen.length} previous={previousHotOpen.length} comparisonLabel={comparisonLabel} icon={Flame} tone="hot" trend={trendData.map(item => item.hot)} onClick={() => open('hot', 'open')}/>
+        <SummaryKpi label="Cold Leads" value={coldRows.length} previous={previousColdRows.length} comparisonLabel={comparisonLabel} icon={Snowflake} tone="cold" trend={trendData.map(item => item.cold)} onClick={() => open('cold')}/>
+        <SummaryKpi label="Total Revenue" value={total(unique)} previous={total(previousFiltered)} comparisonLabel={comparisonLabel} icon={CircleDollarSign} tone="revenue" trend={trendData.map(item => item.revenue)} money onClick={() => open()}/>
+        <SummaryKpi label="PO Value" value={poTotal(hotClosed)} previous={poTotal(previousHotClosed)} comparisonLabel={comparisonLabel} icon={WalletCards} tone="po" trend={trendData.map(item => item.revenue)} money onClick={() => open('hot', 'closed')}/>
+      </section>
+      <section className="summary-analytics-grid">
+        <PipelineTrendChart data={trendData}/>
+        <SummaryStatusChart items={statusItems}/>
+        <TrafficSources sources={trafficSources} onSelect={openSource} optionsUnavailable={sourceOptionsUnavailable}/>
+      </section></>}
+      {!summaryView && <div className="pipeline-content-layout"><section className="pipeline-sales-workspace" aria-label="Sales pipeline">
         {!unique.length && <p role="status" className="pipeline-filter-empty">No leads match these filters. Try another period or owner.</p>}
         <div className="pipeline-kind-grid">
           <article className="pipeline-kind-card hot"><header><span><Flame/></span><button type="button" onClick={() => open('hot')}>Hot Leads<ArrowUpRight/></button>{comparisonLabel && <small className="pipeline-card-period">{comparisonLabel} comparison</small>}</header><div className="pipeline-kind-counts"><button type="button" onClick={() => open('hot', 'open')}><small>Open</small><strong>{hotOpen.length.toLocaleString('en-IN')}</strong><CardPeriodComparison value={hotOpen.length} previous={previousHotOpen.length} comparisonLabel={comparisonLabel}/></button><button type="button" onClick={() => open('hot', 'closed')}><small>Closed</small><strong>{hotClosed.length.toLocaleString('en-IN')}</strong><CardPeriodComparison value={hotClosed.length} previous={previousHotClosed.length} comparisonLabel={comparisonLabel}/></button></div><div className="pipeline-kind-money"><button type="button" onClick={() => open('hot')}><small>Estimated Revenue</small><strong>{revenueMoney(total(hotRows))}</strong></button><button type="button" onClick={() => open('hot', 'closed')}><small>PO Value</small><strong>{revenueMoney(poTotal(hotClosed))}</strong></button></div></article>
           <article className="pipeline-kind-card cold"><header><span><Snowflake/></span><button type="button" onClick={() => open('cold')}>Cold Leads<ArrowUpRight/></button>{comparisonLabel && <small className="pipeline-card-period">{comparisonLabel} comparison</small>}</header><div className="pipeline-kind-counts pipeline-kind-counts-single"><button type="button" onClick={() => open('cold')}><small>Open</small><strong>{coldRows.length.toLocaleString('en-IN')}</strong><CardPeriodComparison value={coldRows.length} previous={previousColdRows.length} comparisonLabel={comparisonLabel}/></button></div><div className="pipeline-kind-money"><button type="button" onClick={() => open('cold')}><small>Estimated Revenue</small><strong>{revenueMoney(total(coldRows))}</strong></button></div></article>
         </div>
         <p className="pipeline-note">Converted leads appear only in the Hot pipeline. Hot plus Cold therefore matches the unique Traffic Source total. PO value and estimated revenue are shown separately.</p>
-      </section><TrafficSources sources={trafficSources} onSelect={openSource} optionsUnavailable={sourceOptionsUnavailable}/></div>
-      <SalesRepTable reps={salesReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner, true)} onSourceClick={openOwnerSource}/>
+      </section><TrafficSources sources={trafficSources} onSelect={openSource} optionsUnavailable={sourceOptionsUnavailable}/></div>}
+      <SalesRepTable reps={salesReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)} onSourceClick={openOwnerSource}/>
     </>}
     <dialog ref={dialog} className="pipeline-dialog" onCancel={() => setSelection(null)} onClose={() => setSelection(null)}>
       {selection && <><header><div><p className="pipeline-eyebrow">PIPELINE DETAILS</p><h2>{selection.owner ? `${selection.owner.toUpperCase()} · ` : ''}{selection.sourceLabel ? `Traffic Source · ${selection.sourceLabel}` : selection.kind ? `${selection.kind === 'hot' ? 'Hot' : 'Cold'} Leads` : 'All Leads'}{selection.state ? ` · ${selection.state === 'open' ? 'Open' : 'Closed'}` : ''}</h2><p>{selection.owner ? `Lead Owner: ${selection.owner.toUpperCase()} · ` : ''}{listed.length} clients · {revenueMoney(total(listed))} estimated revenue{selection.kind === 'hot' && selection.state === 'closed' ? ` · ${revenueMoney(poTotal(listed))} PO value` : ''}</p></div><div className="pipeline-toolbar"><button type="button" onClick={() => exportRows(listed, 'pipeline-details')} disabled={!listed.length}><Download size={16}/>Excel</button><button type="button" onClick={() => setSelection(null)} aria-label="Close lead list"><X/></button></div></header>

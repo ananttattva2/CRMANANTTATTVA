@@ -26,20 +26,12 @@ function count(rows, reps, previous = false) {
   }
 }
 
-function excludesExistingLead(row) {
-  return row.existingLead === true
-    || String(row.existingClient || '').trim().toLowerCase() === 'yes'
-    || /^existing client\b/i.test(String(row.status || '').trim());
-}
-
 export function salesRepSummary(currentRows = [], previousRows = [], configuredSources = []) {
-  const eligibleCurrentRows = currentRows.filter((row) => !excludesExistingLead(row));
-  const eligiblePreviousRows = previousRows.filter((row) => !excludesExistingLead(row));
   const reps = new Map();
-  count(eligibleCurrentRows, reps);
-  count(eligiblePreviousRows, reps, true);
+  count(currentRows, reps);
+  count(previousRows, reps, true);
   for (const rep of reps.values()) {
-    rep.trafficSources = trafficSourceHierarchy(eligibleCurrentRows.filter((row) => (String(row.owner || 'Unassigned').trim() || 'Unassigned') === rep.owner), configuredSources)
+    rep.trafficSources = trafficSourceHierarchy(currentRows.filter((row) => (String(row.owner || 'Unassigned').trim() || 'Unassigned') === rep.owner), configuredSources)
       .filter((source) => source.count > 0)
       .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
       .slice(0, 3)

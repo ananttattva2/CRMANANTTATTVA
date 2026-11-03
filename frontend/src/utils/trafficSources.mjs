@@ -6,6 +6,13 @@ export const UNKNOWN_SOURCE = 'Other / Not specified';
 export function trafficSourceKey(value) {
   return String(canonicalCommunicationMode(value) || UNKNOWN_SOURCE).trim().toLowerCase().replace(/[^a-z0-9]/g, '') || 'othernotspecified';
 }
+export function isExistingClientTrafficSource(row = {}) {
+  const existingClientKey = trafficSourceKey('Existing Client');
+  const savedModeKey = trafficSourceKey(row.communicationMode);
+  const savedParentKey = trafficSourceKey(row.communicationModeParent);
+  const inferredParentKey = trafficSourceKey(communicationModeParent(row.communicationMode));
+  return savedModeKey === existingClientKey || savedParentKey === existingClientKey || inferredParentKey === existingClientKey;
+}
 export function trafficSourceSummary(rows = [], configured = []) {
   const modes = new Map();
   const addMode = (label, parent = '') => {
