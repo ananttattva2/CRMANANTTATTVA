@@ -1,5 +1,6 @@
 const { mergeManagerStaffAllocations } = require('./managerStaffAllocations');
 const { normalizeYear } = require('./overallDashboard');
+const { STAGES, stageState } = require('./clientUploadTracker');
 
 const CATEGORY_ORDER = ['Plastic Waste', 'E-Waste', 'Tyre Waste', 'Used Oil', 'Battery Waste'];
 const text = value => String(value?._id || value?.id || value || '').trim();
@@ -176,7 +177,8 @@ function buildRecords({ clients = [], users = [], filings = new Map(), teams = [
       return [year, workflowState(filing)];
     }));
     const nextRecord = {
-      id: recordKey, clientId, company, uniqueId, leadId, category, applicantType, subType, serviceName, years,
+      id: recordKey, clientId, sourceClientIds: clientId ? [clientId] : [], company, uniqueId, leadId, category, applicantType, subType, serviceName, years,
+      slaReceived: client?.sla?.status === 'Yes',
       assignedUserId: owner ? text(owner) : '', assignedUser: owner?.name || owner?.email || assignment.assignedStaffText || 'Unassigned',
       teamId: owner?.teamId ? text(owner.teamId) : '', team: team || manager?.name || manager?.email || 'No team assigned',
       managerId: manager ? text(manager) : '', dueDate, yearStates,
@@ -185,6 +187,8 @@ function buildRecords({ clients = [], users = [], filings = new Map(), teams = [
     const existing = records.get(recordKey);
     if (!existing) records.set(recordKey, nextRecord);
     else {
+      existing.sourceClientIds = [...new Set([...array(existing.sourceClientIds), ...array(nextRecord.sourceClientIds)])];
+      existing.slaReceived = existing.slaReceived || nextRecord.slaReceived;
       existing.years = [...new Set([...existing.years, ...nextRecord.years])].sort();
       existing.yearStates = { ...existing.yearStates, ...nextRecord.yearStates };
       if (existing.serviceName !== 'Annual Return Filling' && nextRecord.serviceName === 'Annual Return Filling') existing.serviceName = nextRecord.serviceName;
@@ -196,6 +200,86 @@ function buildRecords({ clients = [], users = [], filings = new Map(), teams = [
     }
   }
   return [...records.values()];
+}
+
+function workflowRecordIndex(rows = [], year = '') {
+  const result = new Map();
+  array(rows).forEach(row => {
+    if (year && normalizeYear(row?.financialYear) !== normalizeYear(year)) return;
+    const clientId = text(row?.clientId);
+    if (!clientId) return;
+    const previous = result.get(clientId);
+    const changedAt = value => new Date(value?.updatedAt || value?.createdAt || 0).getTime() || 0;
+    if (!previous || changedAt(row) >= changedAt(previous)) result.set(clientId, row);
+  });
+  return result;
+}
+
+function combinedStageState(sourceIds, index, stage) {
+  const states = sourceIds.map(clientId => stageState(index.get(clientId), stage));
+  if (!states.length || states.every(state => state === 'pending')) return 'pending';
+  if (states.every(state => state === 'complete')) return 'complete';
+  return 'progress';
+}
+
+function stageTotals(items, module) {
+  return STAGES.map((label, position) => {
+    const counts = { label, complete: 0, progress: 0, pending: 0 };
+    items.forEach(item => { counts[item[module][position]] += 1; });
+    return counts;
+  });
+}
+
+function purchaseSalesSummary(records, year, query = {}, purchases = [], sales = []) {
+  const matching = applyFilters(decorate(records, year), query);
+  const purchaseIndex = workflowRecordIndex(purchases, year);
+  const salesIndex = workflowRecordIndex(sales, year);
+  const items = matching.map(record => {
+    const sourceClientIds = array(record.sourceClientIds).length ? record.sourceClientIds : [record.clientId].filter(Boolean);
+    const purchase = STAGES.map(stage => combinedStageState(sourceClientIds, purchaseIndex, stage));
+    const sales = STAGES.map(stage => combinedStageState(sourceClientIds, salesIndex, stage));
+    const purchaseComplete = purchase.every(state => state === 'complete');
+    const salesComplete = sales.every(state => state === 'complete');
+    return {
+      id: record.id, clientId: record.clientId, company: record.company, uniqueId: record.uniqueId, leadId: record.leadId,
+      assignedUserId: record.assignedUserId, assignedUser: record.assignedUser, slaReceived: Boolean(record.slaReceived),
+      purchase, sales,
+      purchaseComplete, salesComplete, fullyComplete: purchaseComplete && salesComplete
+    };
+  });
+  const groups = new Map();
+  items.forEach(item => {
+    const userId = item.assignedUserId || 'unassigned';
+    if (!groups.has(userId)) groups.set(userId, { userId, userName: item.assignedUser || 'Unassigned', items: [] });
+    groups.get(userId).items.push(item);
+  });
+  const userRows = [...groups.values()].map(group => {
+    const allocated = group.items.length;
+    const purchaseComplete = group.items.filter(item => item.purchaseComplete).length;
+    const salesComplete = group.items.filter(item => item.salesComplete).length;
+    const fullyComplete = group.items.filter(item => item.purchaseComplete && item.salesComplete).length;
+    return {
+      userId: group.userId, userName: group.userName, allocated,
+      slaReceived: group.items.filter(item => item.slaReceived).length,
+      slaNotReceived: group.items.filter(item => !item.slaReceived).length,
+      purchaseComplete, salesComplete, fullyComplete,
+      completion: allocated ? Math.round((fullyComplete / allocated) * 1000) / 10 : 0,
+      purchase: stageTotals(group.items, 'purchase'), sales: stageTotals(group.items, 'sales'), clients: group.items
+    };
+  }).sort((a, b) => b.allocated - a.allocated || a.userName.localeCompare(b.userName));
+  const purchaseComplete = items.filter(item => item.purchaseComplete).length;
+  const salesComplete = items.filter(item => item.salesComplete).length;
+  const fullyComplete = items.filter(item => item.purchaseComplete && item.salesComplete).length;
+  return {
+    stages: STAGES,
+    summary: {
+      allocated: items.length,
+      slaReceived: items.filter(item => item.slaReceived).length,
+      slaNotReceived: items.filter(item => !item.slaReceived).length,
+      purchaseComplete, salesComplete, fullyComplete
+    },
+    purchase: stageTotals(items, 'purchase'), sales: stageTotals(items, 'sales'), users: userRows
+  };
 }
 
 function decorate(records, year, now = new Date()) {
@@ -328,4 +412,4 @@ function buildDashboard(records, query = {}) {
   return { ok: true, selectedYear, summary: currentSummary, comparisons, categories, applicantTypes, subTypes, workloads, options, records: pageRows, pagination: { page: Math.min(page, pages), limit, total: sorted.length, pages } };
 }
 
-module.exports = { CATEGORY_ORDER, categoryName, isAnnual, annualServiceName, workflowState, activeAnnualReturnYear, buildRecords, buildDashboard, filingIndex };
+module.exports = { CATEGORY_ORDER, categoryName, isAnnual, annualServiceName, workflowState, activeAnnualReturnYear, buildRecords, buildDashboard, filingIndex, purchaseSalesSummary };

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildRecords, buildDashboard, workflowState, categoryName, isAnnual, annualServiceName, activeAnnualReturnYear } = require('../src/services/annualReturnOperationsDashboard');
+const { buildRecords, buildDashboard, workflowState, categoryName, isAnnual, annualServiceName, activeAnnualReturnYear, purchaseSalesSummary } = require('../src/services/annualReturnOperationsDashboard');
 
 function record(id, overrides = {}) {
   return {
@@ -125,4 +125,24 @@ test('Operations records use the same Annual Return applicability gates as Appli
   assert.equal(records.length, 2);
   assert.deepEqual(records.map(row => row.subType).sort(), ['Importer', 'Producer']);
   assert(records.every(row => row.years.length === 1 && row.years[0] === '2025-26'));
+});
+
+test('Purchase and Sales summary uses the same eligible Annual Return applications and all workflow stages', () => {
+  const rows = [
+    record('c1', { sourceClientIds: ['c1'], slaReceived: true }),
+    record('c2', { sourceClientIds: ['c2'], slaReceived: false })
+  ];
+  const completeWorkflow = clientId => ({
+    clientId, financialYear: '2025-26',
+    checklist: ['Data Explained', 'Data Format Sent', 'Received from client', 'Ready to upload', 'Client Approval on data'].map(particular => ({ particular, yesNo: 'Yes' })),
+    baseUpload: { importStatus: 'Imported' }, portalUpload: { importStatus: 'Imported' },
+    managerVerificationStatus: 'Approved', complianceVerificationStatus: 'Approved'
+  });
+  const result = purchaseSalesSummary(rows, '2025-26', {}, [completeWorkflow('c1')], [completeWorkflow('c1')]);
+  assert.deepEqual(result.summary, { allocated: 2, slaReceived: 1, slaNotReceived: 1, purchaseComplete: 1, salesComplete: 1, fullyComplete: 1 });
+  assert.equal(result.purchase.length, 8);
+  assert.equal(result.purchase[0].complete, 1);
+  assert.equal(result.purchase[0].pending, 1);
+  assert.equal(result.users[0].allocated, 2);
+  assert.equal(result.users[0].completion, 50);
 });

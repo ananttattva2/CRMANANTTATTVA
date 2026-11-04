@@ -282,9 +282,21 @@ exports.annualReturnOperations = async (req, res) => {
       teams,
       filings: dashboard.filingIndex(annualReturns, clientFilings)
     });
+    const result = dashboard.buildDashboard(records, req.query || {});
+    if (req.query?.view === 'purchase-sales') {
+      stage = 'purchase and sales workflow summary';
+      const workflowClientIds = validObjectIds(records.flatMap(record => record.sourceClientIds || [record.clientId]));
+      const workflowFilter = { clientId: { $in: workflowClientIds }, financialYear: result.selectedYear };
+      const workflowProjection = 'clientId financialYear checklist baseUpload.importStatus portalUpload.importStatus managerVerificationStatus complianceVerificationStatus createdAt updatedAt';
+      const [purchases, sales] = workflowClientIds.length ? await Promise.all([
+        PurchaseData.find(workflowFilter).select(workflowProjection).maxTimeMS(15000).lean(),
+        SalesData.find(workflowFilter).select(workflowProjection).maxTimeMS(15000).lean()
+      ]) : [[], []];
+      result.purchaseSales = dashboard.purchaseSalesSummary(records, result.selectedYear, req.query || {}, purchases, sales);
+    }
     res.set('Cache-Control', 'private, no-store');
     res.set('Server-Timing', `annual-return-operations;dur=${Date.now() - startedAt}`);
-    return res.json(dashboard.buildDashboard(records, req.query || {}));
+    return res.json(result);
   } catch (error) {
     console.error('[annual-return-operations-dashboard] load failed', { stage, durationMs: Date.now() - startedAt, name: error.name, code: error.code, message: error.message, stack: error.stack });
     return res.status(error.code === 50 ? 503 : 500).json({

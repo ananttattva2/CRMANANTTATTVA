@@ -1,7 +1,7 @@
 import { exportWithReason } from '../utils/dataExport.mjs'
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowUpDown, BarChart3, Building2, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Download, Factory, FileSpreadsheet, Layers3, Leaf, RefreshCw, Recycle, Search, Users, X } from 'lucide-react';
+import { AlertTriangle, ArrowUpDown, BarChart3, Building2, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, Factory, FileSpreadsheet, Layers3, Leaf, RefreshCw, Recycle, Search, ShoppingCart, TrendingUp, Users, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import DashboardShell from '../components/dashboard/DashboardShell';
 import DashboardViewTabs from '../components/dashboard/DashboardViewTabs';
@@ -16,7 +16,7 @@ const CATEGORY_THEME = {
   'Used Oil': { color: '#eab308', soft: '#fefce8', position: '75%' },
   'Battery Waste': { color: '#7c3aed', soft: '#f5f3ff', position: '100%' }
 };
-const FILTER_DEFAULTS = { year: '', user: '', team: '', category: '', applicantType: '', subType: '', status: '', dueFrom: '', dueTo: '', search: '', page: 1, limit: 10, sortBy: 'company', sortDir: 'asc' };
+const FILTER_DEFAULTS = { view: 'annual', year: '', user: '', team: '', category: '', applicantType: '', subType: '', status: '', dueFrom: '', dueTo: '', search: '', page: 1, limit: 10, sortBy: 'company', sortDir: 'asc' };
 const STATUS_OPTIONS = ['Completed', 'In Progress', 'Pending', 'Overdue', 'Due Soon'];
 const APPLICANT_ICONS = [Users, Building2, Leaf];
 const SUBTYPE_ICONS = [Factory, Building2, Layers3];
@@ -75,6 +75,58 @@ function CategoryCard({ row, selected, onClick, index }) {
 function StatusPill({ row }) {
   const label = row.overdue ? 'Overdue' : row.status;
   return <span className={`arops-status is-${label.toLowerCase().replace(/\s+/g, '-')}`}>{label}</span>;
+}
+
+const WORKFLOW_STATE_LABEL = { complete: 'Complete', progress: 'In progress', pending: 'Pending' };
+
+function WorkflowStagePanel({ title, icon: Icon, tone, stages, total, onSelect }) {
+  return <section className={`arops-workflow-panel is-${tone}`}>
+    <header><span><Icon /></span><div><h2>{title}</h2><p>Application progress across all eight workflow stages</p></div></header>
+    <div className="arops-workflow-stages">{stages.map((stage, index) => {
+      const reached = stage.complete + stage.progress;
+      return <button type="button" key={stage.label} onClick={() => onSelect({ module: tone, index, label: stage.label })}>
+        <span className="arops-stage-number">{index + 1}</span><div><h3>{stage.label}</h3><strong>{stage.complete}<small> complete</small></strong><p><i>{stage.progress} in progress</i><b>{stage.pending} pending</b></p><Progress value={percent(reached, total)} color={tone === 'purchase' ? '#0f9f7f' : '#2563eb'} /></div>
+      </button>;
+    })}</div>
+  </section>;
+}
+
+function WorkflowClients({ selection, users, onClose }) {
+  if (!selection) return null;
+  const rows = users.flatMap(user => user.clients.map(client => ({ ...client, userName: user.userName }))).filter(client => {
+    if (selection.userId && client.assignedUserId !== selection.userId) return false;
+    if (selection.completeField && !client[selection.completeField]) return false;
+    if (selection.module && selection.index != null && selection.state && client[selection.module]?.[selection.index] !== selection.state) return false;
+    return true;
+  });
+  return <div className="arops-workflow-modal" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section role="dialog" aria-modal="true" aria-labelledby="workflow-clients-title">
+    <header><div><small>Purchase &amp; Sales Summary</small><h2 id="workflow-clients-title">{selection.title}</h2><p>{rows.length} matching Annual Return applications</p></div><button type="button" aria-label="Close client list" onClick={onClose}><X /></button></header>
+    <div><table><thead><tr><th>Company</th><th>Unique ID</th><th>Lead ID</th><th>Assigned User</th></tr></thead><tbody>{rows.map(row => <tr key={`${row.id}-${row.userName}`}><td><b>{row.company}</b></td><td>{row.uniqueId}</td><td>{row.leadId}</td><td>{row.userName}</td></tr>)}{!rows.length && <tr><td colSpan="4">No applications match this selection.</td></tr>}</tbody></table></div>
+  </section></div>;
+}
+
+function PurchaseSalesSummary({ data }) {
+  const tracker = data?.purchaseSales || { summary: {}, purchase: [], sales: [], users: [] };
+  const [expanded, setExpanded] = useState('');
+  const [selection, setSelection] = useState(null);
+  const summary = tracker.summary || {};
+  const openStage = ({ module, index, label, userId = '' }) => setSelection({ module, index, userId, state: 'complete', title: `${module === 'purchase' ? 'Purchase' : 'Sales'} · ${label} · Complete` });
+  const kpis = [
+    [FileSpreadsheet, 'Allocated Applications', summary.allocated, 'Same eligible Annual Return scope', 'teal'],
+    [CheckCircle2, 'SLA Received', summary.slaReceived, `${percent(summary.slaReceived, summary.allocated)}% received`, 'green'],
+    [Clock3, 'SLA Not Received', summary.slaNotReceived, `${percent(summary.slaNotReceived, summary.allocated)}% pending`, 'amber'],
+    [ShoppingCart, 'Purchase Complete', summary.purchaseComplete, `${percent(summary.purchaseComplete, summary.allocated)}% complete`, 'teal'],
+    [TrendingUp, 'Sales Complete', summary.salesComplete, `${percent(summary.salesComplete, summary.allocated)}% complete`, 'blue'],
+    [Check, 'Fully Completed', summary.fullyComplete, 'Purchase and Sales complete', 'purple']
+  ];
+  return <div className="arops-purchase-sales">
+    <section className="arops-summary-grid">{kpis.map(([icon, label, value, note, tone], index) => <SummaryCard key={label} index={index} icon={icon} label={label} value={value} note={note} tone={tone} />)}</section>
+    <div className="arops-workflow-columns"><WorkflowStagePanel title="Purchase Workflow Summary" icon={ShoppingCart} tone="purchase" stages={tracker.purchase || []} total={summary.allocated || 0} onSelect={openStage} /><WorkflowStagePanel title="Sales Workflow Summary" icon={TrendingUp} tone="sales" stages={tracker.sales || []} total={summary.allocated || 0} onSelect={openStage} /></div>
+    <section className="arops-ps-users"><header><div><h2>User-wise Purchase &amp; Sales Summary</h2><p>Expand a user to view every Purchase and Sales stage. Complete counts are clickable.</p></div><span>{tracker.users?.length || 0} users</span></header>
+      <div className="arops-ps-table-scroll"><table><thead><tr><th>User Name</th><th>Allocated</th><th>SLA Received</th><th>SLA Not Received</th><th>Purchase Complete</th><th>Sales Complete</th><th>Fully Complete</th><th>Completion</th><th aria-label="Expand" /></tr></thead><tbody>{(tracker.users || []).map(user => <React.Fragment key={user.userId}><tr><td><span className="arops-user"><i>{initials(user.userName)}</i><b>{user.userName}</b></span></td><td><strong>{user.allocated}</strong></td><td className="is-green">{user.slaReceived}</td><td className="is-amber">{user.slaNotReceived}</td><td><button type="button" onClick={() => setSelection({ userId: user.userId, completeField: 'purchaseComplete', title: `${user.userName} · Purchase complete` })}>{user.purchaseComplete}</button></td><td><button type="button" onClick={() => setSelection({ userId: user.userId, completeField: 'salesComplete', title: `${user.userName} · Sales complete` })}>{user.salesComplete}</button></td><td><button type="button" onClick={() => setSelection({ userId: user.userId, completeField: 'fullyComplete', title: `${user.userName} · Purchase and Sales complete` })}>{user.fullyComplete}</button></td><td><span className="arops-ps-completion"><b>{user.completion}%</b><Progress value={user.completion} /></span></td><td><button type="button" className="arops-expand" aria-label={`${expanded === user.userId ? 'Collapse' : 'Expand'} ${user.userName}`} onClick={() => setExpanded(current => current === user.userId ? '' : user.userId)}>{expanded === user.userId ? <ChevronUp /> : <ChevronDown />}</button></td></tr>{expanded === user.userId && <tr className="arops-stage-detail"><td colSpan="9"><div>{['purchase', 'sales'].map(module => <section key={module}><h3>{module === 'purchase' ? 'Purchase' : 'Sales'}</h3><div>{user[module].map((stage, index) => <button type="button" key={stage.label} onClick={() => openStage({ module, index, label: stage.label, userId: user.userId })}><span>{stage.label}</span><b>{stage.complete}</b><small>{stage.progress} progress · {stage.pending} pending</small></button>)}</div></section>)}</div></td></tr>}</React.Fragment>)}{!tracker.users?.length && <tr><td colSpan="9" className="arops-table-empty">No applications match the current filters.</td></tr>}</tbody></table></div>
+    </section>
+    <WorkflowClients selection={selection} users={tracker.users || []} onClose={() => setSelection(null)} />
+  </div>;
 }
 
 export default function AnnualReturnOperationsDashboard() {
@@ -139,7 +191,16 @@ export default function AnnualReturnOperationsDashboard() {
     try {
       const response = await api.get(API_ENDPOINTS.dashboardInsights.annualReturnOperations, { params: { ...filters, export: 'true' } });
       const rows = (response.data.records || []).map(row => ({ 'Unique ID': row.uniqueId || '-', Company: row.company, 'Lead ID': row.leadId, 'Service Category': row.category, 'Applicant Type': row.applicantType, 'Sub-Type': row.subType, 'Annual Return Year': row.annualReturnYear, 'Assigned User': row.assignedUser, 'Due Date': row.dueDate || 'Not set', Status: row.overdue ? 'Overdue' : row.status, 'Progress %': row.progress }));
-      const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), 'Annual Return Services');
+      const workbook = XLSX.utils.book_new();
+      if (filters.view === 'purchase-sales') {
+        const tracker = response.data.purchaseSales || {};
+        const stageRows = ['purchase', 'sales'].flatMap(module => (tracker[module] || []).map(stage => ({ Module: module === 'purchase' ? 'Purchase' : 'Sales', Stage: stage.label, Complete: stage.complete, 'In Progress': stage.progress, Pending: stage.pending })));
+        const userRows = (tracker.users || []).map(user => ({ User: user.userName, Allocated: user.allocated, 'SLA Received': user.slaReceived, 'SLA Not Received': user.slaNotReceived, 'Purchase Complete': user.purchaseComplete, 'Sales Complete': user.salesComplete, 'Fully Complete': user.fullyComplete, 'Completion %': user.completion }));
+        const clientRows = (tracker.users || []).flatMap(user => user.clients.map(client => ({ User: user.userName, Company: client.company, 'Unique ID': client.uniqueId, 'Lead ID': client.leadId, ...Object.fromEntries(['purchase', 'sales'].flatMap(module => (tracker.stages || []).map((stage, index) => [`${module === 'purchase' ? 'Purchase' : 'Sales'} - ${stage}`, WORKFLOW_STATE_LABEL[client[module]?.[index]] || 'Pending']))) })));
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(userRows), 'User Summary');
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(stageRows), 'Stage Summary');
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(clientRows), 'Application Details');
+      } else XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), 'Annual Return Services');
       await exportWithReason(`Annual-Return-Summary-${data?.selectedYear || 'all'}.xlsx`, () => XLSX.writeFile(workbook, `Annual-Return-Summary-${data?.selectedYear || 'all'}.xlsx`));
     } catch (exportError) { setError(exportError?.response?.data?.error || 'Excel export failed.'); }
     finally { setExporting(false); }
@@ -173,9 +234,10 @@ export default function AnnualReturnOperationsDashboard() {
       <button type="button" className="arops-reset" onClick={() => setFilters({ ...FILTER_DEFAULTS })}><RefreshCw />Reset Filters</button>
     </section>
     <div className="arops-chips"><strong>Active Filters:</strong>{activeChips.map(([name, label]) => <span key={name}>{label}{name !== 'scope' && <button type="button" aria-label={`Remove ${label}`} onClick={() => clearChip(name)}><X /></button>}</span>)}</div>
+    <nav className="arops-mode-tabs" aria-label="Operations dashboard summary view"><button type="button" aria-current={filters.view === 'annual' ? 'page' : undefined} onClick={() => setFilter('view', 'annual')}><FileSpreadsheet />Annual Return Summary</button><button type="button" aria-current={filters.view === 'purchase-sales' ? 'page' : undefined} onClick={() => setFilter('view', 'purchase-sales')}><BarChart3 />Purchase &amp; Sales Summary</button></nav>
 
     {error && <div className="arops-error" role="alert"><AlertTriangle />{error}<button type="button" onClick={() => setFilters(current => ({ ...current }))}>Retry</button></div>}
-    {loading && !data ? <div className="arops-skeleton"><i /><i /><i /><i /><i /><i /></div> : <>
+    {loading && !data ? <div className="arops-skeleton"><i /><i /><i /><i /><i /><i /></div> : filters.view === 'purchase-sales' ? <PurchaseSalesSummary data={data} /> : <>
       <section className="arops-summary-grid">
         <SummaryCard index={0} icon={FileSpreadsheet} label="Total Annual Return Services" value={summary.total} note="Applicable Annual Return applications" tone="teal" comparison={data?.comparisons?.total} />
         <SummaryCard index={1} icon={CheckCircle2} label="Completed Services" value={summary.completed} note={`${summary.completion || 0}% completion`} tone="green" comparison={data?.comparisons?.completed} />
