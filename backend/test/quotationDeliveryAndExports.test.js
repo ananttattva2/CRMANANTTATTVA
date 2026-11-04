@@ -4,6 +4,7 @@ const User = require('../src/models/User');
 const Lead = require('../src/models/Lead');
 const Quotation = require('../src/models/Quotation');
 const DataExport = require('../src/models/DataExport');
+const Notification = require('../src/models/Notification');
 const mailer = require('../src/utils/mailer');
 const delivery = require('../src/services/quotationDelivery');
 const controller = require('../src/controllers/quotationController');
@@ -88,6 +89,7 @@ test('export needs a reason, records IST timestamp and emails all active adminis
   let messages = [], record;
   t.mock.method(User, 'find', () => query([{ email: 'admin@example.test' }, { email: 'super@example.test' }]));
   t.mock.method(DataExport, 'create', async data => { record = { ...data, _id: 'export-1', createdAt: new Date('2026-11-04T05:00:00Z'), save: async () => {} }; return record; });
+  t.mock.method(Notification, 'create', async data => ({ ...data, _id: 'notification-1' }));
   t.mock.method(mailer, 'sendMail', async (...args) => { messages.push(args); });
   // Load after mail mock because this router destructures the provider function.
   const routePath = require.resolve('../src/routes/dataExports'); delete require.cache[routePath];
@@ -96,18 +98,21 @@ test('export needs a reason, records IST timestamp and emails all active adminis
   const invalid = response(); await handler(req, invalid, error => { throw error; }); assert.equal(invalid.code, 400); assert.equal(messages.length, 0);
   req.body.reason = 'Prepare the monthly client follow-up report';
   const res = response(); await handler(req, res, error => { throw error; });
+  await new Promise(resolve => setImmediate(resolve));
   assert.equal(res.code, 200); assert.equal(record.status, 'authorized');
   assert.deepEqual(record.notifiedEmails, ['admin@example.test', 'super@example.test']);
   assert.equal(messages.length, 2); assert.match(messages[0][2], /10:30:00/); assert.match(messages[0][2], /IST/); assert.match(messages[0][2], /monthly client follow-up report/);
 });
 
-test('failed administrator notification blocks export and preserves failure audit', async t => {
+test('email provider failure does not block an audited in-app administrator notification', async t => {
   let record;
   t.mock.method(User, 'find', () => query([{ email: 'admin@example.test' }]));
   t.mock.method(DataExport, 'create', async data => { record = { ...data, _id: 'export-2', createdAt: new Date(), save: async () => {} }; return record; });
+  t.mock.method(Notification, 'create', async data => ({ ...data, _id: 'notification-2' }));
   t.mock.method(mailer, 'sendMail', async () => { throw new Error('offline'); });
   const routePath = require.resolve('../src/routes/dataExports'); delete require.cache[routePath];
   const handler = require(routePath).stack[0].route.stack.at(-1).handle;
   const res = response(); await handler({ user: actor, body: { section: 'Clients', filename: 'clients.xlsx', reason: 'Client review meeting' } }, res, error => { throw error; });
-  assert.equal(res.code, 503); assert.equal(record.status, 'notification_failed');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(res.code, 200); assert.equal(record.status, 'authorized'); assert.equal(record.emailStatus, 'failed');
 });
