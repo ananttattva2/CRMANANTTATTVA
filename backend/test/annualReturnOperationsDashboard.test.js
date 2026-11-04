@@ -86,17 +86,43 @@ test('legacy malformed assignment arrays do not crash or hide later valid servic
   const clients = [
     { _id: 'bad', assignedServiceId: 'bad-service', selectedLead: { _id: 'bad-lead', serviceSelections: { servicesOffered: 'Annual Return' }, assignments: 'invalid' } },
     {
-      _id: 'client-2', assignedServiceId: 'service-2', data: { importMeta: { uniqueId: 'ATPL-LEAD-0548' } },
+      _id: 'client-2', assignedServiceId: 'service-2', workflowStatus: 'submitted', data: { importMeta: { uniqueId: 'ATPL-LEAD-0548' }, cpcb: { status: 'Approved' } },
       selectedLead: {
-        _id: 'lead-2', company: 'Valid Client', leadCode: 'ATPL-2',
+        _id: 'lead-2', company: 'Valid Client', leadCode: 'ATPL-2', status: 'Closed',
         serviceSelections: [{ assignedServiceId: 'service-2', servicesOffered: 'Annual Return Filling', eprCategory: 'Plastic Waste', applicantType: 'PIBO', subApplicantType: 'Producer', annualReturnYears: ['2025-26'] }],
-        assignments: [{ assignedServiceId: 'service-2', poYearRows: [null] }]
+        assignments: [{ assignedServiceId: 'service-2', assignedTo: 'manager', assignedStaff: 'u1', poStatus: 'received', poYearRows: [{ annualReturnYear: '2025-26' }] }]
       }
     }
   ];
-  const records = buildRecords({ clients, users: [], teams: [], filings: new Map() });
+  const records = buildRecords({ clients, users: [{ _id: 'u1', name: 'Operations User', role: 'operation' }], teams: [], filings: new Map() });
   assert.equal(records.length, 1);
   assert.equal(records[0].company, 'Valid Client');
   assert.equal(records[0].uniqueId, 'ATPL-0548');
   assert.deepEqual(records[0].years, ['2025-26']);
+});
+
+test('Operations records use the same Annual Return applicability gates as Application Status Summary', () => {
+  const user = { _id: 'u1', name: 'Operations User', role: 'operation' };
+  const eligible = (id, subType = 'Producer', overrides = {}) => ({
+    _id: id, assignedServiceId: id, workflowStatus: 'submitted',
+    data: { importMeta: { uniqueId: `ATPL-LEAD-${id.slice(-4)}` }, cpcb: { status: 'Approved' } },
+    selectedLead: {
+      _id: `lead-${id}`, company: 'Shared Company', leadCode: `ATPL-LEAD-${id.slice(-4)}`, status: 'Closed',
+      serviceSelections: [{ assignedServiceId: id, servicesOffered: 'Annual Return', eprCategory: 'Plastic Waste', applicantType: 'PIBO', subApplicantType: subType, plantUnit: 'Unit 1', annualReturnYears: ['2027-28'] }],
+      assignments: [{ assignedServiceId: id, assignedTo: 'manager', assignedStaff: 'u1', poStatus: 'received', poYearRows: [{ annualReturnYear: '2025-26' }] }]
+    },
+    ...overrides
+  });
+  const duplicate = eligible('service-0002');
+  duplicate.selectedLead.serviceSelections[0].servicesOffered = 'Annual Return Filling';
+  const importer = eligible('service-0003', 'Importer');
+  const noPo = eligible('service-0004', 'Brand Owner');
+  noPo.selectedLead.assignments[0].poStatus = 'pending';
+  noPo.selectedLead.assignments[0].poYearRows = [];
+  const notApproved = eligible('service-0005', 'Recycler');
+  notApproved.data.cpcb.status = 'Under Review';
+  const records = buildRecords({ clients: [eligible('service-0001'), duplicate, importer, noPo, notApproved], users: [user], teams: [], filings: new Map() });
+  assert.equal(records.length, 2);
+  assert.deepEqual(records.map(row => row.subType).sort(), ['Importer', 'Producer']);
+  assert(records.every(row => row.years.length === 1 && row.years[0] === '2025-26'));
 });

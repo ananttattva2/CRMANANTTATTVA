@@ -14,6 +14,50 @@ function clientMasterUniqueId(value) {
   return match ? `ATPL-${match[1].padStart(4, '0')}` : saved || '-';
 }
 
+function statusFrom(scope = {}) {
+  return text(scope?.cpcb?.status || scope?.cpcb?.approvalStatus || scope?.cpcb?.applicationStatus
+    || scope?.status || scope?.approvalStatus || scope?.applicationStatus);
+}
+
+function assignedServiceCpcbStatus(client, serviceId) {
+  const data = client?.data || {};
+  const scoped = statusFrom(data.serviceDetailsByAssignedServiceId?.[serviceId])
+    || statusFrom(data.cpcbDataByAssignedServiceId?.[serviceId]);
+  const root = statusFrom(data.cpcb)
+    || text(data.basic?.cpcbStatus || data.importMeta?.cpcbStatus);
+  const scopedKey = key(scoped);
+  return (!scopedKey || ['notstarted', 'notrecorded', 'pending'].includes(scopedKey))
+    && root && !['notstarted', 'notrecorded', 'pending'].includes(key(root))
+    ? root : scoped || root;
+}
+
+function isApprovedApplication(client, serviceId) {
+  return /approved|registered|processed|annualreturnapplicable/.test(key(assignedServiceCpcbStatus(client, serviceId)));
+}
+
+function isOperationsStaff(user = {}) {
+  if (user.isActive === false || user.isActive === 0 || ['false', '0', 'inactive'].includes(key(user.isActive))) return false;
+  const roles = [user.role, ...array(user.roles)].map(key);
+  return roles.some(role => /^(operation|operations|operationsexecutive|manager)$/.test(role));
+}
+
+function hasPoEvidence(row = {}) {
+  return [row.poNumber, row.poNo, row.poDate, row.poReceivedDate, row.poFileName, row.fileName, row.poFileUrl]
+    .some(value => Boolean(text(value)));
+}
+
+function applicationAnnualYears(assignment, poRows) {
+  const received = key(assignment?.poStatus) === 'received' || poRows.some(hasPoEvidence);
+  if (!received) return [];
+  const eligibleRows = poRows.filter(row => !list(row?.services).length || isAnnual(row.services));
+  const saved = yearsFrom(...eligibleRows.map(row => row?.annualReturnYear));
+  return saved.sort((left, right) => Number(left.slice(0, 4)) - Number(right.slice(0, 4))).slice(0, 1);
+}
+
+function normalizedCompanyKey(lead, company) {
+  return key(lead?.companyIdentity || company) || key(lead?._id || lead?.id || company);
+}
+
 function annualServiceName(...values) {
   const saved = values.flatMap(list).find(item => isAnnual(item));
   if (!saved) return '';
@@ -79,8 +123,9 @@ function filingIndex(documents = [], clients = []) {
 }
 
 function buildRecords({ clients = [], users = [], filings = new Map(), teams = [] }) {
-  const usersByIdentity = ownerIndex(users);
-  const usersById = new Map(array(users).map(user => [text(user), user]));
+  const operationsUsers = array(users).filter(isOperationsStaff);
+  const usersByIdentity = ownerIndex(operationsUsers);
+  const usersById = new Map(operationsUsers.map(user => [text(user), user]));
   const teamsById = new Map(array(teams).map(team => [text(team), team?.name || 'Team']));
   const records = new Map();
   for (const client of mergeManagerStaffAllocations(array(clients), [])) {
@@ -91,19 +136,30 @@ function buildRecords({ clients = [], users = [], filings = new Map(), teams = [
     let serviceIndex = services.findIndex(service => text(service.assignedServiceId || service.serviceAssignmentId) === selectedId);
     if (serviceIndex < 0 && services.length === 1) serviceIndex = 0;
     const service = services[serviceIndex] || {};
-    const serviceName = annualServiceName(service.servicesOffered, service.applicableService, client.data?.basic?.servicesOffered);
+    const assignments = array(lead.assignments).filter(assignment => assignment && typeof assignment === 'object');
+    const preliminaryAssignment = assignments.find(row => text(row.assignedServiceId || row.serviceAssignmentId) === text(service.assignedServiceId || service.serviceAssignmentId || selectedId)) || assignments[serviceIndex] || {};
+    const selectedOffering = service.servicesOffered ?? service.applicableService;
+    const assignmentOffering = preliminaryAssignment.servicesOffered ?? preliminaryAssignment.applicableService;
+    const legacyOffering = [lead.servicesOffered, lead.applicableService, client.data?.basic?.servicesOffered, client.data?.basic?.applicableService,
+      client.data?.selectedLeadSnapshot?.servicesOffered, client.data?.selectedLeadSnapshot?.applicableService].find(value => list(value).length) || [];
+    const offered = Object.keys(service).length ? (list(selectedOffering).length ? selectedOffering : assignmentOffering ?? []) : legacyOffering;
+    const serviceName = annualServiceName(offered);
     if (!serviceName) continue;
     const category = categoryName(service.eprCategory || lead.eprCategory || client.data?.basic?.eprCategory);
     if (!category) continue;
-    const assignments = array(lead.assignments).filter(assignment => assignment && typeof assignment === 'object');
-    const assignment = assignments.find(row => text(row.assignedServiceId || row.serviceAssignmentId) === text(service.assignedServiceId || service.serviceAssignmentId || selectedId)) || assignments[serviceIndex] || {};
+    const assignment = preliminaryAssignment;
     const serviceId = text(service.assignedServiceId || service.serviceAssignmentId || assignment.assignedServiceId || assignment.serviceAssignmentId || selectedId || `service-${serviceIndex}`);
-    const recordKey = `${text(lead._id || lead.id || client.selectedLead)}:${serviceId}`;
     const poRows = [...array(assignment.poYearRows), ...(assignment.originalPoDetails && typeof assignment.originalPoDetails === 'object' ? [assignment.originalPoDetails] : [])]
       .filter(row => row && typeof row === 'object');
-    const years = yearsFrom(service.annualReturnYears, service.firstAnnualReturnYearApplicable, service.financialYear, service.servicesForYear, ...poRows.flatMap(row => [row.annualReturnYear, row.poFinancialYear, row.fy]));
-    if (!years.length) continue;
+    const workflowReady = Boolean(assignment.assignedTo || assignment.assignedToText || assignment.assignedToEmail)
+      && Boolean(assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail);
+    const closed = Boolean(assignment.closedAt || assignment.closedBy || assignment.closedByText || assignment.permanentClosedAt
+      || (services.length === 1 && (lead.closedAt || lead.closedBy || lead.closedByText)) || key(lead.status) === 'closed');
+    const clientStatus = key(client.workflowStatus || client.data?.importMeta?.clientStatus);
+    const years = applicationAnnualYears(assignment, poRows);
+    if (clientStatus === 'draft' || !closed || !workflowReady || !isApprovedApplication(client, serviceId) || !years.length) continue;
     const owner = findOwner(usersByIdentity, assignment.assignedStaff, assignment.assignedStaffEmail, assignment.assignedStaffText, lead.assignedStaff, lead.assignedStaffEmail, lead.assignedStaffText);
+    if (!owner) continue;
     const manager = owner ? usersById.get(text(owner.managerId)) : null;
     const team = owner?.teamId ? teamsById.get(text(owner.teamId)) : '';
     const applicantType = text(service.piboParent || service.piboCategoryParent || service.applicantType || lead.piboParent || lead.applicantType || 'Not specified');
@@ -113,17 +169,26 @@ function buildRecords({ clients = [], users = [], filings = new Map(), teams = [
     const leadId = text(lead.leadCode || lead.sourceLeadId || client.data?.importMeta?.leadNumber || '-');
     const uniqueId = clientMasterUniqueId(client.data?.importMeta?.uniqueId || client.uniqueId || client.data?.importMeta?.leadNumber);
     const dueDate = isoDate(service.dueDate || service.serviceEndDate || poRows.map(row => row.poEndDate).filter(Boolean).sort().at(0));
+    const unit = text(service.plantUnit || lead.plantUnit || client.data?.basic?.plantUnit || 'Not specified');
+    const recordKey = [owner ? text(owner) : key(assignment.assignedStaffText || assignment.assignedStaffEmail), normalizedCompanyKey(lead, company), key(subType), key(unit), 'annualreturn'].join(':');
     const yearStates = Object.fromEntries(years.map(year => {
       const filing = clientId && typeof filings?.get === 'function' ? filings.get(`${clientId}:${year}`) : null;
       return [year, workflowState(filing)];
     }));
-    records.set(recordKey, {
+    const nextRecord = {
       id: recordKey, clientId, company, uniqueId, leadId, category, applicantType, subType, serviceName, years,
       assignedUserId: owner ? text(owner) : '', assignedUser: owner?.name || owner?.email || assignment.assignedStaffText || 'Unassigned',
       teamId: owner?.teamId ? text(owner.teamId) : '', team: team || manager?.name || manager?.email || 'No team assigned',
       managerId: manager ? text(manager) : '', dueDate, yearStates,
       openPath: clientId ? `/sales/client-data-processing/${encodeURIComponent(clientId)}/{year}` : `/sales/client-master?search=${encodeURIComponent(leadId)}`
-    });
+    };
+    const existing = records.get(recordKey);
+    if (!existing) records.set(recordKey, nextRecord);
+    else {
+      existing.years = [...new Set([...existing.years, ...nextRecord.years])].sort();
+      existing.yearStates = { ...existing.yearStates, ...nextRecord.yearStates };
+      if (existing.serviceName !== 'Annual Return Filling' && nextRecord.serviceName === 'Annual Return Filling') existing.serviceName = nextRecord.serviceName;
+    }
     } catch (error) {
       console.warn('[annual-return-operations-dashboard] skipped malformed assignment record', {
         clientId: text(client?._id), name: error.name, message: error.message
