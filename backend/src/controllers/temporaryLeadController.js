@@ -63,7 +63,7 @@ async function findTemporaryLeadDuplicate(data, excludeId) {
   }).select('_id tempLeadCode clientName companyIdentity email emailIdentity phone phoneIdentity status').lean();
   if (temporary) {
     const match = temporary.companyIdentity === data.companyIdentity ? 'company name'
-      : temporary.emailIdentity === data.emailIdentity ? 'email ID' : 'phone number';
+      : data.emailIdentity && temporary.emailIdentity === data.emailIdentity ? 'email ID' : 'phone number';
     return { source: 'temporary', match, code: temporary.tempLeadCode, company: temporary.clientName };
   }
 

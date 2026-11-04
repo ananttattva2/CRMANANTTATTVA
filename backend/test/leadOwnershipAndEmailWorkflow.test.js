@@ -103,6 +103,13 @@ test('creating two temporary leads without emails never matches a blank email as
   assert.equal(saved, 2);
 });
 
+test('a blank-email lead with a duplicated phone reports the phone conflict rather than an email conflict', async t => {
+  const controller = require('../src/controllers/temporaryLeadController');
+  t.mock.method(TemporaryLead, 'findOne', () => query({ companyIdentity: 'different company', emailIdentity: '', phoneIdentity: '9876543210', tempLeadCode: 'ATPL-TEMP-0001' }));
+  const response = { status(code) { assert.equal(code, 409); return this; }, json(data) { assert.equal(data.duplicate.match, 'phone number'); } };
+  await controller.create({ user: { _id: ownerId }, body: { companyName: 'Example Company', personName: 'Client Representative', phone: '9876543210', sector: 'Manufacturing' } }, response);
+});
+
 test('temporary email is optional, but a nonempty invalid address is rejected', () => {
   const helpers = require('../src/controllers/temporaryLeadController').__test;
   const input = { companyName: 'Example Company', personName: 'Example Person', phone: '9876543210', sector: 'Manufacturing' };
