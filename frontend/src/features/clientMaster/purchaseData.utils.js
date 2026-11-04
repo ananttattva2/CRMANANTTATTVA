@@ -31,7 +31,7 @@ export async function readPurchaseWorkbook(file, source) {
   for (const sheetName of workbook.SheetNames) {
     const matrix = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '', raw: false });
     const quantityHeaders = source === 'base'
-      ? ['qtyofplasticmt', 'quantitymt', 'qtymt', 'quantitytpa', 'purchasequantity', 'plasticquantitytpa', 'totalquantitytpa']
+      ? ['qtyofplasticmt', 'totalplasticquantityton', 'totalplasticquantitytons', 'totalplasticquantity', 'quantitymt', 'qtymt', 'quantitytpa', 'purchasequantity', 'plasticquantitytpa', 'totalquantitytpa']
       : ['totalplasticquantity', 'totalplasticquantitymt', 'totalplasticqtytons', 'totalplasticqtyton', 'totalplasticqty', 'plasticquantitytons', 'uploadedquantity', 'quantitytpa', 'quantitymt', 'qtymt'];
     const headerIndex = matrix.findIndex((row) => Array.isArray(row) && row.some((cell) => quantityHeaders.includes(normalizeHeader(cell))));
     if (headerIndex < 0) continue;

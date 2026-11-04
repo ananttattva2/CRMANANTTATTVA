@@ -29,11 +29,11 @@ const HEADER_ALIASES = {
   recycled: ['recycled', 'recycledin', 'recycledcontent', 'recycledplastic', 'recycledplasticpercent', 'recycledpercentage', 'recycledcontentpercent'],
   gstin: ['gstin', 'sellergst', 'sellergstno', 'gstnumber', 'gstno'],
   invoiceNumber: ['invoicenumber', 'invoicenumbergsteinvoicenumber', 'gsteinvoicenumber', 'invoiceno'],
-  invoiceDate: ['invoicedate', 'date'],
+  invoiceDate: ['invoicedate', 'dateyyyymmdd', 'date'],
   portalReferenceNumber: ['portalreferencenumber', 'portalreferenceno', 'portalrefno', 'gstinvoiceno'],
   plasticCategory: ['categoryofplastic', 'plasticcategory', 'category', 'plasticcat'],
   materialType: ['plasticmaterialtype', 'plastictype', 'materialtype', 'typeofplasticmaterial', 'plasticmaterial'],
-  baseQuantity: ['qtyofplasticmt', 'quantitymt', 'qtymt', 'quantitytpa', 'quantity', 'purchasequantity', 'plasticquantitytpa', 'totalquantitytpa'],
+  baseQuantity: ['qtyofplasticmt', 'totalplasticquantityton', 'totalplasticquantitytons', 'totalplasticquantity', 'quantitymt', 'qtymt', 'quantitytpa', 'quantity', 'purchasequantity', 'plasticquantitytpa', 'totalquantitytpa'],
   portalQuantity: ['totalplasticquantity', 'totalplasticquantitymt', 'totalplasticqtytons', 'totalplasticqtyton', 'totalplasticqty', 'plasticquantitytons', 'uploadedquantity', 'quantitytpa', 'quantitymt', 'qtymt'],
   gstPaid: ['totalinvoicevalue', 'invoicevalue', 'gstpaid', 'gstamount', 'totalgst'],
   state: ['state', 'stateut'],
@@ -106,11 +106,22 @@ function buildHeaderMap(row = {}, source = 'base') {
 }
 
 function duplicateKey(row, source) {
-  if (source === 'portal' && row.portalReferenceNumber) return [row.financialYear, row.portalReferenceNumber.toLowerCase()].join('|');
-  const common = [row.financialYear, row.entityKey, row.gstin.toLowerCase(), row.plasticCategory, row.materialKey];
-  if (source === 'base') common.splice(3, 0, row.invoiceNumber.toLowerCase());
-  else common.push(String(row.quantity));
-  return common.join('|');
+  // Invoice/reference numbers are not row identifiers: a single invoice can
+  // legitimately contain several material lines. Only suppress a genuinely
+  // repeated normalized data row.
+  return [
+    row.financialYear,
+    row.entityKey,
+    row.registrationType,
+    row.entityType.toLowerCase(),
+    row.gstin.toLowerCase(),
+    row.plasticCategory,
+    row.materialKey,
+    source === 'base' ? row.invoiceNumber.toLowerCase() : row.portalReferenceNumber.toLowerCase(),
+    source === 'base' ? row.invoiceDate : row.uploadDate,
+    String(row.quantity),
+    String(row.gstPaid)
+  ].join('|');
 }
 
 function normalizePurchaseRows(rawRows = [], source = 'base', selectedYear = '', headerRowNumber = 1) {

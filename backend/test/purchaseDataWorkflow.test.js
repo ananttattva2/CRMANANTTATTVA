@@ -75,6 +75,29 @@ test('new purchase template headers map to base and portal metrics', () => {
   assert.equal(portal.acceptedRows[0].quantity, 8.25);
   assert.equal(portal.acceptedRows[0].gstPaid, 1485);
 });
+test('procurement bulk-entry base quantity header is accepted', () => {
+  const { 'Quantity (TPA)': ignoredQuantity, 'Invoice Date': ignoredDate, ...row } = baseRow();
+  const result = parsed([{
+    ...row,
+    'Date (YYYY-MM-DD)': '2025-04-01',
+    'Total Plastic Quantity (Ton)': 0.021
+  }], 'base');
+  assert.equal(result.acceptedRows.length, 1);
+  assert.equal(result.acceptedRows[0].quantity, 0.021);
+  assert.equal(result.acceptedRows[0].invoiceDate, '2025-04-01');
+});
+test('portal invoice number may contain multiple distinct material rows', () => {
+  const rows = [
+    portalRow({ 'Portal Reference Number': 'GST-INV-1', 'Total Plastic Qty (Tons)': 0.003, 'GST Paid': 6081315, 'Upload Date': '2025-04-01' }),
+    portalRow({ 'Portal Reference Number': 'GST-INV-1', 'Total Plastic Qty (Tons)': 0.001, 'GST Paid': 1377350, 'Upload Date': '2025-04-02' }),
+    portalRow({ 'Portal Reference Number': 'GST-INV-1', 'Total Plastic Qty (Tons)': 0.017, 'GST Paid': 29014309, 'Upload Date': '2025-04-03' })
+  ];
+  const result = parsed(rows, 'portal');
+  assert.equal(result.acceptedRows.length, 3);
+  assert.equal(result.duplicateRowCount, 0);
+  assert.equal(result.totalQuantity, 0.021);
+  assert.equal(result.totalGst, 36472974);
+});
 test('Total Invoice Value takes priority over a legacy GST column', () => {
   const result = parsed([baseRow({ 'Total Invoice Value': 2250, 'GST Paid': 999 })], 'base');
   assert.equal(result.acceptedRows[0].gstPaid, 2250);
