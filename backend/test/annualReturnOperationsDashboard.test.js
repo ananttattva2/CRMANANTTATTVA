@@ -146,3 +146,17 @@ test('Purchase and Sales summary uses the same eligible Annual Return applicatio
   assert.equal(result.users[0].allocated, 2);
   assert.equal(result.users[0].completion, 50);
 });
+
+test('Purchase and Sales summary reflects the AR Compliance manager decision', () => {
+  const rows = [record('c1', { sourceClientIds: ['c1'] })];
+  const ready = {
+    clientId: 'c1', financialYear: '2025-26',
+    baseUpload: { importStatus: 'Imported' }, portalUpload: { importStatus: 'Imported' },
+    managerVerificationStatus: 'Pending', complianceVerificationStatus: 'Pending'
+  };
+  const review = { client: 'c1', financialYear: '2025-26', managerStatus: 'APPROVED', status: 'PENDING' };
+  const result = purchaseSalesSummary(rows, '2025-26', {}, [ready], [ready], [review]);
+  assert.equal(result.purchase[6].complete, 1);
+  assert.equal(result.sales[6].complete, 1);
+  assert.equal(result.purchase[7].pending, 1);
+});

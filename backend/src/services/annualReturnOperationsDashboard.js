@@ -215,8 +215,14 @@ function workflowRecordIndex(rows = [], year = '') {
   return result;
 }
 
-function combinedStageState(sourceIds, index, stage) {
-  const states = sourceIds.map(clientId => stageState(index.get(clientId), stage));
+function annualReviewRecordIndex(rows = [], year = '') {
+  return new Map(array(rows)
+    .filter(row => !year || normalizeYear(row?.financialYear) === normalizeYear(year))
+    .map(row => [text(row?.client), row]));
+}
+
+function combinedStageState(sourceIds, index, reviewIndex, stage) {
+  const states = sourceIds.map(clientId => stageState(index.get(clientId), stage, reviewIndex.get(clientId)));
   if (!states.length || states.every(state => state === 'pending')) return 'pending';
   if (states.every(state => state === 'complete')) return 'complete';
   return 'progress';
@@ -230,14 +236,15 @@ function stageTotals(items, module) {
   });
 }
 
-function purchaseSalesSummary(records, year, query = {}, purchases = [], sales = []) {
+function purchaseSalesSummary(records, year, query = {}, purchases = [], sales = [], annualReviews = []) {
   const matching = applyFilters(decorate(records, year), query);
   const purchaseIndex = workflowRecordIndex(purchases, year);
   const salesIndex = workflowRecordIndex(sales, year);
+  const reviewIndex = annualReviewRecordIndex(annualReviews, year);
   const items = matching.map(record => {
     const sourceClientIds = array(record.sourceClientIds).length ? record.sourceClientIds : [record.clientId].filter(Boolean);
-    const purchase = STAGES.map(stage => combinedStageState(sourceClientIds, purchaseIndex, stage));
-    const sales = STAGES.map(stage => combinedStageState(sourceClientIds, salesIndex, stage));
+    const purchase = STAGES.map(stage => combinedStageState(sourceClientIds, purchaseIndex, reviewIndex, stage));
+    const sales = STAGES.map(stage => combinedStageState(sourceClientIds, salesIndex, reviewIndex, stage));
     const purchaseComplete = purchase.every(state => state === 'complete');
     const salesComplete = sales.every(state => state === 'complete');
     return {

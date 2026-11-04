@@ -12,6 +12,24 @@ test('manager and compliance review stages use independent saved verification st
   }
 });
 
+test('current AR Compliance decisions are reflected for ready Purchase and Sales records', () => {
+  const ready = { baseUpload: { importStatus: 'Imported' }, portalUpload: { importStatus: 'Imported' }, managerVerificationStatus: 'Pending', complianceVerificationStatus: 'Pending' };
+  const review = { managerStatus: 'APPROVED', status: 'PENDING' };
+  assert.equal(stageState(ready, 'Manager Review', review), 'complete');
+  assert.equal(stageState(ready, 'Compliance Review', review), 'pending');
+  assert.equal(stageState({ managerVerificationStatus: 'Pending' }, 'Manager Review', review), 'pending');
+});
+
+test('AR Compliance manager approval is included in the grouped upload tracker', () => {
+  const clients = [{ _id: 'c1', selectedLead: { assignedStaff: 'u1', company: 'Reviewed Client' } }];
+  const users = [{ _id: 'u1', name: 'Operations User', role: 'operation' }];
+  const ready = [{ clientId: 'c1', financialYear: '2025-26', baseUpload: { importStatus: 'Imported' }, portalUpload: { importStatus: 'Imported' }, managerVerificationStatus: 'Pending' }];
+  const annualReviews = [{ client: 'c1', financialYear: '2025-26', managerStatus: 'APPROVED', status: 'PENDING' }];
+  const [group] = buildUploadTracker(clients, users, ready, ready, { financialYear: '2025-26', annualReviews });
+  assert.equal(group.purchase[6].complete, 1);
+  assert.equal(group.sales[6].complete, 1);
+});
+
 test('CCL SLA receipt survives blank sibling services and review counts stay unique per company', () => {
   const users = [{ _id: 'shubham', name: 'SHUBHAM DESAI', role: 'operation' }];
   const clients = ['producer', 'importer'].map(_id => ({ _id, selectedLead: { assignedStaff: 'shubham', company: 'CCL FOOD AND BEVERAGES PVT LTD' }, sla: _id === 'producer' ? { status: 'Yes' } : {} }));

@@ -29,8 +29,21 @@ function matchesTrackedService(client, type) {
     return type === 'annual' ? /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalized) : type === 'registration' ? ['registration', 'newregistration'].includes(normalized) : true;
   });
 }
-function stageState(record, stage) {
+function annualReviewStageState(review, stage, record = null) {
+  if (!review) return '';
+  const status = stage === 'Manager Review' ? review.managerStatus : review.status;
+  const normalized = String(status || '').trim().toUpperCase();
+  const decisionAt = new Date(stage === 'Manager Review' ? review.managerDecidedAt : review.decidedAt).getTime() || 0;
+  const recordChangedAt = new Date(record?.updatedAt || record?.createdAt || 0).getTime() || 0;
+  if (decisionAt && recordChangedAt > decisionAt) return '';
+  if (stage === 'Manager Review') return normalized === 'APPROVED' ? 'complete' : normalized === 'REJECTED' ? 'pending' : '';
+  return ['APPROVED', 'PARTIALLY_APPROVED'].includes(normalized) ? 'complete' : normalized === 'REJECTED' ? 'pending' : '';
+}
+function stageState(record, stage, annualReview = null) {
   if (stage === 'Manager Review' || stage === 'Compliance Review') {
+    const readyForAnnualReview = record?.baseUpload?.importStatus === 'Imported' && record?.portalUpload?.importStatus === 'Imported';
+    const reviewedState = readyForAnnualReview ? annualReviewStageState(annualReview, stage, record) : '';
+    if (reviewedState) return reviewedState;
     const status = stage === 'Manager Review' ? record?.managerVerificationStatus : record?.complianceVerificationStatus;
     return String(status || '').trim().toLowerCase() === 'approved' ? 'complete' : 'pending';
   }
@@ -93,6 +106,7 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
   users.forEach(user => [user._id, user.crmUserId, user.name, user.email].filter(Boolean).forEach(value => identities.set(id(value).trim().toLowerCase(), user)));
   const index = records => new Map(records.map(record => [id(record.clientId), record]));
   const purchaseIndex = index(purchases), salesIndex = index(sales), groups = new Map();
+  const reviewIndex = new Map((options.annualReviews || []).map(review => [`${id(review.client)}:${normalizeYear(review.financialYear)}`, review]));
   const emptyGroup = user => ({ userId: id(user._id), userName: user.name || user.email || 'Team member', clients: [], slaReceived: 0, slaNotReceived: 0, purchase: STAGES.map(() => ({ complete: 0, progress: 0, pending: 0 })), sales: STAGES.map(() => ({ complete: 0, progress: 0, pending: 0 })) });
   users.filter(user => userHasAnyRole(user, ['manager'])).forEach(user => groups.set(id(user._id), emptyGroup(user)));
   const seen = new Set();
@@ -107,7 +121,10 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
     const ownerId = id(user._id);
     if (!groups.has(ownerId)) groups.set(ownerId, emptyGroup(user));
     const group = groups.get(ownerId);
-    const detail = { clientId: id(client._id), clientName: client.selectedLead?.company || client.selectedLead?.companyName || client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || client.data?.importMeta?.companyName || 'Untitled client', slaReceived: client.sla?.status === 'Yes', purchase: STAGES.map(stage => stageState(purchaseIndex.get(id(client._id)), stage)), sales: STAGES.map(stage => stageState(salesIndex.get(id(client._id)), stage)) };
+    const purchaseRecord = purchaseIndex.get(clientId), salesRecord = salesIndex.get(clientId);
+    const reviewYear = normalizeYear(options.financialYear || purchaseRecord?.financialYear || salesRecord?.financialYear);
+    const annualReview = reviewIndex.get(`${clientId}:${reviewYear}`);
+    const detail = { clientId: id(client._id), clientName: client.selectedLead?.company || client.selectedLead?.companyName || client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || client.data?.importMeta?.companyName || 'Untitled client', slaReceived: client.sla?.status === 'Yes', purchase: STAGES.map(stage => stageState(purchaseRecord, stage, annualReview)), sales: STAGES.map(stage => stageState(salesRecord, stage, annualReview)) };
     detail.companyKey = assignedCompanyKey(client);
     detail.clientIds = [clientId];
     if (options.groupBy === 'application') {
@@ -156,4 +173,4 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
   }
   return [...groups.values()].sort((a, b) => a.userName.localeCompare(b.userName));
 }
-module.exports = { STAGES, stageState, hasWorkflowProgress, buildUploadTracker, matchesTrackedService, applicationDescriptor, financialYearForDate };
+module.exports = { STAGES, annualReviewStageState, stageState, hasWorkflowProgress, buildUploadTracker, matchesTrackedService, applicationDescriptor, financialYearForDate };

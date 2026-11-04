@@ -6,6 +6,7 @@ const Quotation = require('../models/Quotation');
 const SalesData = require('../models/SalesData');
 const User = require('../models/User');
 const AnnualReturn = require('../models/AnnualReturn');
+const ArComplianceReview = require('../models/ArComplianceReview');
 const Team = require('../models/Team');
 const { loadPurchaseOrders } = require('./purchaseOrderController');
 const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
@@ -288,11 +289,12 @@ exports.annualReturnOperations = async (req, res) => {
       const workflowClientIds = validObjectIds(records.flatMap(record => record.sourceClientIds || [record.clientId]));
       const workflowFilter = { clientId: { $in: workflowClientIds }, financialYear: result.selectedYear };
       const workflowProjection = 'clientId financialYear checklist baseUpload.importStatus portalUpload.importStatus managerVerificationStatus complianceVerificationStatus createdAt updatedAt';
-      const [purchases, sales] = workflowClientIds.length ? await Promise.all([
+      const [purchases, sales, annualReviews] = workflowClientIds.length ? await Promise.all([
         PurchaseData.find(workflowFilter).select(workflowProjection).maxTimeMS(15000).lean(),
-        SalesData.find(workflowFilter).select(workflowProjection).maxTimeMS(15000).lean()
-      ]) : [[], []];
-      result.purchaseSales = dashboard.purchaseSalesSummary(records, result.selectedYear, req.query || {}, purchases, sales);
+        SalesData.find(workflowFilter).select(workflowProjection).maxTimeMS(15000).lean(),
+        ArComplianceReview.find({ client: { $in: workflowClientIds }, financialYear: result.selectedYear }).select('client financialYear managerStatus status managerDecidedAt decidedAt').maxTimeMS(15000).lean()
+      ]) : [[], [], []];
+      result.purchaseSales = dashboard.purchaseSalesSummary(records, result.selectedYear, req.query || {}, purchases, sales, annualReviews);
     }
     res.set('Cache-Control', 'private, no-store');
     res.set('Server-Timing', `annual-return-operations;dur=${Date.now() - startedAt}`);
@@ -349,10 +351,14 @@ exports.uploadTracker = async (req, res) => {
     }
     const trackerClients = visibleClients;
     const filter = { clientId: { $in: trackerClients.filter(client => !client.assignmentOnly).map(client => client._id) }, financialYear };
-    const projection = 'clientId checklist baseUpload.importStatus portalUpload.importStatus managerVerificationStatus complianceVerificationStatus';
-    const [purchases, sales] = await Promise.all([PurchaseData.find(filter).select(projection).maxTimeMS(15000).lean(), SalesData.find(filter).select(projection).maxTimeMS(15000).lean()]);
+    const projection = 'clientId financialYear checklist baseUpload.importStatus portalUpload.importStatus managerVerificationStatus complianceVerificationStatus createdAt updatedAt';
+    const [purchases, sales, annualReviews] = await Promise.all([
+      PurchaseData.find(filter).select(projection).maxTimeMS(15000).lean(),
+      SalesData.find(filter).select(projection).maxTimeMS(15000).lean(),
+      ArComplianceReview.find({ client: filter.clientId, financialYear }).select('client financialYear managerStatus status managerDecidedAt decidedAt').maxTimeMS(15000).lean()
+    ]);
     res.set('Cache-Control', 'private, no-store');
-    res.json({ ok: true, financialYear, serviceType, scope: scope === null ? 'all' : 'role-scoped', stages: STAGES, users: buildUploadTracker(trackerClients, users, purchases, sales, { groupBy: serviceType ? 'application' : 'company', serviceType, financialYear }) });
+    res.json({ ok: true, financialYear, serviceType, scope: scope === null ? 'all' : 'role-scoped', stages: STAGES, users: buildUploadTracker(trackerClients, users, purchases, sales, { groupBy: serviceType ? 'application' : 'company', serviceType, financialYear, annualReviews }) });
   } catch (error) {
     console.error('Upload tracker failed', { message: error.message });
     res.status(500).json({ error: 'Unable to load client upload tracker.' });
