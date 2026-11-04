@@ -7,6 +7,15 @@ const STANDARD_MAX_BYTES = 15 * 1024 * 1024;
 const EMAIL_MAX_BYTES = 100 * 1024 * 1024;
 const isEmailFile = (file) => /\.(eml|msg)$/i.test(file?.name || '') || ['message/rfc822', 'application/vnd.ms-outlook'].includes(String(file?.type || '').toLowerCase());
 
+function droppedFiles(dataTransfer) {
+  const directFiles = Array.from(dataTransfer?.files || []).filter(Boolean);
+  if (directFiles.length) return directFiles;
+  return Array.from(dataTransfer?.items || [])
+    .filter((item) => item.kind === 'file')
+    .map((item) => item.getAsFile?.())
+    .filter(Boolean);
+}
+
 export default function PurchaseProofDropzone({ files = [], required, disabled, busy, onUpload, onRemove, onPreview, onError }) {
   const inputRef = useRef(null);
   const [dragging, setDragging] = useState(false);
@@ -29,7 +38,10 @@ export default function PurchaseProofDropzone({ files = [], required, disabled, 
 
   const acceptFiles = (fileList) => {
     const selected = Array.from(fileList || []);
-    if (!selected.length) return;
+    if (!selected.length) {
+      const message = 'No file was received from the drag source. Save an Outlook email as an EML or MSG file, then drag the saved file here.';
+      setFileError(message); onError?.(message); return;
+    }
     setFileError('');
     const invalid = selected.find((file) => !file.type.startsWith('image/') && !['application/pdf', 'application/vnd.ms-outlook', 'message/rfc822'].includes(file.type) && !/\.(pdf|eml|msg|png|jpe?g|gif|webp)$/i.test(file.name));
     if (invalid) {
@@ -44,6 +56,10 @@ export default function PurchaseProofDropzone({ files = [], required, disabled, 
     const tooLarge = selected.find((file) => !isEmailFile(file) && file.size > STANDARD_MAX_BYTES);
     if (tooLarge) {
       const message = `${tooLarge.name}: maximum image/PDF proof size is 15 MB.`;
+      setFileError(message); onError?.(message); return;
+    }
+    if (typeof onUpload !== 'function') {
+      const message = 'Upload is temporarily unavailable. Refresh the page and try again.';
       setFileError(message); onError?.(message); return;
     }
     onUpload(selected);
@@ -71,11 +87,19 @@ export default function PurchaseProofDropzone({ files = [], required, disabled, 
     event.preventDefault();
     event.stopPropagation();
     setDragging(false);
-    if (!disabled && !busy) acceptFiles(event.dataTransfer.files);
+    if (disabled) {
+      const message = 'You do not have permission to upload proof for this client.';
+      setFileError(message); onError?.(message); return;
+    }
+    if (busy) {
+      const message = 'Please wait for the current upload to finish.';
+      setFileError(message); onError?.(message); return;
+    }
+    acceptFiles(droppedFiles(event.dataTransfer));
   };
 
   const missing = required && !files.length;
-  return <div onDragEnter={handleDragEnter} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className={`min-w-0 rounded-xl border p-2.5 transition ${dragging ? 'border-emerald-500 bg-emerald-100/80 ring-2 ring-emerald-200' : missing ? 'border-amber-400 bg-amber-50' : files.length ? 'border-emerald-200 bg-emerald-50/70' : 'border-slate-200 bg-slate-50'}`}>
+  return <div role="group" aria-label="Supporting document upload" onDragEnter={handleDragEnter} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className={`min-w-0 rounded-xl border p-2.5 transition ${dragging ? 'border-emerald-500 bg-emerald-100/80 ring-2 ring-emerald-200' : missing ? 'border-amber-400 bg-amber-50' : files.length ? 'border-emerald-200 bg-emerald-50/70' : 'border-slate-200 bg-slate-50'}`}>
     {!disabled && <button type="button" disabled={busy} onClick={() => inputRef.current?.click()} className={`grid min-h-16 w-full place-items-center rounded-lg border px-3 py-2 text-center transition ${dragging ? 'border-emerald-500 bg-emerald-100' : missing ? 'border-amber-300 bg-white' : 'border-emerald-300 bg-white hover:bg-emerald-50'}`}>
       <span><span className={`inline-flex items-center gap-2 text-sm font-black ${missing ? 'text-orange-700' : 'text-emerald-700'}`}><Upload className="h-4 w-4" />{busy ? 'Uploading…' : dragging ? 'Drop files to upload' : files.length ? 'Upload more files' : 'Upload proof now'}</span><span className="mt-1 block text-[10px] font-bold text-slate-500">Drag & drop images, PDF, EML or Outlook MSG here, or click to upload.</span></span>
     </button>}

@@ -70,6 +70,15 @@ test('assigned multi-role users share Client Master access for Purchase, Sales a
   }
 });
 
+test('Purchase and Sales proof drop zone accepts browser files and Outlook DataTransfer items', () => {
+  const dropzone = read('../../frontend/src/features/clientMaster/PurchaseProofDropzone.jsx');
+  assert.match(dropzone, /dataTransfer\?\.files/);
+  assert.match(dropzone, /dataTransfer\?\.items/);
+  assert.match(dropzone, /item\.getAsFile/);
+  assert.match(dropzone, /acceptFiles\(droppedFiles\(event\.dataTransfer\)\)/);
+  assert.match(dropzone, /No file was received from the drag source/);
+});
+
 test('Sales EML and Outlook MSG proofs use the same decoded mail viewer as Purchase', () => {
   const proofController = read('../src/controllers/purchaseProofController.js');
   const panel = read('../../frontend/src/features/clientMaster/SalesDataPanel.jsx');
