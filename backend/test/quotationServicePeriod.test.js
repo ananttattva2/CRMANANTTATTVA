@@ -47,7 +47,7 @@ test('quotation unit name is sanitized and persisted separately from unit and UO
 });
 
 test('quotation form, view, and printable download expose Unit Name', () => {
-  const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
+  const page = (fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8') + '\n' + fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/quotationDocument.mjs'), 'utf8'));
   assert.match(page, /Unit Name for quotation item/);
   assert.match(page, /item\.unitName \|\| '-'/);
   assert.match(page, /<th>Unit Name<\/th>/);
@@ -213,7 +213,7 @@ test('transition dates are system-derived and frozen against update payloads', (
 });
 
 test('period controls appear in the mapping popup and not in the main quotation table', () => {
-  const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
+  const page = (fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8') + '\n' + fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/quotationDocument.mjs'), 'utf8'));
   assert.match(page, /const financialYearEprYearHeading = financialYearIsRegistration \? 'Registration EPR Year' : 'Annual Return EPR Year'/);
   assert.match(page, /'Service Period', 'Select Period', \.\.\.\(financialYearNeedsEprCreditYears \? \['Service Start Date'\] : \[\]\), 'Transition Period', \.\.\.\(financialYearNeedsEprData \? \[financialYearEprYearHeading\]/);
   assert.match(page, /\[financialYearEprYearHeading\]\s*:\s*\[\]\), \.\.\.\(financialYearNeedsEprCreditYears \? \['Annual Return EPR Credit Years'\]/);
@@ -224,7 +224,7 @@ test('period controls appear in the mapping popup and not in the main quotation 
 });
 
 test('Other Consultancy exposes a required Registration Year after Applicant Type in both screens', () => {
-  const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
+  const page = (fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8') + '\n' + fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/quotationDocument.mjs'), 'utf8'));
   const model = fs.readFileSync(path.resolve(__dirname, '../src/models/Quotation.js'), 'utf8');
   assert.match(page, /function isOtherConsultancyItem\(item = \{\}\)/);
   assert.match(page, /'Applicant Type', 'Registration Year', 'Added By'/);
@@ -235,7 +235,7 @@ test('Other Consultancy exposes a required Registration Year after Applicant Typ
 });
 
 test('EPR Credit period controls support dates, days, months, and annual validity', () => {
-  const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
+  const page = (fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8') + '\n' + fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/quotationDocument.mjs'), 'utf8'));
   assert.doesNotMatch(page, /disabled=\{financialYearNeedsEprCreditYears\}/);
   assert.doesNotMatch(page, /financialYearNeedsEprCreditYears \? 'N\/A'/);
   assert.match(page, /financialYearNeedsEprCreditYears \? \['Service Start Date'\]/);
@@ -247,7 +247,7 @@ test('EPR Credit period controls support dates, days, months, and annual validit
 });
 
 test('quotation items rehydrate current lead service fields without replacing quotation pricing', () => {
-  const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
+  const page = (fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8') + '\n' + fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/quotationDocument.mjs'), 'utf8'));
   assert.match(page, /function syncQuotationItemsWithLead\(items = \[\], lead = \{\}\)/);
   assert.match(page, /service\.assignedServiceId \|\| assignedServiceId/);
   assert.match(page, /applicantType: service\.applicantType \|\| ''/);
@@ -262,7 +262,7 @@ test('quotation items rehydrate current lead service fields without replacing qu
 });
 
 test('quotation UI shares applicant fallback logic and conditionally renders EPR Credit years', () => {
-  const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
+  const page = (fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8') + '\n' + fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/quotationDocument.mjs'), 'utf8'));
   const model = fs.readFileSync(path.resolve(__dirname, '../src/models/Quotation.js'), 'utf8');
   assert.match(page, /function getQuotationApplicantType\(item = \{\}, source = \{\}\)/);
   assert.match(page, /source\.subApplicantType \|\| source\.piboCategory \|\| item\.subApplicantType \|\| item\.piboCategory \|\| source\.applicantType/);
@@ -279,7 +279,7 @@ test('quotation UI shares applicant fallback logic and conditionally renders EPR
 });
 
 test('quotation views and printable tables omit period-unit and transition columns', () => {
-  const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
+  const page = (fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8') + '\n' + fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/quotationDocument.mjs'), 'utf8'));
   assert.doesNotMatch(page, /'Business Category', 'Service Category', 'Service Period', 'Select Period', 'Transition Period'/);
   assert.doesNotMatch(page, /<th[^>]*>Select Period<\/th>/);
   assert.doesNotMatch(page, /<th[^>]*>Transition Period<\/th>/);
@@ -287,26 +287,18 @@ test('quotation views and printable tables omit period-unit and transition colum
   assert.doesNotMatch(page, /\['Select Period', periodUnitLongLabel/);
 });
 
-test('quotation PDF main amount table shows service start and end dates in the service period column', () => {
-  const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
-  assert.match(page, /function quotationServiceDateRange\(item = \{\}\)/);
-  assert.match(page, /return `\$\{formatServiceDate\(startDate\)\} - \$\{formatServiceDate\(endDate\)\}`/);
-  assert.match(page, /function QuotationServiceDateRangeCell\(\{ item \}\)/);
-  assert.match(page, /block whitespace-nowrap/);
-  assert.match(page, /replace\('\s-\s', '\s-<br>'\)/);
-  assert.match(page, /'Sr\.No', 'Business Category', 'Service Category', 'Service Period', 'Applicant Type'/);
-  assert.match(page, /<tr><th>Sr\.No<\/th><th>Business Category<\/th><th>Service Category<\/th><th>Service Period<\/th><th>Applicant Type<\/th>/);
-  assert.match(page, /<QuotationServiceDateRangeCell item=\{item\} \/>/);
-  assert.match(page, /quotationServiceDateRangeHtml\(item\)/);
-  assert.doesNotMatch(page, /quotationPrimaryPeriodHeader|quotationPrimaryPeriodDisplay/);
-  assert.match(page, /Annual Return EPR Year \/ Credit Year/);
-  assert.match(page, /quotationAnnualReturnRegistrationYear\(item\)/);
-  assert.doesNotMatch(page, /EPR \/ Service Period<\/th><th[^>]*>Applicant Type/);
-  assert.match(page, /const ANANT_TATTVA_GST_NUMBER = '27AAZCA6657R1ZB'/);
+test('quotation PDF main amount table shows service start and end dates in the service period column', async () => {
+  const shared = await import('../../frontend/src/utils/quotationDocument.mjs');
+  const item = { serviceCategory: 'Plastic Waste', servicesOffered: 'Registration', serviceStartDate: '2026-04-01', serviceEndDate: '2027-03-31' };
+  assert.equal(shared.quotationServiceDateRange(item), '01-04-2026 - 31-03-2027');
+  const html = shared.buildQuotationPrintHtml({ items: [item] });
+  assert.match(html, /Service Period<\/th><th>Applicant Type/);
+  assert.match(html, /01-04-2026<br>to 31-03-2027/);
+  assert.match(html, /27AAZCA6657R1ZB/);
 });
 
 test('EPR Consultancy quotation mapping labels the year column from services offered', () => {
-  const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
+  const page = (fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8') + '\n' + fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/quotationDocument.mjs'), 'utf8'));
   assert.match(page, /function normalizedQuotationService\(item = \{\}\)/);
   assert.match(page, /normalizedQuotationService\(item\)\.includes\('annualreturn'\)/);
   assert.match(page, /normalizedQuotationService\(item\)\.includes\('registration'\)/);
@@ -314,27 +306,24 @@ test('EPR Consultancy quotation mapping labels the year column from services off
   assert.match(page, /if \(hasAnnualReturn && !hasRegistration\) return 'Annual Return Year'/);
   assert.match(page, /if \(hasRegistration && !hasAnnualReturn\) return 'Registration EPR Year'/);
   assert.match(page, /return 'EPR Year'/);
-  assert.match(page, /\{quotationYearMappingHeader\(items\)\}/);
   assert.match(page, /escapeHtml\(yearMappingHeader\)/);
 });
 
 test('quotation mapping view and print hide the EPR service period column', () => {
-  const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
+  const page = (fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8') + '\n' + fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/quotationDocument.mjs'), 'utf8'));
   assert.doesNotMatch(page, /<th className="border-r border-t border-slate-950 px-2 py-3">EPR \/ Service Period<\/th>/);
   assert.doesNotMatch(page, /<td className="border-r border-t border-slate-950 px-2 py-3">\{quotationServicePeriodDisplay\(item\)\}<\/td>/);
   assert.doesNotMatch(page, /<th>Service Category<\/th><th>EPR \/ Service Period<\/th>/);
 });
 
 test('quotation mapping view and download place Applicant Type beside Service Category', () => {
-  const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
-  assert.match(page, />Service Category<\/th><th[^>]*>Applicant Type<\/th>\{hasReturnYearItems/);
-  assert.match(page, /\{item\.eprCategory \|\| item\.serviceCategory \|\| '-'\}<\/td><td[^>]*>\{getQuotationApplicantType\(item\)\}<\/td>\{hasReturnYearItems/);
+  const page = (fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8') + '\n' + fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/quotationDocument.mjs'), 'utf8'));
   assert.match(page, /<th>Service Category<\/th><th>Applicant Type<\/th>\$\{hasReturnYearItems/);
   assert.match(page, /escapeHtml\(item\.eprCategory \|\| item\.serviceCategory \|\| '-'\)\}<\/td><td>\$\{escapeHtml\(getQuotationApplicantType\(item\)\)\}<\/td>/);
 });
 
 test('quotation year mapping shows selected or service-period EPR years, including PWP, while EPR Credit stays blank', () => {
-  const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
+  const page = (fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8') + '\n' + fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/quotationDocument.mjs'), 'utf8'));
   assert.match(page, /function isAnnualReturnRegistrationApplicant\(item = \{\}\)/);
   assert.match(page, /applicantType === 'producer' \|\| applicantType === 'importerofrawmaterial'/);
   assert.match(page, /function isPwpQuotationApplicant\(item = \{\}\)/);
@@ -345,54 +334,44 @@ test('quotation year mapping shows selected or service-period EPR years, includi
   assert.match(page, /if \(isPwpQuotationApplicant\(item\)\) return displayedYears\.join\(', '\) \|\| item\.financialYear \|\| '-'/);
   assert.match(page, /if \(isEprConsultancyItem\(item\)\) \{\s*return displayedYears\.join\(', '\) \|\| item\.financialYear \|\| '-'/);
   assert.match(page, /if \(!isAnnualReturnRegistrationApplicant\(item\)\) return '-'/);
-  assert.equal((page.match(/const hasReturnYearItems = items\.some\(\(item\) => isEprConsultancyItem\(item\) \|\| String\(item\.registrationYear \|\| ''\)\.trim\(\)\)/g) || []).length, 2);
+  assert.equal((page.match(/const hasReturnYearItems = items\.some\(\(item\) => isEprConsultancyItem\(item\) \|\| String\(item\.registrationYear \|\| ''\)\.trim\(\)\)/g) || []).length, 1);
   assert.doesNotMatch(page, /hidePwpRegistrationYearColumn/);
 });
 
-test('quotation PDF download requires approval for non-admin users', () => {
+test('quotation download stays admin-only and requires current approval', () => {
   const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
-  assert.match(page, /QuotationPreviewDrawer quotation=\{previewQuotation\} currentUser=\{currentUser\}/);
-  assert.match(page, /const canDownloadPdf = isAdminUser \|\| isQuotationApproved/);
-  assert.match(page, /if \(!canDownloadPdf\) \{/);
-  assert.match(page, /disabled=\{downloadingPdf \|\| !canDownloadPdf\}/);
-  assert.match(page, /PDF download will be available after this quotation is approved/);
+  const routes = fs.readFileSync(path.resolve(__dirname, '../src/routes/quotations.js'), 'utf8');
+  assert.match(page, /const canDownloadPdf = isAdminUser && canEmailPdf/);
+  assert.match(page, /if \(!canDownloadPdf\)/);
+  assert.match(routes, /router.get\('\/:id\/pdf', requireAuth, requireRoles\(ADMIN_ROLES\)/);
 });
 
-test('quotation download uses the client name and preserves each designed page boundary', () => {
+test('quotation preview and download use the canonical document and client filename', async () => {
   const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
-  assert.match(page, /details\.companyName \|\| quotation\.quotationNumber/);
-  assert.match(page, /const sections = \[\.\.\.documentRef\.current\.children\]/);
-  assert.match(page, /const pages = sections\.length \? sections : \[documentRef\.current\]/);
-  assert.doesNotMatch(page, /const pagePixelHeight/);
-  assert.match(page, /class="scope-row"/);
-  assert.match(page, /grid-template-columns: 22px minmax\(0, 1fr\)/);
-  assert.match(page, /page-break-inside: avoid/);
-  assert.doesNotMatch(page, /\.scope-page \.footer \{ margin-top: auto;/);
+  const shared = await import('../../frontend/src/utils/quotationDocument.mjs');
+  assert.match(page, /srcDoc=\{printHtml\}/);
+  assert.match(page, /paginateQuotationDocument\(doc\)/);
+  assert.match(page, /anchor.download = quotationFilename\(quotation\)/);
+  assert.equal(shared.quotationFilename({ companyName: 'Client Company' }), 'Client Company.pdf');
 });
 
-test('quotation PDF capture bypasses desktop zoom and uses a high-resolution canvas', () => {
-  const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
-  assert.match(page, /appRoot\.style\.zoom = '1'/);
-  assert.match(page, /documentRef\.current\.style\.width = '760px'/);
-  assert.match(page, /scale: 2\.5/);
-  assert.match(page, /appRoot\.style\.zoom = previousRootZoom/);
-  assert.match(page, /documentRef\.current\.style\.width = previousDocumentWidth/);
+test('quotation PDF rendering is independent of desktop zoom', () => {
+  const renderer = fs.readFileSync(path.resolve(__dirname, '../src/services/quotationDelivery.js'), 'utf8');
+  assert.match(renderer, /page.setViewport\(\{ width: 794, height: 1123/);
+  assert.match(renderer, /preferCSSPageSize: true/);
+  assert.doesNotMatch(renderer, /html2canvas|appRoot.style.zoom/);
 });
 
-test('quotation preview keeps business and service categories inside separate cells', () => {
-  const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
-  const density = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/styles/modules/14-desktop-density.css'), 'utf8');
-  assert.match(page, /<col className="w-\[5%\]" \/><col className="w-\[14%\]" \/><col className="w-\[16%\]"/);
-  assert.match(page, /\[overflow-wrap:anywhere\]/);
-  assert.match(page, /overflow-wrap: anywhere; word-break: normal/);
-  assert.match(density, /\[data-quotation-pdf\] table th/);
-  assert.match(density, /\[data-quotation-pdf\] table th \{\s*font-size: 12px !important/);
-  assert.match(density, /\[data-quotation-pdf\] table td/);
-  assert.match(density, /\[data-quotation-pdf\] table td \{\s*font-size: 12px !important/);
+test('quotation preview keeps business and service categories in separate fixed-width cells', async () => {
+  const shared = await import('../../frontend/src/utils/quotationDocument.mjs');
+  const html = shared.buildQuotationPrintHtml({ items: [{ businessCategory: 'Plastic business', serviceCategory: 'Plastic Waste', servicesOffered: 'Registration' }] });
+  assert.match(html, /<td>Plastic business<\/td>\s*<td>Plastic Waste<\/td>/);
+  const widths = [...html.match(/<colgroup>(.*?)<\/colgroup>/)[1].matchAll(/width:(\d+)%/g)].map(match => Number(match[1]));
+  assert.equal(widths.reduce((a, b) => a + b, 0), 100);
 });
 
 test('quotation selects safely normalize object and string options before filtering', () => {
-  const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8');
+  const page = (fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8') + '\n' + fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/quotationDocument.mjs'), 'utf8'));
   assert.match(page, /option && typeof option === 'object'/);
   assert.match(page, /`\$\{option\.label\} \$\{option\.value\}`\.toLowerCase\(\)/);
   assert.doesNotMatch(page, /options\.filter\(\(option\) => option\.toLowerCase\(\)/);

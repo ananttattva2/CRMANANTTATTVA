@@ -43,9 +43,12 @@ jobs:
         shell: bash
         run: find backend/src -type f -name '*.js' -print0 | xargs -0 -n1 node --check
 
+      - name: Install quotation PDF browser
+        run: node backend/node_modules/puppeteer/lib/cjs/puppeteer/node/cli.js browsers install chrome
+
       - name: Test paginated directory APIs
         working-directory: backend
-        run: node --test test/directoryServerPagination.test.js test/crmRedisCache.test.js test/crmCacheInvalidation.test.js test/crmFreshness.test.js test/slowPageReadModels.test.js test/slowPageLoading.test.js test/authDatabaseFailure.test.js test/staffLicenses.test.js test/quotationDeliveryAndExports.test.js test/leadOwnershipAndEmailWorkflow.test.js ../frontend/test/exportReasonAllRoles.test.mjs ../frontend/test/licenseRemembering.test.mjs test/clientMasterDiscoveryClosure.test.js test/clientMasterClosedLeadEligibility.test.js test/userContactNumber.test.js test/pendingLeadsMonthEnd.test.js test/loadingBottlenecks.test.js test/dashboardDataFetch.test.js test/reportPayloadPerformance.test.js test/leadRevenue.test.js test/salesRepSummary.test.js test/leadRevenueSchema.test.js test/revenueAmount.test.js test/trafficSources.test.js test/coldLeadEdit.test.js test/temporaryLeads.test.js test/addServicesSubmitFlow.test.js test/consentExpiryReminders.test.js ../frontend/test/consentValidity.test.mjs
+        run: node --test test/directoryServerPagination.test.js test/crmRedisCache.test.js test/crmCacheInvalidation.test.js test/crmFreshness.test.js test/slowPageReadModels.test.js test/slowPageLoading.test.js test/authDatabaseFailure.test.js test/staffLicenses.test.js test/quotationDeliveryAndExports.test.js test/quotationDocumentRendering.test.js test/leadOwnershipAndEmailWorkflow.test.js ../frontend/test/exportReasonAllRoles.test.mjs ../frontend/test/licenseRemembering.test.mjs test/clientMasterDiscoveryClosure.test.js test/clientMasterClosedLeadEligibility.test.js test/userContactNumber.test.js test/pendingLeadsMonthEnd.test.js test/loadingBottlenecks.test.js test/dashboardDataFetch.test.js test/reportPayloadPerformance.test.js test/leadRevenue.test.js test/salesRepSummary.test.js test/leadRevenueSchema.test.js test/revenueAmount.test.js test/trafficSources.test.js test/coldLeadEdit.test.js test/temporaryLeads.test.js test/addServicesSubmitFlow.test.js test/consentExpiryReminders.test.js ../frontend/test/consentValidity.test.mjs
 
       - name: Build frontend
         env:

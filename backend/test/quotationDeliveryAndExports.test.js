@@ -8,7 +8,7 @@ const mailer = require('../src/utils/mailer');
 const delivery = require('../src/services/quotationDelivery');
 const controller = require('../src/controllers/quotationController');
 const { requireRoles } = require('../src/middleware/auth');
-const query = value => ({ select() { return this; }, lean: async () => value, then: (yes, no) => Promise.resolve(value).then(yes, no) });
+const query = value => ({ select() { return this; }, populate() { return this; }, lean: async () => value, then: (yes, no) => Promise.resolve(value).then(yes, no) });
 const actor = { _id: '507f1f77bcf86cd799439011', name: 'Test User', email: 'user@example.test', role: 'operation' };
 const quote = { _id: '507f1f77bcf86cd799439012', quotationNumber: 'AT-TEST-01', status: 'admin_approved', createdAt: new Date(), leadDetails: { companyName: 'Test Client' }, items: [{ serviceCategory: 'EPR', servicesOffered: 'Annual Return', unit: 1, basicAmount: 2000 }], subtotal: 2000, grandTotal: 2000, terms: ['Payment before work starts'], scopeOfWork: ['Prepare and file annual return'] };
 function response() { return { code: 200, status(value) { this.code = value; return this; }, json(value) { this.body = value; return this; }, set() { return this; }, type() { return this; }, attachment(value) { this.filename = value; return this; }, send(value) { this.body = value; return this; } }; }
@@ -37,6 +37,7 @@ test('approved client email uses server PDF, entered recipient, escaped message 
   assert.match(message[2], /&lt;script&gt;/); assert.doesNotMatch(message[2], /<script>/);
   assert.match(message[2], /Thanks &amp; Regards/); assert.match(message[2], /आओ सब मिलकर/); assert.match(message[2], /whatsapp.com\/channel/);
   assert.equal(message[3].attachments.length, 2);
+  assert.equal(message[3].attachments[0].filename, 'Test Client.pdf');
   assert.equal(message[3].attachments[0].content.subarray(0, 5).toString(), '%PDF-');
   assert.equal(message[3].attachments[1].contentDisposition, 'inline');
   assert.equal(history.to, 'client@example.test');
@@ -62,6 +63,15 @@ test('unapproved or inaccessible quotations cannot be emailed or downloaded', as
   for (const handler of [controller.emailQuotation, controller.downloadQuotation]) { const res = response(); await handler(req, res, error => { throw error; }); assert.equal(res.code, 403); }
   current = null;
   const res = response(); await controller.emailQuotation(req, res, error => { throw error; }); assert.equal(res.code, 404);
+});
+
+test('an approved admin download returns the client-named PDF attachment', async t => {
+  t.mock.method(Quotation, 'findOne', () => query(quote));
+  const res = response();
+  await controller.downloadQuotation({ user: { ...actor, role: 'admin' }, params: { id: quote._id } }, res, error => { throw error; });
+  assert.equal(res.code, 200);
+  assert.equal(res.filename, 'Test Client.pdf');
+  assert.equal(res.body.subarray(0, 5).toString(), '%PDF-');
 });
 
 test('email provider failure is returned without recording a successful send', async t => {

@@ -1,3 +1,33 @@
+import {
+  isMeaningfulQuotationItem,
+  isCombinedQuotation,
+  combinedQuotationTotal,
+  normalizeCombinedPricingGroups,
+  quotationItemKey,
+  quotationItemsTotal,
+  combinedPricingRows,
+  quotationServiceDateRange,
+  formatServiceDate,
+  parseDateInputValue,
+  getQuotationApplicantType,
+  isPlasticWasteService,
+  quotationUnitLabel,
+  isEprCreditItem,
+  EPR_CREDIT_UOM_OPTIONS,
+  formatInr,
+  quotationSelectedTerms,
+  quotationPaymentTerm,
+  PAYMENT_TERM_OPTIONS,
+  quotationOwnerName,
+  formatDisplayDate,
+  quotationPreparedByName,
+  quotationEprCreditYears,
+  EPR_CREDIT_YEAR_OPTIONS,
+  buildQuotationPrintHtml,
+  paginateQuotationDocument,
+  quotationFilename
+} from '../utils/quotationDocument.mjs';
+export { buildQuotationPrintHtml } from '../utils/quotationDocument.mjs';
 import useCrmRefresh from '../hooks/useCrmRefresh'
 import { mergeQuotationLeadDetails } from '../utils/quotationLeadDetails.mjs';
 import { canReviseQuotation } from '../utils/quotationRevision.mjs';
@@ -19,7 +49,7 @@ import { QUOTATION_SCOPE_PRESET_OPTIONS, QUOTATION_SCOPE_PRESETS } from '../cons
 import QuotationEmailDialog from '../components/QuotationEmailDialog';
 import { addServiceDays, datesFromAnnualYears, normalizeDateInputValue, normalizePeriodUnit, periodDisplay, renewalDateFrom, serviceEndDateFrom } from '../utils/servicePeriod';
 
-const ANANT_LOGO_SOURCE_URL = '/anant-tattva-logo-chroma.png';
+
 
 const MANAGEMENT_APPROVAL_SOURCES = [
   { value: 'TEAMS', label: 'Teams' },
@@ -118,13 +148,11 @@ function periodUnitLongLabel(unit) {
   }
 }
 
-const EPR_CREDIT_UOM_OPTIONS = ['KG', 'MT'];
-const EPR_CREDIT_YEAR_OPTIONS = ['2022-23', '2023-24', '2024-25', '2025-26', '2026-27', '2027-28', '2028-29', '2029-30'];
+
+
 const REGISTRATION_YEAR_OPTIONS = EPR_CREDIT_YEAR_OPTIONS;
 
-function isEprCreditItem(item = {}) {
-  return String(item.businessCategory || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '') === 'eprcredit';
-}
+
 
 function isOtherConsultancyItem(item = {}) {
   return String(item.businessCategory || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '') === 'otherconsultancy';
@@ -148,28 +176,13 @@ function servicePeriodValidityNote(item = {}) {
   return `Your service period is ${periodDisplay(period, unit)}${startDate ? ` (${formatServiceDate(startDate)} to ${formatServiceDate(endDate)})` : ''}${item.businessCategory ? ` for ${item.businessCategory}` : ''}${renewalDate ? ` and renewal will be applicable from ${formatServiceDate(renewalDate)}` : ''}.`;
 }
 
-function quotationUnitLabel(item = {}) {
-  const unit = String(item.unit || '1').trim() || '1';
-  const uom = String(item.unitLabel || '').trim().toUpperCase();
-  return isEprCreditItem(item) && EPR_CREDIT_UOM_OPTIONS.includes(uom) ? `${unit}${uom}` : unit;
-}
 
-function isPlasticWasteService(item = {}) {
-  return /(?:^|\b)plastic\s+waste(?:\b|$)/i.test(String(item.serviceCategory || item.eprCategory || ''));
-}
 
-function getQuotationApplicantType(item = {}, source = {}) {
-  if (isPlasticWasteService({ ...item, serviceCategory: source.serviceCategory || source.eprCategory || item.serviceCategory || item.eprCategory })) {
-    return String(source.subApplicantType || source.piboCategory || item.subApplicantType || item.piboCategory || source.applicantType || item.applicantType || '-').trim() || '-';
-  }
-  return String(source.applicantType || item.applicantType || item.piboCategory || item.piboParent || '-').trim() || '-';
-}
 
-function quotationEprCreditYears(item = {}) {
-  return Array.isArray(item.annualReturnEprCreditYears)
-    ? item.annualReturnEprCreditYears.filter((year) => EPR_CREDIT_YEAR_OPTIONS.includes(String(year)))
-    : [];
-}
+
+
+
+
 
 const CCP_LEAD_SEQUENCE_START = 353;
 
@@ -190,21 +203,7 @@ function displayLeadCode(row = {}, index = -1) {
   return businessMatch ? `ATPL-${businessMatch[1].padStart(4, '0')}` : (value || '-');
 }
 
-function parseDateInputValue(value) {
-  const normalized = normalizeDateInputValue(value);
-  if (!normalized) return null;
-  const [year, month, day] = normalized.split('-').map(Number);
-  const date = new Date(year, month - 1, day);
-  if (
-    Number.isNaN(date.getTime())
-    || date.getFullYear() !== year
-    || date.getMonth() !== month - 1
-    || date.getDate() !== day
-  ) {
-    return null;
-  }
-  return { year, month, day };
-}
+
 
 function deriveFinancialYearFromDate(value) {
   const parts = parseDateInputValue(value);
@@ -222,129 +221,42 @@ function quotationFyOptions() {
   });
 }
 
-function formatServiceDate(value) {
-  const parts = parseDateInputValue(value);
-  if (!parts) return '-';
-  return new Date(parts.year, parts.month - 1, parts.day).toLocaleDateString('en-GB').replace(/\//g, '-');
-}
 
-function quotationServiceDateRange(item = {}) {
-  const startDate = normalizeDateInputValue(item.serviceStartDate);
-  if (!startDate) return '-';
-  const savedEndDate = normalizeDateInputValue(item.serviceEndDate);
-  const endDate = savedEndDate || serviceEndDateFrom(startDate, item.servicePeriod || 1, item.periodUnit || 'annual');
-  return `${formatServiceDate(startDate)} - ${formatServiceDate(endDate)}`;
-}
+
+
 
 function QuotationServiceDateRangeCell({ item }) {
   const [startDate, endDate] = quotationServiceDateRange(item).split(' - ');
   return <><span className="block whitespace-nowrap">{startDate}{endDate ? ' -' : ''}</span>{endDate && <span className="block whitespace-nowrap">{endDate}</span>}</>;
 }
 
-function quotationServiceDateRangeHtml(item = {}) {
-  return escapeHtml(quotationServiceDateRange(item)).replace(' - ', ' -<br>');
-}
 
-function quotationAnnualReturnOrCreditYears(item = {}) {
-  const years = isEprCreditItem(item)
-    ? quotationEprCreditYears(item)
-    : (Array.isArray(item.annualReturnYears) ? item.annualReturnYears : []);
-  return [...new Set(years.map(String).filter(Boolean))];
-}
 
-function isAnnualReturnRegistrationApplicant(item = {}) {
-  const applicantType = String(getQuotationApplicantType(item) || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '');
-  return applicantType === 'producer' || applicantType === 'importerofrawmaterial';
-}
 
-function isPwpQuotationApplicant(item = {}) {
-  return [
-    getQuotationApplicantType(item),
-    item.applicantType,
-    item.piboParent,
-    item.piboCategoryParent
-  ].some((value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '') === 'pwp');
-}
 
-function quotationServicePeriodYears(item = {}) {
-  const start = parseDateInputValue(normalizeDateInputValue(item.serviceStartDate));
-  if (!start) return [];
-  const savedEnd = normalizeDateInputValue(item.serviceEndDate);
-  const computedEnd = savedEnd || serviceEndDateFrom(item.serviceStartDate, item.servicePeriod || 1, item.periodUnit || 'annual');
-  const end = parseDateInputValue(computedEnd) || start;
-  const firstYear = start.month >= 4 ? start.year : start.year - 1;
-  const lastYear = end.month >= 4 ? end.year : end.year - 1;
-  return Array.from({ length: Math.max(1, lastYear - firstYear + 1) }, (_, index) => {
-    const year = firstYear + index;
-    return `${year}-${String(year + 1).slice(-2)}`;
-  });
-}
 
-function quotationAnnualReturnRegistrationYear(item = {}) {
-  if (isEprCreditItem(item)) return '';
-  if (String(item.registrationYear || '').trim()) return String(item.registrationYear).trim();
-  const selectedYears = quotationAnnualReturnOrCreditYears(item);
-  const displayedYears = selectedYears.length ? selectedYears : quotationServicePeriodYears(item);
-  if (isPwpQuotationApplicant(item)) return displayedYears.join(', ') || item.financialYear || '-';
-  if (isEprConsultancyItem(item)) {
-    return displayedYears.join(', ') || item.financialYear || '-';
-  }
-  if (!isAnnualReturnRegistrationApplicant(item)) return '-';
-  return displayedYears.join(', ') || item.financialYear || '-';
-}
 
-function isEprConsultancyItem(item = {}) {
-  return String(item.businessCategory || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '') === 'eprconsultancy';
-}
+
+
+
+
+
+
+
 
 function isPwpEprCreditItem(item = {}) {
   return isEprCreditItem(item) && String(getQuotationApplicantType(item) || '').trim().toLowerCase() === 'pwp';
 }
 
-function normalizedQuotationService(item = {}) {
-  return String(item.servicesOffered || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '');
-}
 
-function isAnnualReturnQuotationService(item = {}) {
-  return normalizedQuotationService(item).includes('annualreturn');
-}
 
-function isRegistrationQuotationService(item = {}) {
-  return normalizedQuotationService(item).includes('registration');
-}
 
-function quotationYearMappingHeader(items = []) {
-  const consultancyItems = items.filter(isEprConsultancyItem);
-  if (consultancyItems.length) {
-    const hasAnnualReturn = consultancyItems.some(isAnnualReturnQuotationService);
-    const hasRegistration = consultancyItems.some(isRegistrationQuotationService);
-    if (hasAnnualReturn && !hasRegistration) return 'Annual Return Year';
-    if (hasRegistration && !hasAnnualReturn) return 'Registration EPR Year';
-    return 'EPR Year';
-  }
-  if (items.some((item) => String(item.registrationYear || '').trim())) return 'Registration EPR Year';
-  return 'Annual Return EPR Year / Credit Year';
-}
 
-function isMeaningfulQuotationItem(item = {}) {
-  return [
-    item.industryType,
-    item.serviceCategory,
-    item.serviceStartDate,
-    item.serviceEndDate,
-    item.servicesForYear,
-    item.eprCategory,
-    item.businessCategory,
-    item.piboCategory
-  ].some((value) => String(value || '').trim())
-    || Number(item.basicAmount) > 0;
-}
+
+
+
+
+
 
 const emptyQuotation = {
   leadId: '',
@@ -372,28 +284,13 @@ function requiresEprDataYear(category) {
   return EPR_DATA_YEAR_CATEGORIES.has(String(category || '').trim().toLowerCase());
 }
 const industryTypeOptions = ['Automotive', 'Chemicals', 'Construction', 'Consumer Goods', 'E-commerce', 'Electronics', 'Energy', 'FMCG', 'Financial Services', 'Healthcare', 'Hospitality', 'IT & Software', 'Logistics', 'Manufacturing', 'Pharmaceuticals', 'Renewables', 'Retail', 'Telecom', 'Waste Management', 'Food Manufacturing', 'Mechanical Industry', 'Petrochemical', 'Packaging Manufacture', 'Plastic Recycling', 'E-Waste Recycler', 'E-Waste Recycling', 'Other'];
-const PAYMENT_TERM_OPTIONS = [
-  '100% after completion of work',
-  '50% advance and 50% after completion of work',
-  '50% upon receipt of PO and 50% upon completion of EPR Annual Filing',
-  '100% advance payment'
-];
 
-function quotationPaymentTerm(row = {}) {
-  const terms = Array.isArray(row.terms) ? row.terms.map((term) => String(term ?? '').trim()).filter(Boolean) : [];
-  const selected = String(row.paymentTerm || '').trim();
-  if (selected && terms.includes(selected)) return selected;
-  const legacySelections = terms.filter((term) => PAYMENT_TERM_OPTIONS.includes(term));
-  return legacySelections.length === 1 ? legacySelections[0] : '';
-}
 
-function quotationSelectedTerms(row = {}) {
-  const terms = Array.isArray(row.terms) ? row.terms.map((term) => String(term ?? '').trim()).filter(Boolean) : [];
-  const selected = quotationPaymentTerm(row);
-  return selected ? [selected] : terms;
-}
-const ANANT_TATTVA_GST_NUMBER = '27AAZCA6657R1ZB';
-const ANANT_TATTVA_ADDRESS = '1st Floor, A/25, Technocraft House, Road No. 3, MIDC, Andheri East, Mumbai, Maharashtra 400093';
+
+
+
+
+
 
 function cleanScopePresetItem(value) {
   return String(value || '').replace(/:\s*\d+\.\d+\s*/g, ': ').replace(/^\d+\.\d+\s*/, '').trim();
@@ -532,23 +429,9 @@ function findLeadForQuotation(quotation = {}, leads = []) {
     || leads.find((lead) => leadCode && [lead.leadCode, lead.businessLeadCode, lead.sourceLeadId].map(normalizeSearchValue).includes(leadCode));
 }
 
-function quotationOwnerName(quotation = {}) {
-  if (String(quotation.quotationNumber || '').trim().toUpperCase() === 'AT/26-27/325') return 'ANAND PADHYA';
-  return String(
-    quotation.fromName
-    || quotation.leadGeneratedBy
-    || quotation.assignedUserName
-    || quotation.createdByName
-    || quotation.createdBy?.name
-    || quotation.createdBy?.email
-    || '-'
-  ).trim() || '-';
-}
 
-function quotationPreparedByName(quotation = {}) {
-  if (String(quotation.quotationNumber || '').trim().toUpperCase() === 'AT/26-27/325') return 'SAURABH BHAT';
-  return String(quotation.preparedByName || quotation.createdBy?.name || quotation.createdByName || quotation.preparedBy || '-').trim() || '-';
-}
+
+
 
 function serviceBelongsToUser(row = {}, lead = {}, currentUser = null) {
   if (adminRoles.includes(String(currentUser?.role || '').trim().toLowerCase())) return true;
@@ -665,17 +548,11 @@ function mapLeadServiceRows(lead = {}, savedItems = [], serviceState = 'open', c
   return [...mappedRows, ...additionalSavedRows];
 }
 
-function isCombinedQuotation(quotation = {}) {
-  return quotation.pricingMode === 'combined';
-}
 
-function quotationItemsTotal(items = []) {
-  return items.reduce((sum, item) => sum + ((Number(item.unit) || 1) * (Number(item.basicAmount) || 0)), 0);
-}
 
-function quotationItemKey(item = {}, index = 0) {
-  return String(item.assignedServiceId || item.id || (Number.isInteger(Number(item.sourceServiceIndex)) ? `source:${Number(item.sourceServiceIndex)}` : `item:${index}`)).trim();
-}
+
+
+
 
 function createCombinedPricingGroup(index = 0, itemKeys = []) {
   return {
@@ -686,54 +563,9 @@ function createCombinedPricingGroup(index = 0, itemKeys = []) {
   };
 }
 
-function normalizeCombinedPricingGroups(quotation = {}, items = []) {
-  const groups = Array.isArray(quotation.combinedPricingGroups) ? quotation.combinedPricingGroups : [];
-  if (groups.length) {
-    return groups.map((group, index) => ({
-      id: String(group.id || `combined-group-${index + 1}`),
-      name: String(group.name || `Combined Group ${index + 1}`),
-      itemKeys: [...new Set((Array.isArray(group.itemKeys) ? group.itemKeys : []).map(String).filter(Boolean))],
-      basicAmount: group.basicAmount ?? ''
-    }));
-  }
-  if (quotation.pricingMode !== 'combined' || !items.length) return [];
-  return [{
-    id: 'legacy-combined-group',
-    name: 'Combined Group 1',
-    itemKeys: items.map(quotationItemKey),
-    basicAmount: quotation.combinedBasicAmount ?? ''
-  }];
-}
 
-function combinedPricingRows(quotation = {}, items = []) {
-  const groups = normalizeCombinedPricingGroups(quotation, items);
-  const groupByItemKey = new Map();
-  groups.forEach((group) => {
-    (group.itemKeys || []).forEach((key) => groupByItemKey.set(String(key), group));
-  });
-  const rows = items.map((item, index) => ({
-    item,
-    index,
-    group: groupByItemKey.get(quotationItemKey(item, index)) || {
-      id: `unassigned-${index}`,
-      basicAmount: item.basicAmount ?? 0
-    }
-  }));
-  // HTML rowSpan can only merge contiguous rows. Keep each saved pricing
-  // group together so an interleaved service cannot repeat its group amount.
-  const groupOrder = new Map(groups.map((group, index) => [group.id, index]));
-  rows.sort((left, right) => (groupOrder.get(left.group.id) ?? groups.length)
-    - (groupOrder.get(right.group.id) ?? groups.length) || left.index - right.index);
-  rows.forEach((row, rowIndex) => {
-    const previousGroupId = rows[rowIndex - 1]?.group?.id;
-    row.firstInGroup = rowIndex === 0 || previousGroupId !== row.group.id;
-    if (!row.firstInGroup) return;
-    let runEnd = rowIndex + 1;
-    while (runEnd < rows.length && rows[runEnd].group.id === row.group.id) runEnd += 1;
-    row.groupSize = runEnd - rowIndex;
-  });
-  return rows;
-}
+
+
 
 function scopePresetKeyForAmount(amount) {
   const basicAmount = Number(amount) || 0;
@@ -744,12 +576,7 @@ function scopePresetKeyForAmount(amount) {
 }
 
 
-function combinedQuotationTotal(quotation = {}, items = []) {
-  const groups = normalizeCombinedPricingGroups(quotation, items);
-  if (groups.length) return groups.reduce((sum, group) => sum + (Number(group.basicAmount) || 0), 0);
-  const itemTotal = quotationItemsTotal(items);
-  return itemTotal || Number(quotation.combinedBasicAmount) || Number(quotation.grandTotal) || 0;
-}
+
 
 function hasFetchedQuotationValue(value) {
   const normalized = normalizeSearchValue(value);
@@ -3273,59 +3100,25 @@ function HistoryRow({ tone, title, by, date, status }) {
 }
 
 function QuotationPreviewDrawer({ quotation, currentUser, onClose, onBackToPendingApproval, onApprove, onReject }) {
-  const details = quotation.leadDetails || {};
-  const items = meaningfulQuotationItems(quotation.items);
-  const combined = isCombinedQuotation(quotation);
-  const combinedTotal = combinedQuotationTotal(quotation, items);
-  const displayRows = combined ? combinedPricingRows(quotation, items) : items.map((item, index) => ({ item, index }));
-  const hasReturnYearItems = items.some((item) => isEprConsultancyItem(item) || String(item.registrationYear || '').trim());
   const normalizedRole = String(currentUser?.role || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
   const isAdminUser = [normalizedRole, ...(currentUser?.roles || [])].some(role => ['admin', 'superadmin'].includes(String(role).toLowerCase()));
   const canEmailPdf = ['admin_approved', 'approved'].includes(String(quotation.status).toLowerCase());
   const canDownloadPdf = isAdminUser && canEmailPdf;
   const [emailOpen, setEmailOpen] = useState(false);
-  const date = quotation.createdAt ? new Date(quotation.createdAt).toLocaleDateString('en-GB').replace(/\//g, '-') : new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
-  const scopeItems = (quotation.scopeOfWork || []).filter(Boolean);
-  const scopeItemsPerPage = 22;
-  const scopePages = scopeItems.length
-    ? Array.from({ length: Math.ceil(scopeItems.length / scopeItemsPerPage) }, (_, pageIndex) => scopeItems.slice(pageIndex * scopeItemsPerPage, (pageIndex + 1) * scopeItemsPerPage))
-    : [[]];
   const documentRef = useRef(null);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [downloadError, setDownloadError] = useState('');
-  const [quotationLogoUrl, setQuotationLogoUrl] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-    const source = new Image();
-    source.onload = () => {
-      const width = Math.min(900, source.naturalWidth);
-      const height = Math.round((source.naturalHeight * width) / source.naturalWidth);
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const context = canvas.getContext('2d', { willReadFrequently: true });
-      context.drawImage(source, 0, 0, width, height);
-      const imageData = context.getImageData(0, 0, width, height);
-      const pixels = imageData.data;
-      for (let index = 0; index < pixels.length; index += 4) {
-        const red = pixels[index];
-        const green = pixels[index + 1];
-        const blue = pixels[index + 2];
-        const dominance = green - Math.max(red, blue);
-        if (green > 75 && dominance > 14) {
-          const opacity = dominance >= 75 ? 0 : Math.max(0, 1 - ((dominance - 14) / 61));
-          pixels[index + 3] = Math.round(pixels[index + 3] * opacity);
-          pixels[index + 1] = Math.min(green, Math.max(red, blue));
-        }
-      }
-      context.putImageData(imageData, 0, 0);
-      if (!cancelled) setQuotationLogoUrl(canvas.toDataURL('image/png'));
-    };
-    source.onerror = () => { if (!cancelled) setDownloadError('Company logo could not be loaded.'); };
-    source.src = ANANT_LOGO_SOURCE_URL;
-    return () => { cancelled = true; };
-  }, []);
+  const printHtml = useMemo(() => buildQuotationPrintHtml(quotation), [quotation]);
+  async function preparePreview(event) {
+    const frame = event.currentTarget;
+    const doc = frame.contentDocument;
+    if (!doc) return;
+    await doc.fonts.ready;
+    await Promise.all([...doc.images].map(image => image.decode().catch(() => {})));
+    if (!frame.isConnected) return;
+    paginateQuotationDocument(doc);
+    frame.style.height = `${Math.ceil(doc.documentElement.scrollHeight + 40)}px`;
+  }
 
   async function handleDownloadPdf() {
     if (!canDownloadPdf) {
@@ -3340,7 +3133,7 @@ function QuotationPreviewDrawer({ quotation, currentUser, onClose, onBackToPendi
       const url = URL.createObjectURL(data);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `${String(quotation.quotationNumber || 'quotation').replace(/[^a-z0-9-]/gi, '-')}.pdf`;
+      anchor.download = quotationFilename(quotation);
       anchor.click();
       setTimeout(() => URL.revokeObjectURL(url), 30000);
     } catch (error) {
@@ -3378,307 +3171,22 @@ function QuotationPreviewDrawer({ quotation, currentUser, onClose, onBackToPendi
         <div className="hidden-scrollbar flex-1 overflow-auto bg-[radial-gradient(circle_at_top_left,#fff7ed_0,#f8fafc_36%,#eef2f7_100%)] p-5 sm:p-8">
           {downloadError && <div className="mx-auto mb-3 max-w-[760px] rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-black text-red-600">{downloadError}</div>}
           {!canEmailPdf && <div className="mx-auto mb-3 max-w-[760px] rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">Email to Client becomes available after Admin approval. Admin and Super Admin can also download the approved PDF.</div>}
-          <div ref={documentRef} data-quotation-pdf className="quotation-document mx-auto w-[760px] max-w-none uppercase">
-            <section className="min-h-[1020px] rounded-sm border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/15">
-              <div className="flex items-center justify-between pb-2">
-                <img data-pdf-logo src={quotationLogoUrl || ANANT_LOGO_SOURCE_URL} alt="Anant Tattva" className="h-14 w-32 object-contain object-left" />
-                <div className="text-xl font-black uppercase tracking-[0.2em] text-orange-500">Quotation</div>
-              </div>
-              <div className="border-t border-slate-950 pt-5">
-                <div className="grid gap-8 md:grid-cols-2">
-                  <div className="text-[11px] font-bold leading-5 text-slate-950">
-                    <p className="font-black">From:</p>
-                    <p>{quotationOwnerName(quotation)}</p>
-                    <p>AnantTattva Private Limited</p>
-                    <p>{ANANT_TATTVA_ADDRESS}</p>
-                    <p>GST Number: {ANANT_TATTVA_GST_NUMBER}</p>
-                  </div>
-                  <div className="text-right text-[11px] font-normal leading-5 text-slate-950">
-                    <p>Quotation Date: {date}</p>
-                    <p>Quotation No.: {quotation.quotationNumber || '-'}</p>
-                    <p>Quotation Valid Until: {formatDisplayDate(quotation.validUntil)}</p>
-                    <p>Created: {date}</p>
-                    <p>Prepared By: {quotationPreparedByName(quotation)}</p>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-5 border-t border-slate-200 pt-4 text-[11px] font-bold leading-5 text-slate-950">
-                <p className="font-black">To:</p>
-                <p>{details.salutation || ''} {details.contactPerson || '-'} {details.designation ? `- ${details.designation}` : ''}</p>
-                <p>Mobile No.1: {details.mobileNo1 || '-'}</p>
-                <p>{details.companyName || '-'}</p>
-                <p>{[details.addressLine1, details.addressLine2, details.addressLine3].filter(Boolean).join(', ') || '-'}</p>
-                <p>State: {details.state || '-'}</p>
-                <p>City: {details.city || '-'}</p>
-                <p>Pincode: {details.pinCode || '-'}</p>
-                <p>GST Number: {details.gstNumber || '-'}</p>
-              </div>
-              {combined && <div className="mt-5 px-1 py-2.5 text-[11px] font-black uppercase tracking-[0.12em] text-slate-950">Bulk Product Package Service</div>}
-              <div className={`${combined ? '' : 'mt-5'} overflow-hidden border border-slate-950`}>
-                <table className="w-full table-fixed text-[10px]">
-                  <colgroup><col className="w-[5%]" /><col className="w-[14%]" /><col className="w-[16%]" /><col className="w-[9%]" /><col className="w-[11%]" /><col className="w-[15%]" /><col className="w-[6%]" /><col className="w-[12%]" /><col className="w-[12%]" /></colgroup>
-                  <thead className="bg-orange-500 text-left text-[9px] font-black uppercase text-white">
-                    <tr>
-                      {['Sr.No', 'Business Category', 'Service Category', 'Service Period', 'Applicant Type', 'Services Offered', 'Unit', 'Unit Name', 'Basic Amount (INR)'].map((header) => <th key={header} className="border-r border-slate-950 px-1.5 py-2 last:border-r-0">{header}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayRows.map(({ item, index, group, groupSize, firstInGroup }, rowIndex) => (
-                      <tr key={`${group?.id || 'item'}-${index}`} className="font-black uppercase">
-                        <td className="border-r border-t border-slate-950 px-1.5 py-2 text-center">{rowIndex + 1}</td>
-                        <td className="break-words border-r border-t border-slate-950 px-1.5 py-2 [overflow-wrap:anywhere]">{item.businessCategory || '-'}</td>
-                        <td className="break-words border-r border-t border-slate-950 px-1.5 py-2 [overflow-wrap:anywhere]">{item.eprCategory || item.serviceCategory || '-'}</td>
-                        <td className="border-r border-t border-slate-950 px-1.5 py-2 text-center"><QuotationServiceDateRangeCell item={item} /></td>
-                        <td className="border-r border-t border-slate-950 px-1.5 py-2">{getQuotationApplicantType(item)}</td>
-                        <td className="break-words border-r border-t border-slate-950 px-1.5 py-2">{item.servicesOffered || '-'}</td>
-                        <td className="border-r border-t border-slate-950 px-1.5 py-2 text-center">{quotationUnitLabel(item)}</td>
-                        <td className="break-words border-r border-t border-slate-950 px-1.5 py-2">{item.unitName || '-'}</td>
-                        {(!combined || firstInGroup) && <td rowSpan={combined ? groupSize : undefined} className="border-t border-slate-950 px-1.5 py-2 text-center align-middle">{formatInr(combined ? group.basicAmount : item.basicAmount)}</td>}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="financial-year-print-table mt-5 overflow-hidden bg-white">
-                <div className="bg-white px-3 py-2.5 text-[11px] font-black uppercase tracking-[0.16em] text-slate-950">EPR / Service Period Mapping</div>
-                <table className="w-full table-fixed text-[10px] font-bold leading-4 text-slate-950">
-                  {hasReturnYearItems ? <colgroup><col className="w-[8%]" /><col className="w-[24%]" /><col className="w-[20%]" /><col className="w-[24%]" /><col className="w-[24%]" /></colgroup> : <colgroup><col className="w-[10%]" /><col className="w-[32%]" /><col className="w-[26%]" /><col className="w-[32%]" /></colgroup>}
-                  <thead><tr className="bg-orange-50 text-left text-[9px] font-black uppercase text-slate-950"><th className="border-r border-t border-slate-950 px-2 py-3">Sr.No</th><th className="border-r border-t border-slate-950 px-2 py-3">Service Category</th><th className="border-r border-t border-slate-950 px-2 py-3">Applicant Type</th>{hasReturnYearItems && <th className="border-r border-t border-slate-950 px-2 py-3">{quotationYearMappingHeader(items)}</th>}<th className="border-t border-slate-950 px-2 py-3">Services Offered</th></tr></thead>
-                  <tbody>{displayRows.map(({ item }, index) => <tr key={index} className={index % 2 ? 'bg-orange-50/40' : 'bg-white'}><td className="border-r border-t border-slate-950 px-2 py-3 text-center font-black">{index + 1}</td><td className="border-r border-t border-slate-950 px-2 py-3 font-black">{item.eprCategory || item.serviceCategory || '-'}</td><td className="border-r border-t border-slate-950 px-2 py-3">{getQuotationApplicantType(item)}</td>{hasReturnYearItems && <td className="border-r border-t border-slate-950 px-2 py-3">{quotationAnnualReturnRegistrationYear(item)}</td>}<td className="break-words border-t border-slate-950 px-2 py-3">{item.servicesOffered || '-'}</td></tr>)}</tbody>
-                </table>
-              </div>
-              <div className="mt-5 text-[10px] font-bold leading-5 text-slate-950">
-                <p className="font-black">Terms & Conditions:</p>
-                {quotationSelectedTerms(quotation).length ? quotationSelectedTerms(quotation).map((term, index) => <p key={index}>{index + 1}. {term}</p>) : <p>No terms added.</p>}
-              </div>
-              <div className="mt-5 text-[10px] font-bold leading-5 text-slate-950">
-                <p className="font-black text-red-600">Important Note:</p>
-                <p>1. GST tax will be extra @ 18%.</p>
-                <p>2. Any Government Charges to be paid by Client directly.</p>
-              </div>
-              <div className="mt-6 border-t border-slate-950 pt-3 text-center">
-                <p className="text-[10px] font-black text-slate-950">For more details please contact us on : info@ananttattva.com | +91 8169727341 / 9004005520</p>
-                <p className="mt-5 text-[10px] font-black text-slate-950">This is a computer-generated quotation and does not require a signature.</p>
-              </div>
-            </section>
-            {scopePages.map((pageItems, pageIndex) => (
-              <section key={`scope-page-${pageIndex}`} className="mt-6 flex min-h-[1020px] flex-col rounded-sm border border-slate-200 bg-white p-8 shadow-2xl shadow-slate-950/15">
-                <div className="flex items-end justify-between border-b border-slate-950 pb-3">
-                  <p className="text-xl font-black uppercase tracking-[0.18em] text-orange-500">Scope of Work</p>
-                  {scopePages.length > 1 && <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Page {pageIndex + 1} of {scopePages.length}</p>}
-                </div>
-                <div className="mt-7 text-[12px] font-semibold leading-6 text-slate-950">
-                  <p className="mb-4 text-[13px] font-black">Scope of Work:</p>
-                  {pageItems.length ? (
-                    <div className="space-y-3">
-                      {pageItems.map((item, itemIndex) => {
-                        const scopeIndex = (pageIndex * scopeItemsPerPage) + itemIndex;
-                        return <div key={`${item}-${scopeIndex}`} className="grid break-inside-avoid grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-2"><span className="text-right font-black text-slate-700">{scopeIndex + 1}.</span><span className="min-w-0 break-words font-semibold">{item}</span></div>;
-                      })}
-                    </div>
-                  ) : (
-                    <p>No scope of work added.</p>
-                  )}
-                </div>
-                <div className="mt-auto border-t border-slate-950 pt-3 text-center">
-                  <p className="text-[10px] font-black text-slate-950">For more details please contact us on : info@ananttattva.com | +91 8169727341 / 9004005520</p>
-                  <p className="mt-4 text-[10px] font-black text-slate-950">This is a computer-generated quotation and does not require a signature.</p>
-                </div>
-              </section>
-            ))}
-          </div>
+          <iframe ref={documentRef} title="Quotation document preview" sandbox="allow-same-origin" srcDoc={printHtml} onLoad={preparePreview} scrolling="no" className="mx-auto block w-[794px] max-w-none border-0" style={{ minHeight: 1123 }} />
         </div>
       </aside>
     </div>
   );
 }
 
-function formatInr(value) {
-  return (Number(value) || 0).toLocaleString('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-}
 
-function meaningfulQuotationItems(items) {
-  if (!Array.isArray(items)) return [];
-  return items.filter((item) => isMeaningfulQuotationItem(item));
-}
 
-function formatDisplayDate(value) {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString('en-GB').replace(/\//g, '-');
-}
 
-function escapeHtml(value) {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
 
-export function buildQuotationPrintHtml(quotation) {
-  const details = quotation.leadDetails || {};
-  const items = meaningfulQuotationItems(quotation.items);
-  const combined = isCombinedQuotation(quotation);
-  const combinedTotal = combinedQuotationTotal(quotation, items);
-  const hasReturnYearItems = items.some((item) => isEprConsultancyItem(item) || String(item.registrationYear || '').trim());
-  const yearMappingHeader = quotationYearMappingHeader(items);
-  const createdDate = quotation.createdAt ? new Date(quotation.createdAt).toLocaleDateString('en-GB').replace(/\//g, '-') : new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
-  const displayRows = combined ? combinedPricingRows(quotation, items) : items.map((item, index) => ({ item, index }));
-  const rows = displayRows.map(({ item, index, group, groupSize, firstInGroup }, rowIndex) => `
-    <tr>
-      <td class="center">${rowIndex + 1}</td>
-      <td>${escapeHtml(item.businessCategory || '-')}</td>
-      <td>${escapeHtml(item.eprCategory || item.serviceCategory || '-')}</td>
-      <td class="center" style="white-space:nowrap">${quotationServiceDateRangeHtml(item)}</td>
-      <td>${escapeHtml(getQuotationApplicantType(item))}</td>
-      <td>${escapeHtml(item.servicesOffered || '-')}</td>
-      <td class="center">${escapeHtml(quotationUnitLabel(item))}</td>
-      <td>${escapeHtml(item.unitName || '-')}</td>
-      ${!combined || firstInGroup ? `<td class="amount${combined ? ' combined-amount' : ''}"${combined ? ` rowspan="${groupSize}"` : ''}>${escapeHtml(formatInr(combined ? group.basicAmount : item.basicAmount))}</td>` : ''}
-    </tr>
-  `).join('');
-  const selectedTerms = quotationSelectedTerms(quotation);
-  const terms = selectedTerms.length
-    ? selectedTerms.map((term, index) => `<p>${index + 1}. ${escapeHtml(term)}</p>`).join('')
-    : '<p>No terms added.</p>';
-  const scopeOfWork = (quotation.scopeOfWork || []).length
-    ? `<div class="scope-list">${quotation.scopeOfWork.map((item, index) => `<div class="scope-row"><span class="scope-number">${index + 1}.</span><span class="scope-text">${escapeHtml(item)}</span></div>`).join('')}</div>`
-    : '<p>No scope of work added.</p>';
-  const combinedPackageHeader = combined ? '<div class="package-header">Bulk Product Package Service</div>' : '';
 
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>${escapeHtml(quotation.quotationNumber || 'Quotation')}</title>
-    <style>
-      @page { size: A4; margin: 10mm; }
-      * { box-sizing: border-box; }
-      body { margin: 0; background: #fff; color: #111827; font-family: Arial, Helvetica, sans-serif; font-size: 12px; line-height: 1.5; text-transform: uppercase; font-weight: 400; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .page { width: 100%; min-height: 277mm; padding: 0; }
-      .page + .page { page-break-before: always; }
-      .header { display: flex; align-items: center; justify-content: space-between; padding: 12px 0 8px; border-bottom: 1px solid #020617; }
-      .logo { width: 105px; height: 42px; object-fit: contain; object-position: left center; }
-      .title { color: #f97316; font-size: 18px; font-weight: 900; letter-spacing: 4px; text-transform: uppercase; }
-      .top { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 16px 0 16px; border-bottom: 1px solid #d1d5db; line-height: 1.5; }
-      .right { text-align: right; }
-      .amount { text-align: right; }
-      .to { padding: 15px 0 12px; line-height: 1.55; }
-      .label { font-weight: 900; }
-      .strong { font-weight: 800; }
-      .value { font-weight: 400; }
-      p { margin: 0 0 4px; }
-      table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 4px; }
-      th { background: #f97316; color: white; border: 1px solid #020617; padding: 7px 6px; text-align: left; font-size: 12px; line-height: 1.4; font-weight: 900; text-transform: uppercase; overflow-wrap: anywhere; }
-      td { background: #fff; border: 1px solid #020617; padding: 7px 6px; font-size: 12px; line-height: 1.4; font-weight: 700; text-transform: uppercase; overflow-wrap: anywhere; word-break: normal; }
-      table:first-of-type th:nth-child(1), table:first-of-type td:nth-child(1) { text-align: center; }
-      td.amount { font-weight: 800; }
-      td.combined-amount { text-align: center; vertical-align: middle; font-size: 12px; }
-      .center { text-align: center; }
-      .package-header { margin-top: 4px; color: #020617; padding: 8px 2px; font-size: 12px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
-      .package-header + table { margin-top: 0; }
-      .terms { margin-top: 16px; line-height: 1.45; }
-      .terms p { margin: 2px 0; font-weight: 400; }
-      .terms li { margin: 0 0 6px; font-weight: 400; }
-      .important { margin-top: 14px; line-height: 1.55; }
-      .important-title { color: #ef0000; font-weight: 900; }
-      .footer { margin-top: 16px; border-top: 1px solid #020617; padding-top: 14px; text-align: center; font-weight: 900; }
-      .signature { margin-top: 16px; }
-      .scope-page { padding-top: 18px; padding-bottom: 10mm; display: block; }
-      .scope-page .terms { margin-top: 0; }
-      .scope-page .footer { margin-top: 24px; break-inside: avoid; page-break-inside: avoid; }
-      .scope-page-title { color: #f97316; font-size: 18px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; border-bottom: 1px solid #020617; padding-bottom: 10px; margin-bottom: 18px; }
-      .scope-list { margin-top: 12px; display: grid; gap: 9px; }
-      .scope-row { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: start; column-gap: 4px; break-inside: avoid; page-break-inside: avoid; font-weight: 400; line-height: 1.5; }
-      .scope-number { text-align: right; font-weight: 800; line-height: 1.5; }
-      .scope-text { min-width: 0; overflow-wrap: anywhere; }
-      @media print {
-        html, body { width: 210mm; min-height: 297mm; }
-      }
-    </style>
-  </head>
-  <body>
-    <main class="page">
-      <section class="header">
-        <img class="logo" src="${ANANT_LOGO_SOURCE_URL}" alt="Anant Tattva">
-        <div class="title">Quotation</div>
-      </section>
-      <section class="top">
-        <div>
-          <p class="label">From:</p>
-          <p>${escapeHtml(quotationOwnerName(quotation))}</p>
-          <p class="strong">AnantTattva Private Limited</p>
-          <p>${escapeHtml(ANANT_TATTVA_ADDRESS)}</p>
-          <p><span class="strong">GST Number:</span> ${ANANT_TATTVA_GST_NUMBER}</p>
-        </div>
-        <div class="right">
-          <p>Quotation Date: ${escapeHtml(createdDate)}</p>
-          <p>Quotation No.: ${escapeHtml(quotation.quotationNumber || '-')}</p>
-          <p>Quotation Valid Until: ${escapeHtml(formatDisplayDate(quotation.validUntil))}</p>
-          <p>Created: ${escapeHtml(createdDate)}</p>
-          <p>Prepared By: ${escapeHtml(quotationPreparedByName(quotation))}</p>
-        </div>
-      </section>
-      <section class="to">
-        <p class="label">To:</p>
-        <p>${escapeHtml(details.salutation || '')} ${escapeHtml(details.contactPerson || '-')} ${details.designation ? `- ${escapeHtml(details.designation)}` : ''}</p>
-          <p><span class="strong">Mobile No.1:</span> ${escapeHtml(details.mobileNo1 || '-')}</p>
-          <p class="strong">${escapeHtml(details.companyName || '-')}</p>
-        <p>${escapeHtml([details.addressLine1, details.addressLine2, details.addressLine3].filter(Boolean).join(', ') || '-')}</p>
-        <p><span class="strong">State:</span> ${escapeHtml(details.state || '-')}</p>
-        <p><span class="strong">City:</span> ${escapeHtml(details.city || '-')}</p>
-        <p><span class="strong">Pincode:</span> ${escapeHtml(details.pinCode || '-')}</p>
-        <p><span class="strong">GST Number:</span> ${escapeHtml(details.gstNumber || '-')}</p>
-      </section>
-      ${combinedPackageHeader}
-      <table>
-        <colgroup>${[5, 14, 16, 9, 11, 15, 6, 12, 12].map((width) => `<col style="width:${width}%">`).join('')}</colgroup>
-        <thead>
-          <tr><th>Sr.No</th><th>Business Category</th><th>Service Category</th><th>Service Period</th><th>Applicant Type</th><th>Services Offered</th><th>Unit</th><th>Unit Name</th><th>Basic Amount (INR)</th></tr>
-        </thead>
-        <tbody>${rows || '<tr><td colspan="9" class="center">No quotation items added.</td></tr>'}</tbody>
-      </table>
-      <div class="package-header">EPR / Service Period Mapping</div>
-      <table>
-        <thead><tr><th>Sr.No</th><th>Service Category</th><th>Applicant Type</th>${hasReturnYearItems ? `<th>${escapeHtml(yearMappingHeader)}</th>` : ''}<th>Services Offered</th></tr></thead>
-        <tbody>${displayRows.map(({ item }, index) => `<tr><td class="center">${index + 1}</td><td>${escapeHtml(item.eprCategory || item.serviceCategory || '-')}</td><td>${escapeHtml(getQuotationApplicantType(item))}</td>${hasReturnYearItems ? `<td>${escapeHtml(quotationAnnualReturnRegistrationYear(item))}</td>` : ''}<td>${escapeHtml(item.servicesOffered || '-')}</td></tr>`).join('') || `<tr><td colspan="${hasReturnYearItems ? 5 : 4}" class="center">No quotation items added.</td></tr>`}</tbody>
-      </table>
-      <section class="terms">
-        <p class="label">Terms & Conditions:</p>
-        ${terms}
-      </section>
-      <section class="important">
-        <p class="important-title">Important Note:</p>
-        <p>1. GST tax will be extra @ 18%.</p>
-        <p>2. Any Government Charges to be paid by Client directly.</p>
-      </section>
-      <section class="footer">
-        <p>For more details please contact us on : info@ananttattva.com | +91 8169727341 / 9004005520</p>
-        <p class="signature">This is a computer-generated quotation and does not require a signature.</p>
-      </section>
-    </main>
-    <main class="page scope-page">
-      <section class="scope-page-title">Scope of Work</section>
-      <section class="terms">
-        <p class="label">Scope of Work:</p>
-        ${scopeOfWork}
-      </section>
-      <section class="footer">
-        <p>For more details please contact us on : info@ananttattva.com | +91 8169727341 / 9004005520</p>
-        <p class="signature">This is a computer-generated quotation and does not require a signature.</p>
-      </section>
-    </main>
-  </body>
-</html>`;
-}
+
+
+
+
 
 function QuoteYearMultiSelect({ value = [], options = [], onChange, error = '' }) {
   const [open, setOpen] = useState(false);

@@ -4,6 +4,7 @@ dist/
 *.log
 
 backend/node_modules/
+backend/.cache/puppeteer/
 backend/.env
 frontend/node_modules/
 frontend/.env

@@ -7,6 +7,8 @@
     "start": "node src/index.js",
     "dev": "node ./node_modules/nodemon/bin/nodemon.js src/index.js",
     "test": "node --test",
+    "pdf:install": "node node_modules/puppeteer/lib/cjs/puppeteer/node/cli.js browsers install chrome --install-deps",
+    "pdf:check": "node src/scripts/checkQuotationRenderer.js",
     "test:cache": "node --test test/crmRedisCache.test.js test/crmCacheInvalidation.test.js test/crmFreshness.test.js",
     "cache:check": "node src/scripts/checkRedisCache.js",
     "performance:check": "node src/scripts/checkPerformance.js",
@@ -34,7 +36,8 @@
     "mongoose": "^7.8.7",
     "multer": "^2.2.0",
     "nodemailer": "^6.9.0",
-    "pdfkit": "^0.20.2",
+    "pdf-lib": "^1.17.1",
+    "puppeteer": "^24.43.1",
     "redis": "^5.12.1",
     "sanitize-html": "2.17.4"
   },

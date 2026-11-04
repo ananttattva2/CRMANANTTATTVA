@@ -137,10 +137,10 @@ if [[ -n "$(find "$NEXT_DIST" -type l -print -quit)" ]]; then
 fi
 fi
 
-if ! git diff --quiet "$PREVIOUS_SHA" "$EXPECTED_SHA" -- backend; then
+if ! git diff --quiet "$PREVIOUS_SHA" "$EXPECTED_SHA" -- backend .puppeteerrc.cjs frontend/src/utils/quotationDocument.mjs frontend/src/utils/servicePeriod.mjs; then
   BACKEND_CHANGED=true
 fi
-if ! git diff --quiet "$PREVIOUS_SHA" "$EXPECTED_SHA" -- backend/package.json backend/package-lock.json; then
+if ! git diff --quiet "$PREVIOUS_SHA" "$EXPECTED_SHA" -- backend/package.json backend/package-lock.json .puppeteerrc.cjs; then
   BACKEND_DEPS_CHANGED=true
 fi
 
@@ -188,8 +188,10 @@ chmod 755 "$NEXT_DIST"
 if [[ "$BACKEND_CHANGED" == true ]]; then
   if [[ "$BACKEND_DEPS_CHANGED" == true ]]; then
     npm ci --prefix backend --omit=dev
+    npm run pdf:install --prefix backend
   fi
   node --check backend/src/index.js
+  npm run pdf:check --prefix backend
 fi
 
 # Deliver personal access keys before enabling the license-first login UI.

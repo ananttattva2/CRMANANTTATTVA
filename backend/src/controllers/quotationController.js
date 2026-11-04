@@ -809,12 +809,12 @@ exports.getQuotation = async (req, res) => {
 exports.downloadQuotation = async (req, res, next) => {
   try {
     const { isApproved, createApprovedQuotationPdf, quotationFilename } = require('../services/quotationDelivery');
-    const quotation = await Quotation.findOne(combineFilters({ _id: req.params.id }, await quotationAccessFilter(req.user))).lean();
+    const quotation = await Quotation.findOne(combineFilters({ _id: req.params.id }, await quotationAccessFilter(req.user))).populate('createdBy', 'name email').populate('approvalDecision.actionBy', 'name email role').lean();
     if (!quotation) return res.status(404).json({ error: 'Quotation not found' });
     if (!isApproved(quotation)) return res.status(403).json({ error: 'Admin approval is required before downloading.' });
     const buffer = await createApprovedQuotationPdf(quotation);
     res.set('Cache-Control', 'no-store');
-    return res.type('application/pdf').attachment(quotationFilename(quotation)).send(buffer);
+    return res.type('application/pdf').attachment(await quotationFilename(quotation)).send(buffer);
   } catch (error) { next(error); }
 };
 
@@ -829,12 +829,12 @@ exports.emailQuotation = async (req, res, next) => {
     const subject = String(req.body.subject || '').trim();
     const body = String(req.body.body || '').trim();
     if (!/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(email) || email.length > 254 || !subject || subject.length > 200 || /[\r\n]/.test(subject) || !body || body.length > 10000) return res.status(400).json({ error: 'Enter a valid client email, subject (up to 200 characters), and message (up to 10000 characters).' });
-    const quotation = await Quotation.findOne(combineFilters({ _id: req.params.id }, await quotationAccessFilter(req.user))).lean();
+    const quotation = await Quotation.findOne(combineFilters({ _id: req.params.id }, await quotationAccessFilter(req.user))).populate('createdBy', 'name email').populate('approvalDecision.actionBy', 'name email role').lean();
     if (!quotation) return res.status(404).json({ error: 'Quotation not found' });
     if (!isApproved(quotation)) return res.status(403).json({ error: 'Admin approval is required before emailing this quotation.' });
     const pdf = await createApprovedQuotationPdf(quotation);
     const content = clientEmailContent(subject, body);
-    await sendMail(email, subject, content.html, { branded: false, cc, attachments: [{ filename: quotationFilename(quotation), content: pdf, contentType: 'application/pdf' }, content.logo] });
+    await sendMail(email, subject, content.html, { branded: false, cc, attachments: [{ filename: await quotationFilename(quotation), content: pdf, contentType: 'application/pdf' }, content.logo] });
     await Quotation.updateOne({ _id: quotation._id }, { $push: { emailHistory: { to: email, cc, subject, sentBy: req.user._id, sentAt: new Date() } } });
     return res.json({ ok: true, message: 'Quotation email accepted for delivery with the PDF attachment.' });
   } catch (error) { next(error); }
