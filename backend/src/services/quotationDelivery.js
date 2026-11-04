@@ -27,7 +27,7 @@ async function renderApprovedQuotation(quotation) {
   const browser = await puppeteer.launch({
     headless: true,
     ...(process.env.QUOTATION_CHROME_PATH ? { executablePath: process.env.QUOTATION_CHROME_PATH } : {}),
-    args: ['--disable-dev-shm-usage', ...(process.platform === 'linux' && process.getuid?.() === 0 ? ['--no-sandbox'] : [])],
+    args: ['--disable-dev-shm-usage', ...(process.platform === 'linux' && (process.getuid?.() === 0 || process.env.GITHUB_ACTIONS === 'true') ? ['--no-sandbox'] : [])],
     timeout: 30000,
     protocolTimeout: 45000
   });

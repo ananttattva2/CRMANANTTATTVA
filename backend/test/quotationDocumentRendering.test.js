@@ -42,7 +42,7 @@ test('the canonical document retains orange tables, year mapping, terms, GST and
 
 test('screen and print paginate the same scope rows with a heading/footer on every designed sheet', async () => {
   const [{ default: puppeteer }, shared] = await Promise.all([import('puppeteer'), template()]);
-  const browser = await puppeteer.launch({ headless: true, ...(process.env.QUOTATION_CHROME_PATH ? { executablePath: process.env.QUOTATION_CHROME_PATH } : {}), args: ['--disable-dev-shm-usage', ...(process.platform === 'linux' && process.getuid?.() === 0 ? ['--no-sandbox'] : [])] });
+  const browser = await puppeteer.launch({ headless: true, ...(process.env.QUOTATION_CHROME_PATH ? { executablePath: process.env.QUOTATION_CHROME_PATH } : {}), args: ['--disable-dev-shm-usage', ...(process.platform === 'linux' && (process.getuid?.() === 0 || process.env.GITHUB_ACTIONS === 'true') ? ['--no-sandbox'] : [])] });
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 794, height: 1123 });
