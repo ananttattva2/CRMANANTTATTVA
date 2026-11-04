@@ -1,3 +1,4 @@
+import { exportWithReason } from '../../utils/dataExport.mjs'
 import React, { useMemo, useState } from 'react'
 import { Download, Search, Loader2 } from 'lucide-react'
 import ServiceStatusIcon from './ServiceStatusIcon'
@@ -19,7 +20,7 @@ export default function InlineApplicantClients({ group, section }) {
       sheet['!cols'] = [{ wch: 8 }, { wch: 16 }, { wch: 40 }, { wch: 24 }, { wch: 32 }, { wch: 14 }, ...section.services.map(() => ({ wch: 24 }))]
       const book = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(book, sheet, section.year)
-      XLSX.writeFile(book, `Closed-PO-clients-${section.year}-${group.type.replace(/[^a-z0-9]/gi, '-')}.xlsx`)
+      await exportWithReason(`Closed-PO-clients-${section.year}-${group.type.replace(/[^a-z0-9]/gi, '-')}.xlsx`, () => XLSX.writeFile(book, `Closed-PO-clients-${section.year}-${group.type.replace(/[^a-z0-9]/gi, '-')}.xlsx`))
     } catch { setError('Export could not complete. Please retry.') }
     finally { setExporting(false) }
   }

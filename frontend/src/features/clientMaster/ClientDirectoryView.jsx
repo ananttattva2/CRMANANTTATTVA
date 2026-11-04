@@ -1,3 +1,4 @@
+import { exportWithReason } from '../../utils/dataExport.mjs'
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { Building2, CheckCircle2, ChevronDown, Download, Edit3, Eye, FileCheck2, FileText, FolderCheck, Plus, RefreshCw, Search, UserCheck, X } from 'lucide-react';
@@ -319,7 +320,7 @@ function ClientDirectoryView({ clients, pagination, summary, staff, loading, err
     const totals = sumClientPoCounts(poEntries.map(({ service }) => service.poCounts));
     const summaryRows = [['Approved', totals.approved], ['Pending', totals.pending], ['Rejected', totals.rejected], ['Revision Required', totals.revision], ['Status Not Recorded', totals.unrecorded], ['Total', totals.total]].map(([status, count]) => ({ 'PO Status': status, 'PO Count': count }));
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'PO Approval Summary');
-    XLSX.writeFile(workbook, 'clients.xlsx');
+    await exportWithReason('clients.xlsx', () => XLSX.writeFile(workbook, 'clients.xlsx'));
   }
 
   return (

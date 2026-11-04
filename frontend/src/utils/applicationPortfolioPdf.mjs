@@ -1,3 +1,4 @@
+import { exportWithReason } from './dataExport.mjs'
 const clean = (value) => String(value ?? '').replace(/[â€“â€”]/g, '-').replace(/\s+/g, ' ').trim()
 
 export function buildApplicationPortfolioPdfData({ columns = [], groups = [], matches }) {
@@ -59,5 +60,5 @@ export async function downloadApplicationPortfolioPdf({ title, columns, groups, 
   })
 
   const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(generatedAt)
-  doc.save(`${clean(title).replace(/[^a-z0-9]+/gi, '-')}-${day}.pdf`)
+  await exportWithReason(`${clean(title).replace(/[^a-z0-9]+/gi, '-')}-${day}.pdf`, () => doc.save(`${clean(title).replace(/[^a-z0-9]+/gi, '-')}-${day}.pdf`))
 }

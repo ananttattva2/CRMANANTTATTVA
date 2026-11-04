@@ -1,3 +1,4 @@
+import { exportWithReason } from './dataExport.mjs'
 const clean = (value) => String(value ?? '').replace(/[–—]/g, '-').replace(/\s+/g, ' ').trim()
 const teal = [15, 118, 110]
 const slate = [51, 65, 85]
@@ -157,5 +158,5 @@ export async function createOverallDashboardPdf(data, { generatedAt = new Date()
 export async function downloadOverallDashboardPdf(data, options = {}) {
   const { doc, filename } = await createOverallDashboardPdf(data, options)
   options.onProgress?.('Saving PDF…')
-  doc.save(filename)
+  await exportWithReason(filename, () => doc.save(filename))
 }

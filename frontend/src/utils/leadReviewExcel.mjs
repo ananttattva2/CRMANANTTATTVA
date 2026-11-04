@@ -1,3 +1,4 @@
+import { exportWithReason } from './dataExport.mjs'
 // Excel cells receive literal values, so user notes are never interpreted as formulas.
 export async function createLeadReviewWorkbook(tables, filters = {}) {
   const { default: ExcelJS } = await import('exceljs');
@@ -22,6 +23,6 @@ export async function downloadLeadReviewExcel(tables, filters, filename) {
   const url = URL.createObjectURL(new Blob([await workbook.xlsx.writeBuffer()], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
   const link = document.createElement('a');
   link.href = url; link.download = `${filename}.xlsx`;
-  document.body.appendChild(link); link.click(); link.remove();
+  document.body.appendChild(link); await exportWithReason(link.download, () => link.click()); link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

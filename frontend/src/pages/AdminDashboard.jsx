@@ -1,3 +1,4 @@
+import { exportWithReason } from '../utils/dataExport.mjs'
 import useCrmRefresh from '../hooks/useCrmRefresh'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
@@ -356,7 +357,7 @@ function UserLogsModal({ onClose }) {
     }
   }, [visible])
 
-  function exportLogs() {
+  async function exportLogs() {
     const dailyExportRows = visible.map((row) => ({
       Date: formatAuditDate(row.logDate), Name: row.name, Email: row.email, Role: row.role, Team: row.team,
       'First Login': row.firstLoginAt ? formatDisplayDateTime(row.firstLoginAt) : '',
@@ -397,7 +398,7 @@ function UserLogsModal({ onClose }) {
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rawSessionRows), 'Login Sessions')
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(activityRows), 'CRM Activities')
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(leadRows), 'Lead Completion Time')
-    XLSX.writeFile(workbook, `CRM_User_Logs_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    await exportWithReason(`CRM_User_Logs_${new Date().toISOString().slice(0, 10)}.xlsx`, () => XLSX.writeFile(workbook, `CRM_User_Logs_${new Date().toISOString().slice(0, 10)}.xlsx`))
   }
 
   return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -2427,11 +2428,11 @@ function ClientOwnershipAnalyticsModal({ rows = [], onClose }) {
     }
   }).filter((item) => item.total || item.type !== 'Other / Unassigned')
 
-  function exportManagementReport() {
+  async function exportManagementReport() {
     const rowsToExport = filteredCompanies.map((company) => ({ Assignee: company.assignee, Company: company.name, Category: company.category, Stage: company.stage, Risk: company.risk, 'Days Pending': company.daysPending, 'Data Filled %': company.percent, 'Filled Fields': company.filledFields.join(', '), 'Missing Fields': company.missingFields.join(', '), Quotation: company.hasQuotation ? 'Available' : 'Missing', 'Compliance PO': company.hasPo ? 'Available' : 'Missing', 'Annual Progress': `${company.annualDone}/${company.annualTotal}`, Approval: company.approvalStatus, 'Last Updated': formatAnalyticsDate(company.clientUpdatedAt) }))
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rowsToExport), 'Client Analytics')
-    XLSX.writeFile(workbook, `client-analytics-${new Date().toISOString().slice(0, 10)}.xlsx`)
+    await exportWithReason(`client-analytics-${new Date().toISOString().slice(0, 10)}.xlsx`, () => XLSX.writeFile(workbook, `client-analytics-${new Date().toISOString().slice(0, 10)}.xlsx`))
   }
 
   return (
@@ -2445,7 +2446,7 @@ function ClientOwnershipAnalyticsModal({ rows = [], onClose }) {
           </div>
         </header>
         <div className="client-analytics-body">
-          <div className="client-analytics-toolbar"><div><select value={stageFilter} onChange={(event) => setStageFilter(event.target.value)}><option value="all">All stages</option>{['Data Capture', 'Data Review', 'Annual Processing', 'Compliance Review', 'Completed'].map((value) => <option key={value}>{value}</option>)}</select><select value={riskFilter} onChange={(event) => setRiskFilter(event.target.value)}><option value="all">All risks</option>{['Healthy', 'Attention Required', 'High Risk', 'Critical'].map((value) => <option key={value}>{value}</option>)}</select><select value={dataFilter} onChange={(event) => setDataFilter(event.target.value)}><option value="all">All data quality</option><option value="complete">Fully filled</option><option value="partial">Partial</option><option value="missing">Not filled</option></select><select value={piboFilter} onChange={(event) => setPiboFilter(event.target.value)}><option value="all">All PIBO types</option><option>Producer</option><option>Importer</option><option>Brand Owner</option><option>Other / Unassigned</option></select><select value={ageFilter} onChange={(event) => setAgeFilter(event.target.value)}><option value="all">All aging</option><option value="0-7">0–7 days</option><option value="8-15">8–15 days</option><option value="16-30">16–30 days</option><option value="30+">30+ days</option></select></div><div><button type="button" onClick={exportManagementReport}>Export Excel</button><button type="button" onClick={() => window.print()}>Print / PDF</button></div></div>
+          <div className="client-analytics-toolbar"><div><select value={stageFilter} onChange={(event) => setStageFilter(event.target.value)}><option value="all">All stages</option>{['Data Capture', 'Data Review', 'Annual Processing', 'Compliance Review', 'Completed'].map((value) => <option key={value}>{value}</option>)}</select><select value={riskFilter} onChange={(event) => setRiskFilter(event.target.value)}><option value="all">All risks</option>{['Healthy', 'Attention Required', 'High Risk', 'Critical'].map((value) => <option key={value}>{value}</option>)}</select><select value={dataFilter} onChange={(event) => setDataFilter(event.target.value)}><option value="all">All data quality</option><option value="complete">Fully filled</option><option value="partial">Partial</option><option value="missing">Not filled</option></select><select value={piboFilter} onChange={(event) => setPiboFilter(event.target.value)}><option value="all">All PIBO types</option><option>Producer</option><option>Importer</option><option>Brand Owner</option><option>Other / Unassigned</option></select><select value={ageFilter} onChange={(event) => setAgeFilter(event.target.value)}><option value="all">All aging</option><option value="0-7">0–7 days</option><option value="8-15">8–15 days</option><option value="16-30">16–30 days</option><option value="30+">30+ days</option></select></div><div><button type="button" onClick={exportManagementReport}>Export Excel</button><button type="button" onClick={async () => await exportWithReason('Print / PDF', () => window.print())}>Print / PDF</button></div></div>
           <div className="client-analytics-kpis">
             <article><span>Total Clients</span><strong>{total}</strong><small>{selected?.name || `${analytics.length} assignees`}</small></article>
             <article className="done"><span>Completed</span><strong>{completed}</strong><small>{rate}% completion rate</small></article>
@@ -2503,7 +2504,7 @@ function CompanyDataAnalysis({ company, onClose }) {
           <div className="company-readiness"><div><span>Quotation</span><strong className={company.hasQuotation ? 'yes' : 'no'}>{company.hasQuotation ? 'Available' : 'Missing'}</strong></div><div><span>Compliance PO</span><strong className={company.hasPo ? 'yes' : 'no'}>{company.hasPo ? 'Available' : 'Missing'}</strong></div><div><span>Recommended next action</span><strong>{nextAction}</strong></div></div>
           <div className="company-freshness-row"><div><span>Created</span><strong>{formatAnalyticsDate(company.clientCreatedAt)}</strong><small>{company.daysPending} days in pipeline</small></div><div className={company.freshnessDays > 30 ? 'stale' : ''}><span>Last updated</span><strong>{formatAnalyticsDate(company.clientUpdatedAt)}</strong><small>{company.freshnessDays > 30 ? `Stale for ${company.freshnessDays} days` : `${company.freshnessDays} days ago`}</small></div><div className={`risk-${normalizeKey(company.risk).replace(/\s+/g, '-')}`}><span>Risk classification</span><strong>{company.risk}</strong><small>{company.riskReasons.join(', ') || 'No material risks'}</small></div></div>
           <section className="company-activity"><header><span>Company activity timeline</span><b>{company.timeline.length} events</b></header><div>{company.timeline.map((event, index) => <article key={`${event.label}-${index}`}><i className={event.tone} /><div><strong>{event.label}</strong><small>{formatAnalyticsDate(event.date)}</small></div></article>)}</div></section>
-          <section className="company-action-centre"><header><span>Action centre</span><small>Continue work without leaving the analysis context</small></header><div><button type="button" onClick={() => navigate('/sales/client-master')}>Open Client Master</button><button type="button" onClick={() => navigate(`/sales/client-data-processing/${encodeURIComponent(company.id)}/${encodeURIComponent(company.annualYear || '2025-26')}`)}>Open Annual Return</button><button type="button" onClick={() => navigate('/sales/quotations?mode=add')}>Create Quotation</button><button type="button" onClick={() => navigate('/calendar')}>Open Calendar</button><button type="button" onClick={() => navigate('/calendar')}>Add Follow-up</button><button type="button" onClick={() => window.print()}>Print Summary</button></div></section>
+          <section className="company-action-centre"><header><span>Action centre</span><small>Continue work without leaving the analysis context</small></header><div><button type="button" onClick={() => navigate('/sales/client-master')}>Open Client Master</button><button type="button" onClick={() => navigate(`/sales/client-data-processing/${encodeURIComponent(company.id)}/${encodeURIComponent(company.annualYear || '2025-26')}`)}>Open Annual Return</button><button type="button" onClick={() => navigate('/sales/quotations?mode=add')}>Create Quotation</button><button type="button" onClick={() => navigate('/calendar')}>Open Calendar</button><button type="button" onClick={() => navigate('/calendar')}>Add Follow-up</button><button type="button" onClick={async () => await exportWithReason('Print / PDF', () => window.print())}>Print Summary</button></div></section>
         </div>
       </motion.article>
     </motion.div>
@@ -3958,7 +3959,7 @@ function fitOperationsWorksheet(sheet, rows = []) {
   sheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' }
 }
 
-function downloadOperationsExcel(groups, financialYear) {
+async function downloadOperationsExcel(groups, financialYear) {
   const { summary, clients, poDetails, tabRemarks } = buildOperationsWorkbookData(groups, financialYear)
   const summarySheet = XLSX.utils.json_to_sheet(summary)
   const clientSheet = XLSX.utils.json_to_sheet(clients)
@@ -3974,7 +3975,7 @@ function downloadOperationsExcel(groups, financialYear) {
   XLSX.utils.book_append_sheet(workbook, poSheet, 'PO Details')
   XLSX.utils.book_append_sheet(workbook, remarksSheet, 'Compliance Tab Remarks')
   const yearLabel = String(financialYear || 'all').replace(/[^a-z0-9-]+/gi, '-')
-  XLSX.writeFile(workbook, `Operations-Dashboard-${yearLabel}-${new Date().toISOString().slice(0, 10)}.xlsx`)
+  await exportWithReason(`Operations-Dashboard-${yearLabel}-${new Date().toISOString().slice(0, 10)}.xlsx`, () => XLSX.writeFile(workbook, `Operations-Dashboard-${yearLabel}-${new Date().toISOString().slice(0, 10)}.xlsx`))
 }
 
 const OperationsClientDetails = React.memo(function OperationsClientDetails({ group }) {

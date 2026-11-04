@@ -1,11 +1,11 @@
 import React, { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Fingerprint, KeyRound, LockKeyhole, ShieldCheck } from 'lucide-react'
 import AuthLayout from '../components/AuthLayout'
 import ToastMessage from '../components/ToastMessage'
 import api, { readApiError } from '../services/api'
 import { API_ENDPOINTS } from '../services/apiEndpoints'
-import { clearLicenseSession, storeLicenseSession } from '../utils/licenseSession.mjs'
+import { clearLicenseSession, readLicenseSession, storeLicenseSession } from '../utils/licenseSession.mjs'
 import '../styles/license.css'
 
 export default function License() {
@@ -28,6 +28,7 @@ export default function License() {
     const clean = value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20)
     setCode([clean.slice(0, 4), clean.slice(4, 8), clean.slice(8, 12), clean.slice(12, 16), clean.slice(16)].filter(Boolean).join('-'))
   }
+  if (readLicenseSession()) return <Navigate to="/login" replace />
   return <AuthLayout eyebrow="Your secure workspace" title="Access starts here." subtitle="One personal license. The right workspace, ready for you.">
     <div className="license-progress" aria-label="Step 1 of 3: License verification">
       <span className="is-current">01 <b>License</b></span><i /><span>02 <b>Sign in</b></span><i /><span>03 <b>Verify</b></span>

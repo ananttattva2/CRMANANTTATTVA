@@ -1,3 +1,4 @@
+import { exportWithReason } from '../utils/dataExport.mjs'
 import React, { useEffect, useMemo, useState } from 'react'
 import { Activity, ChevronLeft, ChevronRight, ClipboardCheck, Download, Eye, FilePlus2, MessageSquareQuote, RefreshCw, Search, TicketCheck, UserPlus2, Users, X } from 'lucide-react'
 import * as XLSX from 'xlsx'
@@ -53,9 +54,9 @@ export default function ActivityLogs() {
 
   const update = (key, value) => setFilters((old) => ({ ...old, [key]: value, page: key === 'page' ? value : 1 }))
   const quickRange = (days) => { const end = new Date(); const start = new Date(Date.now() - (days - 1) * 86400000); const fmt = (date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date); setFilters((old) => ({ ...old, from: fmt(start), to: fmt(end), page: 1 })) }
-  const exportExcel = () => {
+  const exportExcel = async () => {
     const rows = data.logs.map((row) => { const actor = resolveUser(row); return { Date: dateTime(row.occurredAt), User: actor.name, Email: actor.email, Role: actor.role, Department: actor.department, Module: row.module, Action: label(row.action), Client: row.entityName, 'Record ID': row.recordId || row.entityId, Description: row.description, Changes: (row.changes || []).map((change) => `${change.field}: ${JSON.stringify(change.oldValue)} -> ${JSON.stringify(change.newValue)}`).join('; '), IP: row.ipAddress, Device: row.device, Browser: row.browser } })
-    const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(rows), 'Activity Logs'); XLSX.writeFile(book, `CRM-Activity-Logs-${today()}.xlsx`)
+    const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(rows), 'Activity Logs'); await exportWithReason(`CRM-Activity-Logs-${today()}.xlsx`, () => XLSX.writeFile(book, `CRM-Activity-Logs-${today()}.xlsx`))
   }
 
   return <DashboardShell currentUser={user}>

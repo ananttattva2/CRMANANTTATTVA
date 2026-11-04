@@ -1,3 +1,4 @@
+import { exportWithReason } from './dataExport.mjs'
 import { annualActionReasons, matchesServiceSummary } from './applicationPortfolio.mjs'
 
 const headers = ['Unique ID', 'Legal Name', 'Client Status', 'Visibility', 'CPCB Status', 'PIBo Category', 'State', 'Created', 'Lead ID', 'Industry', 'Service Category', 'Services Offered', 'Unit', 'SPOC / User Name', 'Annual Return Year', 'AR Action Required', 'AR Action Required Details']
@@ -35,7 +36,7 @@ export async function downloadApplicationPortfolioExcel(records, name, label) {
   link.href = url
   link.download = `${name}-${label}-${new Date().toISOString().slice(0, 10)}`.replace(/[^a-z0-9_-]/gi, '-') + '.xlsx'
   document.body.appendChild(link)
-  link.click()
+  await exportWithReason(link.download, () => link.click())
   link.remove()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

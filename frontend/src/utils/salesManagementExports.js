@@ -1,3 +1,4 @@
+import { exportWithReason } from './dataExport.mjs'
 import { formatDisplayDate, formatDisplayDateTime } from './dateFormat'
 
 function money(value) {
@@ -30,14 +31,14 @@ function pdfDepartmentBreakdown(rows = []) {
   }))
 }
 
-function downloadBlob(buffer, type, fileName) {
+async function downloadBlob(buffer, type, fileName) {
   const blob = new Blob([buffer], { type })
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
   anchor.download = fileName
   document.body.appendChild(anchor)
-  anchor.click()
+  await exportWithReason(anchor.download, () => anchor.click())
   anchor.remove()
   URL.revokeObjectURL(url)
 }
@@ -358,7 +359,7 @@ export async function exportSalesManagementExcel(data) {
     headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF087A70' } }
     sheet.views = [{ state: 'frozen', ySplit: sheet === summary ? 4 : 1 }]
   })
-  downloadBlob(
+  await downloadBlob(
     await workbook.xlsx.writeBuffer(),
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     `sales-management-${safeDate(data.meta?.dateFrom)}-${safeDate(data.meta?.dateTo)}.xlsx`
@@ -440,7 +441,7 @@ export async function exportSalesManagementPdf(data) {
   pdf.setFont('helvetica', 'normal')
   pdf.setFontSize(9)
   ;(data.insights?.recommendations || []).forEach((item, index) => pdf.text(`- ${item}`, 12, recommendationY + 7 + (index * 6)))
-  pdf.save(`sales-management-${safeDate(data.meta?.dateFrom)}-${safeDate(data.meta?.dateTo)}.pdf`)
+  await exportWithReason(`sales-management-${safeDate(data.meta?.dateFrom)}-${safeDate(data.meta?.dateTo)}.pdf`, () => pdf.save(`sales-management-${safeDate(data.meta?.dateFrom)}-${safeDate(data.meta?.dateTo)}.pdf`))
 }
 
 export async function exportQuotationMisPdf(quotations = [], period = {}) {
@@ -481,5 +482,5 @@ export async function exportQuotationMisPdf(quotations = [], period = {}) {
     ]),
     headStyles: { fillColor: [8, 122, 112] }, styles: { fontSize: 8 }, alternateRowStyles: { fillColor: [240, 253, 250] }
   })
-  pdf.save(`quotation-mis-${safeDate(period.dateFrom)}-${safeDate(period.dateTo)}.pdf`)
+  await exportWithReason(`quotation-mis-${safeDate(period.dateFrom)}-${safeDate(period.dateTo)}.pdf`, () => pdf.save(`quotation-mis-${safeDate(period.dateFrom)}-${safeDate(period.dateTo)}.pdf`))
 }

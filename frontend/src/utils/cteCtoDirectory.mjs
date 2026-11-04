@@ -1,3 +1,4 @@
+import { exportWithReason } from './dataExport.mjs'
 function text(value, fallback = '') {
   const result = String(value ?? '').trim()
   return result || fallback
@@ -146,6 +147,6 @@ export async function downloadCteCtoExcel(groups = []) {
   const link = document.createElement('a')
   link.href = URL.createObjectURL(blob)
   link.download = `CTE-CTO-CCA-Details-${new Date().toISOString().slice(0, 10)}.xlsx`
-  link.click()
+  await exportWithReason(link.download, () => link.click())
   URL.revokeObjectURL(link.href)
 }

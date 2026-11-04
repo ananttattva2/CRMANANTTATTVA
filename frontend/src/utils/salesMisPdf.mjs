@@ -1,3 +1,4 @@
+import { exportWithReason } from './dataExport.mjs'
 import { buildSalesMisReport } from './salesMisReport.mjs'
 
 const reportDate = (value) => {
@@ -99,5 +100,5 @@ export async function downloadSalesMisInfographicPdf({ rows = [], period = {} })
   pdf.setFont('helvetica', 'normal'); pdf.setFontSize(5.8); pdf.setTextColor(100, 116, 139)
   pdf.text(`Temp Lead is shown beside Lead under Total Leads and is not included in the permanent Lead count. | AnantTattva CRM`, 9, 204)
   pdf.text('1 / 1', 288, 204, { align: 'right' })
-  pdf.save(`Sales_MIS_${period.from}_to_${period.to}.pdf`)
+  await exportWithReason(`Sales_MIS_${period.from}_to_${period.to}.pdf`, () => pdf.save(`Sales_MIS_${period.from}_to_${period.to}.pdf`))
 }

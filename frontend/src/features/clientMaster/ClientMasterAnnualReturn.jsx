@@ -1,3 +1,4 @@
+import { exportWithReason } from '../../utils/dataExport.mjs'
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
@@ -2982,13 +2983,13 @@ function buildLetterFileName(letter) {
   return `CPCB-Letter-${letter.authority}-${letter.code}`.replace(/[^a-z0-9-]+/gi, '-');
 }
 
-function downloadBlob(blob, fileName) {
+async function downloadBlob(blob, fileName) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
   link.download = fileName;
   document.body.appendChild(link);
-  link.click();
+  await exportWithReason(link.download, () => link.click());
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 500);
 }

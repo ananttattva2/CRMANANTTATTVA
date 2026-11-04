@@ -17,6 +17,8 @@ router.patch('/pending-approvals/approve-all', requireAuth, requireRoles(ADMIN_R
 router.post('/bulk', requireAuth, quotationCtrl.bulkCreateQuotations);
 router.post('/', requireAuth, quotationCtrl.createQuotation);
 router.get('/:id', requireAuth, cacheRead, quotationCtrl.getQuotation);
+router.get('/:id/pdf', requireAuth, requireRoles(ADMIN_ROLES), quotationCtrl.downloadQuotation);
+router.post('/:id/email', requireAuth, quotationCtrl.emailQuotation);
 router.patch('/:id/management-approval', requireAuth, quotationCtrl.submitManagementApproval);
 router.patch('/:id/management-approval/finalize', requireAuth, requireRoles(['superadmin']), quotationCtrl.finalizeManagementApproval);
 router.patch('/:id/approval', requireAuth, requireRoles(ADMIN_ROLES), quotationCtrl.updateQuotationApproval);

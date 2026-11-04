@@ -1,3 +1,4 @@
+import { exportWithReason } from '../utils/dataExport.mjs'
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AlertTriangle, ArrowUpDown, BarChart3, Building2, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Download, Factory, FileSpreadsheet, Layers3, Leaf, RefreshCw, Recycle, Search, Users, X } from 'lucide-react';
@@ -139,7 +140,7 @@ export default function AnnualReturnOperationsDashboard() {
       const response = await api.get(API_ENDPOINTS.dashboardInsights.annualReturnOperations, { params: { ...filters, export: 'true' } });
       const rows = (response.data.records || []).map(row => ({ 'Unique ID': row.uniqueId || '-', Company: row.company, 'Lead ID': row.leadId, 'Service Category': row.category, 'Applicant Type': row.applicantType, 'Sub-Type': row.subType, 'Annual Return Year': row.annualReturnYear, 'Assigned User': row.assignedUser, 'Due Date': row.dueDate || 'Not set', Status: row.overdue ? 'Overdue' : row.status, 'Progress %': row.progress }));
       const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), 'Annual Return Services');
-      XLSX.writeFile(workbook, `Annual-Return-Summary-${data?.selectedYear || 'all'}.xlsx`);
+      await exportWithReason(`Annual-Return-Summary-${data?.selectedYear || 'all'}.xlsx`, () => XLSX.writeFile(workbook, `Annual-Return-Summary-${data?.selectedYear || 'all'}.xlsx`));
     } catch (exportError) { setError(exportError?.response?.data?.error || 'Excel export failed.'); }
     finally { setExporting(false); }
   }

@@ -1,3 +1,4 @@
+import { exportWithReason } from '../utils/dataExport.mjs'
 import React, { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, ChevronDown, Download, Eye, FileCheck2, Plus, RefreshCw, Save, Search, Trash2, Upload, X } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -167,7 +168,7 @@ function ProformaPoYearTable({ form, setForm }) {
   </section>
 }
 
-function downloadProforma(row) { buildInvoicePdf(row).save(`${row.proformaNumber || 'proforma-invoice'}.pdf`) }
+async function downloadProforma(row) { const filename = `${row.proformaNumber || 'proforma-invoice'}.pdf`; await exportWithReason(filename, () => buildInvoicePdf(row).save(filename)) }
 function ProformaDetail({ row, onClose, onEdit }) {
   const [url, setUrl] = useState('')
   useEffect(() => {

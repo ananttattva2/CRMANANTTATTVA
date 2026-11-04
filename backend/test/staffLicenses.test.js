@@ -16,6 +16,13 @@ const code = service.generateCode(user);
 const license = { _id: 'license-id', userId: user._id, codeHash: service.hashCode(code), roleTag: 'USR', email: user.email, issuedAt: new Date(), expiresAt: new Date(Date.now() + service.LICENSE_VALIDITY_MS) };
 const query = value => ({ select: async () => value, then: (resolve, reject) => Promise.resolve(value).then(resolve, reject) });
 function res() { return { status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; }, set() {} }; }
+
+test('remembered license verification lasts until the original key expiry rather than thirty minutes', () => {
+  const claims = jwt.verify(service.signGate(license), process.env.JWT_SECRET, { audience: 'crm-license' });
+  assert.equal(service.gateExpiresAt(license), license.expiresAt.getTime());
+  assert.ok(Math.abs(claims.exp * 1000 - license.expiresAt.getTime()) < 2000);
+  assert.ok(claims.exp * 1000 > Date.now() + 179 * 86400000);
+});
 afterEach(() => require('node:test').mock.restoreAll());
 require('node:test').after(() => { if (originalSecret === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = originalSecret; });
 

@@ -1,3 +1,4 @@
+import { exportWithReason } from '../utils/dataExport.mjs'
 import useCrmRefresh from '../hooks/useCrmRefresh';
 import { canApprovePo, canReviewPoDecision } from '../utils/poDecision.mjs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -854,7 +855,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
       const dateParts = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit'
       }).formatToParts(new Date()).reduce((parts, part) => ({ ...parts, [part.type]: part.value }), {});
-      XLSX.writeFile(workbook, `Pending-Clients-Approval-Status-${dateParts.year}-${dateParts.month}-${dateParts.day}.xlsx`);
+      await exportWithReason(`Pending-Clients-Approval-Status-${dateParts.year}-${dateParts.month}-${dateParts.day}.xlsx`, () => XLSX.writeFile(workbook, `Pending-Clients-Approval-Status-${dateParts.year}-${dateParts.month}-${dateParts.day}.xlsx`));
     } catch (exportError) {
       setError(exportError?.message || 'Unable to download the Pending Clients Excel file.');
     } finally {

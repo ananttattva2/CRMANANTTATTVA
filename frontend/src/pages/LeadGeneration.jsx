@@ -1,3 +1,4 @@
+import { exportWithReason } from '../utils/dataExport.mjs'
 import LeadRevenuePanel, { saveLeadRevenue } from '../components/leads/LeadRevenuePanel';
 import useCrmRefresh from '../hooks/useCrmRefresh'
 import { canReviseQuotation } from '../utils/quotationRevision.mjs';
@@ -3267,7 +3268,7 @@ function ComplianceHealthReportModal({ lead, report, saving, error, onChange, on
     onChange(field === 'conclusion' ? 'conclusion' : 'recommendations', next.map((item) => item[field]).filter(Boolean).join('\n'));
   }
 
-  function handleDownloadPdf() {
+  async function handleDownloadPdf() {
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
     const lines = [
       'COMPLIANCE HEALTH REPORT',
@@ -3319,7 +3320,7 @@ function ComplianceHealthReportModal({ lead, report, saving, error, onChange, on
       doc.text(String(line || '-'), 40, cursorY);
       cursorY += 15;
     }
-    doc.save(`${String(lead.company || 'compliance-health-report').replace(/\s+/g, '-').toLowerCase()}.pdf`);
+    await exportWithReason(`${String(lead.company || 'compliance-health-report').replace(/\s+/g, '-').toLowerCase()}.pdf`, () => doc.save(`${String(lead.company || 'compliance-health-report').replace(/\s+/g, '-').toLowerCase()}.pdf`));
   }
 
   async function handleEvidenceUpload(type, event, observationIndex = null, detailField = 'keyObservationDetails') {
@@ -3876,7 +3877,7 @@ function LeadDirectoryView({ leads, pagination, summary, staff, currentUser, loa
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Leads');
     const suffix = selectedMetric?.label || statusFilter || 'All Leads';
-    XLSX.writeFile(workbook, `${suffix.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'leads'}.xlsx`);
+    await exportWithReason(`${suffix.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'leads'}.xlsx`, () => XLSX.writeFile(workbook, `${suffix.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'leads'}.xlsx`));
   }
 
   return (

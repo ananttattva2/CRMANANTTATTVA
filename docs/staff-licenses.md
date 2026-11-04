@@ -6,7 +6,7 @@ prefix comes from the account name; three cryptographically random groups
 make each key unique. Super Admin takes precedence over secondary roles.
 
 The server validates the complete key, active account, current email and current
-roles. A short-lived, account-bound license session permits password and OTP
+roles. An account-bound license verification permits password and OTP
 verification; it cannot be used as a signed-in bearer token. The UI shows one
 login type and the account's registered email. Normal authorization still
 checks database roles on every authenticated request.
@@ -37,7 +37,7 @@ exits nonzero for pending/failed work. Never print or export personal keys.
 
 ## Automatic renewal after 180 days
 
-Each key has `issuedAt` and `expiresAt`, separated by exactly 180 � 24 hours.
+Each key has `issuedAt` and `expiresAt`, separated by exactly 180 × 24 hours.
 Existing keys are migrated from their original `createdAt` without changing the
 key or resending its email. The validity check also handles legacy records before
 the migration finishes, so a missing expiry field cannot bypass expiration.
@@ -56,3 +56,7 @@ multiple replacements. Failed delivery retries the same key; retries and
 subsequent deployments never move its issuance or expiration dates. Renewal
 emails include the expiration date in IST and state that the old key is invalid.
 Inactive accounts renew and receive the notice but remain unable to sign in.
+
+## Remembered verification
+
+The license gate token expires at the key’s original 180-day deadline. It is stored in localStorage on the verified browser and retained after OTP login and logout. Password and OTP are still required for subsequent logins. The server checks the current account, email, roles, key fingerprint and expiry on every login attempt; rotation or expiry invalidates remembered verification. Clearing browser storage or using another browser requires the key again.

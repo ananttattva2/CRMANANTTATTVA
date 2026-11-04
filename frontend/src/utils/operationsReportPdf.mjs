@@ -1,3 +1,4 @@
+import { exportWithReason } from './dataExport.mjs'
 // Prefer whole table rows at page boundaries, including very long reports.
 export function reportPageRanges(height, pageHeight, protectedBlocks = []) {
   const pages = []
@@ -94,7 +95,7 @@ export async function downloadOperationsReportPdf(element, onProgress = () => {}
     }
     const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
     onProgress('Saving PDF…')
-    pdf.save(`${options.filename || "Operations-Client-Report"}-${day}.pdf`)
+    await exportWithReason(`${options.filename || "Operations-Client-Report"}-${day}.pdf`, () => pdf.save(`${options.filename || "Operations-Client-Report"}-${day}.pdf`))
   } finally {
     frame.remove()
   }

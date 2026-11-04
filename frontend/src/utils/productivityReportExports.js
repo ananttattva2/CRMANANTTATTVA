@@ -1,3 +1,4 @@
+import { exportWithReason } from './dataExport.mjs'
 import { formatDisplayDate, formatDisplayDateTime } from './dateFormat'
 import { downloadSalesMisInfographicPdf } from './salesMisPdf.mjs'
 
@@ -171,7 +172,7 @@ export async function downloadProductivityPdf({ rows, summary, period, insights 
     pdf.text('Generated from AnantTattva CRM', 9, 205)
     pdf.text(`Page ${page} of ${pages}`, 288, 205, { align: 'right' })
   }
-  pdf.save(`User_Activity_Productivity_Report_${period.to}.pdf`)
+  await exportWithReason(`User_Activity_Productivity_Report_${period.to}.pdf`, () => pdf.save(`User_Activity_Productivity_Report_${period.to}.pdf`))
 }
 
 async function createMisPdf(title, subtitle, period) {
@@ -206,7 +207,7 @@ async function downloadSalesMisPdfLegacy({ rows, period }) {
   drawKpiCards(pdf, [{ label: 'Total Leads', value: totals.total }, { label: 'Open Leads', value: totals.open }, { label: 'Closed Leads', value: totals.closed }, { label: 'Close Rate', value: `${totals.total ? Math.round(totals.closed / totals.total * 100) : 0}%` }], 36)
   const body = grouped.flatMap((group) => [[group.name, 'TEAM TOTAL', `${group.members.length} users`, group.temporary, group.total, group.open, group.closed, `${group.total ? Math.round(group.closed / group.total * 100) : 0}%`], ...group.members.map((row) => ['', row.name, `${row.roleLabel || row.role || '-'} · ${row.team || '-'}`, Number(row.temporaryLeads || 0), row.totalLeads, row.openLeads, row.closedLeads, `${row.totalLeads ? Math.round(row.closedLeads / row.totalLeads * 100) : 0}%`])])
   autoTable(pdf, { startY: 55, margin: { left: 9, right: 9 }, head: leadOwnershipPdfHead(), body, theme: 'grid', headStyles: { fillColor: [7, 88, 72], fontStyle: 'bold' }, alternateRowStyles: { fillColor: [248, 250, 252] }, styles: { fontSize: 8, cellPadding: 2.5, lineColor: [203, 213, 225], lineWidth: 0.15 }, columnStyles: { 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' } }, didParseCell: (data) => { if (data.section === 'body' && data.row.raw?.[1] === 'TEAM TOTAL') { data.cell.styles.fillColor = [236, 253, 245]; data.cell.styles.fontStyle = 'bold' } } })
-  pdf.save(`Sales_MIS_Report_${period.to}.pdf`)
+  await exportWithReason(`Sales_MIS_Report_${period.to}.pdf`, () => pdf.save(`Sales_MIS_Report_${period.to}.pdf`))
 }
 
 export async function downloadSalesMisPdf(options) {
@@ -222,7 +223,7 @@ export async function downloadOperationMisPdf({ groups, period }) {
     return [[group.name, 'TEAM TOTAL', group.manager?.name || '-', group.clientMasters, group.draftClients || 0, group.submittedClients || 0, group.approvedClients || 0, group.partiallyApprovedClients || 0, group.rejectedClients || 0], ...people.map((row) => ['', row === group.manager ? 'Manager' : 'User', row.name, row.clientMasters || 0, row.draftClients || 0, row.submittedClients || 0, row.approvedClients || 0, row.partiallyApprovedClients || 0, row.rejectedClients || 0])]
   })
   autoTable(pdf, { startY: 55, margin: { left: 9, right: 9 }, head: [[{ content: '', colSpan: 6 }, { content: 'COMPLIANCE STATUS', colSpan: 3, styles: { halign: 'center', fontSize: 10 } }], ['Team', 'Level', 'Reports To', 'Total Clients', 'Draft', 'Submitted', 'Approved', 'Partially Approved', 'Reject']], body, theme: 'grid', headStyles: { fillColor: [8, 126, 151], textColor: 255, fontStyle: 'bold' }, alternateRowStyles: { fillColor: [248, 250, 252] }, styles: { fontSize: 8, cellPadding: 2.5, lineColor: [203, 213, 225], lineWidth: 0.15 }, columnStyles: { 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' } }, didParseCell: (data) => { if (data.section === 'body' && data.row.raw?.[1] === 'TEAM TOTAL') { data.cell.styles.fillColor = [236, 254, 255]; data.cell.styles.fontStyle = 'bold' } } })
-  pdf.save(`Operation_MIS_Report_${period.to}.pdf`)
+  await exportWithReason(`Operation_MIS_Report_${period.to}.pdf`, () => pdf.save(`Operation_MIS_Report_${period.to}.pdf`))
 }
 
 function managementSalesGroups(rows = []) {
@@ -277,7 +278,7 @@ export async function downloadCompleteMisPdf({ salesRows = [], operationGroups =
   autoTable(pdf, tableOptions([[{ content: '', colSpan: 7 }, { content: 'COMPLIANCE STATUS', colSpan: 3, styles: { halign: 'center', fontSize: 10 } }], ['Team', 'User Name', 'Level', 'Reports To', 'Total Clients', 'Draft', 'Submitted', 'Approved', 'Partially Approved', 'Reject']], operationBody, 55, [8, 126, 151]))
   const pages = pdf.internal.getNumberOfPages()
   for (let page = 1; page <= pages; page += 1) { pdf.setPage(page); pdf.setDrawColor(226, 232, 240); pdf.line(9, 200, 288, 200); pdf.setTextColor(100, 116, 139); pdf.setFontSize(7); pdf.text('AnantTattva CRM · Confidential Management Report', 9, 205); pdf.text(`Page ${page} of ${pages}`, 288, 205, { align: 'right' }) }
-  pdf.save(`AnantTattva_Complete_MIS_${period.from}_to_${period.to}.pdf`)
+  await exportWithReason(`AnantTattva_Complete_MIS_${period.from}_to_${period.to}.pdf`, () => pdf.save(`AnantTattva_Complete_MIS_${period.from}_to_${period.to}.pdf`))
 }
 
 export async function exportProductivityExcel({ rows, summary, period }) {
@@ -306,7 +307,7 @@ export async function exportProductivityExcel({ rows, summary, period }) {
   reportSheet['!cols'] = [7, 24, 32, 18, 18, 12, 13, 15, 15, 11, 14, 23, 13, 16, 18, 18, 24, 24].map((wch) => ({ wch }))
   XLSX.utils.book_append_sheet(workbook, summarySheet, 'Report Summary')
   XLSX.utils.book_append_sheet(workbook, reportSheet, 'User Activity')
-  XLSX.writeFile(workbook, `User_Activity_Productivity_Report_${period.to}.xlsx`)
+  await exportWithReason(`User_Activity_Productivity_Report_${period.to}.xlsx`, () => XLSX.writeFile(workbook, `User_Activity_Productivity_Report_${period.to}.xlsx`))
 }
 
 const MIS_EXCEL_COLORS = {
@@ -455,7 +456,7 @@ export async function exportCompleteMisExcel({ salesRows = [], operationGroups =
   link.href = url
   link.download = `AnantTattva_Complete_MIS_${period.from}_to_${period.to}.xlsx`
   document.body.appendChild(link)
-  link.click()
+  await exportWithReason(link.download, () => link.click())
   link.remove()
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
@@ -514,7 +515,7 @@ export async function downloadSuperAdminGuidePdf() {
   ], 38)
   const pages = pdf.internal.getNumberOfPages()
   for (let page = 1; page <= pages; page += 1) { pdf.setPage(page); pdf.setFontSize(7); pdf.setTextColor(100, 116, 139); pdf.text('AnantTattva CRM - Super Admin Dashboard Guide', 10, 289); pdf.text(`Page ${page} of ${pages}`, 200, 289, { align: 'right' }) }
-  pdf.save('AnantTattva_Super_Admin_Dashboard_Guide.pdf')
+  await exportWithReason('AnantTattva_Super_Admin_Dashboard_Guide.pdf', () => pdf.save('AnantTattva_Super_Admin_Dashboard_Guide.pdf'))
 }
 
 export { REPORT_TITLE }

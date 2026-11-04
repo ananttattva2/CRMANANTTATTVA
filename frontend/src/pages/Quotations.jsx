@@ -16,7 +16,7 @@ import { API_ENDPOINTS } from '../services/apiEndpoints';
 import { inferPiboParent, normalizePiboCategories } from '../constants/piboCategories';
 import { adminRoles, hasAnyRole } from '../constants/dashboard';
 import { QUOTATION_SCOPE_PRESET_OPTIONS, QUOTATION_SCOPE_PRESETS } from '../constants/quotationScopePresets';
-import { createQuotationPdf } from '../utils/quotationPdf';
+import QuotationEmailDialog from '../components/QuotationEmailDialog';
 import { addServiceDays, datesFromAnnualYears, normalizeDateInputValue, normalizePeriodUnit, periodDisplay, renewalDateFrom, serviceEndDateFrom } from '../utils/servicePeriod';
 
 const ANANT_LOGO_SOURCE_URL = '/anant-tattva-logo-chroma.png';
@@ -2208,7 +2208,7 @@ export default function Quotations() {
         localStorage.removeItem('crm.pendingApproval.cache.v7');
       } catch { /* Storage availability does not affect approval. */ }
       await loadPage();
-      setSuccessModal({ title: 'Quotation approved', message: response.data?.message || 'Quotation PDF download is now available.' });
+      setSuccessModal({ title: 'Quotation approved', message: response.data?.message || 'Quotation can now be emailed to the client. Admin and Super Admin can also download the PDF.' });
     } catch (err) {
       setError(err?.response?.data?.error || 'Unable to approve quotation.');
     } finally {
@@ -2489,7 +2489,7 @@ export default function Quotations() {
           <p className="pending-decision-eyebrow">Quotation Decision</p>
           <h2>{previewDecision.status === 'APPROVED' ? 'Approve quotation' : 'Reject quotation'}</h2>
           <strong className="pending-decision-client">{previewDecision.quotation.companyName || previewDecision.quotation.leadDetails?.companyName || '-'}</strong>
-          <p className="pending-decision-help">{previewDecision.status === 'APPROVED' ? (isSuperAdminQuotationUser ? 'Super Admin approval completes the quotation workflow directly.' : 'Admin approval unlocks the PDF and sends the quotation for final Super Admin approval.') : 'The rejection reason will be saved in the quotation audit trail.'}</p>
+          <p className="pending-decision-help">{previewDecision.status === 'APPROVED' ? (isSuperAdminQuotationUser ? 'Super Admin approval completes the quotation workflow directly.' : 'Admin approval enables emailing to the client and sends the quotation for final Super Admin approval.') : 'The rejection reason will be saved in the quotation audit trail.'}</p>
           {previewDecision.error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{previewDecision.error}</div>}
           <label className="pending-decision-field"><span>{previewDecision.status === 'APPROVED' ? 'Approval note' : 'Rejection reason'} {previewDecision.status === 'REJECTED' && <b>*</b>}</span><textarea autoFocus rows={5} required={previewDecision.status === 'REJECTED'} maxLength={500} value={previewDecision.remarks} onChange={(event) => setPreviewDecision((current) => ({ ...current, remarks: event.target.value }))} placeholder={previewDecision.status === 'APPROVED' ? 'Add an optional approval note...' : 'Explain why this quotation is being rejected...'} /></label>
           <div className="pending-decision-actions"><button type="button" disabled={previewDecisionSaving} onClick={() => setPreviewDecision(null)}>Cancel</button><button type="submit" disabled={previewDecisionSaving || (previewDecision.status === 'REJECTED' && !previewDecision.remarks.trim())}>{previewDecisionSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : previewDecision.status === 'APPROVED' ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}Confirm {previewDecision.status === 'APPROVED' ? 'Approval' : 'Rejection'}</button></div>
@@ -3280,13 +3280,10 @@ function QuotationPreviewDrawer({ quotation, currentUser, onClose, onBackToPendi
   const displayRows = combined ? combinedPricingRows(quotation, items) : items.map((item, index) => ({ item, index }));
   const hasReturnYearItems = items.some((item) => isEprConsultancyItem(item) || String(item.registrationYear || '').trim());
   const normalizedRole = String(currentUser?.role || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
-  const isAdminUser = normalizedRole === 'admin' || normalizedRole === 'superadmin';
-  const approvalStatus = String(quotation.approvalStatus || quotation.adminApproval || quotation.status || '').trim().toLowerCase();
-  const isQuotationApproved = approvalStatus === 'approved';
-  const isAdminApproved = approvalStatus === 'admin_approved'
-    || String(quotation.managementApproval?.adminApprovalStatus || '').toUpperCase() === 'APPROVED'
-    || (String(quotation.approvalDecision?.approvalKind || '').toUpperCase() === 'ADMIN' && String(quotation.approvalDecision?.status || '').toUpperCase() === 'APPROVED');
-  const canDownloadPdf = isAdminUser || isQuotationApproved || isAdminApproved;
+  const isAdminUser = [normalizedRole, ...(currentUser?.roles || [])].some(role => ['admin', 'superadmin'].includes(String(role).toLowerCase()));
+  const canEmailPdf = ['admin_approved', 'approved'].includes(String(quotation.status).toLowerCase());
+  const canDownloadPdf = isAdminUser && canEmailPdf;
+  const [emailOpen, setEmailOpen] = useState(false);
   const date = quotation.createdAt ? new Date(quotation.createdAt).toLocaleDateString('en-GB').replace(/\//g, '-') : new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
   const scopeItems = (quotation.scopeOfWork || []).filter(Boolean);
   const scopeItemsPerPage = 22;
@@ -3339,13 +3336,13 @@ function QuotationPreviewDrawer({ quotation, currentUser, onClose, onBackToPendi
     setDownloadingPdf(true);
     setDownloadError('');
     try {
-      const pdf = await createQuotationPdf(buildQuotationPrintHtml(quotation), quotationLogoUrl);
-      const clientFileName = String(details.companyName || quotation.quotationNumber || 'quotation')
-        .trim()
-        .replace(/[^a-z0-9]+/gi, '-')
-        .replace(/^-+|-+$/g, '') || 'quotation';
-      const filename = `${clientFileName}.pdf`;
-      pdf.save(filename);
+      const { data } = await api.get(`/quotations/${quotation._id}/pdf`, { responseType: 'blob' });
+      const url = URL.createObjectURL(data);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${String(quotation.quotationNumber || 'quotation').replace(/[^a-z0-9-]/gi, '-')}.pdf`;
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
     } catch (error) {
       console.error('Quotation PDF download failed', error);
       setDownloadError('PDF download failed. Please retry.');
@@ -3373,12 +3370,14 @@ function QuotationPreviewDrawer({ quotation, currentUser, onClose, onBackToPendi
             {onApprove && <button type="button" onClick={onApprove} className="btn-lift inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-600 px-5 font-black text-white shadow-sm"><Check className="h-4 w-4" />Approve</button>}
             {onReject && <button type="button" onClick={onReject} className="btn-lift inline-flex min-h-10 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-5 font-black text-red-700"><X className="h-4 w-4" />Reject</button>}
             <button type="button" onClick={onClose} className="btn-lift min-h-10 rounded-lg border border-slate-200 bg-white px-5 font-black text-slate-700">Close</button>
-            <button type="button" disabled={downloadingPdf || !canDownloadPdf} title={!canDownloadPdf ? 'Admin approval is required before downloading this quotation.' : 'Download quotation PDF'} onClick={handleDownloadPdf} className="btn-lift inline-flex min-h-10 items-center gap-2 rounded-lg bg-blue-600 px-5 font-black text-white disabled:cursor-not-allowed disabled:opacity-60"><Download className={`h-4 w-4 ${downloadingPdf ? 'animate-bounce' : ''}`} />{downloadingPdf ? 'Generating PDF...' : canDownloadPdf ? 'Download PDF' : 'Approval Required'}</button>
+            <button type="button" disabled={!canEmailPdf} onClick={() => setEmailOpen(true)} className="btn-lift inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-700 px-5 font-black text-white disabled:opacity-60">{canEmailPdf ? 'Email to Client' : 'Approval Required'}</button>
+            {isAdminUser && <button type="button" disabled={downloadingPdf || !canDownloadPdf} onClick={handleDownloadPdf} className="btn-lift inline-flex min-h-10 items-center gap-2 rounded-lg bg-blue-600 px-5 font-black text-white disabled:opacity-60"><Download className="h-4 w-4" />{downloadingPdf ? 'Generating PDF…' : 'Download PDF'}</button>}
+            {emailOpen && <QuotationEmailDialog quotation={quotation} onClose={() => setEmailOpen(false)} />}
           </div>
         </div>
         <div className="hidden-scrollbar flex-1 overflow-auto bg-[radial-gradient(circle_at_top_left,#fff7ed_0,#f8fafc_36%,#eef2f7_100%)] p-5 sm:p-8">
           {downloadError && <div className="mx-auto mb-3 max-w-[760px] rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-black text-red-600">{downloadError}</div>}
-          {!canDownloadPdf && <div className="mx-auto mb-3 max-w-[760px] rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">PDF download will be available after Admin approval. Final Super Admin approval completes the full quotation workflow.</div>}
+          {!canEmailPdf && <div className="mx-auto mb-3 max-w-[760px] rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">Email to Client becomes available after Admin approval. Admin and Super Admin can also download the approved PDF.</div>}
           <div ref={documentRef} data-quotation-pdf className="quotation-document mx-auto w-[760px] max-w-none uppercase">
             <section className="min-h-[1020px] rounded-sm border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/15">
               <div className="flex items-center justify-between pb-2">

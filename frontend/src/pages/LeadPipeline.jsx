@@ -1,3 +1,4 @@
+import { exportWithReason } from '../utils/dataExport.mjs'
 import TrafficSources from '../components/leads/TrafficSources';
 import { isExistingClientTrafficSource, trafficSourceHierarchy, trafficSourceKey } from '../utils/trafficSources.mjs';
 import { currentPipelineRows, uniquePipelineRows, pipelinePeriodRange, previousPipelinePeriodRange, inPipelinePeriod } from '../utils/leadPipeline.mjs';
@@ -207,7 +208,7 @@ function SalesDashboardRepTable({ reps, comparisonLabel, range, previousRange, o
   const first = (safePage - 1) * pageSize;
   const visible = reps.slice(first, first + pageSize);
   useEffect(() => { setPage(1); }, [reps, pageSize]);
-  function exportReps() {
+  async function exportReps() {
     const sheet = XLSX.utils.json_to_sheet(reps.map((rep) => ({
       'Sales Representative': rep.owner, 'Total Leads': rep.totalLeads, 'Hot Open': rep.hotOpen, 'Hot Closed': rep.hotClosed, 'Cold Open': rep.coldOpen,
       'Expected Revenue (INR)': rep.expectedRevenuePaise / 100, 'PO Value (INR)': rep.poValuePaise / 100,
@@ -216,7 +217,7 @@ function SalesDashboardRepTable({ reps, comparisonLabel, range, previousRange, o
         'Previous Expected Revenue (INR)': rep.previousExpectedRevenuePaise / 100, 'Previous PO Value (INR)': rep.previousPoValuePaise / 100 } : {}), 'Major Service Interest': rep.serviceInterests.map((item) => `${item.label} (${item.count})`).join(', ')
     })));
     sheet['!cols'] = (XLSX.utils.sheet_to_json(sheet, { header: 1 })[0] || []).map(label => ({ wch: label === 'Major Service Interest' ? 55 : label === 'Sales Representative' ? 25 : Math.max(14, Math.min(30, String(label).length + 2)) }));
-    const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, 'Sales Reps'); XLSX.writeFile(book, 'sales-rep-performance.xlsx');
+    const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, 'Sales Reps'); await exportWithReason('sales-rep-performance.xlsx', () => XLSX.writeFile(book, 'sales-rep-performance.xlsx'));
   }
   return <section className="sales-dashboard-reps" aria-labelledby="sales-performance-heading">
     <header><div><span><Users/></span><div><h2 id="sales-performance-heading">Sales Rep Performance</h2><p>Lead summary, conversion and revenue by sales representative.</p></div></div><button type="button" onClick={exportReps} disabled={!reps.length}><Download/>Export</button></header>
@@ -377,7 +378,7 @@ export default function LeadPipeline() {
   function open(kind = '', state = '', selectedOwner = '') { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ kind, state, owner: selectedOwner }); }
   function openSource(source) { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ sources: source.keys || [source.key], sourceLabel: source.label }); }
   function openOwnerSource(selectedOwner, source) { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ owner: selectedOwner, sources: source.keys || [source.key], sourceLabel: source.label }); }
-  function exportRows(source, name) {
+  async function exportRows(source, name) {
     const data = source.map(r => ({
       'Lead ID': r.code, Company: r.company, 'Client Communication Mode': r.communicationMode || 'Other / Not specified', Status: r.converted ? 'Closed — Converted to Hot' : r.state, Owner: r.owner,
       'PO Amount (INR)': (r.poAmountPaise || 0) / 100, 'Estimated Revenue (INR)': r.revenuePaise / 100
@@ -386,7 +387,7 @@ export default function LeadPipeline() {
     const sheet = XLSX.utils.json_to_sheet(data);
     sheet['!cols'] = [{ wch: 20 }, { wch: 45 }, { wch: 28 }, { wch: 28 }, { wch: 25 }, { wch: 24 }, { wch: 28 }];
     XLSX.utils.book_append_sheet(book, sheet, 'Lead Pipeline');
-    XLSX.writeFile(book, `${name}.xlsx`);
+    await exportWithReason(`${name}.xlsx`, () => XLSX.writeFile(book, `${name}.xlsx`));
   }
   async function closeCold() {
     if (!closeRow || !remarks.trim() || closing) return;

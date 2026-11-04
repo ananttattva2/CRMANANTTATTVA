@@ -207,6 +207,7 @@ app.get('/api/cache/revision', require('./middleware/auth').requireAuth, async (
 app.use('/api/leads', leadRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/quotations', quotationRoutes);
+app.use('/api/data-exports', require('./routes/dataExports'));
 app.use('/api/proforma-invoices', proformaInvoiceRoutes);
 app.use('/api/annual-returns', annualReturnRoutes);
 app.use('/api/notifications', notificationRoutes);

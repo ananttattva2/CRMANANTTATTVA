@@ -1,3 +1,4 @@
+import { exportWithReason } from '../../utils/dataExport.mjs'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, useReducedMotion } from 'framer-motion'
@@ -43,7 +44,7 @@ export default function OverallClientPopup({ section, type, onClose }) {
       worksheet['!cols'] = Object.keys(rows[0] || {}).map((key) => ({ wch: key === 'Client' ? 38 : key === 'Applicant / Sub-applicant' ? 32 : 24 }))
       const workbook = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(workbook, worksheet, section.year)
-      XLSX.writeFile(workbook, `Closed-PO-clients-${section.year}${type ? `-${type.replace(/[^a-z0-9]/gi, '-')}` : ''}.xlsx`)
+      await exportWithReason(`Closed-PO-clients-${section.year}${type ? `-${type.replace(/[^a-z0-9]/gi, '-')}` : ''}.xlsx`, () => XLSX.writeFile(workbook, `Closed-PO-clients-${section.year}${type ? `-${type.replace(/[^a-z0-9]/gi, '-')}` : ''}.xlsx`))
     } catch { setError('Export could not complete. Please retry.') }
     finally { setExporting(false) }
   }

@@ -1,3 +1,4 @@
+import { exportWithReason } from './dataExport.mjs'
 export const UPLOAD_TRACKER_STAGES = ['Data Explained', 'Data Format Sent', 'Data Received from Client', 'Ready to Upload', 'Client Approval Received', 'Upload Complete', 'Manager Review', 'Compliance Review']
 const modules = ['purchase', 'sales']
 const stateLabel = (state, index) => state === 'complete' ? index >= 6 ? 'Approved' : 'Completed' : state === 'progress' ? 'In progress' : 'Pending'
@@ -59,7 +60,7 @@ export async function downloadUploadTrackerExcel(users, year, scope) {
   const workbook = await createUploadTrackerWorkbook(users, year, scope)
   const url = URL.createObjectURL(new Blob([await workbook.xlsx.writeBuffer()], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
   const link = document.createElement('a')
-  link.href = url; link.download = filename(scope, year, 'xlsx'); document.body.appendChild(link); link.click(); link.remove()
+  link.href = url; link.download = filename(scope, year, 'xlsx'); document.body.appendChild(link); await exportWithReason(link.download, () => link.click()); link.remove()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 export async function createUploadTrackerPdf(users, year, { scope = 'All users', clientMode = false } = {}) {
@@ -100,5 +101,5 @@ export async function createUploadTrackerPdf(users, year, { scope = 'All users',
 }
 export async function downloadUploadTrackerPdf(users, year, options) {
   const doc = await createUploadTrackerPdf(users, year, options)
-  doc.save(filename(options?.scope, year, 'pdf'))
+  await exportWithReason(filename(options?.scope, year, 'pdf'), () => doc.save(filename(options?.scope, year, 'pdf')))
 }

@@ -1,3 +1,4 @@
+import { exportWithReason } from '../../utils/dataExport.mjs'
 import './poMonthlyDashboard.css'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { BarChart3, CalendarDays, Download, RefreshCw, UserRound, X } from 'lucide-react'
@@ -22,7 +23,7 @@ function Details({ selection, onClose }) {
       const workbook = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(workbook, worksheet, 'PO Details')
       const name = selection.title.replace(/[^a-z0-9-]+/gi, '-').slice(0, 90)
-      XLSX.writeFile(workbook, `PO-details-${name}-${status}.xlsx`)
+      await exportWithReason(`PO-details-${name}-${status}.xlsx`, () => XLSX.writeFile(workbook, `PO-details-${name}-${status}.xlsx`))
     } catch { setExportError('Excel export could not complete. Please retry.') }
     finally { setExporting(false) }
   }
@@ -73,11 +74,11 @@ export default function POMonthlyDashboard({ refreshToken }) {
     if (!rows.length) return <span className={total ? 'po-zero-total' : 'po-empty-cell'}>{total ? value : '—'}</span>
     return <button type="button" onClick={() => open(title, rows)} aria-label={`${title}: ${rows.length} POs, ${money(poAmount(rows))}`} className={`po-value-button ${metric === 'amount' ? 'po-amount' : ''}`}>{value}</button>
   }
-  function exportCSV() {
+  async function exportCSV() {
     const csvRows = [['Lead Owner', ...columns.flatMap(m => [`${m} PO Count`, `${m} amount INR`]), 'Total PO Count', 'Total amount INR'], ...matrix.rows.map(r => [r.name, ...r.cells.flatMap(m => [m.length, poAmount(m)]), r.records.length, poAmount(r.records)]), ['Grand total', ...columns.flatMap((_, i) => { const rows = matrix.rows.flatMap(r => r.cells[i]); return [rows.length, poAmount(rows)] }), matrix.records.length, poAmount(matrix.records)]]
     const csv = csvRows.map(r => r.map(v => `"${String(v).replace(/^[=+@-]/, "'$&").replaceAll('"', '""')}"`).join(',')).join('\r\n')
     const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }))
-    const anchor = document.createElement('a'); anchor.href = url; anchor.download = `PO-dashboard-${view}-${year}.csv`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = `PO-dashboard-${view}-${year}.csv`; await exportWithReason(anchor.download, () => anchor.click()); setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
   if (!data) return <section id="po-monthly-panel" role="tabpanel" aria-labelledby="dashboard-tab-po" className="rounded-2xl border bg-white p-8"><h2 className="text-xl font-bold">PO Dashboard</h2>{error ? <div role="alert" className="mt-4 text-rose-700"><p>{error}</p><button type="button" disabled={loading} onClick={() => setReload(v => v + 1)} className="mt-4 rounded-xl bg-teal-700 px-5 py-3 text-white disabled:opacity-50">{loading ? 'Retrying…' : 'Retry loading PO data'}</button></div> : <p role="status" className="mt-4 text-teal-700">Loading PO data…</p>}</section>
   return <section id="po-monthly-panel" role="tabpanel" aria-labelledby="dashboard-tab-po" className="space-y-5">

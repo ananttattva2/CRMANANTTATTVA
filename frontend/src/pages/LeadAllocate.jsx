@@ -197,7 +197,7 @@ export default function LeadAllocate() {
 
   const logout = async () => {
     await api.post(API_ENDPOINTS.auth.logout, {}).catch(() => {})
-    localStorage.clear()
+    ['token', 'user', 'login_email', 'login_mode', 'dev_otp'].forEach(key => localStorage.removeItem(key))
     navigate('/')
   }
 

@@ -1,3 +1,4 @@
+import { exportWithReason } from '../../utils/dataExport.mjs'
 import * as XLSX from 'xlsx';
 
 const LEGACY_BASE_HEADERS = ['Financial Year', 'Name of Entity', 'Registration Type', 'GSTIN', 'Invoice Number', 'Invoice Date', 'Category of Plastic', 'Plastic Material Type', 'Quantity (TPA)', 'GST Paid', 'State', 'Remarks'];
@@ -78,7 +79,7 @@ export function downloadDataTemplate(source, financialYear, moduleName = 'purcha
   XLSX.writeFile(workbook, `${moduleName}-${source}-template-${financialYear}.xlsx`);
 }
 
-export function downloadCsv(filename, rows) {
+export async function downloadCsv(filename, rows) {
   if (!rows?.length) return;
   const worksheet = XLSX.utils.json_to_sheet(rows);
   const csv = XLSX.utils.sheet_to_csv(worksheet);
@@ -86,7 +87,7 @@ export function downloadCsv(filename, rows) {
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
   link.download = filename;
-  link.click();
+  await exportWithReason(link.download, () => link.click());
   URL.revokeObjectURL(link.href);
 }
 
