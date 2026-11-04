@@ -70,13 +70,16 @@ test('assigned multi-role users share Client Master access for Purchase, Sales a
   }
 });
 
-test('Purchase and Sales proof drop zone accepts browser files and Outlook DataTransfer items', () => {
+test('Purchase and Sales proof drop zone uses the shared Outlook reader and native file input', () => {
   const dropzone = read('../../frontend/src/features/clientMaster/PurchaseProofDropzone.jsx');
-  assert.match(dropzone, /dataTransfer\?\.files/);
-  assert.match(dropzone, /dataTransfer\?\.items/);
-  assert.match(dropzone, /item\.getAsFile/);
-  assert.match(dropzone, /acceptFiles\(droppedFiles\(event\.dataTransfer\)\)/);
-  assert.match(dropzone, /No file was received from the drag source/);
+  const reader = read('../../frontend/src/features/clientMaster/droppedProofFiles.mjs');
+  assert.match(reader, /dataTransfer\?\.files/);
+  assert.match(reader, /dataTransfer\?\.items/);
+  assert.match(reader, /getAsFileSystemHandle/);
+  assert.match(reader, /webkitGetAsEntry/);
+  assert.match(dropzone, /droppedProofFiles\(event.dataTransfer\)/);
+  assert.match(dropzone, /handleDrop\(event, true\)/);
+  assert.match(dropzone, /Choose saved email \/ file/);
 });
 
 test('Sales EML and Outlook MSG proofs use the same decoded mail viewer as Purchase', () => {
