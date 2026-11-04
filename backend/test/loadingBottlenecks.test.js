@@ -66,7 +66,7 @@ test('lead dashboard snapshot retains access/exclusion filters and every record 
   };
   vm.createContext(context); vm.runInContext(source.slice(start, end), context);
   await context.exports.listLeads(context.req, context.res);
-  assert.deepEqual(Array.from(matched.$and), [scope, exclusion]);
+  assert.deepEqual(JSON.parse(JSON.stringify(matched.$and)), [scope, { 'noOwner.active': { $ne: true } }, exclusion]);
   assert.equal(skip, 0); assert.equal(limit, 0);
   assert.equal(body.leads.length, 251); assert.equal(body.pagination.total, 251); assert.equal(body.pagination.hasNextPage, false);
 });

@@ -823,6 +823,9 @@ exports.emailQuotation = async (req, res, next) => {
     const { isApproved, clientEmailContent, createApprovedQuotationPdf, quotationFilename } = require('../services/quotationDelivery');
     const { sendMail } = require('../utils/mailer');
     const email = String(req.body.email || '').trim().toLowerCase();
+    const ccInput = Array.isArray(req.body.cc) ? req.body.cc.join(',') : String(req.body.cc || '');
+    const cc = [...new Set(ccInput.split(/[,;\n]/).map(value => value.trim().toLowerCase()).filter(Boolean))].filter(value => value !== email);
+    if (ccInput.length > 3000 || cc.length > 10 || cc.some(value => value.length > 254 || !/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(value))) return res.status(400).json({ error: 'Enter up to 10 valid CC email addresses separated by commas or semicolons.' });
     const subject = String(req.body.subject || '').trim();
     const body = String(req.body.body || '').trim();
     if (!/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(email) || email.length > 254 || !subject || subject.length > 200 || /[\r\n]/.test(subject) || !body || body.length > 10000) return res.status(400).json({ error: 'Enter a valid client email, subject (up to 200 characters), and message (up to 10000 characters).' });
@@ -831,8 +834,8 @@ exports.emailQuotation = async (req, res, next) => {
     if (!isApproved(quotation)) return res.status(403).json({ error: 'Admin approval is required before emailing this quotation.' });
     const pdf = await createApprovedQuotationPdf(quotation);
     const content = clientEmailContent(subject, body);
-    await sendMail(email, subject, content.html, { branded: false, attachments: [{ filename: quotationFilename(quotation), content: pdf, contentType: 'application/pdf' }, content.logo] });
-    await Quotation.updateOne({ _id: quotation._id }, { $push: { emailHistory: { to: email, subject, sentBy: req.user._id, sentAt: new Date() } } });
+    await sendMail(email, subject, content.html, { branded: false, cc, attachments: [{ filename: quotationFilename(quotation), content: pdf, contentType: 'application/pdf' }, content.logo] });
+    await Quotation.updateOne({ _id: quotation._id }, { $push: { emailHistory: { to: email, cc, subject, sentBy: req.user._id, sentAt: new Date() } } });
     return res.json({ ok: true, message: 'Quotation email accepted for delivery with the PDF attachment.' });
   } catch (error) { next(error); }
 };

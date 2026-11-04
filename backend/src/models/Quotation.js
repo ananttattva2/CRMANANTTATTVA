@@ -92,7 +92,7 @@ const QuotationSchema = new mongoose.Schema({
   leadGeneratedBy: { type: String, trim: true },
   assignedUserName: { type: String, trim: true },
   revisionHistory: { type: Array, default: [] },
-  emailHistory: { type: [{ to: String, subject: String, sentBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, sentAt: Date }], default: [] },
+  emailHistory: { type: [{ to: String, cc: [String], subject: String, sentBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, sentAt: Date }], default: [] },
   managementApproval: { type: mongoose.Schema.Types.Mixed, default: {} },
   approvalDecision: { type: mongoose.Schema.Types.Mixed, default: {} },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }

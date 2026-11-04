@@ -39,9 +39,9 @@ const { ADMIN_ROLES } = require('../constants/roles');
 const { reassignPurchaseOrderAssignments, poProofManifest } = require('../services/purchaseOrderReassignment');
 const { enrichPoRowsWithLatestQuotation } = require('../services/poQuotationResolver');
 
-async function leadAccessFilter(user) {
+async function leadAccessFilter(user, { includeShared = false } = {}) {
   const scope = await getVisibleUserScope(user);
-  return ownerFilter(scope, 'createdBy', 'assignedTo', [
+  const owned = ownerFilter(scope, 'createdBy', 'assignedTo', [
     'createdByCrmUserId',
     'createdByName',
     'createdByEmail',
@@ -66,6 +66,7 @@ async function leadAccessFilter(user) {
     'assignments.assignedTo',
     'assignments.assignedStaff'
   ]);
+  return includeShared && Object.keys(owned).length ? { $or: [owned, { 'noOwner.active': true }] } : owned;
 }
 
 exports.leadAccessFilter = leadAccessFilter;
@@ -1269,7 +1270,7 @@ exports.searchCompanies = async (req, res) => {
 exports.listLeads = async (req, res) => {
   const startedAt = process.hrtime.bigint();
   const accessStartedAt = process.hrtime.bigint();
-  const accessFilter = await leadAccessFilter(req.user);
+  const accessFilter = await leadAccessFilter(req.user, { includeShared: true });
   const accessMs = Number(process.hrtime.bigint() - accessStartedAt) / 1e6;
   const paginated = req.query.page !== undefined || req.query.limit !== undefined || req.query.paginated === 'true';
 
@@ -1311,7 +1312,7 @@ exports.listLeads = async (req, res) => {
     ? String(req.query.sortBy)
     : 'leadCode';
   const sortOrder = String(req.query.sortOrder).toLowerCase() === 'desc' ? -1 : 1;
-  const filters = [accessFilter];
+  const filters = [accessFilter, { 'noOwner.active': workspace === 'no-owner' ? true : { $ne: true } }];
   if (req.query.dashboard === 'true') {
     const testLeadReferences = await getAdminCreatedLeadReferences();
     filters.push(dashboardLeadExclusionFilter(testLeadReferences));
@@ -1365,7 +1366,7 @@ exports.listLeads = async (req, res) => {
     'secondaryCreatedByEmail', 'secondaryCreatedByCrmUserId', 'generatedForUser', 'generatedForName',
     'generatedForEmail', 'createdOnBehalfOfUser', 'createdOnBehalfOfName', 'closedBy',
     'closedByText', 'closedByEmail', 'closedOnBehalfOfName', 'closedAt', 'assignReachedAt', 'assignments',
-    'serviceSelections', 'createdAt', 'updatedAt',
+    'serviceSelections', 'createdAt', 'updatedAt', 'noOwner',
     ...(req.query.dashboard === 'true' ? [
       'industryType', 'applicantType', 'subApplicantType', 'servicesOffered', 'referredBy',
       'source', 'leadDate', 'nextFollowUpDate', 'nextFollowUpTime', 'followUpRemarks',
@@ -1484,7 +1485,7 @@ exports.listLeads = async (req, res) => {
 exports.getLead = async (req, res) => {
   const leadId = String(req.params.id || '').trim();
   if (!mongoose.Types.ObjectId.isValid(leadId)) return res.status(400).json({ error: 'Invalid Lead ID' });
-  const lead = await Lead.findOne(combineAccessFilters({ _id: leadId }, await leadAccessFilter(req.user)))
+  const lead = await Lead.findOne(combineAccessFilters({ _id: leadId }, await leadAccessFilter(req.user, { includeShared: true })))
     .populate('assignedTo', 'name email avatarUrl role')
     .populate('closedBy', 'name email avatarUrl role')
     .populate('createdBy', 'name email')
@@ -1535,6 +1536,7 @@ exports.allocateLead = async (req, res) => {
     const lead = await Lead.findById(req.params.id);
     if (!lead) return res.status(404).json({ error: 'Lead not found.' });
     const previousOwner = lead.generatedForName || lead.createdByName || lead.createdByEmail || lead.importedCreatedBy || 'Unassigned';
+    if (lead.noOwner?.active) { lead.noOwner.active = false; lead.noOwner.reassignedAt = new Date(); }
     lead.generatedForUser = target._id;
     lead.generatedForName = target.name || target.email;
     lead.generatedForEmail = target.email || '';
@@ -1626,6 +1628,7 @@ exports.updateLeadCreator = async (req, res) => {
     if (String(previous.userId || '') !== String(target._id)) {
       lead.creatorChangeHistory.push({ slot: 'primary', fromUserId: previous.userId, fromCrmUserId: previous.crmUserId, fromName: previous.name, fromEmail: previous.email, toUserId: target._id, toCrmUserId: target.crmUserId || String(target._id), toName: target.name || target.email, toEmail: target.email || '', changedBy: req.user?._id, changedByName: req.user?.name || req.user?.email || 'CRM Administrator', changedAt: new Date() });
     }
+    if (lead.noOwner?.active) { lead.noOwner.active = false; lead.noOwner.reassignedAt = new Date(); }
     lead.createdBy = target._id;
     lead.createdByCrmUserId = target.crmUserId || String(target._id);
     lead.createdByName = target.name || target.email;
@@ -1648,6 +1651,7 @@ exports.updateLead = async (req, res) => {
       ? await Lead.findById(req.params.id)
       : await Lead.findOne(combineAccessFilters({ _id: req.params.id }, await leadAccessFilter(req.user)));
     if (!lead) return res.status(404).json({ error: 'Lead not found or not accessible' });
+    if (lead.noOwner?.active && !userHasAnyRole(req.user, ADMIN_ROLES)) return res.status(403).json({ error: 'Ask an administrator to allocate this shared lead before editing it.' });
     const beforeLead = lead.toObject();
 
     if (req.body?.company) {
@@ -2151,7 +2155,7 @@ exports.getLeadHistory = async (req, res) => {
   const lookup = [{ sourceLeadId: req.params.id }];
   if (req.query.leadCode) lookup.push({ leadCode: String(req.query.leadCode).trim() });
   if (mongoose.isValidObjectId(req.params.id)) lookup.push({ _id: req.params.id });
-  const storedLead = await Lead.findOne(combineAccessFilters({ $or: lookup }, await leadAccessFilter(req.user))).populate('createdBy', 'name email').lean();
+  const storedLead = await Lead.findOne(combineAccessFilters({ $or: lookup }, await leadAccessFilter(req.user, { includeShared: true }))).populate('createdBy', 'name email').lean();
   if (!storedLead) return res.status(404).json({ error: 'Lead not found or not accessible' });
   const lead = storedLead;
   const ids = [lead._id, lead.sourceLeadId, req.params.id].filter(Boolean).map(String);

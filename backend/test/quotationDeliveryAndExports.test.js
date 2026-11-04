@@ -32,7 +32,7 @@ test('approved client email uses server PDF, entered recipient, escaped message 
   t.mock.method(Quotation, 'updateOne', async (_filter, update) => { history = update.$push.emailHistory; });
   t.mock.method(mailer, 'sendMail', async (...args) => { message = args; });
   const res = response();
-  await controller.emailQuotation({ user: actor, params: { id: quote._id }, body: { email: 'Client@example.test', subject: 'Your quotation', body: 'Hello <script>alert(1)</script>\nPlease review.' } }, res, error => { throw error; });
+  await controller.emailQuotation({ user: actor, params: { id: quote._id }, body: { email: 'Client@example.test', cc: 'Finance@example.test; manager@example.test, finance@example.test, client@example.test', subject: 'Your quotation', body: 'Hello <script>alert(1)</script>\nPlease review.' } }, res, error => { throw error; });
   assert.equal(res.code, 200); assert.equal(message[0], 'client@example.test');
   assert.match(message[2], /&lt;script&gt;/); assert.doesNotMatch(message[2], /<script>/);
   assert.match(message[2], /Thanks &amp; Regards/); assert.match(message[2], /आओ सब मिलकर/); assert.match(message[2], /whatsapp.com\/channel/);
@@ -40,6 +40,17 @@ test('approved client email uses server PDF, entered recipient, escaped message 
   assert.equal(message[3].attachments[0].content.subarray(0, 5).toString(), '%PDF-');
   assert.equal(message[3].attachments[1].contentDisposition, 'inline');
   assert.equal(history.to, 'client@example.test');
+  assert.deepEqual(message[3].cc, ['finance@example.test', 'manager@example.test']);
+  assert.deepEqual(history.cc, message[3].cc);
+});
+
+test('invalid or excessive CC recipients are rejected before sending', async t => {
+  t.mock.method(mailer, 'sendMail', async () => assert.fail('Invalid CC was sent'));
+  for (const cc of ['invalid-email', 'bad@example.test\rBcc: secret@example.test', Array.from({ length: 11 }, (_, i) => `person${i}@example.test`)]) {
+    const res = response();
+    await controller.emailQuotation({ user: actor, params: { id: quote._id }, body: { email: 'client@example.test', cc, subject: 'Quote', body: 'Review' } }, res, error => { throw error; });
+    assert.equal(res.code, 400);
+  }
 });
 
 test('unapproved or inaccessible quotations cannot be emailed or downloaded', async t => {

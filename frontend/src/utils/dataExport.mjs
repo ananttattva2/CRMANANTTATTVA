@@ -43,8 +43,6 @@ export async function exportWithReason(filename, save) {
   let user
   try { user = JSON.parse(localStorage.getItem('user') || 'null') } catch { return false }
   if (!user) return false
-  const roles = [user.role, ...(user.roles || [])].map(role => String(role).toLowerCase())
-  if (roles.some(role => ['admin', 'superadmin'].includes(role))) { await save(); return true }
   if (pendingExport) return false
   pendingExport = true
   try {

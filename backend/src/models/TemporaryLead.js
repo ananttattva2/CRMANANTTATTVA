@@ -8,6 +8,10 @@ const TemporaryLeadSchema = new mongoose.Schema({
   personName: { type: String, trim: true, maxlength: 160 },
   email: { type: String, trim: true, lowercase: true, maxlength: 254 },
   emailIdentity: { type: String, trim: true, lowercase: true, index: true },
+  emailReminderSentAt: { type: Date, default: null },
+  emailGraceExpiresAt: { type: Date, default: null },
+  emailRedFlagAt: { type: Date, default: null },
+  emailWorkflowRetryAt: { type: Date, default: null },
   phone: { type: String, trim: true, maxlength: 15 },
   phoneIdentity: { type: String, trim: true, index: true },
   sector: { type: String, trim: true, maxlength: 160 },
@@ -33,5 +37,6 @@ const TemporaryLeadSchema = new mongoose.Schema({
 TemporaryLeadSchema.index({ createdBy: 1, createdAt: -1 });
 TemporaryLeadSchema.index({ status: 1, createdAt: -1 });
 TemporaryLeadSchema.index({ status: 1, convertedLead: 1 });
+TemporaryLeadSchema.index({ status: 1, email: 1, createdAt: 1 });
 
 module.exports = mongoose.model('TemporaryLead', TemporaryLeadSchema);

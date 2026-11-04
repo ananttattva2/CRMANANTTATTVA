@@ -1,3 +1,4 @@
+const { startLeadOwnershipAndEmailScheduler } = require('./services/leadOwnershipAndEmailWorkflow');
 const { runConsentExpiryReminders, startConsentExpiryReminderScheduler } = require('./services/consentExpiryReminders');
 require('./config/loadEnv')();
 const { safeMongoError } = require('./config/mongoConfig');
@@ -113,6 +114,7 @@ const connectAndStartServices = singleFlight(function () {
     // function instances. Their work is handled by explicit cron endpoints.
     if (!schedulerStarted && !isServerlessRuntime) {
       startStaffLicenseScheduler();
+      startLeadOwnershipAndEmailScheduler();
       startConsentExpiryReminderScheduler();
       startPendingApprovalReminderScheduler();
       startClientComplianceCorrectionReminderScheduler();

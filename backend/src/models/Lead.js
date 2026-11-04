@@ -5,6 +5,13 @@ const LeadSchema = new mongoose.Schema({
   sourceLeadId: { type: String, trim: true },
   externalLeadId: { type: String, trim: true, index: true },
   companyIdentity: { type: String, trim: true, index: true },
+  noOwner: {
+    active: { type: Boolean, default: false, index: true },
+    movedAt: Date,
+    previousOwner: mongoose.Schema.Types.Mixed,
+    notifiedAt: Date,
+    reassignedAt: Date
+  },
   communicationModeParent: { type: String, trim: true },
   communicationMode: { type: String, trim: true },
   communicationModeNote: { type: String, trim: true },
@@ -54,6 +61,7 @@ const LeadSchema = new mongoose.Schema({
   notes: { type: String, trim: true },
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   assignedToText: { type: String, trim: true },
+  assignedToEmail: { type: String, trim: true, lowercase: true },
   assignedStaff: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   assignedStaffText: { type: String, trim: true },
   assignedStaffEmail: { type: String, trim: true, lowercase: true },
@@ -115,6 +123,8 @@ LeadSchema.index({ leadCode: 1, createdAt: 1 });
 LeadSchema.index({ status: 1, leadCode: 1, createdAt: 1 });
 LeadSchema.index({ createdBy: 1, leadCode: 1, createdAt: 1 });
 LeadSchema.index({ generatedForUser: 1, leadCode: 1, createdAt: 1 });
+LeadSchema.index({ 'noOwner.active': 1, createdAt: 1 });
+LeadSchema.index({ 'noOwner.notifiedAt': 1, 'noOwner.movedAt': 1 });
 LeadSchema.plugin(require('../utils/leadDeletionVisibility'));
 
 module.exports = mongoose.model('Lead', LeadSchema);

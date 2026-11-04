@@ -1,0 +1,13 @@
+# Lead ownership and missing email workflow
+
+The persistent DigitalOcean backend runs this workflow at startup (after 15 seconds) and every minute. Scans are bounded to 100 records per pass; an existing backlog is processed over subsequent passes.
+
+Unclosed Hot Leads become eligible for No Owner Leads after 30 calendar days from creation. Current closure evidence on the lead, its services or its assignments protects closed business, including provisional and permanent PO closures. Inactive/deleted records are excluded. A compare-and-swap on `updatedAt` prevents a concurrent edit or closure from being overwritten.
+
+The old owner's identity is retained in `noOwner.previousOwner` and the lead activity trail. Current creator/owner/assignment identities are removed, while service authorship and existing documents are preserved. All authenticated staff can read the shared pool. Admin and Super Admin can allocate a new owner using the existing allocation/creator tools; this removes the lead from the pool and starts a fresh 30-day allocation window. Staff must receive an allocation before editing a shared lead.
+
+Each active Admin/Super Admin is emailed the lead, company, previous owner, release time in IST and a link to the shared pool. Persistent per-recipient delivery leases prevent routine duplicate sends and retry provider failures. As with other provider-backed emails, a crash after provider acceptance but before recording success can cause a retry.
+
+Client email is optional when creating or editing a Cold/Temporary Lead, including bulk imports. A supplied address must be valid. Blank emails do not participate in duplicate matching. An open, unconverted temporary lead without an email receives one reminder to its current active owner after 48 calendar hours. The additional 24-hour grace period begins at provider acceptance of that reminder; a failure does not start the grace period. If email is still missing at the deadline, `emailRedFlagAt` is set and the table displays a red flag. Entering an email prevents reminders/escalation and clears an existing email red flag. Converted and closed records are excluded. Failed deliveries retry after five minutes; inactive/missing recipient accounts are checked again after one day.
+
+Quotation email supports up to ten optional CC recipients, separated by commas or semicolons. Addresses are normalized, deduplicated and recorded in email history. The client To address is excluded from CC duplicates. Every data export, including Admin/Super Admin exports, requires a reason and successful administrator notifications before saving the file.

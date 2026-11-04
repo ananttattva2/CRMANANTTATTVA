@@ -46,7 +46,7 @@ function normalizeTemporaryLeadPayload(source = {}) {
 function validateTemporaryLeadPayload(data) {
   if (data.clientName.length < 2) return 'Company name must contain at least 2 characters.';
   if (data.personName.length < 2) return 'Person name must contain at least 2 characters.';
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) return 'Enter a valid email ID.';
+  if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) return 'Enter a valid email ID.';
   if (data.phone.length < 10 || data.phone.length > 15) return 'Phone number must contain 10 to 15 digits.';
   if (data.sector.length < 2) return 'Sector must contain at least 2 characters.';
   return '';
@@ -57,7 +57,7 @@ async function findTemporaryLeadDuplicate(data, excludeId) {
     ...(excludeId ? { _id: { $ne: excludeId } } : {}),
     $or: [
       { companyIdentity: data.companyIdentity },
-      { emailIdentity: data.emailIdentity },
+      ...(data.emailIdentity ? [{ emailIdentity: data.emailIdentity }] : []),
       { phoneIdentity: data.phoneIdentity }
     ]
   }).select('_id tempLeadCode clientName companyIdentity email emailIdentity phone phoneIdentity status').lean();
@@ -73,7 +73,7 @@ async function findTemporaryLeadDuplicate(data, excludeId) {
     $or: [
       { companyIdentity: data.companyIdentity },
       { company: companyExpression },
-      { emails: emailExpression },
+      ...(data.emailIdentity ? [{ emails: emailExpression }] : []),
       { mobileNo1: data.phoneIdentity },
       { mobileNo2: data.phoneIdentity },
       { whatsappNo: data.phoneIdentity }
@@ -300,6 +300,7 @@ exports.update = async (req, res, next) => {
       const duplicate = await findTemporaryLeadDuplicate(data, row._id);
       if (duplicate) return res.status(409).json({ error: 'Company, email or phone already belongs to another lead.' });
     }
+    if (data.email) Object.assign(data, { emailRedFlagAt: null });
     const updated = await TemporaryLead.findOneAndUpdate({ _id: row._id, updatedAt: row.updatedAt, status: 'DRAFT', pipelineClosedAt: null }, { $set: data }, { new: true, runValidators: true });
     if (!updated) return res.status(409).json({ error: 'Cold lead changed while saving. Refresh and try again.' });
     res.json({ ok: true, temporaryLead: updated });
