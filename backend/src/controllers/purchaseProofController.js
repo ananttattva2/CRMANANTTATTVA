@@ -6,11 +6,9 @@ const PurchaseProof = require('../models/PurchaseProof');
 const { PURCHASE_CHECKLIST_PARTICULARS, defaultChecklist, purchaseReadiness, calculatePurchaseStatus } = require('../services/purchaseDataService');
 const { safeName, sha256, validateFile, decodeEmail, emailBodyOnlyBuffer, uploadBuffer, deleteStored, publicEmailData } = require('../services/purchaseEmailProofService');
 const { logActivity } = require('../services/activityLogService');
-const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
-const { userHasAnyRole } = require('../utils/userRoles');
+const { getUserRoles, userHasAnyRole } = require('../utils/userRoles');
 
-function normalizedRole(user) { return String(user?.role || '').toLowerCase().replace(/[\s_-]+/g, ''); }
-function canEdit(user) { const role = normalizedRole(user); return ['admin', 'superadmin'].includes(role) || !role.includes('compliance'); }
+function canEdit(user) { return userHasAnyRole(user, ['admin', 'superadmin']) || getUserRoles(user).some(savedRole => !savedRole.includes('compliance')); }
 function validYear(value) { return /^20\d{2}-\d{2}$/.test(String(value || '').trim()); }
 async function findClient(value, user, reviewRead = false) {
   if (!mongoose.Types.ObjectId.isValid(value)) return null;
@@ -18,17 +16,14 @@ async function findClient(value, user, reviewRead = false) {
     const scope = userHasAnyRole(user, ['admin', 'superadmin', 'compliance']) ? {} : await require('./clientController').clientAccessFilter(user);
     return Client.findOne({ $and: [{ _id: value }, scope] });
   }
-  const visibility = ownerFilter(await getVisibleUserScope(user), 'createdBy', 'adminControls.assignedTo', [
-    'data.importMeta.assignedTo', 'data.importMeta.user', 'data.importMeta.userName',
-    'data.importMeta.createdBy', 'data.importMeta.createdByEmail'
-  ]);
+  const visibility = await require('./clientController').clientAccessFilter(user);
   return Client.findOne({ $and: [{ _id: value }, visibility] });
 }
 function proofReference(proof, full = true) {
   const emailData = full ? proof.emailData : { format: proof.emailData?.format, subject: proof.emailData?.subject, from: proof.emailData?.from, sentAt: proof.emailData?.sentAt, receivedAt: proof.emailData?.receivedAt, decodeStatus: proof.emailData?.decodeStatus, decodeWarnings: proof.emailData?.decodeWarnings || [] };
   return { proofId: proof._id, name: proof.name, originalName: proof.originalName, fileType: proof.fileType, type: proof.mimeType, mimeType: proof.mimeType, size: proof.size, url: `/api/purchase-proofs/${proof._id}/download`, uploadedAt: proof.createdAt, emailData };
 }
-function purchasePayload(purchase, user) { const object = purchase.toObject(); return { ...object, checklist: defaultChecklist(object.checklist), readiness: purchaseReadiness(object), calculatedStatus: calculatePurchaseStatus(object), permissions: { canEdit: canEdit(user), canManagerReview: ['admin', 'superadmin', 'manager'].includes(normalizedRole(user)), canComplianceReview: ['admin', 'superadmin'].includes(normalizedRole(user)) || normalizedRole(user).includes('compliance') } }; }
+function purchasePayload(purchase, user) { const object = purchase.toObject(); return { ...object, checklist: defaultChecklist(object.checklist), readiness: purchaseReadiness(object), calculatedStatus: calculatePurchaseStatus(object), permissions: { canEdit: canEdit(user), canManagerReview: userHasAnyRole(user, ['admin', 'superadmin', 'manager']), canComplianceReview: userHasAnyRole(user, ['admin', 'superadmin', 'compliance']) } }; }
 function dataPayload(record, user, section = 'purchase') {
   const value = purchasePayload(record, user);
   if (section !== 'sales') return value;
@@ -87,7 +82,7 @@ exports.downloadProof = async (req, res) => { const proof = await loadProof(req,
 exports.downloadAttachment = async (req, res) => { const proof = await loadProof(req, res, true); if (!proof) return; const attachment = (proof.attachments || []).find((item) => item.attachmentId === req.params.attachmentId); if (!attachment) return res.status(404).json({ error: 'Attachment not found.' }); return streamStored(req, res, proof, attachment, attachment.fileName, 'PURCHASE_EMAIL_ATTACHMENT_DOWNLOADED'); };
 exports.deleteProof = async (req, res) => {
   const proof = await loadProof(req, res); if (!proof) return;
-  const role = normalizedRole(req.user); if (!(String(proof.uploadedBy) === String(req.user._id) || ['admin', 'superadmin'].includes(role))) return res.status(403).json({ error: 'Only the uploader or an administrator can remove this proof.' });
+  if (!(String(proof.uploadedBy) === String(req.user._id) || userHasAnyRole(req.user, ['admin', 'superadmin']))) return res.status(403).json({ error: 'Only the uploader or an administrator can remove this proof.' });
   const section = proof.section === 'sales' ? 'sales' : 'purchase'; const DataModel = section === 'sales' ? SalesData : PurchaseData;
   const record = await DataModel.findOne({ clientId: proof.clientId, financialYear: proof.financialYear });
   if (record) { record.checklist = defaultChecklist(record.checklist).map((row) => ({ ...row, files: (row.files || []).filter((file) => String(file.proofId || '') !== String(proof._id)) })); record.markModified('checklist'); await record.save(); }

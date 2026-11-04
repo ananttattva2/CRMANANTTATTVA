@@ -9,23 +9,19 @@ const {
   purchaseReadiness, calculatePurchaseStatus, checksum, buildClientConsoleRows
 } = require('../services/purchaseDataService');
 const { notifyPurchaseWorkflow } = require('../services/purchaseDataNotifications');
-const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
+const { getUserRoles, userHasAnyRole } = require('../utils/userRoles');
 
-function role(user) { return String(user?.role || '').trim().toLowerCase().replace(/[\s_-]+/g, ''); }
-function isAdmin(user) { return ['admin', 'superadmin'].includes(role(user)); }
-function isManager(user) { return role(user) === 'manager'; }
-function isCompliance(user) { return role(user).includes('compliance'); }
-function canEdit(user) { return isAdmin(user) || !isCompliance(user); }
+function isAdmin(user) { return userHasAnyRole(user, ['admin', 'superadmin']); }
+function isManager(user) { return userHasAnyRole(user, ['manager']); }
+function isCompliance(user) { return userHasAnyRole(user, ['compliance']); }
+function canEdit(user) { return isAdmin(user) || getUserRoles(user).some(savedRole => !savedRole.includes('compliance')); }
 function actor(user) { return { userId: user?._id, name: user?.name || user?.email || 'CRM User', role: user?.role || '' }; }
 function historyItem(stage, decision, user, message = '') { return { stage, decision, message: String(message || '').trim(), by: actor(user), at: new Date() }; }
 function validYear(value) { return /^20\d{2}-\d{2}$/.test(String(value || '').trim()); }
 
 async function findClient(value, user) {
   const id = String(value || '').trim();
-  const visibility = ownerFilter(await getVisibleUserScope(user), 'createdBy', 'adminControls.assignedTo', [
-    'data.importMeta.assignedTo', 'data.importMeta.user', 'data.importMeta.userName',
-    'data.importMeta.createdBy', 'data.importMeta.createdByEmail'
-  ]);
+  const visibility = await require('./clientController').clientAccessFilter(user);
   if (mongoose.Types.ObjectId.isValid(id)) {
     const byId = await Client.findOne({ $and: [{ _id: id }, visibility] });
     if (byId) return byId;

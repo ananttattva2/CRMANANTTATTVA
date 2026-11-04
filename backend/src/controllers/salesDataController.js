@@ -4,23 +4,20 @@ const SalesData = require('../models/SalesData');
 const SalesImportRow = require('../models/SalesImportRow');
 const { PURCHASE_CHECKLIST_PARTICULARS, excelUploadComplete, defaultChecklist, normalizePurchaseRows, reconcilePurchaseRows, purchaseReadiness, calculatePurchaseStatus, checksum } = require('../services/purchaseDataService');
 const { notifySalesWorkflow } = require('../services/salesDataNotifications');
-const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
+const { getUserRoles, userHasAnyRole } = require('../utils/userRoles');
 
 const normalizedRole = (user) => String(user?.role || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
-const isAdmin = (user) => ['admin', 'superadmin'].includes(normalizedRole(user));
-const isManager = (user) => normalizedRole(user) === 'manager';
-const isCompliance = (user) => normalizedRole(user).includes('compliance');
-const canEdit = (user) => isAdmin(user) || !isCompliance(user);
+const isAdmin = (user) => userHasAnyRole(user, ['admin', 'superadmin']);
+const isManager = (user) => userHasAnyRole(user, ['manager']);
+const isCompliance = (user) => userHasAnyRole(user, ['compliance']);
+const canEdit = (user) => isAdmin(user) || getUserRoles(user).some(savedRole => !savedRole.includes('compliance'));
 const validYear = (value) => /^20\d{2}-\d{2}$/.test(String(value || '').trim());
 const actor = (user) => ({ userId: user?._id, name: user?.name || user?.email || 'CRM User', role: user?.role || '' });
 const historyItem = (stage, decision, user, message = '') => ({ stage, decision, message: String(message || '').trim(), by: actor(user), at: new Date() });
 
 async function findClient(value, user) {
   const id = String(value || '').trim();
-  const visibility = ownerFilter(await getVisibleUserScope(user), 'createdBy', 'adminControls.assignedTo', [
-    'data.importMeta.assignedTo', 'data.importMeta.user', 'data.importMeta.userName',
-    'data.importMeta.createdBy', 'data.importMeta.createdByEmail'
-  ]);
+  const visibility = await require('./clientController').clientAccessFilter(user);
   if (mongoose.Types.ObjectId.isValid(id)) {
     const client = await Client.findOne({ $and: [{ _id: id }, visibility] });
     if (client) return client;
