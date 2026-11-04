@@ -159,4 +159,7 @@ test('Purchase and Sales summary reflects the AR Compliance manager decision', (
   assert.equal(result.purchase[6].complete, 1);
   assert.equal(result.sales[6].complete, 1);
   assert.equal(result.purchase[7].pending, 1);
+  assert.equal(result.users[0].purchaseManagerReviewed, 1);
+  assert.equal(result.users[0].salesManagerReviewed, 1);
+  assert.equal(result.users[0].purchaseComplete, 0);
 });

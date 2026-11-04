@@ -262,6 +262,8 @@ function purchaseSalesSummary(records, year, query = {}, purchases = [], sales =
   });
   const userRows = [...groups.values()].map(group => {
     const allocated = group.items.length;
+    const purchaseManagerReviewed = group.items.filter(item => item.purchase[6] === 'complete').length;
+    const salesManagerReviewed = group.items.filter(item => item.sales[6] === 'complete').length;
     const purchaseComplete = group.items.filter(item => item.purchaseComplete).length;
     const salesComplete = group.items.filter(item => item.salesComplete).length;
     const fullyComplete = group.items.filter(item => item.purchaseComplete && item.salesComplete).length;
@@ -269,6 +271,7 @@ function purchaseSalesSummary(records, year, query = {}, purchases = [], sales =
       userId: group.userId, userName: group.userName, allocated,
       slaReceived: group.items.filter(item => item.slaReceived).length,
       slaNotReceived: group.items.filter(item => !item.slaReceived).length,
+      purchaseManagerReviewed, salesManagerReviewed,
       purchaseComplete, salesComplete, fullyComplete,
       completion: allocated ? Math.round((fullyComplete / allocated) * 1000) / 10 : 0,
       purchase: stageTotals(group.items, 'purchase'), sales: stageTotals(group.items, 'sales'), clients: group.items
