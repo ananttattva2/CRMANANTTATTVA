@@ -45,6 +45,7 @@ const { startProvisionalLeadClosureScheduler } = require('./services/provisional
 const { startTemporaryAssignmentReminderScheduler } = require('./services/temporaryLeadAssignmentReminders');
 const { applyKnownDataCorrections } = require('./services/knownDataCorrections');
 const { pauseExistingPendingClientApprovalTimers } = require('./services/clientReviewReminderLifecycle');
+const { runArComplianceApprovalNotificationBackfill } = require('./services/arComplianceNotificationBackfill');
 
 process.on('uncaughtException', (err) => {
   console.error('Uncaught exception', err);
@@ -104,6 +105,9 @@ const connectAndStartServices = singleFlight(function () {
   dbReady.then(async () => {
     await applyKnownDataCorrections().catch((error) => console.error('Known CRM data correction failed', error));
     await pauseExistingPendingClientApprovalTimers().catch((error) => console.error('Pending client reminder reconciliation failed', error));
+    // Deliver any Manager-approved AR handoffs created before decision
+    // notifications were introduced. The backfill is idempotent per review.
+    await runArComplianceApprovalNotificationBackfill().catch((error) => console.error('AR Compliance notification backfill failed', error));
     // Run once on every deployment/startup so legacy RED records immediately
     // receive their fresh 24-hour recovery window and email notification.
     await runClientComplianceCorrectionReminders().catch((error) => console.error('Compliance correction startup scan failed', error));

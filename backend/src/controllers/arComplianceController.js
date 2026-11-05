@@ -420,7 +420,9 @@ exports.decide = wrap(async (req, res) => {
       stage: data.reviewStage,
       decision: req.body.decision,
       remarks: req.body.remarks.trim(),
-      actor: req.user
+      actor: req.user,
+      eventKey: data.sourceFingerprint,
+      preventDuplicate: true
     });
   } catch (notificationError) {
     console.error('AR compliance decision notification failed', {
