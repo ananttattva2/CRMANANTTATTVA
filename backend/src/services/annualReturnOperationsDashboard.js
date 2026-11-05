@@ -224,13 +224,14 @@ function annualReviewRecordIndex(rows = [], year = '') {
 function combinedStageState(sourceIds, index, reviewIndex, stage) {
   const states = sourceIds.map(clientId => stageState(index.get(clientId), stage, reviewIndex.get(clientId)));
   if (!states.length || states.every(state => state === 'pending')) return 'pending';
+  if (states.some(state => state === 'rejected')) return 'rejected';
   if (states.every(state => state === 'complete')) return 'complete';
   return 'progress';
 }
 
 function stageTotals(items, module) {
   return STAGES.map((label, position) => {
-    const counts = { label, complete: 0, progress: 0, pending: 0 };
+    const counts = { label, complete: 0, progress: 0, pending: 0, rejected: 0 };
     items.forEach(item => { counts[item[module][position]] += 1; });
     return counts;
   });

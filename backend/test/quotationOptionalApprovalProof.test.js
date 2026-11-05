@@ -12,7 +12,7 @@ for (const proofUrl of ['', 'https://example.com/proof.png']) {
     let saved = false;
     let update;
     const quotation = {
-      _id: 'quotation-id', managementApproval: { status: 'PENDING', source: 'EMAIL', note: 'Review pricing', approverId: 'superadmin-id' },
+      _id: 'quotation-id', managementApproval: { status: 'PENDING', priceApprovedByName: 'KRUNAL GODA', source: 'TEAMS', note: 'Review pricing', approverId: 'superadmin-id' },
       save: async () => { saved = true; }
     };
     const context = {
@@ -21,7 +21,10 @@ for (const proofUrl of ['', 'https://example.com/proof.png']) {
       require: () => ({ Types: { ObjectId: { isValid: (value) => Boolean(value) } } }),
       Quotation: { findById: () => ({ populate: async () => quotation }) },
       PendingApproval: { updateMany: async (query, values) => { update = values.$set; } },
-      sendQuotationLifecycleEmail: async () => ({})
+      sendQuotationLifecycleEmail: async () => ({}),
+      PRICE_APPROVER_NAMES: new Set(['KRUNAL GODA', 'ANAND PADHYA']),
+      MANAGEMENT_APPROVAL_SOURCES: new Set(['WHATSAPP', 'TEAMS', 'OUTLOOK']),
+      normalizeManagementApprovalSource: (value) => String(value || '').trim().toUpperCase()
     };
     vm.runInNewContext(source.slice(start, end), context);
     let response;
@@ -31,7 +34,7 @@ for (const proofUrl of ['', 'https://example.com/proof.png']) {
     assert.equal(response.adminApprovalStatus, 'APPROVED');
     assert.equal(quotation.status, 'admin_approved');
     assert.equal(quotation.managementApproval.status, 'PENDING');
-    assert.equal(quotation.managementApproval.source, 'EMAIL');
+    assert.equal(quotation.managementApproval.source, 'TEAMS');
     assert.equal(quotation.managementApproval.note, 'Review pricing');
     assert.equal(quotation.managementApproval.adminApprovalProofUrl, proofUrl);
     assert.equal(update.decisionProofUrl, proofUrl);

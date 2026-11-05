@@ -541,6 +541,10 @@ function mapQuotationPendingApprovalRow(quotation, approvalType = 'CREATE') {
   const leadCreator = quotation.leadGeneratedBy || readCreatedBy(quotation);
   const displayUser = readCreatedBy(quotation);
   const displayCreator = readCreatedBy(quotation);
+  const isAwaitingFinalDecision = ['draft', 'submitted', 'sent', 'admin_approved']
+    .includes(String(quotation.status || '').trim().toLowerCase());
+  const managementApprovalStatus = quotation.managementApproval?.status
+    || (isAwaitingFinalDecision ? 'PENDING' : '');
 
   return {
     id: quotation._id,
@@ -579,7 +583,7 @@ function mapQuotationPendingApprovalRow(quotation, approvalType = 'CREATE') {
     approvalType,
     createdBy: displayCreator,
     adminApprovalStatus: quotation.managementApproval?.adminApprovalStatus || '',
-    managementApprovalStatus: quotation.managementApproval?.status || '',
+    managementApprovalStatus,
     managementApproverId: quotation.managementApproval?.approverId || quotation.managementApproval?.approver || '',
     managementApproverName: quotation.managementApproval?.approverName || '',
     priceApprovedByName: quotation.managementApproval?.priceApprovedByName || '',
@@ -808,11 +812,11 @@ exports.getQuotation = async (req, res) => {
 
 exports.downloadQuotation = async (req, res, next) => {
   try {
-    const { isApproved, createApprovedQuotationPdf, quotationFilename } = require('../services/quotationDelivery');
+    const { createApprovedQuotationPdf, quotationFilename } = require('../services/quotationDelivery');
     const quotation = await Quotation.findOne(combineFilters({ _id: req.params.id }, await quotationAccessFilter(req.user))).populate('createdBy', 'name email').populate('approvalDecision.actionBy', 'name email role').lean();
     if (!quotation) return res.status(404).json({ error: 'Quotation not found' });
-    if (!isApproved(quotation)) return res.status(403).json({ error: 'Admin approval is required before downloading.' });
-    const buffer = await createApprovedQuotationPdf(quotation);
+    if (!userHasAnyRole(req.user, ['admin', 'superadmin'])) return res.status(403).json({ error: 'Only Admin or Super Admin can download quotation PDFs.' });
+    const buffer = await createApprovedQuotationPdf(quotation, { allowUnapproved: true });
     res.set('Cache-Control', 'no-store');
     return res.type('application/pdf').attachment(await quotationFilename(quotation)).send(buffer);
   } catch (error) { next(error); }
@@ -871,6 +875,8 @@ exports.createQuotation = async (req, res) => {
     createdBy: req.user?._id
   });
   await quotation.populate('createdBy', 'name email');
+  await upsertQuotationPendingApproval(quotation, 'CREATE', true)
+    .catch((error) => console.error('[Quotation approval queue] create sync failed', error));
   await sendQuotationLifecycleEmail({ quotation, event: 'created', actor: req.user })
     .catch((error) => console.error('[Quotation lifecycle email] create failed', error));
   res.status(201).json({ ok: true, quotation });
@@ -927,6 +933,8 @@ exports.updateQuotation = async (req, res) => {
   await quotation.save();
   await quotation.populate('createdBy', 'name email');
   await PendingApproval.deleteMany({ type: 'quotation', sourceClientId: String(quotation._id), approvalStatus: 'PENDING' });
+  await upsertQuotationPendingApproval(quotation, 'UPDATE', true)
+    .catch((error) => console.error('[Quotation approval queue] revision sync failed', error));
   await sendQuotationLifecycleEmail({ quotation, event: 'revised', actor: req.user })
     .catch((error) => console.error('[Quotation lifecycle email] revision failed', error));
   res.json({ ok: true, quotation });
@@ -988,7 +996,7 @@ exports.updateQuotationApproval = async (req, res) => {
   const hasSubmittedAdminDetails = String(quotation.managementApproval?.status || '').toUpperCase() === 'PENDING'
     && PRICE_APPROVER_NAMES.has(String(quotation.managementApproval?.priceApprovedByName || '').trim().toUpperCase())
     && MANAGEMENT_APPROVAL_SOURCES.has(normalizeManagementApprovalSource(quotation.managementApproval?.source));
-  if (status === 'APPROVED' && !isSuperAdminReviewer && !hasSubmittedAdminDetails) {
+  if (status === 'APPROVED' && !isSuperAdminReviewer && !hasSubmittedAdminDetails && !hasApprovalDetails) {
     return res.status(409).json({ error: 'Enter and submit the Admin Approval details before approving this quotation.' });
   }
   quotation.$where = { status: quotation.status };
@@ -1290,7 +1298,7 @@ exports.bulkCreateQuotations = async (req, res) => {
       await validateQuotationPiboItems(data.items);
       let quotation;
       if (existing) {
-        Object.assign(existing, data, await resolveCrmRelationships(data), { source: 'bulk', status: 'draft', managementApproval: {}, approvalDecision: {} });
+        Object.assign(existing, data, await resolveCrmRelationships(data), { source: 'bulk', ...directQuotationApproval(req.user, data) });
         quotation = await existing.save();
         await PendingApproval.deleteMany({ type: 'quotation', sourceClientId: String(existing._id), approvalStatus: 'PENDING' });
         summary.updated += 1;
@@ -1298,14 +1306,16 @@ exports.bulkCreateQuotations = async (req, res) => {
         quotation = await Quotation.create({
           ...data,
           ...await resolveCrmRelationships(data),
+          ...directQuotationApproval(req.user, data),
           quotationNumber,
           source: 'bulk',
-          status: 'draft',
           createdBy: req.user?._id
         });
         summary.created += 1;
       }
       await quotation.populate('createdBy', 'name email');
+      await upsertQuotationPendingApproval(quotation, existing ? 'UPDATE' : 'CREATE', true)
+        .catch((error) => console.error('[Quotation approval queue] bulk sync failed', error));
       await sendQuotationLifecycleEmail({
         quotation,
         event: existing ? 'revised' : 'created',

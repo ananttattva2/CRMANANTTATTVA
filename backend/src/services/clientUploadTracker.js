@@ -31,21 +31,31 @@ function matchesTrackedService(client, type) {
 }
 function annualReviewStageState(review, stage, record = null) {
   if (!review) return '';
+  // A Compliance rejection is the terminal decision for the whole review.
+  // Do not leave the earlier Manager Review looking approved after that.
+  const complianceStatus = String(review.status || '').trim().toUpperCase();
+  if (complianceStatus === 'REJECTED') {
+    const rejectedAt = new Date(review.decidedAt).getTime() || 0;
+    const recordChangedAt = new Date(record?.updatedAt || record?.createdAt || 0).getTime() || 0;
+    return rejectedAt && recordChangedAt > rejectedAt ? '' : 'rejected';
+  }
   const status = stage === 'Manager Review' ? review.managerStatus : review.status;
   const normalized = String(status || '').trim().toUpperCase();
   const decisionAt = new Date(stage === 'Manager Review' ? review.managerDecidedAt : review.decidedAt).getTime() || 0;
   const recordChangedAt = new Date(record?.updatedAt || record?.createdAt || 0).getTime() || 0;
   if (decisionAt && recordChangedAt > decisionAt) return '';
-  if (stage === 'Manager Review') return normalized === 'APPROVED' ? 'complete' : normalized === 'REJECTED' ? 'pending' : '';
-  return ['APPROVED', 'PARTIALLY_APPROVED'].includes(normalized) ? 'complete' : normalized === 'REJECTED' ? 'pending' : '';
+  if (stage === 'Manager Review') return normalized === 'APPROVED' ? 'complete' : normalized === 'REJECTED' ? 'rejected' : '';
+  return ['APPROVED', 'PARTIALLY_APPROVED'].includes(normalized) ? 'complete' : '';
 }
 function stageState(record, stage, annualReview = null) {
   if (stage === 'Manager Review' || stage === 'Compliance Review') {
     const readyForAnnualReview = record?.baseUpload?.importStatus === 'Imported' && record?.portalUpload?.importStatus === 'Imported';
     const reviewedState = readyForAnnualReview ? annualReviewStageState(annualReview, stage, record) : '';
     if (reviewedState) return reviewedState;
+    if (String(record?.complianceVerificationStatus || '').trim().toLowerCase() === 'rejected') return 'rejected';
     const status = stage === 'Manager Review' ? record?.managerVerificationStatus : record?.complianceVerificationStatus;
-    return String(status || '').trim().toLowerCase() === 'approved' ? 'complete' : 'pending';
+    const normalized = String(status || '').trim().toLowerCase();
+    return normalized === 'approved' ? 'complete' : normalized === 'rejected' ? 'rejected' : 'pending';
   }
   const row = record?.checklist?.find(item => item.particular === stage);
   if (stage === 'Upload Complete') return record?.baseUpload?.importStatus === 'Imported' && record?.portalUpload?.importStatus === 'Imported' ? 'complete' : record?.baseUpload?.importStatus === 'Imported' || record?.portalUpload?.importStatus === 'Imported' || row?.yesNo === 'Yes' ? 'progress' : 'pending';
@@ -107,7 +117,7 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
   const index = records => new Map(records.map(record => [id(record.clientId), record]));
   const purchaseIndex = index(purchases), salesIndex = index(sales), groups = new Map();
   const reviewIndex = new Map((options.annualReviews || []).map(review => [`${id(review.client)}:${normalizeYear(review.financialYear)}`, review]));
-  const emptyGroup = user => ({ userId: id(user._id), userName: user.name || user.email || 'Team member', clients: [], slaReceived: 0, slaNotReceived: 0, purchase: STAGES.map(() => ({ complete: 0, progress: 0, pending: 0 })), sales: STAGES.map(() => ({ complete: 0, progress: 0, pending: 0 })) });
+  const emptyGroup = user => ({ userId: id(user._id), userName: user.name || user.email || 'Team member', clients: [], slaReceived: 0, slaNotReceived: 0, purchase: STAGES.map(() => ({ complete: 0, progress: 0, pending: 0, rejected: 0 })), sales: STAGES.map(() => ({ complete: 0, progress: 0, pending: 0, rejected: 0 })) });
   users.filter(user => userHasAnyRole(user, ['manager'])).forEach(user => groups.set(id(user._id), emptyGroup(user)));
   const seen = new Set();
   for (const client of clients) {
@@ -140,7 +150,11 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
       if (options.groupBy === 'application') existing.sources.push(...detail.sources);
       // SLA is a company-level receipt, even when only one service's Client Master stores it.
       existing.slaReceived = existing.slaReceived || detail.slaReceived;
-      for (const module of ['purchase', 'sales']) existing[module] = existing[module].map((state, position) => state === 'complete' && detail[module][position] === 'complete' ? 'complete' : position >= 6 || state === 'pending' && detail[module][position] === 'pending' ? 'pending' : 'progress');
+      for (const module of ['purchase', 'sales']) existing[module] = existing[module].map((state, position) => {
+        const next = detail[module][position];
+        if (position >= 6 && (state === 'rejected' || next === 'rejected')) return 'rejected';
+        return state === 'complete' && next === 'complete' ? 'complete' : position >= 6 || state === 'pending' && next === 'pending' ? 'pending' : 'progress';
+      });
     } else group.clients.push(detail);
   }
   if (options.groupBy === 'application') for (const group of groups.values()) {
@@ -161,6 +175,7 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
       detail.slaReceived = sources.some(source => source.slaReceived);
       for (const module of ['purchase', 'sales']) detail[module] = STAGES.map((_, position) => {
         const states = sources.map(source => source[module][position]);
+        if (position >= 6 && states.some(state => state === 'rejected')) return 'rejected';
         return states.every(state => state === 'complete') ? 'complete' : position >= 6 || states.every(state => state === 'pending') ? 'pending' : 'progress';
       });
       delete detail.sources;

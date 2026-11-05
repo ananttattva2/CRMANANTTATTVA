@@ -6,7 +6,7 @@ const path = require('node:path');
 const backendRoot = path.resolve(__dirname, '../src');
 const frontendRoot = path.resolve(__dirname, '../../frontend/src');
 
-test('management request enters the Admin queue and preserves the Super Admin override', () => {
+test('quotation enters Super Admin queue immediately and optional Admin review preserves the override', () => {
   const controller = fs.readFileSync(path.join(backendRoot, 'controllers/quotationController.js'), 'utf8');
   const routes = fs.readFileSync(path.join(backendRoot, 'routes/quotations.js'), 'utf8');
 
@@ -25,8 +25,8 @@ test('management request enters the Admin queue and preserves the Super Admin ov
   assert.match(controller, /Only Super Admin can complete final approval/);
   assert.doesNotMatch(controller, /Admin approval must be completed before final Super Admin approval/);
   assert.match(controller, /approvalKind: 'MANAGEMENT_FINAL'/);
-  assert.doesNotMatch(controller, /upsertQuotationPendingApproval\(quotation, 'CREATE', true\)/);
-  assert.doesNotMatch(controller, /upsertQuotationPendingApproval\(quotation, 'UPDATE', true\)/);
+  assert.match(controller, /upsertQuotationPendingApproval\(quotation, 'CREATE', true\)/);
+  assert.match(controller, /upsertQuotationPendingApproval\(quotation, 'UPDATE', true\)/);
   assert.match(controller, /Enter and submit the Admin Approval details before approving this quotation/);
 });
 

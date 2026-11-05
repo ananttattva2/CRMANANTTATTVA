@@ -1258,7 +1258,7 @@ export default function Quotations() {
       const summary = response.data.summary || {};
       setBulkPreview(null);
       await loadPage();
-      setSuccessModal({ title: 'Bulk quotation import complete', message: `${summary.created || 0} created, ${summary.updated || 0} updated, ${summary.failed || 0} failed, and ${skippedCount} incomplete quotation${skippedCount === 1 ? ' was' : 's were'} skipped. Saved quotations remain drafts until Admin Approval is requested from Actions.` });
+      setSuccessModal({ title: 'Bulk quotation import complete', message: `${summary.created || 0} created, ${summary.updated || 0} updated, ${summary.failed || 0} failed, and ${skippedCount} incomplete quotation${skippedCount === 1 ? ' was' : 's were'} skipped. Saved quotations were sent directly to Super Admin Pending Approval.` });
     } catch (importError) {
       const failures = importError.response?.data?.failures || [];
       setError(failures.length ? failures.slice(0, 3).map((row) => `${row.quotationNumber || `Row ${row.row}`}: ${row.error}`).join(' · ') : (importError.response?.data?.error || 'Bulk quotation import failed.'));
@@ -1986,7 +1986,7 @@ export default function Quotations() {
       }
       setSuccessModal({
         title: editingId ? 'Quotation updated' : 'Quotation saved',
-        message: `${response.data.quotation?.quotationNumber || 'Quotation'} was saved. Enter the Admin Approval details to send it to Admin, or a Super Admin can approve it directly.`
+        message: `${response.data.quotation?.quotationNumber || 'Quotation'} was saved and sent directly to Super Admin Pending Approval. Admin Approval remains optional.`
       });
       setQuotation({ ...emptyQuotation, leadDetails: { ...emptyLeadDetails }, items: [], terms: [] });
       setEditingId('');
@@ -3100,10 +3100,9 @@ function HistoryRow({ tone, title, by, date, status }) {
 }
 
 function QuotationPreviewDrawer({ quotation, currentUser, onClose, onBackToPendingApproval, onApprove, onReject }) {
-  const normalizedRole = String(currentUser?.role || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
-  const isAdminUser = [normalizedRole, ...(currentUser?.roles || [])].some(role => ['admin', 'superadmin'].includes(String(role).toLowerCase()));
+  const isAdminUser = hasAnyRole(currentUser, adminRoles);
   const canEmailPdf = ['admin_approved', 'approved'].includes(String(quotation.status).toLowerCase());
-  const canDownloadPdf = isAdminUser && canEmailPdf;
+  const canDownloadPdf = isAdminUser;
   const [emailOpen, setEmailOpen] = useState(false);
   const documentRef = useRef(null);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -3122,7 +3121,7 @@ function QuotationPreviewDrawer({ quotation, currentUser, onClose, onBackToPendi
 
   async function handleDownloadPdf() {
     if (!canDownloadPdf) {
-      setDownloadError('Quotation PDF can be downloaded only after Admin or Super Admin approval.');
+      setDownloadError('Only Admin or Super Admin can download quotation PDFs.');
       return;
     }
     if (downloadingPdf || !documentRef.current) return;
@@ -3170,7 +3169,7 @@ function QuotationPreviewDrawer({ quotation, currentUser, onClose, onBackToPendi
         </div>
         <div className="hidden-scrollbar flex-1 overflow-auto bg-[radial-gradient(circle_at_top_left,#fff7ed_0,#f8fafc_36%,#eef2f7_100%)] p-5 sm:p-8">
           {downloadError && <div className="mx-auto mb-3 max-w-[760px] rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-black text-red-600">{downloadError}</div>}
-          {!canEmailPdf && <div className="mx-auto mb-3 max-w-[760px] rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">Email to Client becomes available after Admin approval. Admin and Super Admin can also download the approved PDF.</div>}
+          {!canEmailPdf && <div className="mx-auto mb-3 max-w-[760px] rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">Email to Client becomes available after approval. Admin and Super Admin may download the PDF now for internal review.</div>}
           <iframe ref={documentRef} title="Quotation document preview" sandbox="allow-same-origin" srcDoc={printHtml} onLoad={preparePreview} scrolling="no" className="mx-auto block w-[794px] max-w-none border-0" style={{ minHeight: 1123 }} />
         </div>
       </aside>

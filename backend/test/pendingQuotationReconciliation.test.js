@@ -6,10 +6,11 @@ const path = require('node:path');
 const controllerSource = fs.readFileSync(path.join(__dirname, '../src/controllers/clientController.js'), 'utf8');
 
 test('pending approval endpoint recovers quotations missing from the approval index', () => {
-  assert.match(controllerSource, /Quotation\.find\(\{ 'managementApproval\.status': 'PENDING', status: \{ \$in: \['draft', 'submitted', 'sent', 'admin_approved'\] \} \}\)/);
+  assert.match(controllerSource, /status: \{ \$in: \['draft', 'submitted', 'sent', 'admin_approved'\] \}/);
+  assert.match(controllerSource, /\{ 'managementApproval\.status': \{ \$exists: false \} \}/);
   assert.match(controllerSource, /const missingQuotationRows = liveQuotationRows\.filter/);
   assert.match(controllerSource, /backgroundSyncPendingApprovals\(\[\], missingQuotationRows\)/);
-  assert.match(controllerSource, /pendingQuotations: isAdministrativeReviewer \? responseQuotations : \[\]/);
+  assert.match(controllerSource, /pendingQuotations: isAdministrativeReviewer \? \(compact \? responseQuotations\.map\(compactRow\) : responseQuotations\) : \[\]/);
 });
 
 test('pending approval reads active rows separately from bounded decision history', () => {

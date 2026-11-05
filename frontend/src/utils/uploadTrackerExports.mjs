@@ -1,12 +1,14 @@
 import { exportWithReason } from './dataExport.mjs'
 export const UPLOAD_TRACKER_STAGES = ['Data Explained', 'Data Format Sent', 'Data Received from Client', 'Ready to Upload', 'Client Approval Received', 'Upload Complete', 'Manager Review', 'Compliance Review']
 const modules = ['purchase', 'sales']
-const stateLabel = (state, index) => state === 'complete' ? index >= 6 ? 'Approved' : 'Completed' : state === 'progress' ? 'In progress' : 'Pending'
+const stateLabel = (state, index) => state === 'complete' ? index >= 6 ? 'Approved' : 'Completed' : state === 'progress' ? 'In progress' : state === 'rejected' ? 'Rejected' : 'Pending'
 const safe = value => /^[=+@-]/.test(String(value || '')) ? `'${value}` : String(value || '')
 const ratio = (clients, module, index) => {
   const completed = clients.filter(client => client[module]?.[index] === 'complete').length
   const progress = clients.filter(client => client[module]?.[index] === 'progress').length
-  return `${completed}${index >= 6 ? completed === clients.length && clients.length ? '\nApproved' : `\n${clients.length - completed} pending` : progress ? `\n${progress} in progress` : ''}`
+  const rejected = clients.filter(client => client[module]?.[index] === 'rejected').length
+  const pending = clients.length - completed - progress - rejected
+  return `${completed}${index >= 6 ? completed === clients.length && clients.length ? '\nApproved' : rejected ? `\n${rejected} rejected${pending ? ` · ${pending} pending` : ''}` : `\n${pending} pending` : progress ? `\n${progress} in progress` : ''}`
 }
 export function buildUploadTrackerExport(users) {
   const clients = users.flatMap(user => user.clients.map(client => ({ ...client, userName: user.userName })))

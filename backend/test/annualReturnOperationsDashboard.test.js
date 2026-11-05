@@ -163,3 +163,22 @@ test('Purchase and Sales summary reflects the AR Compliance manager decision', (
   assert.equal(result.users[0].salesManagerReviewed, 1);
   assert.equal(result.users[0].purchaseComplete, 0);
 });
+
+test('Purchase and Sales summary treats Compliance rejection as terminal', () => {
+  const rows = [record('c1', { sourceClientIds: ['c1'] })];
+  const ready = {
+    clientId: 'c1', financialYear: '2025-26',
+    baseUpload: { importStatus: 'Imported' }, portalUpload: { importStatus: 'Imported' },
+    managerVerificationStatus: 'Approved', complianceVerificationStatus: 'Pending'
+  };
+  const review = { client: 'c1', financialYear: '2025-26', managerStatus: 'APPROVED', status: 'REJECTED' };
+  const result = purchaseSalesSummary(rows, '2025-26', {}, [ready], [ready], [review]);
+  assert.equal(result.purchase[6].complete, 0);
+  assert.equal(result.purchase[6].rejected, 1);
+  assert.equal(result.purchase[7].pending, 0);
+  assert.equal(result.purchase[7].rejected, 1);
+  assert.equal(result.users[0].purchaseManagerReviewed, 0);
+  assert.equal(result.users[0].salesManagerReviewed, 0);
+  assert.equal(result.users[0].purchaseComplete, 0);
+  assert.equal(result.users[0].fullyComplete, 0);
+});

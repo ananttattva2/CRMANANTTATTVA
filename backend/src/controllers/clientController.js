@@ -1999,7 +1999,15 @@ exports.listPendingApprovals = async (req, res) => {
   // small and keeps the approval page responsive.
   const storedApprovalsPromise = readStoredPendingApprovals();
   const liveQuotationsPromise = isAdministrativeReviewer
-    ? Quotation.find({ 'managementApproval.status': 'PENDING', status: { $in: ['draft', 'submitted', 'sent', 'admin_approved'] } })
+    ? Quotation.find({
+        status: { $in: ['draft', 'submitted', 'sent', 'admin_approved'] },
+        $or: [
+          { 'managementApproval.status': 'PENDING' },
+          { 'managementApproval.status': { $exists: false } },
+          { 'managementApproval.status': '' },
+          { managementApproval: null }
+        ]
+      })
         .populate('createdBy', 'name email')
         .sort({ 'managementApproval.requestedAt': -1, createdAt: -1 })
         .limit(500)

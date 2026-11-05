@@ -10,7 +10,7 @@ const source = fs.readFileSync(path.join(__dirname, '../src/controllers/quotatio
 
 for (const role of ['sales', 'operation', 'manager', 'franchise', 'admin', 'superadmin']) {
   for (const mode of ['create', 'update']) {
-    test(`${role}: ${mode} quotation waits for Admin Approval details before entering the queue`, async () => {
+    test(`${role}: ${mode} quotation immediately enters the Super Admin queue`, async () => {
       let queued = false;
       let removed = false;
       const data = { items: [], grandTotal: 25000 };
@@ -43,9 +43,11 @@ for (const role of ['sales', 'operation', 'manager', 'franchise', 'admin', 'supe
 
       assert.equal(response.ok, true);
       assert.equal(document.status, 'submitted');
-      assert.equal(Object.keys(document.managementApproval || {}).length, 0);
+      assert.equal(document.managementApproval.status, 'PENDING');
+      assert.equal(document.managementApproval.approverRole, 'superadmin');
+      assert.equal(document.managementApproval.requestedByName, 'User');
       assert.equal(Object.keys(document.approvalDecision || {}).length, 0);
-      assert.equal(queued, false);
+      assert.equal(queued, true);
       if (mode === 'update') {
         assert.equal(removed, true);
         assert.equal(document.revisionHistory.length, 1);

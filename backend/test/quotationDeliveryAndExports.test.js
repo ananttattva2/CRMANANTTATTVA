@@ -55,7 +55,7 @@ test('invalid or excessive CC recipients are rejected before sending', async t =
   }
 });
 
-test('unapproved or inaccessible quotations cannot be emailed or downloaded', async t => {
+test('unapproved quotations cannot be emailed or downloaded by staff', async t => {
   t.mock.method(Lead, 'find', () => query([]));
   let current = { ...quote, status: 'submitted' };
   t.mock.method(Quotation, 'findOne', () => query(current));
@@ -73,6 +73,23 @@ test('an approved admin download returns the client-named PDF attachment', async
   assert.equal(res.code, 200);
   assert.equal(res.filename, 'Test Client.pdf');
   assert.equal(res.body.subarray(0, 5).toString(), '%PDF-');
+});
+
+test('Admin and Super Admin can download an unapproved quotation PDF', async t => {
+  const submittedQuote = { ...quote, status: 'submitted' };
+  t.mock.method(Quotation, 'findOne', () => query(submittedQuote));
+  t.mock.method(delivery, 'createApprovedQuotationPdf', async (quotation, options) => {
+    assert.equal(quotation.status, 'submitted');
+    assert.deepEqual(options, { allowUnapproved: true });
+    return Buffer.from('%PDF-test');
+  });
+  for (const user of [{ ...actor, role: 'admin' }, { ...actor, role: 'superadmin' }, { ...actor, roles: ['admin'] }]) {
+    const res = response();
+    await controller.downloadQuotation({ user, params: { id: quote._id } }, res, error => { throw error; });
+    assert.equal(res.code, 200);
+    assert.equal(res.filename, 'Test Client.pdf');
+    assert.equal(res.body.subarray(0, 5).toString(), '%PDF-');
+  }
 });
 
 test('email provider failure is returned without recording a successful send', async t => {

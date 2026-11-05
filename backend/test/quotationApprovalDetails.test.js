@@ -16,7 +16,10 @@ async function approve(role, details = {}) {
     require: () => ({ Types: { ObjectId: { isValid: (value) => Boolean(value) } } }),
     Quotation: { findById: () => ({ populate: async () => quotation }) },
     PendingApproval: { updateMany: async (filter, update) => updates.push(update) },
-    sendQuotationLifecycleEmail: async () => {}, console
+    sendQuotationLifecycleEmail: async () => {}, console,
+    PRICE_APPROVER_NAMES: new Set(['KRUNAL GODA', 'ANAND PADHYA']),
+    MANAGEMENT_APPROVAL_SOURCES: new Set(['WHATSAPP', 'TEAMS', 'OUTLOOK']),
+    normalizeManagementApprovalSource: (value) => String(value || '').trim().toUpperCase()
   };
   vm.runInNewContext(controller.slice(start, end), context);
   const result = { code: 200 };

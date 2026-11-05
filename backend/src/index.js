@@ -46,6 +46,7 @@ const { startTemporaryAssignmentReminderScheduler } = require('./services/tempor
 const { applyKnownDataCorrections } = require('./services/knownDataCorrections');
 const { pauseExistingPendingClientApprovalTimers } = require('./services/clientReviewReminderLifecycle');
 const { runArComplianceApprovalNotificationBackfill } = require('./services/arComplianceNotificationBackfill');
+const { backfillDirectSuperAdminQuotationApprovals } = require('./services/quotationApprovalBackfill');
 
 process.on('uncaughtException', (err) => {
   console.error('Uncaught exception', err);
@@ -108,6 +109,9 @@ const connectAndStartServices = singleFlight(function () {
     // Deliver any Manager-approved AR handoffs created before decision
     // notifications were introduced. The backfill is idempotent per review.
     await runArComplianceApprovalNotificationBackfill().catch((error) => console.error('AR Compliance notification backfill failed', error));
+    // Quotations created before direct Super Admin routing are migrated once
+    // and then recovered into the read-optimised PendingApproval index on read.
+    await backfillDirectSuperAdminQuotationApprovals().catch((error) => console.error('Quotation approval backfill failed', error));
     // Run once on every deployment/startup so legacy RED records immediately
     // receive their fresh 24-hour recovery window and email notification.
     await runClientComplianceCorrectionReminders().catch((error) => console.error('Compliance correction startup scan failed', error));

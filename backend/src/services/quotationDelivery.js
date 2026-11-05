@@ -65,8 +65,8 @@ async function renderApprovedQuotation(quotation) {
     return Buffer.from(await output.save());
   } finally { await browser.close(); }
 }
-function createApprovedQuotationPdf(quotation) {
-  if (!isApproved(quotation)) return Promise.reject(Object.assign(new Error('Admin approval is required before generating this PDF.'), { status: 403 }));
+function createApprovedQuotationPdf(quotation, { allowUnapproved = false } = {}) {
+  if (!allowUnapproved && !isApproved(quotation)) return Promise.reject(Object.assign(new Error('Admin approval is required before generating this PDF.'), { status: 403 }));
   if (pendingRenders >= 4) return Promise.reject(Object.assign(new Error('Quotation rendering is busy. Please retry shortly.'), { status: 503 }));
   pendingRenders++;
   const job = renderTail.then(() => renderApprovedQuotation(quotation)).finally(() => { pendingRenders--; });

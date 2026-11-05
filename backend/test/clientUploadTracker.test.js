@@ -6,10 +6,22 @@ test('manager and compliance review stages use independent saved verification st
   assert.equal(stageState({ managerVerificationStatus: 'Approved', complianceVerificationStatus: 'Pending' }, 'Manager Review'), 'complete');
   assert.equal(stageState({ managerVerificationStatus: 'Approved', complianceVerificationStatus: 'Pending' }, 'Compliance Review'), 'pending');
   assert.equal(stageState({ complianceVerificationStatus: 'Approved' }, 'Compliance Review'), 'complete');
-  for (const status of [undefined, 'Not Submitted', 'Not Ready', 'Pending', 'Rejected']) {
+  for (const status of [undefined, 'Not Submitted', 'Not Ready', 'Pending']) {
     assert.equal(stageState({ managerVerificationStatus: status }, 'Manager Review'), 'pending');
     assert.equal(stageState({ complianceVerificationStatus: status }, 'Compliance Review'), 'pending');
   }
+  assert.equal(stageState({ managerVerificationStatus: 'Rejected' }, 'Manager Review'), 'rejected');
+});
+
+test('compliance rejection is terminal and removes the application from Manager Review completion', () => {
+  const rejected = { managerVerificationStatus: 'Approved', complianceVerificationStatus: 'Rejected' };
+  assert.equal(stageState(rejected, 'Manager Review'), 'rejected');
+  assert.equal(stageState(rejected, 'Compliance Review'), 'rejected');
+
+  const ready = { baseUpload: { importStatus: 'Imported' }, portalUpload: { importStatus: 'Imported' } };
+  const review = { managerStatus: 'APPROVED', status: 'REJECTED' };
+  assert.equal(stageState(ready, 'Manager Review', review), 'rejected');
+  assert.equal(stageState(ready, 'Compliance Review', review), 'rejected');
 });
 
 test('current AR Compliance decisions are reflected for ready Purchase and Sales records', () => {
@@ -28,6 +40,19 @@ test('AR Compliance manager approval is included in the grouped upload tracker',
   const [group] = buildUploadTracker(clients, users, ready, ready, { financialYear: '2025-26', annualReviews });
   assert.equal(group.purchase[6].complete, 1);
   assert.equal(group.sales[6].complete, 1);
+});
+
+test('grouped upload tracker reports compliance rejection without retaining manager approval', () => {
+  const clients = [{ _id: 'c1', selectedLead: { assignedStaff: 'u1', company: 'Rejected Client' } }];
+  const users = [{ _id: 'u1', name: 'Operations User', role: 'operation' }];
+  const ready = [{ clientId: 'c1', financialYear: '2025-26', baseUpload: { importStatus: 'Imported' }, portalUpload: { importStatus: 'Imported' } }];
+  const annualReviews = [{ client: 'c1', financialYear: '2025-26', managerStatus: 'APPROVED', status: 'REJECTED' }];
+  const [group] = buildUploadTracker(clients, users, ready, ready, { financialYear: '2025-26', annualReviews });
+  assert.equal(group.purchase[6].complete, 0);
+  assert.equal(group.purchase[6].rejected, 1);
+  assert.equal(group.purchase[7].pending, 0);
+  assert.equal(group.purchase[7].rejected, 1);
+  assert.equal(group.sales[6].rejected, 1);
 });
 
 test('CCL SLA receipt survives blank sibling services and review counts stay unique per company', () => {
