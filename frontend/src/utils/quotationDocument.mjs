@@ -7,12 +7,19 @@ const EPR_CREDIT_UOM_OPTIONS = ['KG', 'MT'];
 
 const EPR_CREDIT_YEAR_OPTIONS = ['2022-23', '2023-24', '2024-25', '2025-26', '2026-27', '2027-28', '2028-29', '2029-30'];
 
+function quotationDisplayValue(value, fallback = '-') {
+  const text = String(value ?? '').trim();
+  if (!text) return fallback;
+  const normalized = text.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  return ['notapplicable', 'na'].includes(normalized) ? fallback : text;
+}
+
 function isEprCreditItem(item = {}) {
   return String(item.businessCategory || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '') === 'eprcredit';
 }
 
 function quotationUnitLabel(item = {}) {
-  const unit = String(item.unit || '1').trim() || '1';
+  const unit = quotationDisplayValue(item.unit || '1');
   const uom = String(item.unitLabel || '').trim().toUpperCase();
   return isEprCreditItem(item) && EPR_CREDIT_UOM_OPTIONS.includes(uom) ? `${unit}${uom}` : unit;
 }
@@ -23,9 +30,9 @@ function isPlasticWasteService(item = {}) {
 
 function getQuotationApplicantType(item = {}, source = {}) {
   if (isPlasticWasteService({ ...item, serviceCategory: source.serviceCategory || source.eprCategory || item.serviceCategory || item.eprCategory })) {
-    return String(source.subApplicantType || source.piboCategory || item.subApplicantType || item.piboCategory || source.applicantType || item.applicantType || '-').trim() || '-';
+    return quotationDisplayValue(source.subApplicantType || source.piboCategory || item.subApplicantType || item.piboCategory || source.applicantType || item.applicantType);
   }
-  return String(source.applicantType || item.applicantType || item.piboCategory || item.piboParent || '-').trim() || '-';
+  return quotationDisplayValue(source.applicantType || item.applicantType || item.piboCategory || item.piboParent);
 }
 
 function quotationEprCreditYears(item = {}) {
@@ -291,9 +298,10 @@ function meaningfulQuotationItems(items) {
 }
 
 function formatDisplayDate(value) {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  const displayValue = quotationDisplayValue(value);
+  if (displayValue === '-') return displayValue;
+  const date = new Date(displayValue);
+  if (Number.isNaN(date.getTime())) return displayValue;
   return date.toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata' }).replace(/\//g, '-');
 }
 
@@ -318,13 +326,13 @@ function buildQuotationPrintHtml(quotation, options = {}) {
   const rows = displayRows.map(({ item, index, group, groupSize, firstInGroup }, rowIndex) => `
     <tr>
       <td class="center">${rowIndex + 1}</td>
-      <td>${escapeHtml(item.businessCategory || '-')}</td>
-      <td>${escapeHtml(item.eprCategory || item.serviceCategory || '-')}</td>
+      <td>${escapeHtml(quotationDisplayValue(item.businessCategory))}</td>
+      <td>${escapeHtml(quotationDisplayValue(item.eprCategory || item.serviceCategory))}</td>
       <td class="center date-range">${quotationServiceDateRangeHtml(item)}</td>
       <td>${escapeHtml(getQuotationApplicantType(item))}</td>
-      <td>${escapeHtml(item.servicesOffered || '-')}</td>
+      <td>${escapeHtml(quotationDisplayValue(item.servicesOffered))}</td>
       <td class="center">${escapeHtml(quotationUnitLabel(item))}</td>
-      <td>${escapeHtml(item.unitName || '-')}</td>
+      <td>${escapeHtml(quotationDisplayValue(item.unitName))}</td>
       ${!combined || firstInGroup ? `<td class="amount${combined ? ' combined-amount' : ''}"${combined ? ` rowspan="${groupSize}"` : ''}>${escapeHtml(formatInr(combined ? group.basicAmount : item.basicAmount))}</td>` : ''}
     </tr>
   `).join('');
@@ -417,14 +425,14 @@ function buildQuotationPrintHtml(quotation, options = {}) {
       </section>
       <section class="to">
         <p class="label">To:</p>
-        <p>${escapeHtml(details.salutation || '')} ${escapeHtml(details.contactPerson || '-')} ${details.designation ? `- ${escapeHtml(details.designation)}` : ''}</p>
-          <p><span class="strong">Mobile No.1:</span> ${escapeHtml(details.mobileNo1 || '-')}</p>
-          <p class="strong">${escapeHtml(details.companyName || '-')}</p>
-        <p>${escapeHtml([details.addressLine1, details.addressLine2, details.addressLine3].filter(Boolean).join(', ') || '-')}</p>
-        <p><span class="strong">State:</span> ${escapeHtml(details.state || '-')}</p>
-        <p><span class="strong">City:</span> ${escapeHtml(details.city || '-')}</p>
-        <p><span class="strong">Pincode:</span> ${escapeHtml(details.pinCode || '-')}</p>
-        <p><span class="strong">GST Number:</span> ${escapeHtml(details.gstNumber || '-')}</p>
+        <p>${escapeHtml(quotationDisplayValue(details.salutation, ''))} ${escapeHtml(quotationDisplayValue(details.contactPerson))} ${quotationDisplayValue(details.designation, '') ? `- ${escapeHtml(quotationDisplayValue(details.designation))}` : ''}</p>
+          <p><span class="strong">Mobile No.1:</span> ${escapeHtml(quotationDisplayValue(details.mobileNo1))}</p>
+          <p class="strong">${escapeHtml(quotationDisplayValue(details.companyName))}</p>
+        <p>${escapeHtml(quotationDisplayValue([details.addressLine1, details.addressLine2, details.addressLine3].map((value) => quotationDisplayValue(value, '')).filter(Boolean).join(', ')))}</p>
+        <p><span class="strong">State:</span> ${escapeHtml(quotationDisplayValue(details.state))}</p>
+        <p><span class="strong">City:</span> ${escapeHtml(quotationDisplayValue(details.city))}</p>
+        <p><span class="strong">Pincode:</span> ${escapeHtml(quotationDisplayValue(details.pinCode))}</p>
+        <p><span class="strong">GST Number:</span> ${escapeHtml(quotationDisplayValue(details.gstNumber))}</p>
       </section>
       ${combinedPackageHeader}
       <table>
@@ -437,7 +445,7 @@ function buildQuotationPrintHtml(quotation, options = {}) {
       <div class="package-header">EPR / Service Period Mapping</div>
       <table>
         <thead><tr><th>Sr.<br>No</th><th>Service Category</th><th>Applicant Type</th>${hasReturnYearItems ? `<th>${escapeHtml(yearMappingHeader)}</th>` : ''}<th>Services Offered</th></tr></thead>
-        <tbody>${displayRows.map(({ item }, index) => `<tr><td class="center">${index + 1}</td><td>${escapeHtml(item.eprCategory || item.serviceCategory || '-')}</td><td>${escapeHtml(getQuotationApplicantType(item))}</td>${hasReturnYearItems ? `<td>${escapeHtml(quotationAnnualReturnRegistrationYear(item))}</td>` : ''}<td>${escapeHtml(item.servicesOffered || '-')}</td></tr>`).join('') || `<tr><td colspan="${hasReturnYearItems ? 5 : 4}" class="center">No quotation items added.</td></tr>`}</tbody>
+        <tbody>${displayRows.map(({ item }, index) => `<tr><td class="center">${index + 1}</td><td>${escapeHtml(quotationDisplayValue(item.eprCategory || item.serviceCategory))}</td><td>${escapeHtml(getQuotationApplicantType(item))}</td>${hasReturnYearItems ? `<td>${escapeHtml(quotationDisplayValue(quotationAnnualReturnRegistrationYear(item)))}</td>` : ''}<td>${escapeHtml(quotationDisplayValue(item.servicesOffered))}</td></tr>`).join('') || `<tr><td colspan="${hasReturnYearItems ? 5 : 4}" class="center">No quotation items added.</td></tr>`}</tbody>
       </table>
       <section class="terms">
         <p class="label">Terms & Conditions:</p>
@@ -468,7 +476,7 @@ function buildQuotationPrintHtml(quotation, options = {}) {
 </html>`;
 }
 
-export { buildQuotationPrintHtml, meaningfulQuotationItems, isMeaningfulQuotationItem, isCombinedQuotation, combinedQuotationTotal, normalizeCombinedPricingGroups, quotationItemKey, quotationItemsTotal, isEprConsultancyItem, quotationYearMappingHeader, isAnnualReturnQuotationService, normalizedQuotationService, isRegistrationQuotationService, combinedPricingRows, escapeHtml, quotationServiceDateRangeHtml, quotationServiceDateRange, formatServiceDate, parseDateInputValue, getQuotationApplicantType, isPlasticWasteService, quotationUnitLabel, isEprCreditItem, EPR_CREDIT_UOM_OPTIONS, formatInr, quotationSelectedTerms, quotationPaymentTerm, PAYMENT_TERM_OPTIONS, ANANT_LOGO_SOURCE_URL, quotationOwnerName, ANANT_TATTVA_ADDRESS, ANANT_TATTVA_GST_NUMBER, formatDisplayDate, quotationPreparedByName, quotationAnnualReturnRegistrationYear, quotationAnnualReturnOrCreditYears, quotationEprCreditYears, EPR_CREDIT_YEAR_OPTIONS, quotationServicePeriodYears, isPwpQuotationApplicant, isAnnualReturnRegistrationApplicant };
+export { buildQuotationPrintHtml, meaningfulQuotationItems, isMeaningfulQuotationItem, isCombinedQuotation, combinedQuotationTotal, normalizeCombinedPricingGroups, quotationItemKey, quotationItemsTotal, isEprConsultancyItem, quotationYearMappingHeader, isAnnualReturnQuotationService, normalizedQuotationService, isRegistrationQuotationService, combinedPricingRows, escapeHtml, quotationDisplayValue, quotationServiceDateRangeHtml, quotationServiceDateRange, formatServiceDate, parseDateInputValue, getQuotationApplicantType, isPlasticWasteService, quotationUnitLabel, isEprCreditItem, EPR_CREDIT_UOM_OPTIONS, formatInr, quotationSelectedTerms, quotationPaymentTerm, PAYMENT_TERM_OPTIONS, ANANT_LOGO_SOURCE_URL, quotationOwnerName, ANANT_TATTVA_ADDRESS, ANANT_TATTVA_GST_NUMBER, formatDisplayDate, quotationPreparedByName, quotationAnnualReturnRegistrationYear, quotationAnnualReturnOrCreditYears, quotationEprCreditYears, EPR_CREDIT_YEAR_OPTIONS, quotationServicePeriodYears, isPwpQuotationApplicant, isAnnualReturnRegistrationApplicant };
 
 export function quotationFilename(quotation = {}) {
   const clientName = [quotation.leadDetails?.companyName, quotation.companyName].map(value => String(value || '').trim()).find(Boolean) || 'Client Quotation';
