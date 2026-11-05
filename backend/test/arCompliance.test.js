@@ -8,6 +8,7 @@ const Sales = require('../src/models/SalesData');
 const PR = require('../src/models/PurchaseImportRow');
 const SR = require('../src/models/SalesImportRow');
 const Review = require('../src/models/ArComplianceReview');
+const User = require('../src/models/User');
 const cc = require('../src/controllers/clientController');
 const ctrl = require('../src/controllers/arComplianceController');
 const id = '64b000000000000000000002',
@@ -148,6 +149,7 @@ function fixture(t) {
   t.mock.method(SR, 'find', () => q([]));
   t.mock.method(Review, 'findOne', () => q(state.review));
   t.mock.method(Review, 'find', () => q(state.review ? [state.review] : []));
+  t.mock.method(User, 'find', () => q([]));
   t.mock.method(Review, 'updateOne', async (filter, update) => {
     state.writes.push({
       filter,
@@ -315,6 +317,24 @@ test('queue contains completed Excel pairs only and shows initial Manager stage'
   let result = await call('list');
   assert.equal(result.body.rows.length, 1);
   assert.equal(result.body.rows[0].stage, 'MANAGER_REVIEW');
+  state.review = {
+    client: id,
+    financialYear: '2025-26',
+    managerStatus: 'APPROVED',
+    managerSourceRevision: service.sourceRevision(state.data),
+    managerFinalRemarks: 'Manager verified the uploaded data',
+    managerDecidedByName: 'Manager',
+    managerDecidedAt: new Date('2026-11-04T10:00:00.000Z'),
+    status: 'PARTIALLY_APPROVED',
+    finalRemarks: 'Compliance needs one correction',
+    decidedBy: { name: 'Compliance' },
+    decidedAt: new Date('2026-11-04T11:00:00.000Z')
+  };
+  result = await call('list');
+  assert.equal(result.body.rows[0].managerDecision.remarks, 'Manager verified the uploaded data');
+  assert.equal(result.body.rows[0].managerDecision.by, 'Manager');
+  assert.equal(result.body.rows[0].complianceDecision.remarks, 'Compliance needs one correction');
+  assert.equal(result.body.rows[0].complianceDecision.by, 'Compliance');
   state.data.purchase.portalUpload = null;
   result = await call('list');
   assert.equal(result.body.rows.length, 0);

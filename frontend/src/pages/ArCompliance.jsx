@@ -15,6 +15,17 @@ function Status({
 }) {
   return <span className="ar-status" data-status={value}>{human(value)}</span>;
 }
+function ReviewDecisionCard({
+  title,
+  decision,
+  type
+}) {
+  const hasReview = Boolean(decision?.at || decision?.remarks);
+  return <article className="ar-decision-card" data-type={type}>
+    <header><div><span className="ar-decision-step">{type === 'manager' ? 'Stage 1' : 'Stage 2'}</span><h3>{title}</h3></div><Status value={decision?.status || 'NOT_READY'} /></header>
+    {hasReview ? <><dl className="ar-decision-meta"><div><dt>Reviewed by</dt><dd>{decision?.by || '-'}</dd></div><div><dt>Reviewed at</dt><dd>{decision?.at ? new Date(decision.at).toLocaleString('en-IN') : '-'}</dd></div></dl><div className="ar-decision-remarks"><span>Remarks</span><p>{decision?.remarks || 'No remarks were entered.'}</p></div></> : <div className="ar-decision-empty">No {type === 'manager' ? 'manager' : 'compliance'} review remarks have been submitted yet.</div>}
+  </article>;
+}
 function DataItem({
   field
 }) {
@@ -110,7 +121,8 @@ export function ArComplianceWorkspace({
       setFinalRemarks(data.finalRemarks || '');
       setDecision('');
       setReviewOpen(false);
-      setNotice(payload.reviewStage === 'manager' && decision === 'APPROVED' ? 'Manager approved. AR data is now with Compliance for review.' : `${payload.reviewStage === 'manager' ? 'Manager' : 'Compliance'} decision saved: ${human(decision)}.`);
+      const deliveryWarning = data.notification?.ok === false || data.notification?.emailFailed > 0 ? ' The decision was saved, but one or more notifications could not be delivered; please contact an administrator.' : '';
+      setNotice(`${payload.reviewStage === 'manager' && decision === 'APPROVED' ? 'Manager approved. AR data is now with Compliance for review.' : `${payload.reviewStage === 'manager' ? 'Manager' : 'Compliance'} decision saved: ${human(decision)}.`}${deliveryWarning}`);
     } catch (err) {
       setError(err?.response?.data?.error || 'Unable to save decision.');
     } finally {
@@ -145,7 +157,8 @@ export default function ArComplianceList() {
     [error, setError] = useState('');
   const [status, setStatus] = useState('PENDING'),
     [search, setSearch] = useState(''),
-    [page, setPage] = useState(1);
+    [page, setPage] = useState(1),
+    [selectedReview, setSelectedReview] = useState(null);
   const canCompany = hasAnyRole(currentUser, ['admin', 'superadmin', 'compliance']);
   async function load() {
     setLoading(true);
@@ -191,9 +204,10 @@ export default function ArComplianceList() {
               setStatus(key);
               setPage(1);
             }}>{text} <b>{rows.filter(row => matches(row, key)).length}</b></button>)}</div>
-        <div className="ar-table-scroll"><table className="ar-table"><thead><tr>{['Client Name', 'Financial Year', 'Current Stage', 'Manager Status', 'Compliance Status', 'Approval Status', 'Decision By', 'Reviewed At', 'Actions'].map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{filtered.slice((page - 1) * 10, page * 10).map(row => <tr key={`${row.clientId}:${row.financialYear}`}><td>{row.clientName}</td><td>{row.financialYear}</td><td><span className="ar-stage-label">{row.stageLabel}</span></td><td><Status value={row.managerStatus} /></td><td><Status value={row.complianceStatus} /></td><td><Status value={row.status} /></td><td>{row.decisionBy}</td><td>{row.reviewedAt ? new Date(row.reviewedAt).toLocaleString('en-IN') : '-'}</td><td><Link to={`/compliance/ar/${row.clientId}?financialYear=${encodeURIComponent(row.financialYear)}`} className="inline-flex items-center gap-2"><FileCheck2 size={15} />Review</Link></td></tr>)}</tbody></table></div>
+        <div className="ar-table-scroll"><table className="ar-table"><thead><tr>{['Client Name', 'Financial Year', 'Current Stage', 'Manager Status', 'Compliance Status', 'Approval Status', 'Decision By', 'Reviewed At', 'Actions'].map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{filtered.slice((page - 1) * 10, page * 10).map(row => <tr key={`${row.clientId}:${row.financialYear}`}><td><button type="button" className="ar-company-review-trigger" onClick={() => setSelectedReview(row)} aria-label={`View manager and compliance remarks for ${row.clientName}`}>{row.clientName}</button></td><td>{row.financialYear}</td><td><span className="ar-stage-label">{row.stageLabel}</span></td><td><Status value={row.managerStatus} /></td><td><Status value={row.complianceStatus} /></td><td><Status value={row.status} /></td><td>{row.decisionBy}</td><td>{row.reviewedAt ? new Date(row.reviewedAt).toLocaleString('en-IN') : '-'}</td><td><Link to={`/compliance/ar/${row.clientId}?financialYear=${encodeURIComponent(row.financialYear)}`} className="inline-flex items-center gap-2"><FileCheck2 size={15} />Review</Link></td></tr>)}</tbody></table></div>
         {loading ? <div className="ar-empty">Loading AR clients…</div> : !filtered.length && <div className="ar-empty">No clients in this view. AR clients appear after both Excel files are imported.</div>}<div className="ar-pagination"><span>{filtered.length} records · Page {page} of {pages}</span><button disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Previous</button><button disabled={page >= pages} onClick={() => setPage(value => value + 1)}>Next</button></div>
       </section>
     </>}
+    {selectedReview && <ArReviewDialog title="Manager & Compliance Remarks" onClose={() => setSelectedReview(null)}><div className="ar-decision-dialog-heading"><div><p className="ar-eyebrow">Annual Return Review</p><h3>{selectedReview.clientName}</h3><p className="ar-muted">Financial Year {selectedReview.financialYear} · {selectedReview.stageLabel}</p></div><Status value={selectedReview.status} /></div><div className="ar-decision-grid"><ReviewDecisionCard title="Manager Review" type="manager" decision={selectedReview.managerDecision} /><ReviewDecisionCard title="Compliance Review" type="compliance" decision={selectedReview.complianceDecision} /></div><div className="ar-decision-dialog-footer"><Link to={`/compliance/ar/${selectedReview.clientId}?financialYear=${encodeURIComponent(selectedReview.financialYear)}`}><FileCheck2 size={15} />Open full review</Link><button type="button" onClick={() => setSelectedReview(null)}>Close</button></div></ArReviewDialog>}
   </div></DashboardShell>;
 }

@@ -17,6 +17,9 @@ const {
 const {
   userHasAnyRole
 } = require('../utils/userRoles');
+const {
+  notifyArComplianceDecision
+} = require('../services/arComplianceDecisionNotifications');
 const yearKey = value => String(value || '').replace(/^FY\s*/i, '').trim();
 const nameOf = client => client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || client.selectedLead?.company || 'Client';
 const readyFilter = {
@@ -46,7 +49,7 @@ async function source(req) {
     $and: [{
       _id: req.params.id
     }, await clientScope(req.user)]
-  }).populate('selectedLead', 'company leadCode').lean();
+  }).populate('selectedLead', 'company leadCode assignedStaff assignedTo createdBy').lean();
   if (!client) return null;
   const records = await AnnualReturn.find({
     client: client._id
@@ -96,7 +99,11 @@ async function source(req) {
     years,
     financialYear,
     sections: buildSections(inputs),
-    revision: sourceRevision(inputs)
+    revision: sourceRevision(inputs),
+    workflowRecords: {
+      purchase,
+      sales
+    }
   };
 }
 async function load(req) {
@@ -178,7 +185,7 @@ exports.list = wrap(async (req, res) => {
     client: {
       $in: ids
     }
-  }).populate('decidedBy', 'name email').lean()]);
+  }).populate('decidedBy', 'name email').populate('managerDecidedBy', 'name email').lean()]);
   const rows = clients.flatMap(client => {
     const same = id => String(id) === String(client._id);
     const ownPurchase = purchases.filter(row => same(row.clientId) && readyModule(row));
@@ -205,6 +212,18 @@ exports.list = wrap(async (req, res) => {
         financialYear,
         status: workflow.stage === 'MANAGER_REJECTED' ? 'REJECTED' : manager ? 'PENDING' : workflow.complianceStatus,
         ...workflow,
+        managerDecision: {
+          status: review.managerStatus || workflow.managerStatus,
+          remarks: review.managerFinalRemarks || '',
+          by: review.managerDecidedByName || review.managerDecidedBy?.name || review.managerDecidedBy?.email || '-',
+          at: review.managerDecidedAt || null
+        },
+        complianceDecision: {
+          status: review.status || workflow.complianceStatus,
+          remarks: review.finalRemarks || '',
+          by: review.decidedBy?.name || review.decidedBy?.email || '-',
+          at: review.decidedAt || null
+        },
         decisionBy: manager ? review.managerDecidedByName || '-' : review.decidedBy?.name || review.decidedBy?.email || '-',
         reviewedAt: manager ? review.managerDecidedAt || null : review.decidedAt || null
       };
@@ -391,5 +410,34 @@ exports.decide = wrap(async (req, res) => {
   if (!result.matchedCount) return res.status(409).json({
     error: 'Another reviewer updated this review. Reload before deciding.'
   });
-  res.json(publicPayload(await load(req)));
+  let notification;
+  try {
+    notification = await notifyArComplianceDecision({
+      client: data.client,
+      purchase: data.workflowRecords?.purchase,
+      sales: data.workflowRecords?.sales,
+      financialYear: data.financialYear,
+      stage: data.reviewStage,
+      decision: req.body.decision,
+      remarks: req.body.remarks.trim(),
+      actor: req.user
+    });
+  } catch (notificationError) {
+    console.error('AR compliance decision notification failed', {
+      clientId: String(data.client._id),
+      financialYear: data.financialYear,
+      stage: data.reviewStage,
+      decision: req.body.decision,
+      error: notificationError.message
+    });
+    notification = {
+      ok: false,
+      reason: 'notification_failed',
+      error: notificationError.message
+    };
+  }
+  res.json({
+    ...publicPayload(await load(req)),
+    notification
+  });
 });
