@@ -41,9 +41,11 @@ function harness({ lead = {}, entries = [], eligibleOwner = 'u', denied = false,
     '../models/Lead': { findOne: () => chain(denied ? null : hot) },
     '../models/TemporaryLead': { findOne: () => chain(null) },
     '../models/LeadRevenue': Revenue,
+    '../models/Quotation': { find: () => chain([]) },
     './leadController': { leadAccessFilter: async () => ({ scoped: true }) },
     './temporaryLeadController': { temporaryLeadAccessFilter: async () => ({ scoped: true }) },
     '../services/leadRevenue': require('../src/services/leadRevenue'),
+    '../services/latestLeadQuotation': require('../src/services/latestLeadQuotation'),
     '../utils/userRoles': { userHasAnyRole: () => admin }
   };
   const context = { exports: {}, require: name => { if (!(name in deps)) throw new Error(name); return deps[name]; } };
@@ -93,9 +95,11 @@ test('converted cold leads remain in Cold Closed history and link to one unique 
   'node:crypto':require('node:crypto'),mongoose:{},'../models/Lead':{find:()=>chain(hot)},
   '../models/TemporaryLead':{find:()=>chain(++coldReads===1?cold:[cold[0]])},
   '../models/LeadRevenue':{find:()=>chain(++revenueReads===1?[own,inherited]:[inherited])},
+  '../models/Quotation':{find:()=>chain([])},
   './leadController':{leadAccessFilter:async()=>({visible:'hot'})},
   './temporaryLeadController':{temporaryLeadAccessFilter:async()=>({visible:'cold'})},
-  '../services/leadRevenue':require('../src/services/leadRevenue'), '../utils/userRoles':{}
+  '../services/leadRevenue':require('../src/services/leadRevenue'),
+  '../services/latestLeadQuotation':require('../src/services/latestLeadQuotation'), '../utils/userRoles':{}
  };
  const context={exports:{},require:name=>deps[name]};
  vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../src/controllers/leadRevenueController.js'),'utf8'),context);
