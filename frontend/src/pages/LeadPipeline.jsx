@@ -182,15 +182,16 @@ function SalesRepTable({ reps, comparisonLabel, range, previousRange, onMetricCl
   </section>;
 }
 
-function SalesPriorityCard({ kind, open, closed, revenue, poValue, previousOpen, previousClosed, previousRevenue, previousPoValue, comparisonLabel, onOpen }) {
+function SalesPriorityCard({ kind, open, closed, expectedRevenue, quotationValue = 0, poValue, previousOpen, previousClosed, previousExpectedRevenue, previousQuotationValue = 0, previousPoValue, comparisonLabel, onOpen }) {
   const hot = kind === 'hot';
   const Icon = hot ? Flame : Snowflake;
   return <article className={`sales-priority-card ${kind}`}>
     <header><span className="sales-priority-icon"><Icon aria-hidden="true"/></span><div><h2>{hot ? 'Hot Leads' : 'Cold Leads'}</h2><p>{hot ? 'High priority leads with active engagement.' : 'Nurturing leads for future opportunities.'}</p></div><em>{hot ? 'High Priority' : 'Low Priority'}</em></header>
     <div className={`sales-priority-metrics ${hot ? 'is-paired' : 'is-cold'}`}>
-      <section className="sales-priority-pair" aria-label={hot ? 'Hot open leads and latest quotation value' : 'Cold open leads and expected revenue'}>
+      <section className="sales-priority-pair" aria-label={hot ? 'Hot open leads, expected revenue and latest quotation value' : 'Cold open leads and expected revenue'}>
         <button type="button" onClick={() => onOpen(kind, hot ? 'open' : '')}><Target/><span><small>Lead Open</small><strong>{open.toLocaleString('en-IN')}</strong><CardPeriodComparison value={open} previous={previousOpen} comparisonLabel={comparisonLabel}/></span></button>
-        <button type="button" onClick={() => onOpen(kind, hot ? 'open' : '')}><CircleDollarSign/><span><small>{hot ? 'Open Quotation Value' : 'Expected Revenue'}</small><strong>{revenueMoney(revenue)}</strong><CardPeriodComparison value={revenue} previous={previousRevenue} comparisonLabel={comparisonLabel} money/></span></button>
+        <button type="button" onClick={() => onOpen(kind, hot ? 'open' : '')}><CircleDollarSign/><span><small>Expected Revenue</small><strong>{revenueMoney(expectedRevenue)}</strong><CardPeriodComparison value={expectedRevenue} previous={previousExpectedRevenue} comparisonLabel={comparisonLabel} money/></span></button>
+        {hot && <button type="button" onClick={() => onOpen('hot', 'open')}><WalletCards/><span><small>Open Quotation Value</small><strong>{revenueMoney(quotationValue)}</strong><CardPeriodComparison value={quotationValue} previous={previousQuotationValue} comparisonLabel={comparisonLabel} money/></span></button>}
       </section>
       {hot && <section className="sales-priority-pair is-closed" aria-label="Hot closed leads and PO value">
         <button type="button" onClick={() => onOpen('hot', 'closed')}><span className="sales-priority-metric-icon is-closed">✓</span><span><small>Lead Closed</small><strong>{closed.toLocaleString('en-IN')}</strong><CardPeriodComparison value={closed} previous={previousClosed} comparisonLabel={comparisonLabel}/></span></button>
@@ -427,8 +428,8 @@ export default function LeadPipeline() {
         {!unique.length && <p role="status" className="pipeline-filter-empty">No leads match these filters. Try another period or owner.</p>}
         {comparisonLabel && previousRange && <div className="sales-period-comparison" role="note"><div><small>Selected {comparisonLabel}</small><strong>{range.label}</strong></div><span>compared with</span><div><small>Previous {comparisonLabel}</small><strong>{previousRange.label}</strong></div></div>}
         <section className="sales-priority-grid" aria-label="Sales pipeline priorities">
-          <SalesPriorityCard kind="hot" open={hotOpen.length} closed={hotClosed.length} revenue={quotationTotal(hotOpen)} poValue={poTotal(hotClosed)} previousOpen={previousHotOpen.length} previousClosed={previousHotClosed.length} previousRevenue={quotationTotal(previousHotOpen)} previousPoValue={poTotal(previousHotClosed)} comparisonLabel={comparisonLabel} onOpen={open}/>
-          <SalesPriorityCard kind="cold" open={coldRows.length} closed={0} revenue={total(coldRows)} poValue={0} previousOpen={previousColdRows.length} previousClosed={0} previousRevenue={total(previousColdRows)} previousPoValue={0} comparisonLabel={comparisonLabel} onOpen={open}/>
+          <SalesPriorityCard kind="hot" open={hotOpen.length} closed={hotClosed.length} expectedRevenue={total(hotOpen)} quotationValue={quotationTotal(hotOpen)} poValue={poTotal(hotClosed)} previousOpen={previousHotOpen.length} previousClosed={previousHotClosed.length} previousExpectedRevenue={total(previousHotOpen)} previousQuotationValue={quotationTotal(previousHotOpen)} previousPoValue={poTotal(previousHotClosed)} comparisonLabel={comparisonLabel} onOpen={open}/>
+          <SalesPriorityCard kind="cold" open={coldRows.length} closed={0} expectedRevenue={total(coldRows)} poValue={0} previousOpen={previousColdRows.length} previousClosed={0} previousExpectedRevenue={total(previousColdRows)} previousPoValue={0} comparisonLabel={comparisonLabel} onOpen={open}/>
         </section>
         <section className="sales-dashboard-main">
           <div className="sales-dashboard-charts"><PipelineTrendChart data={trendData} previousData={previousTrendData} comparisonLabel={comparisonLabel}/><SummaryStatusChart items={statusItems} previousItems={previousStatusItems} comparisonLabel={comparisonLabel}/></div>

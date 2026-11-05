@@ -1175,10 +1175,10 @@
 /* Keep lead counts with their corresponding financial metric. */
 .sales-priority-metrics.is-paired{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:14px}
 .sales-priority-metrics.is-cold{grid-template-columns:1fr;padding:14px}
-.sales-priority-pair{min-width:0;overflow:hidden;border:1px solid #f5d5c3;border-radius:12px;background:#fffaf6;box-shadow:0 3px 10px #25415c05}
+.sales-priority-pair{display:flex;min-width:0;overflow:hidden;flex-direction:column;border:1px solid #f5d5c3;border-radius:12px;background:#fffaf6;box-shadow:0 3px 10px #25415c05}
 .sales-priority-pair.is-closed{border-color:#cce7db;background:#f5fcf8}
 .cold .sales-priority-pair{border-color:#c9e0f9;background:#f7fbff}
-.sales-priority-pair>button{display:flex;align-items:flex-start;gap:10px;width:100%;min-height:70px;padding:12px 14px;text-align:left;transition:background .18s}
+.sales-priority-pair>button{display:flex;align-items:flex-start;gap:10px;width:100%;min-height:70px;flex:1;padding:12px 14px;text-align:left;transition:background .18s}
 .sales-priority-pair>button+button{border-top:1px solid #e7ece9}
 .sales-priority-pair>button:hover{background:#ffffffb5}
 .sales-priority-pair>button:focus-visible{outline:2px solid var(--card-accent);outline-offset:-3px}
