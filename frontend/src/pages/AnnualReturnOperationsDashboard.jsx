@@ -1,12 +1,13 @@
 import { exportWithReason } from '../utils/dataExport.mjs'
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowUpDown, BarChart3, Building2, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, Factory, FileSpreadsheet, Layers3, Leaf, RefreshCw, Recycle, Search, ShoppingCart, TrendingUp, Users, X } from 'lucide-react';
+import { AlertTriangle, ArrowUpDown, BarChart3, Building2, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, Factory, FileSpreadsheet, FileText, Layers3, Leaf, RefreshCw, Recycle, Search, ShoppingCart, TrendingUp, Users, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import DashboardShell from '../components/dashboard/DashboardShell';
 import DashboardViewTabs from '../components/dashboard/DashboardViewTabs';
 import api from '../services/api';
 import { API_ENDPOINTS } from '../services/apiEndpoints';
+import { downloadPurchaseSalesMisPdf } from '../utils/purchaseSalesMisPdf.mjs';
 import '../styles/annual-return-operations.css';
 
 const CATEGORY_THEME = {
@@ -105,7 +106,7 @@ function WorkflowClients({ selection, users, onClose }) {
   </section></div>;
 }
 
-function PurchaseSalesSummary({ data }) {
+function PurchaseSalesSummary({ data, onDownloadPdf, exportingPdf = false }) {
   const tracker = data?.purchaseSales || { summary: {}, purchase: [], sales: [], users: [] };
   const [expanded, setExpanded] = useState('');
   const [selection, setSelection] = useState(null);
@@ -120,6 +121,7 @@ function PurchaseSalesSummary({ data }) {
     [Check, 'Fully Completed', summary.fullyComplete, 'Purchase and Sales complete', 'purple']
   ];
   return <div className="arops-purchase-sales">
+    <section className="arops-ps-exportbar"><div><span>Management Information System</span><h2>Purchase &amp; Sales MIS</h2><p>Download the filtered KPI, workflow and complete user-wise summary.</p></div><button type="button" onClick={onDownloadPdf} disabled={exportingPdf}><FileText />{exportingPdf ? 'Preparing PDF…' : 'Download PDF MIS'}</button></section>
     <section className="arops-summary-grid">{kpis.map(([icon, label, value, note, tone], index) => <SummaryCard key={label} index={index} icon={icon} label={label} value={value} note={note} tone={tone} />)}</section>
     <div className="arops-workflow-columns"><WorkflowStagePanel title="Purchase Workflow Summary" icon={ShoppingCart} tone="purchase" stages={tracker.purchase || []} total={summary.allocated || 0} onSelect={openStage} /><WorkflowStagePanel title="Sales Workflow Summary" icon={TrendingUp} tone="sales" stages={tracker.sales || []} total={summary.allocated || 0} onSelect={openStage} /></div>
     <section className="arops-ps-users"><header><div><h2>User-wise Purchase &amp; Sales Summary</h2><p>Manager-reviewed counts are shown separately from final completion. Expand a user to view every stage.</p></div><span>{tracker.users?.length || 0} users</span></header>
@@ -138,6 +140,7 @@ export default function AnnualReturnOperationsDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   const setFilter = (name, value) => setFilters(current => ({ ...current, [name]: value, page: name === 'page' ? Number(value) : 1 }));
   const chooseCategory = value => setFilters(current => ({ ...current, category: current.category === value ? '' : value, applicantType: '', subType: '', page: 1 }));
@@ -206,6 +209,26 @@ export default function AnnualReturnOperationsDashboard() {
     finally { setExporting(false); }
   }
 
+  async function exportPurchaseSalesPdf() {
+    setExportingPdf(true); setError('');
+    try {
+      const response = await api.get(API_ENDPOINTS.dashboardInsights.annualReturnOperations, { params: { ...filters, export: 'true' } });
+      const exportData = response.data || {};
+      const assignedUser = exportData.options?.users?.find(item => item.value === filters.user)?.label;
+      await downloadPurchaseSalesMisPdf({
+        tracker: exportData.purchaseSales,
+        year: exportData.selectedYear || filters.year,
+        filters: [
+          ['Assigned User', assignedUser], ['Team / Manager', filters.team], ['Service Category', filters.category],
+          ['Applicant Type', filters.applicantType], ['Sub-Type', filters.subType], ['Service Status', filters.status],
+          ['Due From', filters.dueFrom], ['Due To', filters.dueTo], ['Search', filters.search]
+        ]
+      });
+    } catch (pdfError) {
+      setError(pdfError?.response?.data?.error || pdfError?.message || 'PDF MIS export failed.');
+    } finally { setExportingPdf(false); }
+  }
+
   function sort(field) { setFilters(current => ({ ...current, sortBy: field, sortDir: current.sortBy === field && current.sortDir === 'asc' ? 'desc' : 'asc', page: 1 })); }
   function clearChip(name) {
     if (name === 'scope') return;
@@ -237,7 +260,7 @@ export default function AnnualReturnOperationsDashboard() {
     <nav className="arops-mode-tabs" aria-label="Operations dashboard summary view"><button type="button" aria-current={filters.view === 'annual' ? 'page' : undefined} onClick={() => setFilter('view', 'annual')}><span><FileSpreadsheet /></span><div><b>Annual Return Summary</b><small>Applications, status and category progress</small></div></button><button type="button" aria-current={filters.view === 'purchase-sales' ? 'page' : undefined} onClick={() => setFilter('view', 'purchase-sales')}><span><BarChart3 /></span><div><b>Purchase &amp; Sales Summary</b><small>SLA and eight-stage workflow tracking</small></div></button></nav>
 
     {error && <div className="arops-error" role="alert"><AlertTriangle />{error}<button type="button" onClick={() => setFilters(current => ({ ...current }))}>Retry</button></div>}
-    {loading && !data ? <div className="arops-skeleton"><i /><i /><i /><i /><i /><i /></div> : filters.view === 'purchase-sales' ? <PurchaseSalesSummary data={data} /> : <>
+    {loading && !data ? <div className="arops-skeleton"><i /><i /><i /><i /><i /><i /></div> : filters.view === 'purchase-sales' ? <PurchaseSalesSummary data={data} onDownloadPdf={exportPurchaseSalesPdf} exportingPdf={exportingPdf} /> : <>
       <section className="arops-summary-grid">
         <SummaryCard index={0} icon={FileSpreadsheet} label="Total Annual Return Services" value={summary.total} note="Applicable Annual Return applications" tone="teal" comparison={data?.comparisons?.total} />
         <SummaryCard index={1} icon={CheckCircle2} label="Completed Services" value={summary.completed} note={`${summary.completion || 0}% completion`} tone="green" comparison={data?.comparisons?.completed} />
