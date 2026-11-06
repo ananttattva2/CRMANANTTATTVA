@@ -2,7 +2,9 @@ const text = (value) => String(value ?? '').trim();
 const normalized = (value) => text(value).toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '');
 
 function quotationTime(quotation = {}) {
-  const value = quotation.updatedAt || quotation.createdAt || quotation.quotationDate || 0;
+  // The quotation directory defines "Latest" by quotation date, then creation
+  // time. An edit to an older quotation must not make it the latest quotation.
+  const value = quotation.quotationDate || quotation.createdAt || quotation.updatedAt || 0;
   const time = new Date(value).getTime();
   return Number.isFinite(time) ? time : 0;
 }
@@ -37,30 +39,21 @@ function amountForQuotation(quotation = {}, items = []) {
 
 function selectLatestPoQuotation(quotations = [], row = {}, payload = {}) {
   const ordered = [...quotations].sort((left, right) => quotationTime(right) - quotationTime(left));
+  const quotation = ordered[0] || null;
+  if (!quotation) return { quotation: null, items: [] };
   const serviceIds = new Set([
     payload.assignedServiceId, payload.service?.assignedServiceId, row.assignedServiceId,
     ...(Array.isArray(row.quotationItems) ? row.quotationItems.map((item) => item?.assignedServiceId) : [])
   ].map(text).filter(Boolean));
 
   if (serviceIds.size) {
-    for (const quotation of ordered) {
-      const items = (quotation.items || []).filter((item) => serviceIds.has(text(item?.assignedServiceId)));
-      if (items.length) return { quotation, items };
-    }
-  }
-
-  const service = payload.service || (Array.isArray(row.quotationItems) ? row.quotationItems[0] : null) || row;
-  for (const quotation of ordered) {
-    const items = (quotation.items || []).filter((item) => compatibleItem(item, service));
+    const items = (quotation.items || []).filter((item) => serviceIds.has(text(item?.assignedServiceId)));
     if (items.length) return { quotation, items };
   }
 
-  const quotationId = text(row.quotationId);
-  const quotationNumber = text(row.quotationNumber || row.quotationNo).toLowerCase();
-  const exact = ordered.find((quotation) => quotationId && text(quotation._id || quotation.id) === quotationId)
-    || ordered.find((quotation) => quotationNumber && text(quotation.quotationNumber).toLowerCase() === quotationNumber);
-  const quotation = exact || ordered[0] || null;
-  return { quotation, items: quotation?.items || [] };
+  const service = payload.service || (Array.isArray(row.quotationItems) ? row.quotationItems[0] : null) || row;
+  const compatibleItems = (quotation.items || []).filter((item) => compatibleItem(item, service));
+  return { quotation, items: compatibleItems.length ? compatibleItems : (quotation.items || []) };
 }
 
 function enrichPoRowsWithLatestQuotation(rows = [], quotations = [], payload = {}) {

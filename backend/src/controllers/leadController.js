@@ -2995,7 +2995,7 @@ exports.getPurchaseOrderApproval = async (req, res) => {
     if (rows.length && quotationLookup.length) {
       const quotations = await Quotation.find({ status: { $ne: 'rejected' }, $or: quotationLookup })
         .select('_id quotationNumber pricingMode combinedBasicAmount subtotal grandTotal items status quotationDate createdAt updatedAt')
-        .sort({ updatedAt: -1, createdAt: -1 })
+        .sort({ quotationDate: -1, createdAt: -1, updatedAt: -1 })
         .lean();
       approval.payload = { ...payload, poYearRows: enrichPoRowsWithLatestQuotation(rows, quotations, payload) };
     }

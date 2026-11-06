@@ -22,6 +22,19 @@ test('PO approval resolves the newest matching quotation revision', () => {
   assert.equal(selected.items.length, 5);
 });
 
+test('PO approval always uses the latest lead quotation even when the PO saved an older quotation ID', () => {
+  const quotations = [
+    { ...oldQuotation, _id: '507f1f77bcf86cd799439334', quotationNumber: 'AT/26-27/334', quotationDate: '2026-08-19', updatedAt: '2026-11-01', items: [{ assignedServiceId: 'old-service', basicAmount: 130000 }] },
+    { ...oldQuotation, _id: '507f1f77bcf86cd799439339', quotationNumber: 'AT/26-27/339', quotationDate: '2026-08-20', items: [{ assignedServiceId: 'other-service', basicAmount: 90000 }] },
+    { ...oldQuotation, _id: '507f1f77bcf86cd799439440', quotationNumber: 'AT/26-27/440', quotationDate: '2026-10-19', items: [{ assignedServiceId: 'new-service', basicAmount: 135000 }] }
+  ];
+  const row = { quotationSent: 'yes', quotationId: quotations[0]._id, quotationNumber: quotations[0].quotationNumber };
+  const selected = selectLatestPoQuotation(quotations, row, { assignedServiceId: 'old-service' });
+
+  assert.equal(selected.quotation.quotationNumber, 'AT/26-27/440');
+  assert.equal(selected.items[0].basicAmount, 135000);
+});
+
 test('PO approval replaces the submitted quotation snapshot amount with the latest live value', () => {
   const rows = enrichPoRowsWithLatestQuotation([
     { quotationSent: 'yes', quotationId: oldQuotation._id, quotationNumber: oldQuotation.quotationNumber, quotationBasicAmount: 25000 }
