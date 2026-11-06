@@ -122,8 +122,41 @@ jobs:
           printf '%s\n' "$DO_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
-      - name: Transfer verified frontend artifact
+      - name: Verify SSH connectivity
         timeout-minutes: 5
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          port="${DO_PORT:-22}"
+          ssh_options=(
+            -i "$HOME/.ssh/digitalocean_deploy"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o ConnectTimeout=30
+            -o ConnectionAttempts=2
+            -o ServerAliveInterval=15
+            -o ServerAliveCountMax=3
+            -p "$port"
+          )
+
+          for attempt in 1 2 3 4; do
+            if ssh "${ssh_options[@]}" "$DO_USER@$DO_HOST" true; then
+              echo "SSH connectivity verified on attempt $attempt."
+              exit 0
+            fi
+            if [[ "$attempt" -lt 4 ]]; then
+              delay=$((attempt * 10))
+              echo "::warning::SSH connectivity attempt $attempt failed; retrying in ${delay}s."
+              sleep "$delay"
+            fi
+          done
+
+          echo "::error::Unable to reach the deployment server over SSH after four attempts. Verify the DO_HOST and DO_PORT production secrets and ensure the Droplet/cloud firewall permits SSH from GitHub-hosted runners."
+          exit 1
+
+      - name: Transfer verified frontend artifact
+        timeout-minutes: 8
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -132,34 +165,64 @@ jobs:
           remote_deploy_script="/tmp/crm-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.sh"
           artifact_sha="$(sha256sum deployment-artifact/frontend-dist.tgz | awk '{print $1}')"
 
+          ssh_options=(
+            -i "$HOME/.ssh/digitalocean_deploy"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o ConnectTimeout=30
+            -o ConnectionAttempts=2
+            -o ServerAliveInterval=15
+            -o ServerAliveCountMax=3
+            -p "$port"
+          )
+          scp_options=(
+            -i "$HOME/.ssh/digitalocean_deploy"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o ConnectTimeout=30
+            -o ConnectionAttempts=2
+            -o ServerAliveInterval=15
+            -o ServerAliveCountMax=3
+            -P "$port"
+          )
+
+          retry() {
+            local attempt status
+            for attempt in 1 2 3; do
+              set +e
+              "$@"
+              status=$?
+              set -e
+              if [[ "$status" -eq 0 ]]; then return 0; fi
+              if [[ "$attempt" -lt 3 ]]; then
+                echo "::warning::Transfer command failed on attempt $attempt; retrying in $((attempt * 10))s."
+                sleep $((attempt * 10))
+              fi
+            done
+            return "$status"
+          }
+
           printf -v driver_command 'umask 077; cat > %q' "$remote_deploy_script"
-          ssh -i "$HOME/.ssh/digitalocean_deploy" \
-            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-            -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
-            -p "$port" "$DO_USER@$DO_HOST" "$driver_command" < deployment-artifact/scripts/deploy-production.sh
+          for attempt in 1 2 3; do
+            if ssh "${ssh_options[@]}" "$DO_USER@$DO_HOST" "$driver_command" < deployment-artifact/scripts/deploy-production.sh; then break; fi
+            if [[ "$attempt" -eq 3 ]]; then exit 1; fi
+            echo "::warning::Deploy-script transfer failed on attempt $attempt; retrying in $((attempt * 10))s."
+            sleep $((attempt * 10))
+          done
 
           # actions/download-artifact already extracted the verified workflow
           # artifact on this runner. Copy the exact packaged frontend archive
           # over the authenticated SSH channel; the deploy script verifies its
           # SHA-256 before using it. This avoids requiring unzip on the Droplet.
-          scp \
-            -i "$HOME/.ssh/digitalocean_deploy" \
-            -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes \
-            -o ConnectTimeout=15 \
-            -o ServerAliveInterval=15 \
-            -o ServerAliveCountMax=3 \
-            -P "$port" \
+          retry scp "${scp_options[@]}" \
             deployment-artifact/frontend-dist.tgz \
             "$DO_USER@$DO_HOST:$remote_artifact"
 
           printf -v verify_command 'umask 077; test -s %q && test -s %q && chmod 600 %q %q' \
             "$remote_artifact" "$remote_deploy_script" "$remote_artifact" "$remote_deploy_script"
-          ssh -i "$HOME/.ssh/digitalocean_deploy" \
-            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-            -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
-            -p "$port" "$DO_USER@$DO_HOST" "$verify_command"
+          retry ssh "${ssh_options[@]}" "$DO_USER@$DO_HOST" "$verify_command"
 
           echo "REMOTE_FRONTEND_ARTIFACT=$remote_artifact" >> "$GITHUB_ENV"
           echo "REMOTE_DEPLOY_SCRIPT=$remote_deploy_script" >> "$GITHUB_ENV"
@@ -184,7 +247,8 @@ jobs:
             -o BatchMode=yes \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
-            -o ConnectTimeout=15 \
+            -o ConnectTimeout=30 \
+            -o ConnectionAttempts=2 \
             -o ServerAliveInterval=15 \
             -o ServerAliveCountMax=3 \
             -p "$port" \
