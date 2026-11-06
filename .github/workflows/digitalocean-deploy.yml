@@ -123,7 +123,7 @@ jobs:
           chmod 600 "$HOME/.ssh/known_hosts"
 
       - name: Verify SSH connectivity
-        timeout-minutes: 5
+        timeout-minutes: 4
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -133,8 +133,8 @@ jobs:
             -o BatchMode=yes
             -o IdentitiesOnly=yes
             -o StrictHostKeyChecking=yes
-            -o ConnectTimeout=30
-            -o ConnectionAttempts=2
+            -o ConnectTimeout=20
+            -o ConnectionAttempts=1
             -o ServerAliveInterval=15
             -o ServerAliveCountMax=3
             -p "$port"
