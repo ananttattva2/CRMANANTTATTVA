@@ -14,7 +14,7 @@ test('pending client approval API checks every assigned role', () => {
 
 test('Pending Approval UI recognizes secondary Compliance role and invalidates old empty cache', () => {
   assert.match(pageSource, /hasAnyRole\(currentUser, \['compliance'\]\)/);
-  assert.match(pageSource, /crm\.pendingApproval\.cache\.v7/);
+  assert.match(pageSource, /crm\.pendingApproval\.cache\.v8/);
   assert.match(pageSource, /cachedUserId === expectedUserId/);
   assert.doesNotMatch(pageSource, /isComplianceRole\(currentUser\?\.role\)/);
 });

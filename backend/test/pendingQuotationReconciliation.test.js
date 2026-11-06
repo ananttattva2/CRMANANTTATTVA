@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const controllerSource = fs.readFileSync(path.join(__dirname, '../src/controllers/clientController.js'), 'utf8');
+const pageSource = fs.readFileSync(path.join(__dirname, '../../frontend/src/pages/PendingApproval.jsx'), 'utf8');
 
 test('pending approval endpoint recovers quotations missing from the approval index', () => {
   assert.match(controllerSource, /status: \{ \$in: \['draft', 'submitted', 'sent', 'admin_approved'\] \}/);
@@ -25,4 +26,12 @@ test('pending approval reads active rows separately from bounded decision histor
 test('stored approvals and live quotation reconciliation run in parallel', () => {
   assert.match(controllerSource, /const storedApprovalsPromise = readStoredPendingApprovals\(\)/);
   assert.match(controllerSource, /const \[storedFallback, liveQuotations\] = await Promise\.all/);
+});
+
+test('pending quotation rows expose and display their created or updated timestamp', () => {
+  assert.match(controllerSource, /createdAt: payload\.createdAt \|\| record\.createdAt/);
+  assert.match(controllerSource, /updatedAt: payload\.updatedAt \|\| record\.updatedAt/);
+  assert.match(pageSource, /function quotationActivityDate/);
+  assert.match(pageSource, /'Quotation Date'/);
+  assert.match(pageSource, /pending-quotation-activity-date/);
 });

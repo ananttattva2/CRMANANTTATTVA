@@ -31,6 +31,7 @@ const API_ENDPOINTS = {
     companySearch: '/leads/search/company',
     create: '/leads',
     bulk: '/leads/bulk',
+    bulkServiceAccountsRecords: '/leads/service-accounts-records/bulk',
     detail: (id) => `/leads/${encodePathValue(id)}`
     ,delete: (id) => `/leads/${encodePathValue(id)}`
     ,allocation: (id) => `/leads/${encodePathValue(id)}/allocation`

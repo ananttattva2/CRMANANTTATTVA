@@ -963,6 +963,8 @@ function mapPendingApprovalRecord(record) {
   const payload = record.payload || {};
   return {
     ...payload,
+    createdAt: payload.createdAt || record.createdAt || null,
+    updatedAt: payload.updatedAt || record.updatedAt || payload.createdAt || record.createdAt || null,
     approvalRecordId: record._id,
     id: record.sourceClientId || payload.id || record._id,
     source: record.source,

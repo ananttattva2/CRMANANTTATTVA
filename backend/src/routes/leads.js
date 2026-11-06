@@ -36,6 +36,7 @@ router.post('/temporary/:id/follow-up/close', requireAuth, temporaryLeadCtrl.clo
 router.patch('/temporary/:id/reassign', requireAuth, requireRoles(ADMIN_ROLES), temporaryLeadCtrl.reassign);
 router.post('/duplicate-approvals', requireAuth, leadCtrl.requestDuplicateLeadApproval);
 router.patch('/duplicate-approvals/:id', requireAuth, leadCtrl.updateDuplicateLeadApproval);
+router.post('/service-accounts-records/bulk', requireAuth, requireRoles(ADMIN_ROLES), leadCtrl.bulkAssignServiceAccountsRecordIds);
 router.post('/bulk', requireAuth, requireRoles(ADMIN_ROLES), leadCtrl.bulkCreateLeads);
 router.post('/', requireAuth, leadCtrl.createLead);
 router.patch('/:id/allocation', requireAuth, requireRoles(ADMIN_ROLES), leadCtrl.allocateLead);

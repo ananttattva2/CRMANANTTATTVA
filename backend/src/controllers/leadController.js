@@ -31,6 +31,161 @@ function escapeHtml(value) {
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[character]));
 }
+
+const ACCOUNTS_RECORD_ID_PATTERN = /^[A-Z0-9][A-Z0-9/_-]{1,49}$/;
+
+function normalizeAccountsRecordImportRow(source = {}, rowNumber = 0) {
+  const text = (...keys) => {
+    for (const key of keys) {
+      const value = source?.[key];
+      if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
+    }
+    return '';
+  };
+  return {
+    rowNumber: Number(source.rowNumber) || rowNumber,
+    crmLeadId: text('crmLeadId', 'newCrmLeadId', 'leadNumber', 'leadId', 'leadCode').toUpperCase(),
+    accountsRecordId: text('accountsRecordId', 'accountRecordId', 'legacyLeadId').toUpperCase(),
+    assignedServiceId: text('assignedServiceId', 'serviceAssignmentId'),
+    serviceName: text('serviceName', 'servicesOffered', 'service'),
+    serviceCategory: text('serviceCategory', 'eprCategory'),
+    applicantType: text('applicantType'),
+    subApplicantType: text('subApplicantType', 'piboCategory'),
+    plantUnit: text('plantUnit', 'unitName')
+  };
+}
+
+function accountsImportServiceLabel(service = {}, index = 0) {
+  return [service.servicesOffered || service.applicableService || `Service ${index + 1}`,
+    service.subApplicantType || service.piboCategory, service.plantUnit].filter(Boolean).join(' · ');
+}
+
+function matchesAccountsImportService(service = {}, row = {}) {
+  const same = (left, right) => !right || String(left || '').trim().toLowerCase() === String(right).trim().toLowerCase();
+  return same(service.assignedServiceId || service.serviceAssignmentId, row.assignedServiceId)
+    && same(service.servicesOffered || service.applicableService, row.serviceName)
+    && same(service.eprCategory, row.serviceCategory)
+    && same(service.applicantType || service.piboParent, row.applicantType)
+    && same(service.subApplicantType || service.piboCategory, row.subApplicantType)
+    && same(service.plantUnit, row.plantUnit);
+}
+
+function mapAccountsRecordRowsToLead(lead = {}, rows = []) {
+  const services = Array.isArray(lead.serviceSelections) ? lead.serviceSelections : [];
+  const claimed = new Set();
+  return rows.map((row) => {
+    const hasServiceIdentity = Boolean(row.assignedServiceId || row.serviceName || row.serviceCategory || row.applicantType || row.subApplicantType || row.plantUnit);
+    const candidates = services.map((service, index) => ({ service, index }))
+      .filter(({ service, index }) => !claimed.has(index) && (!hasServiceIdentity || matchesAccountsImportService(service, row)));
+    if (!services.length) return { ...row, status: 'error', error: 'This lead has no saved service rows.' };
+    if (!candidates.length) return { ...row, status: 'error', error: hasServiceIdentity ? 'No unassigned service matches the supplied service details.' : 'The sheet contains more Accounts IDs than this lead has services.' };
+    if (hasServiceIdentity && candidates.length > 1) return { ...row, status: 'error', error: 'More than one service matches. Add Assigned Service ID or more service details.' };
+    const selected = candidates[0];
+    claimed.add(selected.index);
+    const existingId = String(selected.service.accountsRecordId || '').trim().toUpperCase();
+    return {
+      ...row,
+      status: existingId === row.accountsRecordId ? 'unchanged' : 'ready',
+      leadObjectId: String(lead._id || ''),
+      company: lead.company || '',
+      serviceIndex: selected.index,
+      assignedServiceId: selected.service.assignedServiceId || selected.service.serviceAssignmentId || '',
+      serviceLabel: accountsImportServiceLabel(selected.service, selected.index),
+      existingAccountsRecordId: existingId
+    };
+  });
+}
+
+exports.bulkAssignServiceAccountsRecordIds = async (req, res) => {
+  const sourceRows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+  const commit = req.body?.commit === true;
+  if (!sourceRows.length || sourceRows.length > 5000) return res.status(400).json({ error: 'Upload between 1 and 5,000 mapping rows.' });
+  const rows = sourceRows.map((row, index) => normalizeAccountsRecordImportRow(row, index + 2));
+  const validationByRow = new Map();
+  rows.forEach((row) => {
+    if (!row.crmLeadId) validationByRow.set(row.rowNumber, 'New CRM Lead ID is required.');
+    else if (!ACCOUNTS_RECORD_ID_PATTERN.test(row.accountsRecordId)) validationByRow.set(row.rowNumber, 'Accounts Record ID must use 2-50 letters, numbers, /, _ or -.');
+  });
+  const duplicateIds = new Set();
+  const seenIds = new Set();
+  rows.filter((row) => row.accountsRecordId).forEach((row) => { if (seenIds.has(row.accountsRecordId)) duplicateIds.add(row.accountsRecordId); else seenIds.add(row.accountsRecordId); });
+  rows.forEach((row) => {
+    if (duplicateIds.has(row.accountsRecordId)) validationByRow.set(row.rowNumber, 'Accounts Record ID appears more than once in this file.');
+  });
+  const validRows = rows.filter((row) => !validationByRow.has(row.rowNumber));
+  const validationErrors = rows.filter((row) => validationByRow.has(row.rowNumber))
+    .map((row) => ({ ...row, status: 'error', error: validationByRow.get(row.rowNumber) }));
+
+  const leadIds = [...new Set(validRows.map((row) => row.crmLeadId).filter(Boolean))];
+  const leads = await Lead.find({ $or: [
+    { leadCode: { $in: leadIds } }, { sourceLeadId: { $in: leadIds } }, { externalLeadId: { $in: leadIds } }
+  ] }).select('_id leadCode sourceLeadId externalLeadId company serviceSelections').lean();
+  const leadById = new Map();
+  leads.forEach((lead) => [lead.leadCode, lead.sourceLeadId, lead.externalLeadId].filter(Boolean)
+    .forEach((value) => leadById.set(String(value).trim().toUpperCase(), lead)));
+  const rowsByLead = new Map();
+  validRows.forEach((row) => {
+    if (!rowsByLead.has(row.crmLeadId)) rowsByLead.set(row.crmLeadId, []);
+    rowsByLead.get(row.crmLeadId).push(row);
+  });
+  const mapped = [];
+  rowsByLead.forEach((leadRows, crmLeadId) => {
+    const lead = leadById.get(crmLeadId);
+    if (!lead) mapped.push(...leadRows.map((row) => ({ ...row, status: 'error', error: 'CRM Lead ID was not found.' })));
+    else mapped.push(...mapAccountsRecordRowsToLead(lead, leadRows));
+  });
+
+  const importIds = [...new Set(mapped.filter((row) => row.status !== 'error').map((row) => row.accountsRecordId))];
+  if (importIds.length) {
+    const owners = await Lead.find({ 'serviceSelections.accountsRecordId': { $in: importIds } })
+      .select('_id leadCode serviceSelections.accountsRecordId serviceSelections.assignedServiceId').lean();
+    const ownerById = new Map();
+    owners.forEach((lead) => (lead.serviceSelections || []).forEach((service, serviceIndex) => {
+      const id = String(service.accountsRecordId || '').trim().toUpperCase();
+      if (id) ownerById.set(id, { leadId: String(lead._id), leadCode: lead.leadCode || '', serviceIndex });
+    }));
+    mapped.forEach((row) => {
+      const owner = ownerById.get(row.accountsRecordId);
+      if (owner && (owner.leadId !== row.leadObjectId || owner.serviceIndex !== row.serviceIndex)) {
+        row.status = 'error';
+        row.error = `Accounts Record ID is already assigned to ${owner.leadCode || 'another lead'}.`;
+      }
+    });
+  }
+
+  const results = [...mapped, ...validationErrors].sort((a, b) => Number(a.rowNumber || 0) - Number(b.rowNumber || 0));
+  const errors = results.filter((row) => row.status === 'error');
+  if (commit && errors.length) return res.status(409).json({ error: 'Nothing was saved because the mapping contains errors.', results, summary: { total: rows.length, ready: 0, unchanged: 0, errors: errors.length } });
+  if (commit) {
+    const actor = { id: String(req.user?._id || ''), name: req.user?.name || req.user?.email || '', at: new Date() };
+    const byLead = new Map();
+    mapped.filter((row) => row.status === 'ready').forEach((row) => {
+      if (!byLead.has(row.leadObjectId)) byLead.set(row.leadObjectId, []);
+      byLead.get(row.leadObjectId).push(row);
+    });
+    for (const [leadId, assignments] of byLead.entries()) {
+      const lead = await Lead.findById(leadId);
+      if (!lead) continue;
+      const services = Array.isArray(lead.serviceSelections) ? [...lead.serviceSelections] : [];
+      assignments.forEach((row) => {
+        const service = { ...(services[row.serviceIndex] || {}) };
+        const before = String(service.accountsRecordId || '').trim();
+        service.accountsRecordId = row.accountsRecordId;
+        service.accountsRecordIdUpdatedAt = actor.at;
+        service.accountsRecordIdUpdatedBy = { id: actor.id, name: actor.name };
+        service.accountsRecordIdHistory = [...(Array.isArray(service.accountsRecordIdHistory) ? service.accountsRecordIdHistory : []), { from: before, to: row.accountsRecordId, at: actor.at, by: actor.name, byId: actor.id }];
+        if (!service.assignedServiceId) service.assignedServiceId = `service_assignment_${randomUUID()}`;
+        services[row.serviceIndex] = service;
+      });
+      lead.serviceSelections = services;
+      lead.markModified('serviceSelections');
+      await lead.save();
+      await LeadActivity.create({ lead: lead._id, type: 'accounts_record_ids_imported', title: 'Service Accounts IDs updated', description: `${assignments.length} service Accounts Record ID${assignments.length === 1 ? '' : 's'} updated`, actor: req.user?._id, actorName: actor.name, metadata: { mappings: assignments.map((row) => ({ accountsRecordId: row.accountsRecordId, assignedServiceId: row.assignedServiceId, serviceLabel: row.serviceLabel })) } });
+    }
+    await require('../services/crmCache').invalidateCrmCache().catch(() => null);
+  }
+  return res.json({ ok: true, committed: commit, results, summary: { total: rows.length, ready: mapped.filter((row) => row.status === 'ready').length, unchanged: mapped.filter((row) => row.status === 'unchanged').length, errors: errors.length } });
+};
 const CalendarItem = require('../models/CalendarItem');
 const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
 const { userHasAnyRole } = require('../utils/userRoles');
@@ -1323,7 +1478,8 @@ exports.listLeads = async (req, res) => {
       { leadCode: expression }, { company: expression }, { addressLine1: expression },
       { city: expression }, { pinCode: expression }, { piboCategory: expression },
       { eprCategory: expression }, { state: expression }, { contactPerson: expression },
-      { mobileNo1: expression }, { emails: expression }, { status: expression }
+      { mobileNo1: expression }, { emails: expression }, { status: expression },
+      { 'serviceSelections.accountsRecordId': expression }
     ] });
   }
   if (status) filters.push({ status });
@@ -2690,6 +2846,8 @@ exports.updateDuplicateLeadApproval = async (req, res) => {
 };
 
 exports._test = {
+  normalizeAccountsRecordImportRow,
+  mapAccountsRecordRowsToLead,
   preserveExistingClosureEvidence,
   usesDirectApplicantType,
   primaryServiceCategory,

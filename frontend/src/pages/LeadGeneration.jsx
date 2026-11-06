@@ -3689,6 +3689,94 @@ function pendingManagerAssignmentRows(leads = [], currentUser = {}) {
   });
 }
 
+function accountsImportCell(row = {}, names = []) {
+  const entries = Object.entries(row).map(([key, value]) => [String(key).toLowerCase().replace(/[^a-z0-9]/g, ''), value]);
+  for (const name of names) {
+    const found = entries.find(([key]) => key === name.toLowerCase().replace(/[^a-z0-9]/g, ''));
+    if (found && String(found[1] ?? '').trim()) return String(found[1]).trim();
+  }
+  return '';
+}
+
+function AccountsRecordBulkModal({ onClose, onCommitted }) {
+  const [fileName, setFileName] = useState('');
+  const [rows, setRows] = useState([]);
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  const downloadTemplate = () => {
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ['As per Accounts Records', 'Lead Number', 'Service Name (optional)', 'Service Category (optional)', 'Applicant Type (optional)', 'Sub-Applicant Type (optional)', 'Plant Unit (optional)', 'Assigned Service ID (optional)'],
+      ['ATPL-LEAD-0384', 'ATPL-LEAD-0004', '', '', '', '', '', ''],
+      ['ATPL-LEAD-0383', 'ATPL-LEAD-0004', '', '', '', '', '', ''],
+      ['ATPL-LEAD-0382', 'ATPL-LEAD-0004', '', '', '', '', '', '']
+    ]);
+    sheet['!cols'] = [22, 22, 28, 28, 22, 24, 20, 38].map((wch) => ({ wch }));
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, 'Service ID Mapping');
+    XLSX.writeFile(book, 'service-accounts-record-id-template.xlsx');
+  };
+
+  const selectFile = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setBusy(true); setMessage(null); setPreview(null); setFileName(file.name);
+    try {
+      const book = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const sheet = book.Sheets[book.SheetNames[0]];
+      const source = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      const parsed = source.map((row, index) => ({
+        rowNumber: index + 2,
+        crmLeadId: accountsImportCell(row, ['Lead Number', 'New CRM Lead ID', 'Unique ID as per New CRM', 'CRM Lead ID', 'Lead ID']),
+        accountsRecordId: accountsImportCell(row, ['Accounts Record ID', 'As per Accounts Records', 'Account Record ID', 'Legacy Lead ID']),
+        serviceName: accountsImportCell(row, ['Service Name', 'Services Offered', 'Service']),
+        serviceCategory: accountsImportCell(row, ['Service Category']),
+        applicantType: accountsImportCell(row, ['Applicant Type']),
+        subApplicantType: accountsImportCell(row, ['Sub-Applicant Type', 'Sub Applicant Type']),
+        plantUnit: accountsImportCell(row, ['Plant Unit', 'Unit Name']),
+        assignedServiceId: accountsImportCell(row, ['Assigned Service ID', 'Service Assignment ID'])
+      })).filter((row) => row.crmLeadId || row.accountsRecordId);
+      if (!parsed.length) throw new Error('No mapping rows were found. Use the downloaded template headers.');
+      setRows(parsed);
+      const response = await api.post(API_ENDPOINTS.leads.bulkServiceAccountsRecords, { rows: parsed, commit: false });
+      setPreview(response.data);
+    } catch (requestError) {
+      setRows([]);
+      setMessage({ type: 'error', text: requestError?.response?.data?.error || requestError.message || 'Unable to read or validate this Excel file.' });
+    } finally { setBusy(false); }
+  };
+
+  const commit = async () => {
+    if (!rows.length || preview?.summary?.errors) return;
+    setBusy(true); setMessage(null);
+    try {
+      const response = await api.post(API_ENDPOINTS.leads.bulkServiceAccountsRecords, { rows, commit: true });
+      setPreview(response.data);
+      setMessage({ type: 'success', text: `${response.data?.summary?.ready || 0} service Accounts Record ID(s) saved successfully.` });
+      await onCommitted?.();
+    } catch (requestError) {
+      setPreview(requestError?.response?.data || preview);
+      setMessage({ type: 'error', text: requestError?.response?.data?.error || 'Unable to save the mappings.' });
+    } finally { setBusy(false); }
+  };
+  const resultRows = preview?.results || [];
+  return createPortal(
+    <div className="fixed inset-0 z-[14000] grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm" onClick={() => !busy && onClose()}>
+      <section className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-white/70 bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <header className="flex items-start justify-between gap-4 border-b bg-gradient-to-r from-emerald-50 via-white to-orange-50 px-6 py-5"><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-emerald-700">Service ID Mapping</p><h2 className="mt-1 text-2xl font-black text-slate-950">Import Accounts Record IDs</h2><p className="mt-1 text-sm font-semibold text-slate-500">Repeated CRM IDs map in sheet order to that lead’s saved services. Optional service columns provide exact matching.</p></div><button type="button" disabled={busy} onClick={onClose} className="grid h-10 w-10 place-items-center rounded-xl border bg-white text-slate-500 disabled:opacity-50"><X className="h-5 w-5" /></button></header>
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
+          <div className="grid gap-3 rounded-2xl border border-dashed border-emerald-300 bg-emerald-50/60 p-5 md:grid-cols-[1fr_auto_auto] md:items-center"><div><p className="font-black text-slate-900">{fileName || 'Choose the completed Excel mapping file'}</p><p className="mt-1 text-xs font-bold text-slate-500">Nothing is saved until the preview has no errors and you confirm.</p></div><button type="button" onClick={downloadTemplate} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 text-sm font-black text-emerald-800"><Download className="h-4 w-4" />Template</button><label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 text-sm font-black text-white shadow-lg"><Upload className="h-4 w-4" />{busy ? 'Checking…' : 'Upload Excel'}<input type="file" accept=".xlsx,.xls" onChange={selectFile} disabled={busy} className="sr-only" /></label></div>
+          {message && <div className={`mt-4 rounded-xl border px-4 py-3 text-sm font-black ${message.type === 'error' ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>{message.text}</div>}
+          {preview && <><div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">{[['Rows', preview.summary?.total, 'bg-slate-50'], ['Ready', preview.summary?.ready, 'bg-emerald-50'], ['Unchanged', preview.summary?.unchanged, 'bg-sky-50'], ['Errors', preview.summary?.errors, 'bg-rose-50']].map(([label, value, tone]) => <div key={label} className={`rounded-xl border p-4 ${tone}`}><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{label}</p><p className="mt-1 text-2xl font-black text-slate-950">{Number(value || 0).toLocaleString('en-IN')}</p></div>)}</div><div className="mt-5 max-h-[420px] overflow-auto rounded-xl border"><table className="w-full min-w-[1050px] text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-[10px] font-black uppercase text-slate-500"><tr>{['Row','CRM Lead ID','Company','Accounts Record ID','Matched Service','Existing ID','Result'].map((label) => <th key={label} className="px-3 py-3">{label}</th>)}</tr></thead><tbody>{resultRows.map((row, index) => <tr key={`${row.rowNumber}-${row.accountsRecordId}-${index}`} className="border-t"><td className="px-3 py-3">{row.rowNumber || '-'}</td><td className="px-3 py-3 font-black text-blue-700">{row.crmLeadId || '-'}</td><td className="px-3 py-3 font-bold">{row.company || '-'}</td><td className="px-3 py-3 font-black text-orange-700">{row.accountsRecordId || '-'}</td><td className="px-3 py-3">{row.serviceLabel || '-'}</td><td className="px-3 py-3">{row.existingAccountsRecordId || '-'}</td><td className="px-3 py-3"><span className={`rounded-full px-2.5 py-1 font-black ${row.status === 'error' ? 'bg-rose-100 text-rose-700' : row.status === 'unchanged' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>{row.error || row.status}</span></td></tr>)}</tbody></table></div></>}
+        </div>
+        <footer className="flex flex-wrap justify-end gap-3 border-t bg-slate-50 px-6 py-4"><button type="button" disabled={busy} onClick={onClose} className="h-11 rounded-xl border bg-white px-5 font-black text-slate-700">Close</button><button type="button" disabled={busy || !preview || Number(preview.summary?.errors || 0) > 0 || Number(preview.summary?.ready || 0) < 1 || preview.committed} onClick={commit} className="h-11 rounded-xl bg-emerald-700 px-6 font-black text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-40">{busy ? 'Saving…' : preview?.committed ? 'Saved' : 'Confirm & Save'}</button></footer>
+      </section>
+    </div>, document.body
+  );
+}
+
 function LeadDirectoryView({ leads, pagination, summary, staff, currentUser, loading, error, onRefresh, onDirectoryQueryChange, onExportAll, onView, onCreate, onEdit, onDelete, onToggleActive, initialWorkspace = 'leads', canEdit = false }) {
   const currentRole = String(currentUser?.role || '').trim().toLowerCase();
   const canViewNotifiedLeads = ['manager', 'admin', 'superadmin'].includes(currentRole);
@@ -3707,6 +3795,7 @@ function LeadDirectoryView({ leads, pagination, summary, staff, currentUser, loa
     .some((role) => ['admin', 'superadmin'].includes(String(role || '').toLowerCase().replace(/[^a-z0-9]/g, '')));
   const [temporaryLeadCount, setTemporaryLeadCount] = useState(0);
   const [workspaceTab, setWorkspaceTab] = useState(allowedInitialWorkspace);
+  const [accountsImportOpen, setAccountsImportOpen] = useState(false);
   useEffect(() => { setWorkspaceTab(allowedInitialWorkspace); }, [allowedInitialWorkspace]);
   const directoryEffectReady = useRef(false);
   const previousDirectoryFilterRef = useRef('');
@@ -3836,6 +3925,7 @@ function LeadDirectoryView({ leads, pagination, summary, staff, currentUser, loa
       Status: closure.status,
       'Lead Pipeline Status': closure.pipelineStatus,
       'Service No.': item.exportServiceNumber,
+      'Accounts Record ID': item.accountsRecordId || '',
       'Lead Closed': item.exportLeadClosed,
       'PO Closed': item.exportPoClosed,
       'PO Received': item.exportPoReceived,
@@ -3911,6 +4001,7 @@ function LeadDirectoryView({ leads, pagination, summary, staff, currentUser, loa
             <button type="button" onClick={() => { setQuery(''); setStatusFilter(''); setStaffFilter(''); setMetricFilter(''); setPage(1); }} className="btn-lift inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-4 text-sm font-black text-slate-600 hover:bg-slate-50"><X className="h-4 w-4" />Clear</button>
             <button type="button" onClick={() => onDirectoryQueryChange(currentDirectoryRequest())} className="btn-lift inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-orange-200 bg-white px-4 text-sm font-black text-orange-600 hover:bg-orange-50"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Refresh</button>
             <button type="button" onClick={exportExcel} className="btn-lift inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-emerald-600 px-4 text-sm font-black text-white shadow-lg shadow-emerald-600/20"><Download className="h-4 w-4" />Export</button>
+            {canDeleteLead && <button type="button" onClick={() => setAccountsImportOpen(true)} className="btn-lift col-span-2 inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-orange-600 px-4 text-sm font-black text-white shadow-lg shadow-orange-600/20 sm:col-span-1"><Upload className="h-4 w-4" />Accounts IDs</button>}
           </div>
         </div>
 
@@ -3987,6 +4078,7 @@ function LeadDirectoryView({ leads, pagination, summary, staff, currentUser, loa
         </div>
         {workspaceTab !== 'temporary' && <LeadDirectoryPagination page={page} totalPages={totalPages} setPage={setPage} />}
         {deleteTarget && <LeadDeleteDialog lead={deleteTarget} busy={deleting} error={deleteError} onCancel={() => { if (!deleting) setDeleteTarget(null); }} onConfirm={confirmLeadDeletion} />}
+        {accountsImportOpen && <AccountsRecordBulkModal onClose={() => setAccountsImportOpen(false)} onCommitted={async () => { await onRefresh?.(); }} />}
       </div>
     </div>
   );
@@ -5107,8 +5199,8 @@ function LeadDetailView({ lead, quotations = [], staff = [], currentUser = null,
               <div className="overflow-auto rounded-xl border border-slate-200">
                 <div className="border-b border-slate-200 bg-emerald-50 px-5 py-4"><h4 className="font-black text-slate-900">Service &amp; Applicant</h4></div>
                 <table className="w-full min-w-[980px] text-left text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['#', 'Industry Type', 'Service Category', 'Applicant Type', 'Sub Applicant Type', 'Services Offered', 'Financial Year', 'Closure'].map((label) => <th key={label} className="px-4 py-3">{label}</th>)}</tr></thead>
-                  <tbody>{detailServices.map((row, index) => <tr key={index} className="border-t border-slate-100"><td className="px-4 py-3 font-black">{index + 1}</td><td className="px-4 py-3">{row.industryType || '-'}</td><td className="px-4 py-3">{row.eprCategory || '-'}</td><td className="px-4 py-3">{row.applicantType || '-'}</td><td className="px-4 py-3 font-black text-violet-700">{directApplicantOptions(row.eprCategory) ? 'Not applicable' : (row.piboCategory || '-')}</td><td className="px-4 py-3">{row.servicesOffered || '-'}</td><td className="px-4 py-3 font-black">{row.firstAnnualReturnYearApplicable || '-'}</td><td className="px-4 py-3"><span className={`rounded-full px-3 py-1 text-[10px] font-black ${detailAssignments[index]?.poStatus === 'provisional' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'}`}>{detailAssignments[index]?.poStatus === 'provisional' ? 'PERMANENT CLOSE' : 'UNCHANGED'}</span></td></tr>)}</tbody>
+                  <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['#', 'Accounts ID / Industry Type', 'Service Category', 'Applicant Type', 'Sub Applicant Type', 'Services Offered', 'Financial Year', 'Closure'].map((label) => <th key={label} className="px-4 py-3">{label}</th>)}</tr></thead>
+                  <tbody>{detailServices.map((row, index) => <tr key={index} className="border-t border-slate-100"><td className="px-4 py-3 font-black">{index + 1}</td><td className="px-4 py-3"><div className="font-black text-orange-700">{row.accountsRecordId || '-'}</div><div className="mt-1 text-xs text-slate-500">{row.industryType || '-'}</div></td><td className="px-4 py-3">{row.eprCategory || '-'}</td><td className="px-4 py-3">{row.applicantType || '-'}</td><td className="px-4 py-3 font-black text-violet-700">{directApplicantOptions(row.eprCategory) ? 'Not applicable' : (row.piboCategory || '-')}</td><td className="px-4 py-3">{row.servicesOffered || '-'}</td><td className="px-4 py-3 font-black">{row.firstAnnualReturnYearApplicable || '-'}</td><td className="px-4 py-3"><span className={`rounded-full px-3 py-1 text-[10px] font-black ${detailAssignments[index]?.poStatus === 'provisional' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'}`}>{detailAssignments[index]?.poStatus === 'provisional' ? 'PERMANENT CLOSE' : 'UNCHANGED'}</span></td></tr>)}</tbody>
                 </table>
               </div>
               <section className="overflow-hidden rounded-xl border border-amber-300 bg-white">
@@ -5240,8 +5332,8 @@ function LeadDetailView({ lead, quotations = [], staff = [], currentUser = null,
                   <div className="overflow-auto rounded-xl border border-slate-200">
                   <div className="border-b border-slate-200 bg-emerald-50 px-5 py-4"><h3 className="font-black text-slate-900">Service &amp; Applicant</h3></div>
                   <table className="w-full min-w-[980px] text-left text-sm">
-                    <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['#', 'Industry Type', 'Service Category', 'Applicant Type', 'Sub Applicant Type', 'Services Offered', 'Financial Year'].map((label) => <th key={label} className="px-4 py-3">{label}</th>)}</tr></thead>
-                    <tbody>{detailServices.map((row, index) => <tr key={index} className="border-t border-slate-100"><td className="px-4 py-3 font-black">{index + 1}</td><td className="px-4 py-3">{row.industryType || '-'}</td><td className="px-4 py-3">{row.eprCategory || '-'}</td><td className="px-4 py-3">{row.applicantType || '-'}</td><td className="px-4 py-3 font-black text-violet-700">{directApplicantOptions(row.eprCategory) ? 'Not applicable' : (row.piboCategory || '-')}</td><td className="px-4 py-3">{row.servicesOffered || '-'}</td><td className="px-4 py-3 font-black">{row.firstAnnualReturnYearApplicable || '-'}</td></tr>)}</tbody>
+                    <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['#', 'Accounts ID / Industry Type', 'Service Category', 'Applicant Type', 'Sub Applicant Type', 'Services Offered', 'Financial Year'].map((label) => <th key={label} className="px-4 py-3">{label}</th>)}</tr></thead>
+                    <tbody>{detailServices.map((row, index) => <tr key={index} className="border-t border-slate-100"><td className="px-4 py-3 font-black">{index + 1}</td><td className="px-4 py-3"><div className="font-black text-orange-700">{row.accountsRecordId || '-'}</div><div className="mt-1 text-xs text-slate-500">{row.industryType || '-'}</div></td><td className="px-4 py-3">{row.eprCategory || '-'}</td><td className="px-4 py-3">{row.applicantType || '-'}</td><td className="px-4 py-3 font-black text-violet-700">{directApplicantOptions(row.eprCategory) ? 'Not applicable' : (row.piboCategory || '-')}</td><td className="px-4 py-3">{row.servicesOffered || '-'}</td><td className="px-4 py-3 font-black">{row.firstAnnualReturnYearApplicable || '-'}</td></tr>)}</tbody>
                   </table>
                   </div>
                 </>
