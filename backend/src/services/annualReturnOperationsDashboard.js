@@ -177,7 +177,7 @@ function buildRecords({ clients = [], users = [], filings = new Map(), teams = [
       return [year, workflowState(filing)];
     }));
     const nextRecord = {
-      id: recordKey, clientId, sourceClientIds: clientId ? [clientId] : [], company, uniqueId, leadId, category, applicantType, subType, serviceName, years,
+      id: recordKey, clientId, sourceClientIds: clientId ? [clientId] : [], company, uniqueId, leadId, category, applicantType, subType, plantUnit: unit, serviceName, years,
       slaReceived: client?.sla?.status === 'Yes',
       assignedUserId: owner ? text(owner) : '', assignedUser: owner?.name || owner?.email || assignment.assignedStaffText || 'Unassigned',
       teamId: owner?.teamId ? text(owner.teamId) : '', team: team || manager?.name || manager?.email || 'No team assigned',
@@ -249,7 +249,7 @@ function purchaseSalesSummary(records, year, query = {}, purchases = [], sales =
     const purchaseComplete = purchase.every(state => state === 'complete');
     const salesComplete = sales.every(state => state === 'complete');
     return {
-      id: record.id, clientId: record.clientId, company: record.company, uniqueId: record.uniqueId, leadId: record.leadId,
+      id: record.id, clientId: record.clientId, company: record.company, uniqueId: record.uniqueId, leadId: record.leadId, plantUnit: record.plantUnit,
       assignedUserId: record.assignedUserId, assignedUser: record.assignedUser, slaReceived: Boolean(record.slaReceived),
       purchase, sales,
       purchaseComplete, salesComplete, fullyComplete: purchaseComplete && salesComplete

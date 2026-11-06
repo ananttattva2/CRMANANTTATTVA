@@ -125,6 +125,7 @@ test('Operations records use the same Annual Return applicability gates as Appli
   assert.equal(records.length, 2);
   assert.deepEqual(records.map(row => row.subType).sort(), ['Importer', 'Producer']);
   assert(records.every(row => row.years.length === 1 && row.years[0] === '2025-26'));
+  assert(records.every(row => row.plantUnit === 'Unit 1'));
 });
 
 test('Purchase and Sales summary uses the same eligible Annual Return applications and all workflow stages', () => {
@@ -145,6 +146,7 @@ test('Purchase and Sales summary uses the same eligible Annual Return applicatio
   assert.equal(result.purchase[0].pending, 1);
   assert.equal(result.users[0].allocated, 2);
   assert.equal(result.users[0].completion, 50);
+  assert.equal(result.users[0].clients[0].plantUnit, rows[0].plantUnit);
 });
 
 test('Purchase and Sales summary reflects the AR Compliance manager decision', () => {
