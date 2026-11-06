@@ -173,6 +173,8 @@ const API_ENDPOINTS = {
     create: '/internal-tickets',
     detail: (id) => `/internal-tickets/${encodePathValue(id)}`,
     downloadAttachment: '/internal-tickets/attachments/download',
+    callConfig: '/internal-tickets/call/config',
+    incomingCall: '/internal-tickets/call/incoming',
     call: (id) => `/internal-tickets/${encodePathValue(id)}/call`
   },
   healthReports: {

@@ -4,6 +4,7 @@ import DashboardShell from '../components/dashboard/DashboardShell'
 import api from '../services/api'
 import { API_ENDPOINTS } from '../services/apiEndpoints'
 import { uploadMediaBatch } from '../services/mediaUpload'
+import { getInternalCallRtcConfig, waitForInternalCallIce } from '../utils/internalCallRtc.mjs'
 
 const STATUSES = ['Open', 'In Progress', 'Resolved', 'Closed']
 const emptyDraft = { subject: '', priority: 'Medium', participants: [], message: '', attachments: [] }
@@ -11,8 +12,6 @@ const stamp = (value) => value ? new Date(value).toLocaleString('en-IN', { day: 
 const initials = (value) => String(value || 'CRM User').split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
 const fileUrl = (file) => String(file?.url || file?.secureUrl || '')
 const EMOJIS = ['😀', '😂', '😍', '👍', '👏', '🎉', '✅', '🙏', '🔥', '💯', '🤝', '📌']
-const RTC_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] }
-const waitForIce = (peer) => new Promise((resolve) => { if (peer.iceGatheringState === 'complete') return resolve(); const done = () => { if (peer.iceGatheringState === 'complete') { peer.removeEventListener('icegatheringstatechange', done); resolve() } }; peer.addEventListener('icegatheringstatechange', done); setTimeout(resolve, 5000) })
 
 async function downloadInternalTicketFile(file) {
   const response = await api.get(API_ENDPOINTS.internalTickets.downloadAttachment, { params: { url: fileUrl(file) }, responseType: 'blob' })
@@ -206,7 +205,7 @@ export default function InternalTickets() {
   function onComposerKeyDown(event) { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendReply() } }
   function openUserChat(user) { const id = String(user._id || user.id); setDraft({ ...emptyDraft, subject: user.name || user.email, participants: [id] }); setCreating(true); setSearch('') }
   async function createPeer(stream) {
-    const peer = new RTCPeerConnection(RTC_CONFIG)
+    const peer = new RTCPeerConnection(await getInternalCallRtcConfig())
     stream.getTracks().forEach((track) => peer.addTrack(track, stream))
     peer.ontrack = (event) => { if (remoteVideoRef.current) remoteVideoRef.current.srcObject = event.streams[0] }
     peer.onconnectionstatechange = () => { if (peer.connectionState === 'connected') setCallStatus('Connected'); if (['failed', 'disconnected'].includes(peer.connectionState)) setCallStatus('Connection interrupted') }
@@ -239,7 +238,7 @@ export default function InternalTickets() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: mode === 'video' })
       mediaStreamRef.current = stream
       const peer = await createPeer(stream)
-      await peer.setLocalDescription(await peer.createOffer()); await waitForIce(peer)
+      await peer.setLocalDescription(await peer.createOffer()); await waitForInternalCallIce(peer)
       await api.patch(API_ENDPOINTS.internalTickets.call(selected._id), { action: 'start', mode, offer: JSON.stringify(peer.localDescription) })
       setCallStatus('Ringing participants...')
       setTimeout(() => { if (localVideoRef.current) localVideoRef.current.srcObject = stream }, 0)
@@ -251,7 +250,7 @@ export default function InternalTickets() {
     stopRingtone(); setCallMode(mode); setCallStatus('Connecting...'); setCallError('')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: mode === 'video' }); mediaStreamRef.current = stream
-      const peer = await createPeer(stream); await peer.setRemoteDescription(JSON.parse(session.offer)); await peer.setLocalDescription(await peer.createAnswer()); await waitForIce(peer)
+      const peer = await createPeer(stream); await peer.setRemoteDescription(JSON.parse(session.offer)); await peer.setLocalDescription(await peer.createAnswer()); await waitForInternalCallIce(peer)
       const { data } = await api.patch(API_ENDPOINTS.internalTickets.call(selected._id), { action: 'answer', answer: JSON.stringify(peer.localDescription) }); setSelected(data.ticket); setCallStatus('Connected')
       setTimeout(() => { if (localVideoRef.current) localVideoRef.current.srcObject = stream }, 0)
     } catch (error) { setCallError(error?.response?.data?.error || 'Unable to answer the call.'); setCallStatus('Call failed') }

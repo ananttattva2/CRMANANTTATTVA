@@ -45,6 +45,7 @@ const PurchaseSalesDashboard = lazy(() => import('./pages/PurchaseSalesDashboard
 const DocumentsLibrary = lazy(() => import('./pages/DocumentsLibrary'))
 import api, { API_ENDPOINTS, hasStoredAuthToken } from './services/api'
 import SupportTicketMilestoneCelebration from './components/SupportTicketMilestoneCelebration'
+import InternalCallListener from './components/InternalCallListener'
 import { defaultLandingPath } from './utils/defaultLanding.mjs'
 
 function DefaultDashboardRoute() {
@@ -118,11 +119,12 @@ function ActiveCrmTracker() {
 }
 
 function App(){
-  const clientPage = useLocation().pathname.startsWith('/client')
+  const location = useLocation()
+  const clientPage = location.pathname.startsWith('/client')
   return (
     <div className="min-h-screen bg-emerald-50">
       <ScrollToTop />
-      {!clientPage && <><ActiveCrmTracker /><SupportTicketMilestoneCelebration /></>}
+      {!clientPage && <><ActiveCrmTracker /><SupportTicketMilestoneCelebration /><InternalCallListener enabled={location.pathname !== '/internal-tickets'} /></>}
       <Suspense fallback={<div role="status" className="grid min-h-[60vh] place-items-center text-teal-700">Loading page…</div>}>
       <Routes>
         <Route path="/" element={<LandingPage/>} />

@@ -31,4 +31,6 @@ const InternalTicketSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 InternalTicketSchema.index({ participants: 1, lastMessageAt: -1 });
+InternalTicketSchema.index({ participants: 1, 'callSession.status': 1, 'callSession.startedAt': -1 });
+InternalTicketSchema.index({ createdBy: 1, 'callSession.status': 1, 'callSession.startedAt': -1 });
 module.exports = mongoose.model('InternalTicket', InternalTicketSchema);

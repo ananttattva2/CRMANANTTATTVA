@@ -8,6 +8,30 @@ const { notifyFirstMessage } = require('../services/internalTicketEmails');
 const STATUSES = ['Open', 'In Progress', 'Resolved', 'Closed'];
 const PRIORITIES = ['Low', 'Medium', 'High', 'Urgent'];
 
+function rtcUrls(value) {
+  return String(value || '').split(',').map((item) => item.trim()).filter((item) => /^(?:stun|turn|turns):/i.test(item));
+}
+
+exports.callConfig = async (req, res) => {
+  const iceServers = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
+  const turnUrls = rtcUrls(process.env.WEBRTC_TURN_URLS || process.env.WEBRTC_TURN_URL);
+  const username = String(process.env.WEBRTC_TURN_USERNAME || '').trim();
+  const credential = String(process.env.WEBRTC_TURN_CREDENTIAL || '').trim();
+  if (turnUrls.length && username && credential) iceServers.push({ urls: turnUrls, username, credential });
+  res.set('Cache-Control', 'private, no-store');
+  res.json({ ok: true, iceServers, relayAvailable: iceServers.length > 1 });
+};
+
+exports.incomingCall = async (req, res) => {
+  const ticket = await InternalTicket.findOne({
+    'callSession.status': 'ringing',
+    'callSession.initiatedBy': { $ne: req.user._id },
+    $or: [{ createdBy: req.user._id }, { participants: req.user._id }]
+  }).populate('createdBy participants', 'name email role avatarUrl').sort({ 'callSession.startedAt': -1 }).lean();
+  res.set('Cache-Control', 'private, no-store');
+  res.json({ ok: true, ticket: ticket || null });
+};
+
 function cleanAttachments(value) {
   return (Array.isArray(value) ? value : []).slice(0, 8).map((item) => ({
     name: String(item?.name || '').trim().slice(0, 180), url: String(item?.secureUrl || item?.url || '').trim(),

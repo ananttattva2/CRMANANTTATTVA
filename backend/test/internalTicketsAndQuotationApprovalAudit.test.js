@@ -59,6 +59,9 @@ test('internal tickets have isolated database API, participants, chat, and attac
   assert.match(frontend, /downloadInternalTicketFile/);
   assert.match(frontend, /responseType: 'blob'/);
   assert.match(frontend, /URL\.createObjectURL/);
+  assert.match(controller, /exports\.incomingCall/);
+  assert.match(controller, /exports\.callConfig/);
+  assert.match(controller, /WEBRTC_TURN_URLS/);
   assert.match(model, /enum: \['Open', 'In Progress', 'Resolved', 'Closed'\]/);
   assert.match(model, /CallSessionSchema/);
   assert.match(controller, /exports\.call/);
@@ -69,6 +72,15 @@ test('internal tickets have isolated database API, participants, chat, and attac
   assert.ok(routes.indexOf("get('/participants'") < routes.indexOf("get('/:id'"), 'participants route must be declared before the dynamic id route');
   assert.ok(routes.indexOf("get('/attachments/download'") < routes.indexOf("get('/:id'"), 'attachment download route must be declared before the dynamic id route');
   assert.match(routes, /patch\('\/:id\/call'/);
+  assert.match(routes, /get\('\/call\/incoming', requireAuth, controller\.incomingCall\)/);
+  assert.match(routes, /get\('\/call\/config', requireAuth, controller\.callConfig\)/);
+  assert.ok(routes.indexOf("get('/call/incoming'") < routes.indexOf("get('/:id'"), 'incoming-call route must be declared before the dynamic id route');
+  const appPage = read('frontend/src/App.jsx');
+  const listener = read('frontend/src/components/InternalCallListener.jsx');
+  assert.match(appPage, /InternalCallListener/);
+  assert.match(listener, /internalTickets\.incomingCall/);
+  assert.match(listener, /getUserMedia/);
+  assert.match(listener, /waitForInternalCallIce/);
 });
 
 test('desktop CRM uses a compact 100-percent browser density without changing print or mobile', () => {
