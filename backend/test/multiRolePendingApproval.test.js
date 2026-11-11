@@ -28,7 +28,9 @@ test('special approval history is bounded without dropping active approvals', ()
   assert.match(leadControllerSource, /const \[activeApprovals, recentDecisions\] = await Promise\.all/);
   assert.match(leadControllerSource, /approvalStatus: \{ \$in: \['PENDING', 'PARTIALLY_APPROVED', 'REVISION_REQUIRED'\] \}/);
   assert.match(leadControllerSource, /\.sort\(\{ createdAt: -1 \}\)\.limit\(500\)\.lean\(\)/);
-  assert.match(leadControllerSource, /\.sort\(\{ actionAt: -1, createdAt: -1 \}\)\.limit\(100\)\.lean\(\)/);
+  assert.match(leadControllerSource, /\.sort\(\{ actionAt: -1, createdAt: -1 \}\)\.limit\(500\)\.lean\(\)/);
+  assert.match(leadControllerSource, /'payload\.poSubmittedById': userId/);
+  assert.match(leadControllerSource, /'payload\.leadCreatorId': userId/);
 });
 
 test('primary approvals render before waiting on the parallel special approval request', () => {

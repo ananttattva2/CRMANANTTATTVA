@@ -2611,9 +2611,21 @@ exports.listDuplicateLeadApprovals = async (req, res) => {
       { 'payload.claimantId': userId },
       { 'payload.contributorId': userId },
       { 'payload.originalCreatorId': userId },
+      { 'payload.poSubmittedById': userId },
+      { 'payload.leadCreatorId': userId },
+      { 'payload.closureRequestedBy': userId },
+      { 'payload.quotationCreatorIds': userId },
       { 'payload.managerId': userId },
       { 'payload.temporaryUserId': userId }
     ];
+    const userEmail = String(req.user?.email || '').trim().toLowerCase();
+    if (userEmail) {
+      query.$or.push(
+        { 'payload.poSubmittedByEmail': userEmail },
+        { 'payload.leadCreatorEmail': userEmail },
+        { 'payload.quotationCreatorEmails': userEmail }
+      );
+    }
   }
   const listOnly = req.query.listOnly === 'true';
   const listProjection = listOnly ? '-payload.poYearRows.poFileUrl -payload.poProofManifest.poFileUrl -payload.poRows.poFileUrl -payload.earlierQuotationProofUrl -payload.poFileUrl' : '';
@@ -2625,7 +2637,7 @@ exports.listDuplicateLeadApprovals = async (req, res) => {
     PendingApproval.find({
       ...query,
       approvalStatus: { $in: ['APPROVED', 'REJECTED'] }
-    }).select(listProjection).populate('actionBy', 'name email').sort({ actionAt: -1, createdAt: -1 }).limit(100).lean()
+    }).select(listProjection).populate('actionBy', 'name email').sort({ actionAt: -1, createdAt: -1 }).limit(500).lean()
   ]);
   const approvals = [...activeApprovals, ...recentDecisions];
   const readAt = Date.now();

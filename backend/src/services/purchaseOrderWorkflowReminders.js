@@ -270,8 +270,9 @@ async function runPurchaseOrderWorkflowReminders(now = new Date()) {
     const rejected = await PendingApproval.find({
       type: 'purchase_order',
       approvalStatus: 'REJECTED',
-      actionAt: { $lte: new Date(now.getTime() - REJECTION_REMINDER_MS) }
-    }).limit(200).lean();
+      actionAt: { $lte: new Date(now.getTime() - REJECTION_REMINDER_MS) },
+      'payload.poWorkflowReminders.rejected48h.sentAt': { $exists: false }
+    }).sort({ actionAt: 1, createdAt: 1 }).limit(200).lean();
     const approvalsToCheck = await PendingApproval.find({
       type: 'purchase_order',
       approvalStatus: 'APPROVED',
