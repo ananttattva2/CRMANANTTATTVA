@@ -523,6 +523,7 @@ function createAssignmentRow(source = {}) {
   return {
     assignedServiceId: source.assignedServiceId || '',
     plantUnit: source.plantUnit || '',
+    managerAssignedAt: source.managerAssignedAt || '',
     assignedTo: source.assignedTo?._id || source.assignedTo || '',
     assignedToText: source.assignedToText || source.assignedTo?.name || '',
     assignedToEmail: source.assignedToEmail || source.assignedTo?.email || '',
@@ -3683,7 +3684,7 @@ function pendingManagerAssignmentRows(leads = [], currentUser = {}) {
         rowIndex: index,
         managerName: assignment?.assignedTo?.name || assignment?.assignedToText || service.assignedManagerName || lead.assignedTo?.name || lead.assignedToText || '-',
         assignedBy: assignment?.assignedBy || lead.assignedBy || lead.createdBy?.name || lead.createdByName || lead.importedCreatedBy || '-',
-        assignedAt: assignment?.assignedAt || lead.updatedAt || lead.createdAt || ''
+        assignedAt: assignment?.managerAssignedAt || assignment?.assignedAt || lead.updatedAt || lead.createdAt || ''
       }];
     });
   });

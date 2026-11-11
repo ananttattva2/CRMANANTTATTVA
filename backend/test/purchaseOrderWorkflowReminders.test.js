@@ -4,6 +4,7 @@ const {
   DAY_MS,
   REJECTION_REMINDER_MS,
   managerReminderDueStage,
+  managerAssignmentStartAt,
   rejectionReminderDue,
   poReminderEmail
 } = require('../src/services/purchaseOrderWorkflowReminders');
@@ -39,7 +40,7 @@ test('manager receives a reminder at 24 hours and an escalation at 48 hours', ()
   assert.equal(managerReminderDueStage({ ...assignment, hasStaff: true, now: after(2 * DAY_MS) }), '');
 });
 
-test('manager reminder timer starts from whichever happened later: PO approval or manager assignment', () => {
+test('manager assignment timer starts from whichever happened later: PO approval or manager assignment', () => {
   assert.equal(managerReminderDueStage({
     approvalAt: start,
     managerAssignedAt: after(DAY_MS),
@@ -50,6 +51,30 @@ test('manager reminder timer starts from whichever happened later: PO approval o
     managerAssignedAt: after(DAY_MS),
     now: after(2 * DAY_MS)
   }), 'manager24h');
+});
+
+test('legacy reminders use the manager assignment date instead of an older PO closure date', () => {
+  const approvalAt = new Date(start.getTime() - 15 * DAY_MS);
+  const assignment = { closedAt: approvalAt };
+  const lead = { updatedAt: start };
+  const assignedStart = managerAssignmentStartAt(approvalAt, assignment, lead);
+
+  assert.equal(assignedStart.getTime(), start.getTime());
+  assert.equal(managerReminderDueStage({
+    approvalAt,
+    managerAssignedAt: assignedStart,
+    now: after(DAY_MS)
+  }), 'manager24h');
+
+  const email = poReminderEmail({
+    stage: 'manager48h',
+    approval: { actionAt: approvalAt, payload: {} },
+    assignment,
+    lead,
+    now: after(2 * DAY_MS)
+  });
+  assert.match(email.html, /2d 0h 0m/);
+  assert.doesNotMatch(email.html, /15d/);
 });
 
 test('manager assignment timestamps are server-generated and survive unchanged assignments', () => {

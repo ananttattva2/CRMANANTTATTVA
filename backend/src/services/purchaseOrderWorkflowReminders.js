@@ -59,6 +59,17 @@ function latestDate(...values) {
   return values.map(validDate).filter(Boolean).sort((left, right) => right - left)[0] || null;
 }
 
+function managerAssignmentStartAt(approvalAt, assignment = {}, lead = {}) {
+  return latestDate(
+    approvalAt,
+    assignment.managerAssignedAt
+      || assignment.assignedAt
+      || lead.updatedAt
+      || lead.createdAt
+      || assignment.closedAt
+  );
+}
+
 function managerReminderDueStage({ approvalAt, managerAssignedAt, hasStaff, reminderState = {}, now = new Date() }) {
   if (hasStaff) return '';
   const startedAt = latestDate(approvalAt, managerAssignedAt);
@@ -90,9 +101,7 @@ function poReminderEmail({ stage, approval, lead = {}, assignment = {}, managerN
     : escalation
       ? 'Escalation: staff assignment is overdue'
       : 'Reminder: assign staff for the approved Purchase Order';
-  const eventAt = rejected
-    ? approval.actionAt
-    : latestDate(approval.actionAt, assignment.managerAssignedAt);
+  const eventAt = rejected ? approval.actionAt : managerAssignmentStartAt(approval.actionAt, assignment, lead);
   const closedAt = assignment.closedAt || assignment.managerAssignedAt || approval.actionAt;
   const rows = Array.isArray(assignment.poYearRows) && assignment.poYearRows.length
     ? assignment.poYearRows
@@ -302,7 +311,7 @@ async function runPurchaseOrderWorkflowReminders(now = new Date()) {
       if (!managerId || assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail) continue;
       const stage = managerReminderDueStage({
         approvalAt: approval.actionAt,
-        managerAssignedAt: assignment.managerAssignedAt || assignment.closedAt,
+        managerAssignedAt: managerAssignmentStartAt(approval.actionAt, assignment, lead),
         hasStaff: false,
         reminderState: approval.payload?.poWorkflowReminders,
         now
@@ -344,6 +353,7 @@ module.exports = {
   DAY_MS,
   REJECTION_REMINDER_MS,
   managerReminderDueStage,
+  managerAssignmentStartAt,
   rejectionReminderDue,
   poReminderEmail,
   runPurchaseOrderWorkflowReminders,
