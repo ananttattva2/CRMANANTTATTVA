@@ -43,6 +43,7 @@ const { startStaffOnboardingWorkflowScheduler } = require('./services/staffOnboa
 const { startLeadServiceApprovalReminderScheduler, runLeadServiceApprovalReminders } = require('./services/leadServiceApprovalReminders');
 const { startProvisionalLeadClosureScheduler } = require('./services/provisionalLeadClosureWorkflow');
 const { startTemporaryAssignmentReminderScheduler } = require('./services/temporaryLeadAssignmentReminders');
+const { runPurchaseOrderWorkflowReminders, startPurchaseOrderWorkflowReminderScheduler } = require('./services/purchaseOrderWorkflowReminders');
 const { applyKnownDataCorrections } = require('./services/knownDataCorrections');
 const { pauseExistingPendingClientApprovalTimers } = require('./services/clientReviewReminderLifecycle');
 const { runArComplianceApprovalNotificationBackfill } = require('./services/arComplianceNotificationBackfill');
@@ -132,6 +133,7 @@ const connectAndStartServices = singleFlight(function () {
       startLeadServiceApprovalReminderScheduler();
       startProvisionalLeadClosureScheduler();
       startTemporaryAssignmentReminderScheduler();
+      startPurchaseOrderWorkflowReminderScheduler();
       schedulerStarted = true;
     }
   }).catch(error => console.error('CRM startup services failed', safeMongoError(error)));
@@ -205,6 +207,17 @@ app.get('/api/internal/client-compliance-correction-reminders', async (req, res)
   if (authorization !== `Bearer ${cronSecret}`) return res.status(401).json({ ok: false, error: 'Unauthorized cron request' });
   try { return res.json({ ok: true, ...(await runClientComplianceCorrectionReminders()) }); }
   catch (error) { return res.status(500).json({ ok: false, error: error.message || 'Compliance correction reminder run failed' }); }
+});
+app.get('/api/internal/purchase-order-workflow-reminders', async (req, res) => {
+  const cronSecret = String(process.env.CRON_SECRET || '').trim();
+  const authorization = String(req.get('authorization') || '').trim();
+  if (!cronSecret) return res.status(503).json({ ok: false, error: 'CRON_SECRET is not configured' });
+  if (authorization !== `Bearer ${cronSecret}`) return res.status(401).json({ ok: false, error: 'Unauthorized cron request' });
+  try { return res.json({ ok: true, ...(await runPurchaseOrderWorkflowReminders()) }); }
+  catch (error) {
+    console.error('Purchase Order workflow reminder run failed', error);
+    return res.status(500).json({ ok: false, error: error.message || 'Purchase Order reminder run failed' });
+  }
 });
 app.get('/api/cache/revision', require('./middleware/auth').requireAuth, async (req, res) => {
   res.set('Cache-Control', 'private, no-store');

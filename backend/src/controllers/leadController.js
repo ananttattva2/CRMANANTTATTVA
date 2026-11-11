@@ -17,6 +17,7 @@ const { claimLeadRoyalty } = require('../services/leadRoyaltyNotifications');
 const { normalizeCompanyIdentity } = require('../services/crmRecordPersistence');
 const { notifyNewProvisionalClosures } = require('../services/provisionalLeadClosureWorkflow');
 const { resolvePoProof, resolveApprovalPoProof } = require('../services/poProofResolver');
+const { managerAssignmentTimestamp } = require('../utils/poWorkflow');
 const { normalizeProvisionalClosure, permanentlyCloseProvisionalAssignments } = require('../utils/provisionalClosureDeadline');
 const { normalizeCommunicationSelection } = require('../utils/communicationModes');
 const LeadDropdownOption = require('../models/LeadDropdownOption');
@@ -534,6 +535,7 @@ function cleanBody(body) {
           assignedTo: String(row?.assignedTo || '').trim(),
           assignedToText: String(row?.assignedToText || '').trim(),
           assignedToEmail: String(row?.assignedToEmail || '').trim(),
+          managerAssignedAt: String(row?.managerAssignedAt || '').trim(),
           closedBy: String(row?.closedBy || '').trim(),
           closedByText: String(row?.closedByText || '').trim(),
           closedByEmail: String(row?.closedByEmail || '').trim(),
@@ -1892,10 +1894,12 @@ exports.updateLead = async (req, res) => {
         logLeadUpdateRejection(poDebugId, lead, 'po-date-validation', error);
         return res.status(400).json({ error });
       }
-      data.assignments = data.assignments.map((row) => {
+      data.assignments = data.assignments.map((row, index) => {
+        const previousAssignment = beforeLead.assignments?.[index] || {};
+        const managerAssignedAt = managerAssignmentTimestamp(previousAssignment, row);
         const approved = String(row?.poApprovalStatus || '').toUpperCase() === 'APPROVED';
-        if (!approved || !row?.assignedTo || !row?.closureRequestedBy || row?.closedBy) return row;
-        return { ...row, closedBy: row.closureRequestedBy, closedByText: row.closureRequestedByText || '', closedAt: new Date().toISOString(), closureFinalizedByManager: true };
+        if (!approved || !row?.assignedTo || !row?.closureRequestedBy || row?.closedBy) return { ...row, managerAssignedAt };
+        return { ...row, managerAssignedAt, closedBy: row.closureRequestedBy, closedByText: row.closureRequestedByText || '', closedAt: new Date().toISOString(), closureFinalizedByManager: true };
       });
     }
     Object.assign(lead, data);
@@ -1932,7 +1936,21 @@ exports.updateLead = async (req, res) => {
     }
     const savedLead = lead.toObject();
     const beforeAssignments = Array.isArray(beforeLead.assignments) ? beforeLead.assignments : [];
-    const changedManagerRows = (savedLead.assignments || []).map((row, index) => ({ row, index })).filter(({ row, index }) => row?.assignedTo && String(row.assignedTo) !== String(beforeAssignments[index]?.assignedTo || ''));
+    const managerChangedRows = (savedLead.assignments || []).map((row, index) => ({ row, index })).filter(({ row, index }) => (
+      String(row?.assignedTo?._id || row?.assignedTo || '') !== String(beforeAssignments[index]?.assignedTo?._id || beforeAssignments[index]?.assignedTo || '')
+    ));
+    await Promise.all(managerChangedRows.map(({ index }) => PendingApproval.updateMany(
+      { type: 'purchase_order', 'payload.leadId': String(lead._id), 'payload.assignmentIndex': index, approvalStatus: 'APPROVED' },
+      { $unset: {
+        'payload.poWorkflowReminders.manager24h': 1,
+        'payload.poWorkflowReminders.manager48h': 1
+      } }
+    ).catch((error) => console.error('Unable to reset PO manager reminder state', {
+      leadId: String(lead._id),
+      assignmentIndex: index,
+      error: error.message
+    }))));
+    const changedManagerRows = managerChangedRows.filter(({ row }) => row?.assignedTo);
     await Promise.all(changedManagerRows.map(({ row, index }) => notifyLeadAssignment({ lead: savedLead, managerId: row.assignedTo, assignedBy: req.user, assignmentIndex: index })
       .catch((error) => console.error('Lead assignment notification failed', error))));
     const introductionEmail = sendIntroductionEmail && lead.workflowStatus === 'submitted'
@@ -2248,7 +2266,12 @@ exports.decidePurchaseOrderApproval = async (req, res) => {
   approval.remarks = remarks;
   approval.actionBy = req.user?._id;
   approval.actionAt = new Date();
-  approval.payload = { ...(approval.payload || {}), decisionScreenshotUrl: screenshotUrl, decidedBy: req.user?.name || req.user?.email || '' };
+  approval.payload = {
+    ...(approval.payload || {}),
+    decisionScreenshotUrl: screenshotUrl,
+    decidedBy: req.user?.name || req.user?.email || '',
+    poWorkflowReminders: {}
+  };
   approval.markModified('payload');
   await approval.save();
   const responsibleUsers = await User.find({ $or: [

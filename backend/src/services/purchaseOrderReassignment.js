@@ -14,7 +14,7 @@ const PO_WORKFLOW_FIELDS = [
 // any missing manager/staff metadata from the source row so the Assign Lead
 // table and downstream trackers stay aligned with the moved PO.
 const SERVICE_ASSIGNMENT_FIELDS = [
-  'assignedTo', 'assignedToText', 'assignedToEmail',
+  'assignedTo', 'assignedToText', 'assignedToEmail', 'managerAssignedAt',
   'assignedStaff', 'assignedStaffText', 'assignedStaffEmail', 'assignedBy'
 ];
 
