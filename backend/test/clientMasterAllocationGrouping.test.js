@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/ClientMasterAllocate.jsx'), 'utf8');
+const clientController = fs.readFileSync(path.resolve(__dirname, '../src/controllers/clientController.js'), 'utf8');
+const clientRoutes = fs.readFileSync(path.resolve(__dirname, '../src/routes/clients.js'), 'utf8');
 
 test('allocation modal groups sibling Client Masters by selected lead', () => {
   assert.match(page, /function clientAllocationGroupIdentity/);
@@ -26,4 +28,14 @@ test('duplicate service labels keep independent allocation state and database wr
   assert.match(page, /await Promise\.all\(requests\)/);
   assert.match(page, /Database verification failed for client/);
   assert.match(page, /row\.stateKey/);
+});
+
+test('staff-assigned leads without a Client Master appear as editable allocation placeholders', () => {
+  assert.match(page, /function createAssignedLeadPlaceholder/);
+  assert.match(page, /function mergeAssignedLeadPlaceholders/);
+  assert.match(page, /API_ENDPOINTS\.clients\.allocationLeads/);
+  assert.match(page, /client\.allocationLeadPlaceholder/);
+  assert.match(page, /API_ENDPOINTS\.leads\.staffAssignment\(leadId, svc\.__leadAssignmentIndex\)/);
+  assert.match(clientController, /exports\.listStaffAssignedLeadsForAllocation/);
+  assert.match(clientRoutes, /allocation\/assigned-leads.*requireRoles\(CLIENT_ALLOCATION_ROLES\)/);
 });

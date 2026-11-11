@@ -348,16 +348,121 @@ function filterSegmentsFor(acc) {
   ];
 }
 
+function allocationLeadKeys(lead = {}) {
+  return [
+    lead._id, lead.id, lead.sourceLeadId, lead.externalLeadId, lead.leadCode
+  ].map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
+}
+
+function allocationClientLeadKeys(client = {}) {
+  const selectedLead = client.selectedLead;
+  const snapshot = client.data?.selectedLeadSnapshot || {};
+  return [
+    selectedLead?._id, selectedLead?.id, selectedLead?.sourceLeadId, selectedLead?.leadCode,
+    typeof selectedLead === 'string' ? selectedLead : '',
+    client.data?.selectedLead, snapshot.id, snapshot.sourceLeadId, snapshot.leadCode,
+    client.data?.importMeta?.leadNumber, client.data?.importMeta?.leadId
+  ].map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
+}
+
+function createAssignedLeadPlaceholder(lead = {}) {
+  const leadId = String(lead._id || lead.id || '').trim();
+  if (!leadId) return null;
+  const assignments = Array.isArray(lead.assignments) && lead.assignments.length
+    ? lead.assignments
+    : (lead.assignedStaff || lead.assignedStaffText || lead.assignedStaffEmail ? [lead] : []);
+  const selections = Array.isArray(lead.serviceSelections) ? lead.serviceSelections : [];
+  const services = assignments.flatMap((assignment = {}, assignmentIndex) => {
+    const staffValue = assignment.assignedStaff;
+    const staffId = allocationEntryUserId(staffValue);
+    const staffText = String(assignment.assignedStaffText || assignment.assignedStaffEmail || '').trim();
+    if (!staffId && !staffText && !assignment.assignedStaffEmail) return [];
+    const assignedServiceId = String(assignment.assignedServiceId || assignment.serviceAssignmentId || assignment.assignmentId || '').trim();
+    const matchingService = assignedServiceId
+      ? selections.find((service) => String(service.assignedServiceId || service.serviceAssignmentId || service.assignmentId || '').trim() === assignedServiceId)
+      : null;
+    const service = matchingService || selections[assignmentIndex] || assignment;
+    return [{
+      ...service,
+      assignedServiceId: assignedServiceId || service.assignedServiceId || service.serviceAssignmentId || `assignment-${assignmentIndex}`,
+      applicantType: service.applicantType || service.piboParent || lead.applicantType || lead.piboParent || '',
+      subApplicantType: service.subApplicantType || service.piboCategory || lead.subApplicantType || lead.piboCategory || '',
+      piboCategory: service.piboCategory || service.subApplicantType || lead.piboCategory || lead.subApplicantType || '',
+      eprCategory: service.eprCategory || service.serviceCategory || lead.eprCategory || '',
+      servicesOffered: service.servicesOffered || service.applicableService || lead.servicesOffered || '',
+      plantUnit: service.plantUnit || lead.plantUnit || '',
+      financialYear: service.financialYear || service.servicesForYear || lead.financialYear || '',
+      __leadAssignmentIndex: assignmentIndex,
+      __currentAssignedStaffId: staffId,
+      __currentAssignedStaffText: staffText
+    }];
+  });
+  if (!services.length) return null;
+  const serviceAllocations = {};
+  services.forEach((service, index) => {
+    const userId = service.__currentAssignedStaffId || service.__currentAssignedStaffText;
+    if (userId) serviceAllocations[allocationKeyForService(service, index)] = {
+      userId,
+      assignedByName: service.__currentAssignedStaffText
+    };
+  });
+  const leadCode = String(lead.leadCode || lead.sourceLeadId || '').trim();
+  return {
+    _id: `lead:${leadId}`,
+    allocationLeadPlaceholder: true,
+    selectedLead: lead,
+    services,
+    serviceAllocations,
+    data: {
+      basic: {
+        clientLegalName: lead.company || lead.companyName || lead.clientName || 'Untitled client',
+        tradeName: lead.tradeName || '',
+        contactPerson: lead.contactPerson || '',
+        mobileNo: lead.mobileNo1 || lead.mobile || '',
+        emailId: lead.emails || lead.email || '',
+        piboCategory: lead.piboCategory || lead.subApplicantType || '',
+        eprCategory: lead.eprCategory || '',
+        servicesOffered: lead.servicesOffered || ''
+      },
+      importMeta: { leadNumber: leadCode },
+      selectedLeadSnapshot: {
+        id: leadId,
+        sourceLeadId: lead.sourceLeadId || '',
+        leadCode,
+        company: lead.company || lead.companyName || lead.clientName || ''
+      }
+    }
+  };
+}
+
+function mergeAssignedLeadPlaceholders(clients = [], leads = []) {
+  const linkedLeadKeys = new Set(clients.flatMap(allocationClientLeadKeys));
+  const placeholders = leads
+    .filter((lead) => !allocationLeadKeys(lead).some((key) => linkedLeadKeys.has(key)))
+    .map(createAssignedLeadPlaceholder)
+    .filter(Boolean);
+  return [...clients, ...placeholders];
+}
+
 async function fetchAllAllocationClients() {
   const params = { paginated: true, allocation: true, page: 1, limit: 100 };
-  const first = await api.get(API_ENDPOINTS.clients.list, { params });
-  const totalPages = Number(first.data?.pagination?.totalPages || 1);
-  const remaining = totalPages > 1
-    ? await Promise.all(Array.from({ length: totalPages - 1 }, (_, index) => (
-      api.get(API_ENDPOINTS.clients.list, { params: { ...params, page: index + 2 } })
-    )))
-    : [];
-  return [first, ...remaining].flatMap((response) => response.data?.clients || []);
+  const [first, leadFirst] = await Promise.all([
+    api.get(API_ENDPOINTS.clients.list, { params }),
+    api.get(API_ENDPOINTS.clients.allocationLeads, { params: { page: 1, limit: 100 } })
+  ]);
+  const clientPages = Number(first.data?.pagination?.totalPages || 1);
+  const leadPages = Number(leadFirst.data?.pagination?.totalPages || 1);
+  const [clientRemaining, leadRemaining] = await Promise.all([
+    clientPages > 1
+      ? Promise.all(Array.from({ length: clientPages - 1 }, (_, index) => api.get(API_ENDPOINTS.clients.list, { params: { ...params, page: index + 2 } })))
+      : [],
+    leadPages > 1
+      ? Promise.all(Array.from({ length: leadPages - 1 }, (_, index) => api.get(API_ENDPOINTS.clients.allocationLeads, { params: { page: index + 2, limit: 100 } })))
+      : []
+  ]);
+  const clients = [first, ...clientRemaining].flatMap((response) => response.data?.clients || []);
+  const leads = [leadFirst, ...leadRemaining].flatMap((response) => response.data?.leads || []);
+  return mergeAssignedLeadPlaceholders(clients, leads);
 }
 
 export default function ClientMasterAllocate() {
@@ -535,6 +640,32 @@ export default function ClientMasterAllocate() {
     if (!modalClient?.client?._id) return;
     try {
       setSaving(true);
+      if (modalClient.client.allocationLeadPlaceholder) {
+        const leadId = String(modalClient.client.selectedLead?._id || modalClient.client.selectedLead?.id || '').trim();
+        if (!leadId) throw new Error('The assigned lead could not be identified.');
+        const changedServices = modalClient.services.filter((svc, idx) => {
+          const serviceKey = allocationKeyForService(svc, svc.__allocationServiceIndex ?? idx);
+          const nextUser = String(allocationsByKey[allocationStateKey(svc.__allocationClientId, serviceKey)] || '').trim();
+          return nextUser !== String(svc.__currentAssignedStaffId || '').trim();
+        });
+        if (!changedServices.length) {
+          showToast('success', 'No changes', 'The lead staff assignments are already up to date.');
+          return;
+        }
+        await Promise.all(changedServices.map((svc, idx) => {
+          const serviceKey = allocationKeyForService(svc, svc.__allocationServiceIndex ?? idx);
+          const staffUserId = String(allocationsByKey[allocationStateKey(svc.__allocationClientId, serviceKey)] || '').trim();
+          return api.patch(API_ENDPOINTS.leads.staffAssignment(leadId, svc.__leadAssignmentIndex), {
+            staffUserId,
+            kickoffEmailConsent: 'no'
+          });
+        }));
+        const refreshedClients = await fetchAllAllocationClients();
+        setClients(refreshedClients);
+        showToast('success', 'Lead allocation updated', `Updated ${changedServices.length} assigned service(s).`);
+        setModalClient(null);
+        return;
+      }
       if (Array.isArray(modalClient.clients) && Array.isArray(modalClient.services)) {
         const allocationsByClient = new Map();
         modalClient.services.forEach((svc, idx) => {
@@ -819,6 +950,7 @@ export default function ClientMasterAllocate() {
                           <div className="min-w-0">
                             <div className="truncate text-[14.5px] font-black tracking-tight text-slate-950" title={overview.companyName}>{overview.companyName}</div>
                             <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-emerald-700 ring-1 ring-emerald-100">{overview.leadCode || String(client.uniqueId || '').trim() || '—'}</div>
+                            {client.allocationLeadPlaceholder && <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-800 ring-1 ring-amber-200">Lead assigned · Client Master pending</div>}
                           </div>
                         </div>
                       </td>
@@ -1031,6 +1163,7 @@ function AllocationModal({ isOpen, onClose, client, services = [], users = [], v
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600/90 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-white shadow-emerald-200"><Sparkles className="h-3.5 w-3.5" /> Allocate services</span>
                 <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-slate-600 ring-1 ring-slate-200"><BriefcaseBusiness className="h-3.5 w-3.5" /> {rows.length} services</span>
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-amber-800 ring-1 ring-amber-200"><Percent className="h-3.5 w-3.5" /> {progress}% done</span>
+                {client.allocationLeadPlaceholder && <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-orange-800 ring-1 ring-orange-200">Lead assignment</span>}
               </div>
               <h2 id="allocate-services-title" className="mt-2 truncate text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">{overview.companyName}</h2>
               <div className="mt-2 flex flex-wrap items-center gap-3 text-xs font-bold text-slate-500">

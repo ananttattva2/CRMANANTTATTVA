@@ -10,6 +10,7 @@ const salesCtrl = require('../controllers/salesDataController');
 const purchaseProofCtrl = require('../controllers/purchaseProofController');
 const { requireAuth, requireRoles } = require('../middleware/auth');
 const { ADMIN_ROLES, CLIENT_APPROVAL_ROLES } = require('../constants/roles');
+const CLIENT_ALLOCATION_ROLES = [...ADMIN_ROLES, 'manager'];
 const AR_REVIEW_ROLES = [...CLIENT_APPROVAL_ROLES, 'manager'];
 const emailProofUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: Math.max(1, Number(process.env.EMAIL_PROOF_MAX_SIZE_MB) || 15) * 1024 * 1024, files: 1, fields: 10 } }).single('file');
 const receiveEmailProof = (req, res, next) => emailProofUpload(req, res, (error) => error ? res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ success: false, message: error.code === 'LIMIT_FILE_SIZE' ? 'Email proof exceeds the configured size limit.' : 'Invalid email proof upload.', code: error.code || 'MULTIPART_UPLOAD_FAILED' }) : next());
@@ -19,6 +20,7 @@ router.get('/deactivation-status', requireAuth, cacheRead, deactivation.statuses
 router.get('/deactivation-requests', requireAuth, cacheRead, deactivation.list);
 router.post('/deactivation-requests/:requestId/decision', requireAuth, deactivation.decide);
 router.post('/:id/deactivation', requireAuth, deactivation.request);
+router.get('/allocation/assigned-leads', requireAuth, requireRoles(CLIENT_ALLOCATION_ROLES), clientCtrl.listStaffAssignedLeadsForAllocation);
 router.use('/:id', requireAuth, deactivation.guard);
 router.use('/', requireAuth, deactivation.guard);
 

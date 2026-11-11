@@ -1436,6 +1436,53 @@ exports.listClients = async (req, res) => {
   });
 };
 
+exports.listStaffAssignedLeadsForAllocation = async (req, res) => {
+  try {
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 100));
+    const assignedStaff = { $exists: true, $nin: [null, ''] };
+    const filter = combineAccessFilters(
+      await leadAccessFilter(req.user),
+      { $or: [
+        { assignedStaff },
+        { assignedStaffText: assignedStaff },
+        { assignedStaffEmail: assignedStaff },
+        { assignments: { $elemMatch: { $or: [
+          { assignedStaff },
+          { assignedStaffText: assignedStaff },
+          { assignedStaffEmail: assignedStaff }
+        ] } } }
+      ] }
+    );
+    const [leads, total] = await Promise.all([
+      Lead.find(filter)
+        .select('leadCode sourceLeadId externalLeadId company companyName contactPerson designation mobileNo1 mobileNo2 emails industryType applicantType piboParent piboCategoryParent subApplicantType eprCategory servicesOffered firstAnnualReturnYearApplicable addressLine1 state city pinCode assignedStaff assignedStaffText assignedStaffEmail assignments serviceSelections createdAt updatedAt')
+        .sort({ updatedAt: -1, _id: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .maxTimeMS(20000)
+        .lean(),
+      Lead.countDocuments(filter)
+    ]);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    return res.json({
+      ok: true,
+      leads,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1
+      }
+    });
+  } catch (error) {
+    console.error('Client allocation lead lookup failed', error);
+    return res.status(500).json({ ok: false, error: 'Unable to load staff-assigned leads.' });
+  }
+};
+
 exports.listClientMasterCatalog = async (req, res) => {
   const startedAt = Date.now();
   const records = await Client.find(await clientAccessFilter(req.user))
