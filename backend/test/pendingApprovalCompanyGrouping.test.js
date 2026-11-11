@@ -10,20 +10,21 @@ const end = source.indexOf('function rowMatchesSearch', start);
 const context = vm.createContext({});
 vm.runInContext(source.slice(start, end), context);
 
-test('pending clients show one company row with all distinct applicants retained for review', () => {
+test('pending clients show one row per applicant so multi-service companies are not merged', () => {
   const rows = [
     { id:'astra-importer', clientName:'ASTRA CHEMTECH PRIVATE LIMITED', approvalStatus:'PENDING', piboCategory:'Importer', eprCategory:'EPR - Plastic Waste', createdBy:'SHRUTI MAIN' },
     { id:'astra-brand-owner', clientName:'ASTRA CHEMTECH PRIVATE LIMITED', approvalStatus:'PENDING', piboCategory:'Brand Owner', eprCategory:'EPR - Plastic Waste', createdBy:'SHRUTI MAIN' },
     { id:'other-producer', clientName:'OTHER CLIENT LIMITED', approvalStatus:'PENDING', piboCategory:'Producer', eprCategory:'EPR - Plastic Waste', createdBy:'SONAL MORE' }
   ];
   const grouped = context.groupPendingClientsByCompany(rows);
-  assert.equal(grouped.length, 2);
-  const astra = grouped.find((row) => row.clientName === 'ASTRA CHEMTECH PRIVATE LIMITED');
-  assert.equal(astra.id, 'astra-importer');
-  assert.equal(astra.applicantCount, 2);
-  assert.deepEqual(Array.from(astra._applicantTypes), ['Importer', 'Brand Owner']);
-  assert.equal(astra.piboCategory, 'Importer, Brand Owner');
-  assert.equal(astra._clientApprovalRows.length, 2);
+  assert.equal(grouped.length, 3);
+  const astraRows = grouped.filter((row) => row.clientName === 'ASTRA CHEMTECH PRIVATE LIMITED');
+  assert.equal(astraRows.length, 2);
+  assert.deepEqual(Array.from(astraRows.map((row) => row.piboCategory)).sort(), ['Brand Owner', 'Importer']);
+  astraRows.forEach((row) => {
+    assert.equal(row.applicantCount, 1);
+    assert.equal(row._clientApprovalRows.length, 1);
+  });
 });
 
 test('mixed applicant decisions appear independently in their correct status tabs', () => {

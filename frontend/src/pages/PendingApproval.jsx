@@ -6,7 +6,6 @@ import { AlertTriangle, ArrowLeft, ArrowUpDown, Check, CheckCircle2, ChevronLeft
 import { useLocation, useNavigate } from 'react-router-dom';
 import { DeactivationApprovals } from '../features/clientMaster/ClientDeactivation';
 import DashboardShell from '../components/dashboard/DashboardShell';
-import ClientApplicantPicker from '../components/ClientApplicantPicker';
 import ProfileModal from '../components/dashboard/ProfileModal';
 import ApprovalTabs from '../components/dashboard/ApprovalTabs';
 import BrandLoader from '../components/BrandLoader';
@@ -653,41 +652,34 @@ function getApprovalStatus(row) {
   return String(row?.approvalStatus || row?.status || 'PENDING').toUpperCase();
 }
 
-function pendingClientCompanyKey(row = {}) {
-  const company = String(row.clientName || row.companyName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (company) return `company:${company}`;
-  const selectedLead = row.selectedLeadId || row.payload?.selectedLeadId || row.payload?.selectedLead;
-  const leadId = typeof selectedLead === 'object' ? (selectedLead?._id || selectedLead?.id) : selectedLead;
-  return `lead:${String(leadId || row.id || row._id || '').trim().toLowerCase()}`;
-}
-
 function groupPendingClientsByCompany(rows = []) {
   const groups = new Map();
   rows.forEach((row) => {
-    // Keep one compact company row only while the applicant decisions match.
-    // A company with one Pending and one Partially Approved applicant must
-    // appear independently in both status tabs.
-    const key = `${pendingClientCompanyKey(row)}:status:${getApprovalStatus(row)}`;
+    // Each applicant (client master record) is shown on its own row so that a
+    // company with multiple services/applicants does not get merged into a
+    // single confusing row. Duplicate rows for the same applicant and status
+    // are still collapsed together.
+    const applicantId = String(row.id || row.sourceClientId || row._id || '').trim();
+    const key = `applicant:${applicantId}:status:${getApprovalStatus(row)}`;
     const current = groups.get(key) || [];
     current.push(row);
     groups.set(key, current);
   });
-  return [...groups.values()].map((companyRows) => {
-    const representative = companyRows[0];
-    const uniqueValues = (selector) => [...new Set(companyRows.map(selector).map((value) => String(value || '').trim()).filter((value) => value && value !== '-'))];
-    const applicantTypes = uniqueValues((row) => row.piboCategory);
-    const serviceCategories = uniqueValues((row) => row.eprCategory);
-    const createdByUsers = uniqueValues((row) => row.createdBy);
+  return [...groups.values()].map((applicantRows) => {
+    const representative = applicantRows[0];
+    const piboCategory = String(representative.piboCategory || '').trim() || '-';
+    const eprCategory = String(representative.eprCategory || '').trim() || '-';
+    const createdBy = String(representative.createdBy || '').trim() || '-';
     return {
       ...representative,
       approvalStatus: getApprovalStatus(representative),
-      piboCategory: applicantTypes.join(', ') || '-',
-      eprCategory: serviceCategories.join(', ') || '-',
-      createdBy: createdByUsers.join(', ') || '-',
-      applicantCount: applicantTypes.length || companyRows.length,
-      _applicantTypes: applicantTypes,
-      _createdByUsers: createdByUsers,
-      _clientApprovalRows: companyRows
+      piboCategory,
+      eprCategory,
+      createdBy,
+      applicantCount: 1,
+      _applicantTypes: [piboCategory].filter((value) => value && value !== '-'),
+      _createdByUsers: [createdBy].filter((value) => value && value !== '-'),
+      _clientApprovalRows: applicantRows
     };
   });
 }
@@ -729,7 +721,6 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
     try { return JSON.parse(localStorage.getItem('user') || 'null'); } catch { return null; }
   });
   const [profileOpen, setProfileOpen] = useState(false);
-  const [clientReviewSelection, setClientReviewSelection] = useState(null);
   const cachedApprovalData = useMemo(() => readPendingApprovalCache(currentUser), []);
   const [pendingClients, setPendingClients] = useState(() => cachedApprovalData?.pendingClients || []);
   const [pendingQuotations, setPendingQuotations] = useState(() => cachedApprovalData?.pendingQuotations || []);
@@ -1512,7 +1503,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
 
   function openClientMaster(row) {
     if (!row?.id) return;
-    setClientReviewSelection(row);
+    navigate(`/pending-approval/clients/${row.id}/review`);
   }
 
   function openClientMasterPage(row) {
@@ -2123,7 +2114,6 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
           onUpdatePassword={handleUpdatePassword}
         />
       )}
-      {clientReviewSelection && <ClientApplicantPicker row={clientReviewSelection} onClose={() => setClientReviewSelection(null)} onSelect={service => { setClientReviewSelection(null); navigate(`/pending-approval/clients/${service.clientMasterId}/review`); }} />}
     </ApprovalShell>
   );
 }
