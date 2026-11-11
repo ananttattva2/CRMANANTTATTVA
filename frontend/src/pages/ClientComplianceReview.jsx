@@ -206,7 +206,25 @@ function complianceHeaderMetadata(client = {}) {
   const snapshot = data.selectedLeadSnapshot || {}
   const lead = client.selectedLead || {}
   const services = Array.isArray(lead.serviceSelections) ? lead.serviceSelections : []
+  const assignedServiceId = String(
+    client.assignedServiceId
+    || data.assignedServiceId
+    || snapshot.assignedServiceId
+    || ''
+  ).trim()
+  const reviewService = assignedServiceId
+    ? services.find((service) => String(
+      service?.assignedServiceId || service?.serviceAssignmentId || service?.assignmentId || ''
+    ).trim() === assignedServiceId)
+    : null
   const unique = (values) => [...new Set(values.flatMap((value) => Array.isArray(value) ? value : [value]).map((value) => String(value || '').trim()).filter(Boolean))]
+  if (reviewService) {
+    return {
+      applicantTypes: unique([snapshot.applicantType, snapshot.piboParent, snapshot.piboCategoryParent, reviewService.applicantType, reviewService.piboParent, reviewService.piboCategoryParent]),
+      subApplicantTypes: unique([data.basic?.piboCategory, snapshot.subApplicantType, snapshot.piboCategory, reviewService.subApplicantType, reviewService.piboCategory]),
+      applicationTypes: unique([data.cpcb?.applicationType, data.annualReturn?.applicationRenewal, data.basic?.applicationType, snapshot.applicationType, reviewService.applicationType])
+    }
+  }
   return {
     applicantTypes: unique([snapshot.applicantType, snapshot.piboParent, snapshot.piboCategoryParent, lead.applicantType, lead.piboParent, lead.piboCategoryParent, ...services.flatMap((service) => [service.applicantType, service.piboParent, service.piboCategoryParent])]),
     subApplicantTypes: unique([data.basic?.piboCategory, snapshot.subApplicantType, snapshot.piboCategory, lead.subApplicantType, lead.piboCategory, ...services.flatMap((service) => [service.subApplicantType, service.piboCategory])]),
