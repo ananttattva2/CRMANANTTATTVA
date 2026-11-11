@@ -6,6 +6,7 @@ const path = require('node:path');
 const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/ClientMasterAllocate.jsx'), 'utf8');
 const clientController = fs.readFileSync(path.resolve(__dirname, '../src/controllers/clientController.js'), 'utf8');
 const clientRoutes = fs.readFileSync(path.resolve(__dirname, '../src/routes/clients.js'), 'utf8');
+const Lead = require('../src/models/Lead');
 
 test('allocation modal groups sibling Client Masters by selected lead', () => {
   assert.match(page, /function clientAllocationGroupIdentity/);
@@ -38,4 +39,14 @@ test('staff-assigned leads without a Client Master appear as editable allocation
   assert.match(page, /API_ENDPOINTS\.leads\.staffAssignment\(leadId, svc\.__leadAssignmentIndex\)/);
   assert.match(clientController, /exports\.listStaffAssignedLeadsForAllocation/);
   assert.match(clientRoutes, /allocation\/assigned-leads.*requireRoles\(CLIENT_ALLOCATION_ROLES\)/);
+});
+
+test('assigned-lead directory avoids invalid empty-string comparisons on ObjectId fields', () => {
+  assert.doesNotThrow(() => Lead.find({ assignedStaff: { $exists: true, $ne: null } }).cast(Lead));
+  assert.throws(
+    () => Lead.find({ assignedStaff: { $exists: true, $nin: [null, ''] } }).cast(Lead),
+    /Cast to ObjectId failed/
+  );
+  assert.match(clientController, /const assignedStaffId = \{ \$exists: true, \$ne: null \}/);
+  assert.match(clientController, /const assignedStaffText = \{ \$exists: true, \$nin: \[null, ''\] \}/);
 });

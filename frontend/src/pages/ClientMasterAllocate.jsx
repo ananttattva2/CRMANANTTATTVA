@@ -446,19 +446,28 @@ function mergeAssignedLeadPlaceholders(clients = [], leads = []) {
 
 async function fetchAllAllocationClients() {
   const params = { paginated: true, allocation: true, page: 1, limit: 100 };
-  const [first, leadFirst] = await Promise.all([
+  const [clientResult, leadResult] = await Promise.allSettled([
     api.get(API_ENDPOINTS.clients.list, { params }),
     api.get(API_ENDPOINTS.clients.allocationLeads, { params: { page: 1, limit: 100 } })
   ]);
+  if (clientResult.status === 'rejected') throw clientResult.reason;
+  const first = clientResult.value;
   const clientPages = Number(first.data?.pagination?.totalPages || 1);
+  const clientRemainingPromise = clientPages > 1
+    ? Promise.all(Array.from({ length: clientPages - 1 }, (_, index) => api.get(API_ENDPOINTS.clients.list, { params: { ...params, page: index + 2 } })))
+    : Promise.resolve([]);
+  if (leadResult.status === 'rejected') {
+    console.error('[CMAllocate] assigned lead placeholders fetch failed', leadResult.reason);
+    const clientRemaining = await clientRemainingPromise;
+    return [first, ...clientRemaining].flatMap((response) => response.data?.clients || []);
+  }
+  const leadFirst = leadResult.value;
   const leadPages = Number(leadFirst.data?.pagination?.totalPages || 1);
   const [clientRemaining, leadRemaining] = await Promise.all([
-    clientPages > 1
-      ? Promise.all(Array.from({ length: clientPages - 1 }, (_, index) => api.get(API_ENDPOINTS.clients.list, { params: { ...params, page: index + 2 } })))
-      : [],
+    clientRemainingPromise,
     leadPages > 1
       ? Promise.all(Array.from({ length: leadPages - 1 }, (_, index) => api.get(API_ENDPOINTS.clients.allocationLeads, { params: { page: index + 2, limit: 100 } })))
-      : []
+      : Promise.resolve([])
   ]);
   const clients = [first, ...clientRemaining].flatMap((response) => response.data?.clients || []);
   const leads = [leadFirst, ...leadRemaining].flatMap((response) => response.data?.leads || []);

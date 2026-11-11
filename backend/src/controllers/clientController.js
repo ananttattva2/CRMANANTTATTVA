@@ -1440,17 +1440,18 @@ exports.listStaffAssignedLeadsForAllocation = async (req, res) => {
   try {
     const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 100));
-    const assignedStaff = { $exists: true, $nin: [null, ''] };
+    const assignedStaffId = { $exists: true, $ne: null };
+    const assignedStaffText = { $exists: true, $nin: [null, ''] };
     const filter = combineAccessFilters(
       await leadAccessFilter(req.user),
       { $or: [
-        { assignedStaff },
-        { assignedStaffText: assignedStaff },
-        { assignedStaffEmail: assignedStaff },
+        { assignedStaff: assignedStaffId },
+        { assignedStaffText },
+        { assignedStaffEmail: assignedStaffText },
         { assignments: { $elemMatch: { $or: [
-          { assignedStaff },
-          { assignedStaffText: assignedStaff },
-          { assignedStaffEmail: assignedStaff }
+          { assignedStaff: assignedStaffId },
+          { assignedStaffText },
+          { assignedStaffEmail: assignedStaffText }
         ] } } }
       ] }
     );
