@@ -1,4 +1,5 @@
 const { isValidObjectId } = require('mongoose');
+const { createHash } = require('crypto');
 const Lead = require('../models/Lead');
 const TemporaryLead = require('../models/TemporaryLead');
 const User = require('../models/User');
@@ -7,9 +8,10 @@ const LeadActivity = require('../models/LeadActivity');
 const mailer = require('../utils/mailer');
 const { buildCompanySignature, getIntroductionLogoAttachment } = require('./leadIntroductionEmail');
 const { escapeHtml } = require('./quotationDelivery');
+const { userHasAnyRole } = require('../utils/userRoles');
 const DAY = 86400000;
 const missingEmail = { email: { $in: [null, ''] }, status: 'DRAFT', pipelineClosedAt: null };
-let running = false;
+let running = null;
 let started = false;
 
 function hasClosure(row) {
@@ -47,6 +49,17 @@ function noOwnerUpdate(lead, now) {
 function eventEmail({ label, title, description, fields, color = '#0f766e', tab = 'no-owner' }) {
   const url = `${String(process.env.PUBLIC_URL || 'https://crmananttattva.com').replace(/\/$/, '')}/sales/lead-generation?tab=${tab}`;
   return `<div style="background:#f1f5f9;padding:28px 12px;font-family:Arial,Helvetica,sans-serif;color:#172033"><div style="max-width:720px;margin:auto;background:#fff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden"><div style="background:${color};padding:26px 30px;color:#fff"><p style="margin:0 0 12px;font-size:11px;font-weight:800;letter-spacing:2px">${escapeHtml(label)}</p><h1 style="margin:0;font-size:26px">${escapeHtml(title)}</h1></div><div style="padding:28px 30px"><p style="font-size:15px;line-height:1.7">${escapeHtml(description)}</p><table style="width:100%;border-collapse:collapse">${Object.entries(fields).map(([key, value]) => `<tr><th align="left" style="padding:12px;border-bottom:1px solid #e2e8f0;color:#64748b;font-size:12px">${escapeHtml(key)}</th><td style="padding:12px;border-bottom:1px solid #e2e8f0;font-size:13px;font-weight:700">${escapeHtml(value)}</td></tr>`).join('')}</table><a href="${escapeHtml(url)}" style="display:inline-block;margin-top:24px;padding:13px 22px;background:${color};border-radius:9px;color:#fff;text-decoration:none;font-weight:700">Open CRM workspace</a>${buildCompanySignature()}</div></div></div>`;
+}
+function noOwnerSummaryEmail(rows) {
+  const url = `${String(process.env.PUBLIC_URL || 'https://crmananttattva.com').replace(/\/$/, '')}/sales/lead-generation?tab=no-owner`;
+  const tableRows = rows.map((lead, index) => {
+    const owner = lead.noOwner?.previousOwner || {};
+    const movedAt = lead.noOwner?.movedAt
+      ? new Date(lead.noOwner.movedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+      : '-';
+    return `<tr><td style="padding:11px 9px;border-bottom:1px solid #e2e8f0;font-size:12px">${index + 1}</td><td style="padding:11px 9px;border-bottom:1px solid #e2e8f0;font-size:12px;font-weight:700">${escapeHtml(lead.leadCode || lead._id)}</td><td style="padding:11px 9px;border-bottom:1px solid #e2e8f0;font-size:12px">${escapeHtml(lead.company || '-')}</td><td style="padding:11px 9px;border-bottom:1px solid #e2e8f0;font-size:12px">${escapeHtml(owner.name || 'Unassigned')}</td><td style="padding:11px 9px;border-bottom:1px solid #e2e8f0;font-size:12px;white-space:nowrap">${escapeHtml(movedAt)}</td></tr>`;
+  }).join('');
+  return `<div style="background:#fff7ed;padding:28px 12px;font-family:Arial,Helvetica,sans-serif;color:#172033"><div style="max-width:920px;margin:auto;background:#fff;border:1px solid #fed7aa;border-radius:18px;overflow:hidden"><div style="background:#c2410c;padding:26px 30px;color:#fff"><p style="margin:0 0 12px;font-size:11px;font-weight:800;letter-spacing:2px">OWNERSHIP RELEASED · 30-DAY INACTIVITY</p><h1 style="margin:0;font-size:26px">No Owner Leads summary</h1><p style="margin:10px 0 0;font-size:14px;line-height:1.6">${rows.length} open lead${rows.length === 1 ? ' has' : 's have'} had no activity for 30 days and ${rows.length === 1 ? 'is' : 'are'} now available in the shared lead pool.</p></div><div style="padding:24px 30px"><table style="width:100%;border-collapse:collapse"><thead><tr>${['#', 'Lead', 'Company', 'Previous owner', 'Released at (IST)'].map(label => `<th align="left" style="padding:11px 9px;background:#f8fafc;border-bottom:1px solid #cbd5e1;color:#64748b;font-size:10px;text-transform:uppercase">${label}</th>`).join('')}</tr></thead><tbody>${tableRows}</tbody></table><a href="${escapeHtml(url)}" style="display:inline-block;margin-top:24px;padding:13px 22px;background:#c2410c;border-radius:9px;color:#fff;text-decoration:none;font-weight:700">Open No Owner Leads</a>${buildCompanySignature()}</div></div></div>`;
 }
 async function sendOnce(key, email, subject, html, now, beforeSend) {
   let claim;
@@ -109,14 +122,16 @@ async function moveOldOpenLeads(now) {
 async function notifyNoOwnerLeads(now) {
   const rows = await Lead.find({ 'noOwner.movedAt': { $ne: null }, 'noOwner.notifiedAt': null }).select('leadCode company noOwner').sort({ 'noOwner.movedAt': 1 }).limit(100).maxTimeMS(15000).lean();
   if (!rows.length) return;
-  const admins = await User.find({ isActive: true, $or: [{ role: { $in: ['admin', 'superadmin'] } }, { roles: { $in: ['admin', 'superadmin'] } }] }).select('email').lean();
-  const emails = [...new Set(admins.map(user => user.email).filter(Boolean))];
+  const users = await User.find({ isActive: { $ne: false }, email: { $exists: true, $ne: '' } }).select('name email role roles').lean();
+  const emails = [...new Set(users.filter(user => userHasAnyRole(user, ['admin', 'superadmin'])).map(user => String(user.email || '').trim().toLowerCase()).filter(Boolean))];
   if (!emails.length) return;
-  for (const lead of rows) {
-    const owner = lead.noOwner.previousOwner || {};
-    const html = eventEmail({ label: 'OWNERSHIP RELEASED · 30-DAY REVIEW', title: 'Lead moved to No Owner Leads', description: `${owner.name || 'The previous owner'} had no activity on this open lead for 30 days. Current ownership has been removed and this lead is now visible to all CRM staff in No Owner Leads.`, fields: { Lead: lead.leadCode || lead._id, Company: lead.company, 'Previous owner': owner.name, 'Owner email': owner.email, 'Moved at (IST)': new Date(lead.noOwner.movedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) } });
-    const results = await Promise.all(emails.map(email => sendOnce(`no-owner:${lead._id}:${new Date(lead.noOwner.movedAt).getTime()}:${email}`, email, `No Owner Lead: ${lead.leadCode || lead.company}`, html, now)));
-    if (results.every(Boolean)) await Lead.updateOne({ _id: lead._id, 'noOwner.movedAt': lead.noOwner.movedAt }, { $set: { 'noOwner.notifiedAt': new Date(now) } });
+  const batchId = createHash('sha256').update(rows.map(lead => `${lead._id}:${new Date(lead.noOwner.movedAt).getTime()}`).join('|')).digest('hex').slice(0, 24);
+  const html = noOwnerSummaryEmail(rows);
+  const results = await Promise.all(emails.map(email => sendOnce(`no-owner-summary:${batchId}:${email}`, email, `No Owner Leads summary: ${rows.length} lead${rows.length === 1 ? '' : 's'} released`, html, now)));
+  if (results.every(Boolean)) {
+    for (const lead of rows) {
+      await Lead.updateOne({ _id: lead._id, 'noOwner.movedAt': lead.noOwner.movedAt, 'noOwner.notifiedAt': null }, { $set: { 'noOwner.notifiedAt': new Date(now) } });
+    }
   }
 }
 async function remindMissingTemporaryEmails(now) {
@@ -147,16 +162,21 @@ async function remindMissingTemporaryEmails(now) {
   return changed;
 }
 async function runLeadOwnershipAndEmailWorkflow(now = Date.now()) {
-  if (running) return { skipped: true };
-  running = true;
-  try {
+  // Join an in-progress scan instead of returning early. The No Owner tab also
+  // invokes this workflow before reading, so it must wait for a scheduler scan
+  // that may already be moving eligible leads.
+  if (running) return running;
+  running = (async () => {
     const moved = await moveOldOpenLeads(now);
     if (moved) await require('./crmCache').invalidateCrmCache();
     const temporaryChanged = await remindMissingTemporaryEmails(now);
     if (temporaryChanged) await require('./crmCache').invalidateCrmCache();
     await notifyNoOwnerLeads(now);
     return { moved };
-  } finally { running = false; }
+  })();
+  try {
+    return await running;
+  } finally { running = null; }
 }
 function startLeadOwnershipAndEmailScheduler() {
   if (started) return;
@@ -165,4 +185,4 @@ function startLeadOwnershipAndEmailScheduler() {
   setTimeout(run, 15000);
   setInterval(run, 60000);
 }
-module.exports = { runLeadOwnershipAndEmailWorkflow, startLeadOwnershipAndEmailScheduler, __test: { DAY, lastLeadActivityAt, eligibleForNoOwner, noOwnerUpdate, eventEmail, moveOldOpenLeads, notifyNoOwnerLeads, remindMissingTemporaryEmails, sendOnce } };
+module.exports = { runLeadOwnershipAndEmailWorkflow, startLeadOwnershipAndEmailScheduler, __test: { DAY, lastLeadActivityAt, eligibleForNoOwner, noOwnerUpdate, eventEmail, noOwnerSummaryEmail, moveOldOpenLeads, notifyNoOwnerLeads, remindMissingTemporaryEmails, sendOnce } };

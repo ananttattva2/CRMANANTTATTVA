@@ -56,3 +56,11 @@ test('manager assignment email links to and explains the Notified Leads tab', ()
   assert.match(service, /Once you assign a staff member/);
   assert.match(service, /Open Notified Leads/);
 });
+
+test('No Owner Leads refreshes eligibility before serving a cached directory response', () => {
+  const routes = read('backend/src/routes/leads.js');
+  assert.match(routes, /async function refreshNoOwnerPool/);
+  assert.match(routes, /workspace \|\| ''\).*no-owner/);
+  assert.match(routes, /await runLeadOwnershipAndEmailWorkflow\(\)/);
+  assert.match(routes, /router\.get\('\/', requireAuth, refreshNoOwnerPool, cacheRead, leadCtrl\.listLeads\)/);
+});

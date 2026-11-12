@@ -9,6 +9,19 @@ const temporaryAssignmentCtrl = require('../controllers/temporaryLeadAssignmentC
 const temporaryLeadCtrl = require('../controllers/temporaryLeadController');
 
 const revenueCtrl = require('../controllers/leadRevenueController');
+const { runLeadOwnershipAndEmailWorkflow } = require('../services/leadOwnershipAndEmailWorkflow');
+
+async function refreshNoOwnerPool(req, _res, next) {
+  if (String(req.query.workspace || '').trim().toLowerCase() !== 'no-owner') return next();
+  try {
+    // Refresh before cacheRead. Otherwise a cached empty response can hide
+    // leads until a separate background scheduler happens to run.
+    await runLeadOwnershipAndEmailWorkflow();
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+}
 router.get('/summary-dashboard', requireAuth, requireRoles(ADMIN_ROLES), cacheRead, revenueCtrl.pipeline);
 router.get('/pipeline-revenue', requireAuth, cacheRead, revenueCtrl.pipeline);
 router.get('/pipeline-revenue/:kind/:id/services', requireAuth, revenueCtrl.services);
@@ -17,7 +30,7 @@ router.post('/revenue/:kind/:id', requireAuth, revenueCtrl.add);
 router.patch('/revenue/:kind/:id/:entryId', requireAuth, revenueCtrl.correct);
 router.post('/revenue/cold/:id/close', requireAuth, revenueCtrl.closeCold);
 
-router.get('/', requireAuth, cacheRead, leadCtrl.listLeads);
+router.get('/', requireAuth, refreshNoOwnerPool, cacheRead, leadCtrl.listLeads);
 router.get('/assignment-users', requireAuth, cacheRead, leadCtrl.listAssignmentUsers);
 router.get('/service-catalog', requireAuth, cacheRead, leadCtrl.listServiceCatalog);
 router.get('/dropdown-options', requireAuth, cacheRead, leadCtrl.listLeadDropdownOptions);

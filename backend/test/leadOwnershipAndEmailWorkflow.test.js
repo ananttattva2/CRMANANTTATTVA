@@ -174,11 +174,12 @@ test('no-owner notification identifies previous owner, escapes content, and only
   const lead = { _id: 'shared-1', leadCode: 'ATPL-0001', company: '<Example>', noOwner: { movedAt: new Date(now), previousOwner: { name: 'Previous Owner', email: 'previous@example.test' } } };
   const state = reminderFixtures(t, []);
   t.mock.method(Lead, 'find', () => query([lead]));
-  t.mock.method(User, 'find', () => query([{ email: 'admin@example.test' }, { email: 'super@example.test' }]));
+  t.mock.method(User, 'find', () => query([{ name: 'Admin', role: 'admin', email: 'admin@example.test' }, { name: 'Super', role: 'operation', roles: ['Super Admin'], email: 'super@example.test' }, { role: 'sales', email: 'sales@example.test' }]));
   let notified = 0;
   t.mock.method(Lead, 'updateOne', async () => { notified++; });
   await workflow.notifyNoOwnerLeads(now);
   assert.equal(state.messages.length, 2); assert.equal(notified, 1);
-  assert.match(state.messages[0][2], /Previous Owner/); assert.match(state.messages[0][2], /&lt;Example&gt;/); assert.match(state.messages[0][2], /No Owner Leads/);
+  assert.match(state.messages[0][1], /No Owner Leads summary: 1 lead released/);
+  assert.match(state.messages[0][2], /Previous Owner/); assert.match(state.messages[0][2], /&lt;Example&gt;/); assert.match(state.messages[0][2], /No Owner Leads summary/);
   await workflow.notifyNoOwnerLeads(now + 60000); assert.equal(state.messages.length, 2);
 });
