@@ -2,7 +2,7 @@
 
 The persistent DigitalOcean backend runs this workflow at startup (after 15 seconds) and every minute. Scans are bounded to 100 records per pass; an existing backlog is processed over subsequent passes.
 
-Unclosed Hot Leads become eligible for No Owner Leads after 30 calendar days from creation. Current closure evidence on the lead, its services or its assignments protects closed business, including provisional and permanent PO closures. Inactive/deleted records are excluded. A compare-and-swap on `updatedAt` prevents a concurrent edit or closure from being overwritten.
+Unclosed Hot Leads become eligible for No Owner Leads after 30 calendar days without lead activity. The inactivity window starts again whenever the lead is updated or allocated, and uses the latest of `createdAt`, `updatedAt`, and `noOwner.reassignedAt`. Current closure evidence on the lead, its services or its assignments protects closed business, including provisional and permanent PO closures. Inactive/deleted records are excluded. A compare-and-swap on `updatedAt` prevents a concurrent edit or closure from being overwritten.
 
 The old owner's identity is retained in `noOwner.previousOwner` and the lead activity trail. Current creator/owner/assignment identities are removed, while service authorship and existing documents are preserved. All authenticated staff can read the shared pool. Admin and Super Admin can allocate a new owner using the existing allocation/creator tools; this removes the lead from the pool and starts a fresh 30-day allocation window. Staff must receive an allocation before editing a shared lead.
 

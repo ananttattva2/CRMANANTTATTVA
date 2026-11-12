@@ -15,8 +15,14 @@ let started = false;
 function hasClosure(row) {
   return Boolean(row.closedAt || row.closedBy || row.closedByText || /closed|won|converted|lost|cancel/i.test(row.status || '') || /inactive|deleted/i.test(row.recordStatus || '') || row.poStatus === 'provisional' || row.poStatus === 'permanently_closed' || (row.poYearRows || []).some(po => po.poNumber || po.poNo));
 }
+function lastLeadActivityAt(lead) {
+  const timestamps = [lead.createdAt, lead.updatedAt, lead.noOwner?.reassignedAt]
+    .map(value => new Date(value).getTime())
+    .filter(Number.isFinite);
+  return timestamps.length ? Math.max(...timestamps) : NaN;
+}
 function eligibleForNoOwner(lead, now = Date.now()) {
-  const since = new Date(lead.noOwner?.reassignedAt || lead.createdAt).getTime();
+  const since = lastLeadActivityAt(lead);
   return !lead.noOwner?.active && Number.isFinite(since) && now - since >= 30 * DAY && !hasClosure(lead) && !(lead.serviceSelections || []).some(hasClosure) && !(lead.assignments || []).some(hasClosure);
 }
 function previousOwner(lead) {
@@ -73,14 +79,17 @@ async function moveOldOpenLeads(now) {
   ] };
   const candidates = await Lead.find({
     createdAt: { $lte: cutoff }, 'noOwner.active': { $ne: true },
+    $and: [
+      { $or: [{ updatedAt: null }, { updatedAt: { $lte: cutoff } }] },
+      { $or: [{ 'noOwner.reassignedAt': null }, { 'noOwner.reassignedAt': { $lte: cutoff } }] }
+    ],
     recordStatus: { $not: /inactive|deleted/i },
     closedAt: null, closedBy: null, closedByText: { $in: [null, ''] },
     status: { $not: /closed|won|converted|lost|cancel/i },
     poStatus: { $nin: ['provisional', 'permanently_closed'] },
-    $or: [{ 'noOwner.reassignedAt': null }, { 'noOwner.reassignedAt': { $lte: cutoff } }],
     assignments: { $not: { $elemMatch: closedRow } },
     serviceSelections: { $not: { $elemMatch: closedRow } }
-  }).select('createdAt updatedAt status recordStatus noOwner createdBy createdByName createdByEmail generatedForUser generatedForName generatedForEmail assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail importedCreatedBy closedAt closedBy closedByText poStatus serviceSelections.closedAt serviceSelections.closedBy serviceSelections.closedByText serviceSelections.status assignments.assignedTo assignments.assignedToText assignments.assignedStaff assignments.assignedStaffText assignments.closedAt assignments.closedBy assignments.closedByText assignments.status assignments.poStatus assignments.poYearRows.poNumber assignments.poYearRows.poNo').sort({ createdAt: 1 }).limit(100).maxTimeMS(15000).lean();
+  }).select('createdAt updatedAt status recordStatus noOwner createdBy createdByName createdByEmail generatedForUser generatedForName generatedForEmail assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail importedCreatedBy closedAt closedBy closedByText poStatus serviceSelections.closedAt serviceSelections.closedBy serviceSelections.closedByText serviceSelections.status assignments.assignedTo assignments.assignedToText assignments.assignedStaff assignments.assignedStaffText assignments.closedAt assignments.closedBy assignments.closedByText assignments.status assignments.poStatus assignments.poYearRows.poNumber assignments.poYearRows.poNo').sort({ updatedAt: 1, createdAt: 1 }).limit(100).maxTimeMS(15000).lean();
   let moved = 0;
   for (const lead of candidates) {
     if (!eligibleForNoOwner(lead, now)) continue;
@@ -93,7 +102,7 @@ async function moveOldOpenLeads(now) {
     const result = await Lead.findOneAndUpdate({ _id: lead._id, updatedAt: lead.updatedAt || null, 'noOwner.active': { $ne: true } }, update, { new: true });
     if (!result) continue;
     moved++;
-    await LeadActivity.create({ lead: lead._id, type: 'no_owner', title: 'Moved to No Owner Leads', description: `Unclosed for 30 days. Previous owner: ${owner.name}. Ownership released automatically.`, actorName: 'CRM automation', metadata: { previousOwner: owner } });
+    await LeadActivity.create({ lead: lead._id, type: 'no_owner', title: 'Moved to No Owner Leads', description: `No lead activity for 30 days. Previous owner: ${owner.name}. Ownership released automatically.`, actorName: 'CRM automation', metadata: { previousOwner: owner, lastActivityAt: new Date(lastLeadActivityAt(lead)) } });
   }
   return moved;
 }
@@ -105,7 +114,7 @@ async function notifyNoOwnerLeads(now) {
   if (!emails.length) return;
   for (const lead of rows) {
     const owner = lead.noOwner.previousOwner || {};
-    const html = eventEmail({ label: 'OWNERSHIP RELEASED · 30-DAY REVIEW', title: 'Lead moved to No Owner Leads', description: `${owner.name || 'The previous owner'} did not close this lead within 30 days. Current ownership has been removed and this lead is now visible to all CRM staff in No Owner Leads.`, fields: { Lead: lead.leadCode || lead._id, Company: lead.company, 'Previous owner': owner.name, 'Owner email': owner.email, 'Moved at (IST)': new Date(lead.noOwner.movedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) } });
+    const html = eventEmail({ label: 'OWNERSHIP RELEASED · 30-DAY REVIEW', title: 'Lead moved to No Owner Leads', description: `${owner.name || 'The previous owner'} had no activity on this open lead for 30 days. Current ownership has been removed and this lead is now visible to all CRM staff in No Owner Leads.`, fields: { Lead: lead.leadCode || lead._id, Company: lead.company, 'Previous owner': owner.name, 'Owner email': owner.email, 'Moved at (IST)': new Date(lead.noOwner.movedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) } });
     const results = await Promise.all(emails.map(email => sendOnce(`no-owner:${lead._id}:${new Date(lead.noOwner.movedAt).getTime()}:${email}`, email, `No Owner Lead: ${lead.leadCode || lead.company}`, html, now)));
     if (results.every(Boolean)) await Lead.updateOne({ _id: lead._id, 'noOwner.movedAt': lead.noOwner.movedAt }, { $set: { 'noOwner.notifiedAt': new Date(now) } });
   }
@@ -156,4 +165,4 @@ function startLeadOwnershipAndEmailScheduler() {
   setTimeout(run, 15000);
   setInterval(run, 60000);
 }
-module.exports = { runLeadOwnershipAndEmailWorkflow, startLeadOwnershipAndEmailScheduler, __test: { DAY, eligibleForNoOwner, noOwnerUpdate, eventEmail, moveOldOpenLeads, notifyNoOwnerLeads, remindMissingTemporaryEmails, sendOnce } };
+module.exports = { runLeadOwnershipAndEmailWorkflow, startLeadOwnershipAndEmailScheduler, __test: { DAY, lastLeadActivityAt, eligibleForNoOwner, noOwnerUpdate, eventEmail, moveOldOpenLeads, notifyNoOwnerLeads, remindMissingTemporaryEmails, sendOnce } };

@@ -50,7 +50,9 @@ test('no-owner threshold respects 30 days, current closure evidence and reassign
   const lead = { createdAt: new Date(now - 30 * DAY), status: 'Potential - Registered', createdBy: ownerId };
   assert.equal(workflow.eligibleForNoOwner(lead, now - 1), false);
   assert.equal(workflow.eligibleForNoOwner(lead, now), true);
-  for (const change of [{ closedAt: new Date() }, { assignments: [{ closedByText: 'Owner' }] }, { serviceSelections: [{ closedAt: new Date() }] }, { assignments: [{ poYearRows: [{ poNumber: 'PO-1' }] }] }, { noOwner: { active: true } }, { noOwner: { reassignedAt: new Date(now - DAY) } }]) assert.equal(workflow.eligibleForNoOwner({ ...lead, ...change }, now), false);
+  for (const change of [{ updatedAt: new Date(now - DAY) }, { closedAt: new Date() }, { assignments: [{ closedByText: 'Owner' }] }, { serviceSelections: [{ closedAt: new Date() }] }, { assignments: [{ poYearRows: [{ poNumber: 'PO-1' }] }] }, { noOwner: { active: true } }, { noOwner: { reassignedAt: new Date(now - DAY) } }]) assert.equal(workflow.eligibleForNoOwner({ ...lead, ...change }, now), false);
+  assert.equal(workflow.eligibleForNoOwner({ ...lead, updatedAt: new Date(now - 30 * DAY) }, now), true);
+  assert.equal(workflow.lastLeadActivityAt({ createdAt: new Date(now - 40 * DAY), updatedAt: new Date(now - 31 * DAY), noOwner: { reassignedAt: new Date(now - 35 * DAY) } }), now - 31 * DAY);
 });
 
 test('ownership release preserves previous-owner audit and uses dotted updates without overwriting attachments', () => {
@@ -73,9 +75,10 @@ test('a concurrent lead edit prevents automatic ownership removal', async t => {
 });
 
 test('an old open lead loses its current owner and records the resolved previous owner', async t => {
-  const lead = { _id: 'lead-1', createdBy: ownerId, createdByName: 'Old name', createdAt: new Date(now - 31 * DAY), updatedAt: new Date(now - DAY), assignments: [{ closedBy: '', closedAt: '', assignedTo: ownerId }] };
+  const lead = { _id: 'lead-1', createdBy: ownerId, createdByName: 'Old name', createdAt: new Date(now - 35 * DAY), updatedAt: new Date(now - 31 * DAY), assignments: [{ closedBy: '', closedAt: '', assignedTo: ownerId }] };
   let saved, activity;
   t.mock.method(Lead, 'find', filter => {
+    assert.deepEqual(filter.$and[0].$or[1], { updatedAt: { $lte: new Date(now - 30 * DAY) } });
     const marker = filter.assignments.$not.$elemMatch.$or.find(item => item.closedBy);
     assert.deepEqual(marker.closedBy.$nin, [null, '']);
     return query([lead]);
@@ -87,6 +90,7 @@ test('an old open lead loses its current owner and records the resolved previous
   assert.equal(saved['noOwner.active'], true); assert.equal(saved.createdBy, null);
   assert.equal(saved['noOwner.previousOwner'].name, 'Current Account Name');
   assert.equal(activity.metadata.previousOwner.email, 'owner@example.test');
+  assert.equal(activity.metadata.lastActivityAt.getTime(), lead.updatedAt.getTime());
 });
 
 test('creating two temporary leads without emails never matches a blank email as a duplicate', async t => {

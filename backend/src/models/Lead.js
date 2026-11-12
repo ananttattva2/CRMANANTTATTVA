@@ -124,6 +124,7 @@ LeadSchema.index({ status: 1, leadCode: 1, createdAt: 1 });
 LeadSchema.index({ createdBy: 1, leadCode: 1, createdAt: 1 });
 LeadSchema.index({ generatedForUser: 1, leadCode: 1, createdAt: 1 });
 LeadSchema.index({ 'noOwner.active': 1, createdAt: 1 });
+LeadSchema.index({ 'noOwner.active': 1, updatedAt: 1 });
 LeadSchema.index({ 'noOwner.notifiedAt': 1, 'noOwner.movedAt': 1 });
 LeadSchema.index({ 'serviceSelections.accountsRecordId': 1 });
 LeadSchema.plugin(require('../utils/leadDeletionVisibility'));
