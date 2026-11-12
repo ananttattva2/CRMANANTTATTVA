@@ -68,17 +68,21 @@ test('the directory Excel export writes both services and the three requested st
   let workbook;
   await vm.runInNewContext(`${source}\nexportExcel();`, {
     leadServiceExportRecords,
-    onExportAll: async () => [{ company: '20 MICRONS LIMITED', leadCode: 'ATPL-LEAD-0391', serviceSelections: [
+    onExportAll: async () => [{ company: '20 MICRONS LIMITED', leadCode: 'ATPL-LEAD-0391', createdAt: '2026-01-15T10:00:00.000Z', serviceSelections: [
       { assignedServiceId: 'brand', applicantType: 'PIBO', subApplicantType: 'Brand Owner', servicesOffered: 'Annual Return Filling', firstAnnualReturnYearApplicable: '2025-26' },
       { assignedServiceId: 'import', applicantType: 'PIBO', subApplicantType: 'Importer', servicesOffered: 'Annual Return Filling', firstAnnualReturnYearApplicable: '2025-26' }
     ] }],
     XLSX: { utils: XLSX.utils, writeFile: value => { workbook = value; } },
+    exportWithReason: async (_name, run) => run(),
     query: '', statusFilter: '', staffFilter: '', metricFilter: '', workspaceTab: 'all', filteredLeads: [], selectedMetric: null, staff: [],
-    displayLeadId: row => row.leadCode, inferPiboParent: () => '', resolveLeadStaffName: () => '', resolveLeadAssignedBy: () => ''
+    displayLeadId: row => row.leadCode, inferPiboParent: () => '', resolveLeadStaffName: () => '', resolveLeadAssignedBy: () => '',
+    leadGenerationDateValue: row => row.leadDate || row.importedCreatedAt || row.createdAt || ''
   });
   const rows = XLSX.utils.sheet_to_json(workbook.Sheets.Leads);
   assert.equal(rows.length, 2);
   assert.deepEqual(rows.map(row => row['Sub Applicant Type']), ['Brand Owner', 'Importer']);
   assert(rows.every(row => row['Services Offered'] === 'Annual Return Filling' && row['Financial Year'] === '2025-26'));
   for (const column of ['PO Closed', 'Lead Closed', 'PO Received']) assert(rows.every(row => row[column] === 'No'));
+  // The lead generation date must be exported for every service row.
+  assert(rows.every(row => row['Lead Generation Date'] === '2026-01-15T10:00:00.000Z'));
 });

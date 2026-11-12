@@ -3951,6 +3951,7 @@ function LeadDirectoryView({ leads, pagination, summary, staff, currentUser, loa
       'Assigned To': resolveLeadStaffName(item, staff),
       'Assigned By': resolveLeadAssignedBy(item, staff),
       'Created By': item.createdBy?.name || item.createdByName || item.importedCreatedBy || item.createdBy?.email || '',
+      'Lead Generation Date': leadGenerationDateValue(item),
       'Lead Date': item.leadDate || '',
       'Next Follow-Up Date': item.nextFollowUpDate || '',
       'Next Follow-Up Time': item.nextFollowUpTime || '',
@@ -4537,6 +4538,16 @@ function formatFollowUpDate(value) {
   const date = new Date(`${value}T00:00:00`);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
+}
+
+// Lead generation date follows the same precedence the client lifecycle
+// tracker uses, so exports match the CRM screen.
+function leadGenerationDateValue(item = {}) {
+  const raw = item.leadDate || item.importedCreatedAt || item.createdAt || '';
+  if (!raw) return '';
+  const match = String(raw).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return String(raw);
+  return `${match[3]}-${match[2]}-${match[1]}`;
 }
 
 function buildLeadFollowUpRows(lead = {}) {
