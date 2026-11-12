@@ -61,6 +61,7 @@ test('No Owner Leads refreshes eligibility before serving a cached directory res
   const routes = read('backend/src/routes/leads.js');
   assert.match(routes, /async function refreshNoOwnerPool/);
   assert.match(routes, /workspace \|\| ''\).*no-owner/);
-  assert.match(routes, /await runLeadOwnershipAndEmailWorkflow\(\)/);
+  assert.match(routes, /await refreshNoOwnerLeads\(\)/);
+  assert.match(routes, /No Owner Leads on-read refresh failed/);
   assert.match(routes, /router\.get\('\/', requireAuth, refreshNoOwnerPool, cacheRead, leadCtrl\.listLeads\)/);
 });

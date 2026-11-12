@@ -9,18 +9,20 @@ const temporaryAssignmentCtrl = require('../controllers/temporaryLeadAssignmentC
 const temporaryLeadCtrl = require('../controllers/temporaryLeadController');
 
 const revenueCtrl = require('../controllers/leadRevenueController');
-const { runLeadOwnershipAndEmailWorkflow } = require('../services/leadOwnershipAndEmailWorkflow');
+const { refreshNoOwnerLeads } = require('../services/leadOwnershipAndEmailWorkflow');
 
 async function refreshNoOwnerPool(req, _res, next) {
   if (String(req.query.workspace || '').trim().toLowerCase() !== 'no-owner') return next();
   try {
     // Refresh before cacheRead. Otherwise a cached empty response can hide
     // leads until a separate background scheduler happens to run.
-    await runLeadOwnershipAndEmailWorkflow();
-    return next();
+    await refreshNoOwnerLeads();
   } catch (error) {
-    return next(error);
+    // Keep the authoritative directory available even when an automation scan
+    // fails. The recurring scheduler will retry and logs retain the root cause.
+    console.error('No Owner Leads on-read refresh failed', { name: error.name, message: error.message });
   }
+  return next();
 }
 router.get('/summary-dashboard', requireAuth, requireRoles(ADMIN_ROLES), cacheRead, revenueCtrl.pipeline);
 router.get('/pipeline-revenue', requireAuth, cacheRead, revenueCtrl.pipeline);

@@ -12,6 +12,7 @@ const { userHasAnyRole } = require('../utils/userRoles');
 const DAY = 86400000;
 const missingEmail = { email: { $in: [null, ''] }, status: 'DRAFT', pipelineClosedAt: null };
 let running = null;
+let ownershipRunning = null;
 let started = false;
 
 function hasClosure(row) {
@@ -134,6 +135,28 @@ async function notifyNoOwnerLeads(now) {
     }
   }
 }
+async function refreshNoOwnerLeads(now = Date.now()) {
+  if (ownershipRunning) return ownershipRunning;
+  ownershipRunning = (async () => {
+    const moved = await moveOldOpenLeads(now);
+    if (moved) await require('./crmCache').invalidateCrmCache();
+    let notificationPending = false;
+    try {
+      await notifyNoOwnerLeads(now);
+    } catch (error) {
+      // Email delivery and recipient lookup must never prevent the shared lead
+      // directory from loading. The scheduler retries pending summaries.
+      notificationPending = true;
+      console.error('No Owner Leads summary notification failed', { name: error.name, message: error.message });
+    }
+    return { moved, notificationPending };
+  })();
+  try {
+    return await ownershipRunning;
+  } finally {
+    ownershipRunning = null;
+  }
+}
 async function remindMissingTemporaryEmails(now) {
   let changed = false;
   const rows = await TemporaryLead.find({ ...missingEmail, createdAt: { $lte: new Date(now - 2 * DAY) }, $and: [{ $or: [{ emailReminderSentAt: null }, { emailRedFlagAt: null, emailGraceExpiresAt: { $lte: new Date(now) } }] }, { $or: [{ emailWorkflowRetryAt: null }, { emailWorkflowRetryAt: { $lte: new Date(now) } }] }] }).sort({ createdAt: 1 }).limit(100).maxTimeMS(15000).lean();
@@ -167,12 +190,10 @@ async function runLeadOwnershipAndEmailWorkflow(now = Date.now()) {
   // that may already be moving eligible leads.
   if (running) return running;
   running = (async () => {
-    const moved = await moveOldOpenLeads(now);
-    if (moved) await require('./crmCache').invalidateCrmCache();
+    const ownership = await refreshNoOwnerLeads(now);
     const temporaryChanged = await remindMissingTemporaryEmails(now);
     if (temporaryChanged) await require('./crmCache').invalidateCrmCache();
-    await notifyNoOwnerLeads(now);
-    return { moved };
+    return ownership;
   })();
   try {
     return await running;
@@ -185,4 +206,4 @@ function startLeadOwnershipAndEmailScheduler() {
   setTimeout(run, 15000);
   setInterval(run, 60000);
 }
-module.exports = { runLeadOwnershipAndEmailWorkflow, startLeadOwnershipAndEmailScheduler, __test: { DAY, lastLeadActivityAt, eligibleForNoOwner, noOwnerUpdate, eventEmail, noOwnerSummaryEmail, moveOldOpenLeads, notifyNoOwnerLeads, remindMissingTemporaryEmails, sendOnce } };
+module.exports = { refreshNoOwnerLeads, runLeadOwnershipAndEmailWorkflow, startLeadOwnershipAndEmailScheduler, __test: { DAY, lastLeadActivityAt, eligibleForNoOwner, noOwnerUpdate, eventEmail, noOwnerSummaryEmail, moveOldOpenLeads, notifyNoOwnerLeads, remindMissingTemporaryEmails, sendOnce } };

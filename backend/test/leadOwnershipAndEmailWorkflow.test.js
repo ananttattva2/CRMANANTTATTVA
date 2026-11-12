@@ -183,3 +183,13 @@ test('no-owner notification identifies previous owner, escapes content, and only
   assert.match(state.messages[0][2], /Previous Owner/); assert.match(state.messages[0][2], /&lt;Example&gt;/); assert.match(state.messages[0][2], /No Owner Leads summary/);
   await workflow.notifyNoOwnerLeads(now + 60000); assert.equal(state.messages.length, 2);
 });
+
+test('summary recipient failure does not block the No Owner directory refresh', async t => {
+  const service = require('../src/services/leadOwnershipAndEmailWorkflow');
+  const lead = { _id: 'shared-2', noOwner: { movedAt: new Date(now), previousOwner: { name: 'Owner' } } };
+  t.mock.method(Lead, 'find', filter => query(filter['noOwner.movedAt'] ? [lead] : []));
+  t.mock.method(User, 'find', () => ({ select() { return this; }, lean: async () => { throw new Error('recipient lookup failed'); } }));
+  const result = await service.refreshNoOwnerLeads(now);
+  assert.equal(result.moved, 0);
+  assert.equal(result.notificationPending, true);
+});

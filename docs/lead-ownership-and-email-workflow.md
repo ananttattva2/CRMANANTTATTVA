@@ -3,6 +3,7 @@
 The persistent DigitalOcean backend runs this workflow at startup (after 15 seconds) and every minute. Scans are bounded to 100 records per pass; an existing backlog is processed over subsequent passes.
 
 Opening the No Owner Leads tab also runs the bounded scan before its cached directory response is read. This guarantees that eligible leads are visible immediately even if a deployment restarted, delayed, or disabled the background scheduler.
+Only the ownership scan runs in this request path. Temporary-lead reminders remain in the background workflow, and an email/recipient lookup failure is recorded for retry without blocking the lead directory.
 
 Unclosed Hot Leads become eligible for No Owner Leads after 30 calendar days without lead activity. The inactivity window starts again whenever the lead is updated or allocated, and uses the latest of `createdAt`, `updatedAt`, and `noOwner.reassignedAt`. Current closure evidence on the lead, its services or its assignments protects closed business, including provisional and permanent PO closures. Inactive/deleted records are excluded. A compare-and-swap on `updatedAt` prevents a concurrent edit or closure from being overwritten.
 
