@@ -59,9 +59,13 @@ test('manager assignment email links to and explains the Notified Leads tab', ()
 
 test('No Owner Leads refreshes eligibility before serving a cached directory response', () => {
   const routes = read('backend/src/routes/leads.js');
+  const controller = read('backend/src/controllers/leadController.js');
   assert.match(routes, /async function refreshNoOwnerPool/);
   assert.match(routes, /workspace \|\| ''\).*no-owner/);
   assert.match(routes, /await refreshNoOwnerLeads\(\)/);
   assert.match(routes, /No Owner Leads on-read refresh failed/);
   assert.match(routes, /router\.get\('\/', requireAuth, refreshNoOwnerPool, cacheRead, leadCtrl\.listLeads\)/);
+  assert.match(controller, /requestedWorkspace === 'no-owner' \? \{\} : await leadAccessFilter/);
+  assert.match(controller, /\? \[noOwnerWorkspaceFilter\(\)\]/);
+  assert.match(controller, /pendingRelease: true/);
 });

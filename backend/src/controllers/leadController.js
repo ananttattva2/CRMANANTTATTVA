@@ -16,6 +16,7 @@ const { notifyAdditionalLeadServices } = require('../services/leadServiceContrib
 const { claimLeadRoyalty } = require('../services/leadRoyaltyNotifications');
 const { normalizeCompanyIdentity } = require('../services/crmRecordPersistence');
 const { notifyNewProvisionalClosures } = require('../services/provisionalLeadClosureWorkflow');
+const { DAY: NO_OWNER_DAY, lastLeadActivityAt, noOwnerWorkspaceFilter } = require('../services/leadOwnershipAndEmailWorkflow');
 const { resolvePoProof, resolveApprovalPoProof } = require('../services/poProofResolver');
 const { managerAssignmentTimestamp } = require('../utils/poWorkflow');
 const { normalizeProvisionalClosure, permanentlyCloseProvisionalAssignments } = require('../utils/provisionalClosureDeadline');
@@ -222,7 +223,7 @@ async function leadAccessFilter(user, { includeShared = false } = {}) {
     'assignments.assignedTo',
     'assignments.assignedStaff'
   ]);
-  return includeShared && Object.keys(owned).length ? { $or: [owned, { 'noOwner.active': true }] } : owned;
+  return includeShared && Object.keys(owned).length ? { $or: [owned, noOwnerWorkspaceFilter()] } : owned;
 }
 
 exports.leadAccessFilter = leadAccessFilter;
@@ -1427,7 +1428,10 @@ exports.searchCompanies = async (req, res) => {
 exports.listLeads = async (req, res) => {
   const startedAt = process.hrtime.bigint();
   const accessStartedAt = process.hrtime.bigint();
-  const accessFilter = await leadAccessFilter(req.user, { includeShared: true });
+  const requestedWorkspace = String(req.query.workspace || '').trim().toLowerCase();
+  // The No Owner workspace is itself restricted by the exact inactivity and
+  // closure filter, so every CRM user may see the shared eligible pool.
+  const accessFilter = requestedWorkspace === 'no-owner' ? {} : await leadAccessFilter(req.user, { includeShared: true });
   const accessMs = Number(process.hrtime.bigint() - accessStartedAt) / 1e6;
   const paginated = req.query.page !== undefined || req.query.limit !== undefined || req.query.paginated === 'true';
 
@@ -1464,12 +1468,14 @@ exports.listLeads = async (req, res) => {
   const staff = String(req.query.staff || '').trim();
   const allocationOwner = String(req.query.allocationOwner || '').trim();
   const metric = String(req.query.metric || '').trim();
-  const workspace = String(req.query.workspace || '').trim().toLowerCase();
+  const workspace = requestedWorkspace;
   const sortBy = ['leadCode', 'createdAt', 'updatedAt', 'company', 'status'].includes(String(req.query.sortBy))
     ? String(req.query.sortBy)
     : 'leadCode';
   const sortOrder = String(req.query.sortOrder).toLowerCase() === 'desc' ? -1 : 1;
-  const filters = [accessFilter, { 'noOwner.active': workspace === 'no-owner' ? true : { $ne: true } }];
+  const filters = workspace === 'no-owner'
+    ? [noOwnerWorkspaceFilter()]
+    : [accessFilter, { 'noOwner.active': { $ne: true } }];
   if (req.query.dashboard === 'true') {
     const testLeadReferences = await getAdminCreatedLeadReferences();
     filters.push(dashboardLeadExclusionFilter(testLeadReferences));
@@ -1611,6 +1617,17 @@ exports.listLeads = async (req, res) => {
       } }
     ]))
   ]);
+  const responseLeads = workspace === 'no-owner' ? leads.map((lead) => {
+    if (lead.noOwner?.active) return lead;
+    const lastActivity = lastLeadActivityAt(lead);
+    const previousOwnerRecord = lead.generatedForUser || lead.createdBy || {};
+    const previousOwner = {
+      id: previousOwnerRecord?._id || previousOwnerRecord?.id || previousOwnerRecord || lead.assignedStaff || lead.assignedTo,
+      name: lead.generatedForName || previousOwnerRecord?.name || lead.createdByName || lead.importedCreatedBy || lead.assignedStaffText || lead.assignedToText || 'Unassigned',
+      email: lead.generatedForEmail || previousOwnerRecord?.email || lead.createdByEmail || lead.assignedStaffEmail || lead.assignedToEmail || ''
+    };
+    return { ...lead, noOwner: { ...(lead.noOwner || {}), active: true, pendingRelease: true, movedAt: Number.isFinite(lastActivity) ? new Date(lastActivity + 30 * NO_OWNER_DAY) : null, previousOwner } };
+  }) : leads;
   const total = counted ?? leads.length;
   const queryMs = Number(process.hrtime.bigint() - queryStartedAt) / 1e6;
   const totalMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
@@ -1619,7 +1636,7 @@ exports.listLeads = async (req, res) => {
   res.set('Server-Timing', `access;dur=${accessMs.toFixed(1)}, query;dur=${queryMs.toFixed(1)}, total;dur=${totalMs.toFixed(1)}`);
   return res.json({
     ok: true,
-    leads,
+    leads: responseLeads,
     pagination: {
       page, limit, total, totalPages,
       hasNextPage: page < totalPages,

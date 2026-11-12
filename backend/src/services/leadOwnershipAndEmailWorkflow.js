@@ -28,6 +28,34 @@ function eligibleForNoOwner(lead, now = Date.now()) {
   const since = lastLeadActivityAt(lead);
   return !lead.noOwner?.active && Number.isFinite(since) && now - since >= 30 * DAY && !hasClosure(lead) && !(lead.serviceSelections || []).some(hasClosure) && !(lead.assignments || []).some(hasClosure);
 }
+function noOwnerEligibilityFilter(now = Date.now()) {
+  const cutoff = new Date(now - 30 * DAY);
+  const closedRow = { $or: [
+    ...['closedAt', 'closedBy', 'closedByText', 'poYearRows.poNumber', 'poYearRows.poNo'].map(field => ({ [field]: { $exists: true, $nin: [null, ''] } })),
+    { status: /closed|won|converted|lost|cancel/i },
+    { recordStatus: /inactive|deleted/i },
+    { poStatus: { $in: ['provisional', 'permanently_closed'] } }
+  ] };
+  return {
+    createdAt: { $lte: cutoff },
+    'noOwner.active': { $ne: true },
+    $and: [
+      { $or: [{ updatedAt: null }, { updatedAt: { $lte: cutoff } }] },
+      { $or: [{ 'noOwner.reassignedAt': null }, { 'noOwner.reassignedAt': { $lte: cutoff } }] }
+    ],
+    recordStatus: { $not: /inactive|deleted/i },
+    closedAt: null,
+    closedBy: null,
+    closedByText: { $in: [null, ''] },
+    status: { $not: /closed|won|converted|lost|cancel/i },
+    poStatus: { $nin: ['provisional', 'permanently_closed'] },
+    assignments: { $not: { $elemMatch: closedRow } },
+    serviceSelections: { $not: { $elemMatch: closedRow } }
+  };
+}
+function noOwnerWorkspaceFilter(now = Date.now()) {
+  return { $or: [{ 'noOwner.active': true }, noOwnerEligibilityFilter(now)] };
+}
 function previousOwner(lead) {
   return {
     id: lead.generatedForUser || lead.createdBy || lead.assignedStaff || lead.assignedTo,
@@ -84,26 +112,7 @@ async function sendOnce(key, email, subject, html, now, beforeSend) {
   }
 }
 async function moveOldOpenLeads(now) {
-  const cutoff = new Date(now - 30 * DAY);
-  const closedRow = { $or: [
-    ...['closedAt', 'closedBy', 'closedByText', 'poYearRows.poNumber', 'poYearRows.poNo'].map(field => ({ [field]: { $exists: true, $nin: [null, ''] } })),
-    { status: /closed|won|converted|lost|cancel/i },
-    { recordStatus: /inactive|deleted/i },
-    { poStatus: { $in: ['provisional', 'permanently_closed'] } }
-  ] };
-  const candidates = await Lead.find({
-    createdAt: { $lte: cutoff }, 'noOwner.active': { $ne: true },
-    $and: [
-      { $or: [{ updatedAt: null }, { updatedAt: { $lte: cutoff } }] },
-      { $or: [{ 'noOwner.reassignedAt': null }, { 'noOwner.reassignedAt': { $lte: cutoff } }] }
-    ],
-    recordStatus: { $not: /inactive|deleted/i },
-    closedAt: null, closedBy: null, closedByText: { $in: [null, ''] },
-    status: { $not: /closed|won|converted|lost|cancel/i },
-    poStatus: { $nin: ['provisional', 'permanently_closed'] },
-    assignments: { $not: { $elemMatch: closedRow } },
-    serviceSelections: { $not: { $elemMatch: closedRow } }
-  }).select('createdAt updatedAt status recordStatus noOwner createdBy createdByName createdByEmail generatedForUser generatedForName generatedForEmail assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail importedCreatedBy closedAt closedBy closedByText poStatus serviceSelections.closedAt serviceSelections.closedBy serviceSelections.closedByText serviceSelections.status assignments.assignedTo assignments.assignedToText assignments.assignedStaff assignments.assignedStaffText assignments.closedAt assignments.closedBy assignments.closedByText assignments.status assignments.poStatus assignments.poYearRows.poNumber assignments.poYearRows.poNo').sort({ updatedAt: 1, createdAt: 1 }).limit(100).maxTimeMS(15000).lean();
+  const candidates = await Lead.find(noOwnerEligibilityFilter(now)).select('createdAt updatedAt status recordStatus noOwner createdBy createdByName createdByEmail generatedForUser generatedForName generatedForEmail assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail importedCreatedBy closedAt closedBy closedByText poStatus serviceSelections.closedAt serviceSelections.closedBy serviceSelections.closedByText serviceSelections.status assignments.assignedTo assignments.assignedToText assignments.assignedStaff assignments.assignedStaffText assignments.closedAt assignments.closedBy assignments.closedByText assignments.status assignments.poStatus assignments.poYearRows.poNumber assignments.poYearRows.poNo').sort({ updatedAt: 1, createdAt: 1 }).limit(100).maxTimeMS(15000).lean();
   let moved = 0;
   for (const lead of candidates) {
     if (!eligibleForNoOwner(lead, now)) continue;
@@ -206,4 +215,4 @@ function startLeadOwnershipAndEmailScheduler() {
   setTimeout(run, 15000);
   setInterval(run, 60000);
 }
-module.exports = { refreshNoOwnerLeads, runLeadOwnershipAndEmailWorkflow, startLeadOwnershipAndEmailScheduler, __test: { DAY, lastLeadActivityAt, eligibleForNoOwner, noOwnerUpdate, eventEmail, noOwnerSummaryEmail, moveOldOpenLeads, notifyNoOwnerLeads, remindMissingTemporaryEmails, sendOnce } };
+module.exports = { DAY, lastLeadActivityAt, noOwnerEligibilityFilter, noOwnerWorkspaceFilter, refreshNoOwnerLeads, runLeadOwnershipAndEmailWorkflow, startLeadOwnershipAndEmailScheduler, __test: { DAY, lastLeadActivityAt, eligibleForNoOwner, noOwnerEligibilityFilter, noOwnerWorkspaceFilter, noOwnerUpdate, eventEmail, noOwnerSummaryEmail, moveOldOpenLeads, notifyNoOwnerLeads, remindMissingTemporaryEmails, sendOnce } };

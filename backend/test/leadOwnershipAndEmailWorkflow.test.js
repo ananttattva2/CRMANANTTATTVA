@@ -166,7 +166,9 @@ test('delivery failure retries the same reminder without starting the grace dead
 
 test('No Owner Leads remain readable for unrelated staff without granting access to other private leads', async () => {
   const filter = await require('../src/controllers/leadController').leadAccessFilter({ _id: ownerId, name: 'Other User', email: 'other@example.test', role: 'sales' }, { includeShared: true });
-  assert.deepEqual(filter.$or[1], { 'noOwner.active': true });
+  assert.deepEqual(filter.$or[1].$or[0], { 'noOwner.active': true });
+  assert.equal(filter.$or[1].$or[1]['noOwner.active'].$ne, true);
+  assert.ok(filter.$or[1].$or[1].updatedAt === undefined);
   assert.ok(filter.$or[0].$or.some(condition => condition.createdBy));
 });
 
