@@ -233,6 +233,21 @@ function combineAccessFilters(...filters) {
   return active.length > 1 ? { $and: active } : active[0] || {};
 }
 
+// The shared pool lists leads that already carry noOwner.active plus leads that
+// the inactivity filter still classifies as eligible. Both are normalised to the
+// same shape so the directory can render them without another automation pass.
+function noOwnerDirectoryRow(lead) {
+  if (lead.noOwner?.active) return lead;
+  const lastActivity = lastLeadActivityAt(lead);
+  const previousOwnerRecord = lead.generatedForUser || lead.createdBy || {};
+  const previousOwner = {
+    id: previousOwnerRecord?._id || previousOwnerRecord?.id || previousOwnerRecord || lead.assignedStaff || lead.assignedTo,
+    name: lead.generatedForName || previousOwnerRecord?.name || lead.createdByName || lead.importedCreatedBy || lead.assignedStaffText || lead.assignedToText || 'Unassigned',
+    email: lead.generatedForEmail || previousOwnerRecord?.email || lead.createdByEmail || lead.assignedStaffEmail || lead.assignedToEmail || ''
+  };
+  return { ...lead, noOwner: { ...(lead.noOwner || {}), active: true, pendingRelease: true, movedAt: Number.isFinite(lastActivity) ? new Date(lastActivity + 30 * NO_OWNER_DAY) : null, previousOwner } };
+}
+
 function identityTokens(...values) {
   return [...new Set(values.flatMap((value) => value && typeof value === 'object'
     ? [value._id, value.id, value.crmUserId, value.userId, value.email, value.name]
@@ -1583,6 +1598,51 @@ exports.listLeads = async (req, res) => {
     });
   }
   const sort = { [sortBy]: sortOrder, ...(sortBy === 'leadCode' ? { createdAt: sortOrder } : { _id: sortOrder }) };
+  if (workspace === 'no-owner') {
+    // One aggregate pass returns the page and the total. The inactivity filter
+    // contains nested array checks that no index can serve, so collapsing the
+    // previous page + countDocuments + collection-wide summary scans into a
+    // single $facet is what keeps this directory inside the gateway timeout.
+    let pageRows = [];
+    let total = 0;
+    try {
+      const [facet] = await Lead.aggregate([
+        { $match: filter },
+        { $sort: sort },
+        { $facet: {
+          rows: [{ $skip: (page - 1) * limit }, { $limit: limit }, { $project: require('../services/leadDirectoryReadModel').directoryProjection(projection) }],
+          meta: [{ $count: 'total' }]
+        } }
+      ]).option({ maxTimeMS: 20000, allowDiskUse: true });
+      pageRows = facet?.rows || [];
+      total = facet?.meta?.[0]?.total || 0;
+    } catch (error) {
+      // A slow scan must not blank the shared pool or fail the whole directory.
+      console.error('No Owner Leads directory query failed', { name: error.name, message: error.message });
+    }
+    const rows = await Lead.populate(pageRows, [
+      { path: 'assignedTo', select: 'name email avatarUrl role' },
+      { path: 'closedBy', select: 'name email avatarUrl role' },
+      { path: 'createdBy', select: 'name email' },
+      { path: 'generatedForUser', select: 'name email crmUserId' }
+    ]);
+    const leads = rows.map(noOwnerDirectoryRow);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const queryMs = Number(process.hrtime.bigint() - queryStartedAt) / 1e6;
+    const totalMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+    res.set('Server-Timing', `access;dur=${accessMs.toFixed(1)}, query;dur=${queryMs.toFixed(1)}, total;dur=${totalMs.toFixed(1)}`);
+    return res.json({
+      ok: true,
+      leads,
+      pagination: {
+        page, limit, total, totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1
+      },
+      summary: { total, existing: 0, converted: 0, new: total, allocated: 0, unassigned: total },
+      timings: process.env.API_PERF_TIMINGS === 'true' ? { accessMs, queryMs, totalMs } : undefined
+    });
+  }
   const compactDirectory = req.query.directory === 'true' && req.query.export !== 'true';
   const directoryRead = () => compactDirectory
     ? Lead.aggregate([
@@ -1617,17 +1677,6 @@ exports.listLeads = async (req, res) => {
       } }
     ]))
   ]);
-  const responseLeads = workspace === 'no-owner' ? leads.map((lead) => {
-    if (lead.noOwner?.active) return lead;
-    const lastActivity = lastLeadActivityAt(lead);
-    const previousOwnerRecord = lead.generatedForUser || lead.createdBy || {};
-    const previousOwner = {
-      id: previousOwnerRecord?._id || previousOwnerRecord?.id || previousOwnerRecord || lead.assignedStaff || lead.assignedTo,
-      name: lead.generatedForName || previousOwnerRecord?.name || lead.createdByName || lead.importedCreatedBy || lead.assignedStaffText || lead.assignedToText || 'Unassigned',
-      email: lead.generatedForEmail || previousOwnerRecord?.email || lead.createdByEmail || lead.assignedStaffEmail || lead.assignedToEmail || ''
-    };
-    return { ...lead, noOwner: { ...(lead.noOwner || {}), active: true, pendingRelease: true, movedAt: Number.isFinite(lastActivity) ? new Date(lastActivity + 30 * NO_OWNER_DAY) : null, previousOwner } };
-  }) : leads;
   const total = counted ?? leads.length;
   const queryMs = Number(process.hrtime.bigint() - queryStartedAt) / 1e6;
   const totalMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
@@ -1636,7 +1685,7 @@ exports.listLeads = async (req, res) => {
   res.set('Server-Timing', `access;dur=${accessMs.toFixed(1)}, query;dur=${queryMs.toFixed(1)}, total;dur=${totalMs.toFixed(1)}`);
   return res.json({
     ok: true,
-    leads: responseLeads,
+    leads,
     pagination: {
       page, limit, total, totalPages,
       hasNextPage: page < totalPages,

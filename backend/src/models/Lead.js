@@ -125,6 +125,10 @@ LeadSchema.index({ createdBy: 1, leadCode: 1, createdAt: 1 });
 LeadSchema.index({ generatedForUser: 1, leadCode: 1, createdAt: 1 });
 LeadSchema.index({ 'noOwner.active': 1, createdAt: 1 });
 LeadSchema.index({ 'noOwner.active': 1, updatedAt: 1 });
+// The No Owner workspace drives its 30-day inactivity range straight off
+// updatedAt. Without a leading updatedAt index the $or branch cannot be served
+// by an index and the shared pool degrades into a collection scan.
+LeadSchema.index({ updatedAt: 1 });
 LeadSchema.index({ 'noOwner.notifiedAt': 1, 'noOwner.movedAt': 1 });
 LeadSchema.index({ 'serviceSelections.accountsRecordId': 1 });
 LeadSchema.plugin(require('../utils/leadDeletionVisibility'));

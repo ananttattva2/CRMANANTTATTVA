@@ -57,15 +57,19 @@ test('manager assignment email links to and explains the Notified Leads tab', ()
   assert.match(service, /Open Notified Leads/);
 });
 
-test('No Owner Leads refreshes eligibility before serving a cached directory response', () => {
+test('No Owner Leads refreshes eligibility in a throttled background scan without blocking the directory', () => {
   const routes = read('backend/src/routes/leads.js');
   const controller = read('backend/src/controllers/leadController.js');
-  assert.match(routes, /async function refreshNoOwnerPool/);
+  assert.match(routes, /function refreshNoOwnerPool/);
   assert.match(routes, /workspace \|\| ''\).*no-owner/);
-  assert.match(routes, /await refreshNoOwnerLeads\(\)/);
+  assert.match(routes, /refreshNoOwnerLeads\(\)/);
+  assert.match(routes, /NO_OWNER_REFRESH_INTERVAL_MS/);
+  assert.doesNotMatch(routes, /await refreshNoOwnerLeads\(\)/);
   assert.match(routes, /No Owner Leads on-read refresh failed/);
   assert.match(routes, /router\.get\('\/', requireAuth, refreshNoOwnerPool, cacheRead, leadCtrl\.listLeads\)/);
   assert.match(controller, /requestedWorkspace === 'no-owner' \? \{\} : await leadAccessFilter/);
   assert.match(controller, /\? \[noOwnerWorkspaceFilter\(\)\]/);
   assert.match(controller, /pendingRelease: true/);
+  assert.match(controller, /if \(workspace === 'no-owner'\)/);
+  assert.match(controller, /\$facet/);
 });

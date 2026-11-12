@@ -11,16 +11,24 @@ const temporaryLeadCtrl = require('../controllers/temporaryLeadController');
 const revenueCtrl = require('../controllers/leadRevenueController');
 const { refreshNoOwnerLeads } = require('../services/leadOwnershipAndEmailWorkflow');
 
-async function refreshNoOwnerPool(req, _res, next) {
+const NO_OWNER_REFRESH_INTERVAL_MS = 5 * 60000;
+let noOwnerRefreshAt = 0;
+let noOwnerRefreshRunning = false;
+
+function refreshNoOwnerPool(req, _res, next) {
   if (String(req.query.workspace || '').trim().toLowerCase() !== 'no-owner') return next();
-  try {
-    // Refresh before cacheRead. Otherwise a cached empty response can hide
-    // leads until a separate background scheduler happens to run.
-    await refreshNoOwnerLeads();
-  } catch (error) {
-    // Keep the authoritative directory available even when an automation scan
-    // fails. The recurring scheduler will retry and logs retain the root cause.
-    console.error('No Owner Leads on-read refresh failed', { name: error.name, message: error.message });
+  // The shared directory already lists eligible leads straight from its own
+  // inactivity filter, so ownership release and notification must never block
+  // the read. Run that automation in the background and throttle it, otherwise
+  // a slow scan (plus up to 100 sequential writes and admin emails) turns the
+  // directory request into a gateway timeout.
+  const now = Date.now();
+  if (!noOwnerRefreshRunning && now - noOwnerRefreshAt >= NO_OWNER_REFRESH_INTERVAL_MS) {
+    noOwnerRefreshAt = now;
+    noOwnerRefreshRunning = true;
+    refreshNoOwnerLeads()
+      .catch(error => console.error('No Owner Leads on-read refresh failed', { name: error.name, message: error.message }))
+      .finally(() => { noOwnerRefreshRunning = false; });
   }
   return next();
 }
