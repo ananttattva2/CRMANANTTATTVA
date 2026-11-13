@@ -21,3 +21,11 @@ test('production deploy retains previous chunks and verifies module MIME type', 
   assert.match(script, /ENTRY_CONTENT_TYPE/);
   assert.match(script, /javascript\|text\/css/);
 });
+
+test('DigitalOcean deployment repairs a missing or unhealthy PM2 backend', () => {
+  const script = fs.readFileSync(path.join(root, 'scripts', 'deploy-production.sh'), 'utf8');
+  assert.match(script, /PM2 process \$PM2_APP_NAME is missing; starting the backend/);
+  assert.match(script, /pm2 start "\$APP_DIR\/backend\/src\/index\.js"/);
+  assert.match(script, /Backend is unhealthy; restarting existing PM2 process/);
+  assert.match(script, /curl --fail --silent --show-error --max-time 5 http:\/\/127\.0\.0\.1:4000\/api\/health/);
+});

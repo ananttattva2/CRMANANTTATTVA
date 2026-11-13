@@ -18,12 +18,12 @@ test('frontend uses the same-origin API proxy by default in every environment', 
   assert.doesNotMatch(source, /const productionBaseURL/);
 });
 
-test('Vercel API proxy targets the active Render backend', () => {
+test('deployment proxy configuration preserves the DigitalOcean production origin', () => {
   const frontendConfig = JSON.parse(fs.readFileSync(path.join(__dirname, '../../frontend/vercel.json'), 'utf8'));
   const rootConfig = JSON.parse(fs.readFileSync(path.join(__dirname, '../../vercel.json'), 'utf8'));
   const apiRoute = frontendConfig.routes.find((route) => route.src === '/api/(.*)');
   const rootApiRewrite = rootConfig.rewrites.find((rewrite) => rewrite.source === '/api/(.*)');
 
   assert.equal(apiRoute?.dest, 'https://crm-1-53i4.onrender.com/api/$1');
-  assert.equal(rootApiRewrite?.destination, 'https://crm-1-53i4.onrender.com/api/$1');
+  assert.equal(rootApiRewrite?.destination, 'https://crmananttattva.com/api/$1');
 });

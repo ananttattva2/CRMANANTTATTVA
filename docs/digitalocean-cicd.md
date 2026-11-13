@@ -92,6 +92,11 @@ After verifying the fingerprint, put the `ssh-keyscan` output into the
    endpoint are checked, Nginx is validated, and both the public API and frontend
    must return a successful response.
 
+For frontend/config-only releases, the deployment also checks the local health
+endpoint before the normal retry loop. If the PM2 process is missing it is started;
+if it exists but is unhealthy it is restarted. This prevents Nginx 502 responses
+from persisting merely because the current release did not modify `backend/`.
+
 If any post-swap check fails, the previous `dist` directory is restored. The Git
 worktree is reset to the previous commit, previous backend dependencies are restored
 when necessary, and PM2 is restarted back onto the previous backend only if the new

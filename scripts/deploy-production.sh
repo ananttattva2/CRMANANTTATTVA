@@ -209,8 +209,17 @@ mv -- "$NEXT_DIST" "$APP_DIR/frontend/dist"
 NEXT_DIST=""
 FRONTEND_SWAPPED=true
 
-pm2 describe "$PM2_APP_NAME" >/dev/null
-if [[ "$BACKEND_CHANGED" == true ]]; then
+if ! pm2 describe "$PM2_APP_NAME" >/dev/null 2>&1; then
+  echo "PM2 process $PM2_APP_NAME is missing; starting the backend."
+  PM2_TOUCHED=true
+  DEPLOY_COMMIT="$EXPECTED_SHA" pm2 start "$APP_DIR/backend/src/index.js" --name "$PM2_APP_NAME" --cwd "$APP_DIR" --update-env
+elif [[ "$BACKEND_CHANGED" == true ]]; then
+  PM2_TOUCHED=true
+  DEPLOY_COMMIT="$EXPECTED_SHA" pm2 restart "$PM2_APP_NAME" --update-env
+elif ! curl --fail --silent --show-error --max-time 5 http://127.0.0.1:4000/api/health >/dev/null; then
+  # A frontend/config-only release must still recover a stopped or unhealthy
+  # backend; otherwise Nginx continues returning 502 indefinitely.
+  echo "Backend is unhealthy; restarting existing PM2 process $PM2_APP_NAME."
   PM2_TOUCHED=true
   DEPLOY_COMMIT="$EXPECTED_SHA" pm2 restart "$PM2_APP_NAME" --update-env
 fi
