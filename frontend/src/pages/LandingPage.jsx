@@ -118,7 +118,10 @@ function ClientScroller() {
     let frame, previous = 0
     const tick = (time) => {
       const element = row.current
-      const loopWidth = element.firstElementChild.offsetWidth
+      // Stop the loop instead of scheduling frames forever once the scroller
+      // has unmounted, which is when row.current turns null.
+      if (!element) return
+      const loopWidth = element.firstElementChild?.offsetWidth || 0
       if (previous && loopWidth) {
         position.current = (position.current + Math.min(time - previous, 64) * 0.055) % loopWidth
         element.scrollLeft = position.current
@@ -131,7 +134,8 @@ function ClientScroller() {
   }, [paused])
   const move = (direction) => {
     const element = row.current
-    const loopWidth = element.firstElementChild.offsetWidth
+    const loopWidth = element?.firstElementChild?.offsetWidth || 0
+    if (!element || !loopWidth) return
     position.current = ((element.scrollLeft + direction * element.clientWidth * 0.7) % loopWidth + loopWidth) % loopWidth
     element.scrollLeft = position.current
   }
@@ -161,11 +165,15 @@ function DashboardPreview() {
   const [showVideo, setShowVideo] = useState(false)
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => {
+      const node = stage.current
+      // The observer can fire once more while the preview is unmounting, after
+      // the ref has already been cleared.
+      if (!node) return
       const scale = Math.min(1, entry.contentRect.width / 690)
-      stage.current.style.setProperty('--lp-preview-scale', String(scale))
-      stage.current.style.setProperty('--lp-preview-height', `${Math.ceil(377 * scale)}px`)
+      node.style.setProperty('--lp-preview-scale', String(scale))
+      node.style.setProperty('--lp-preview-height', `${Math.ceil(377 * scale)}px`)
     })
-    observer.observe(stage.current)
+    if (stage.current) observer.observe(stage.current)
     return () => observer.disconnect()
   }, [])
   useEffect(() => {
