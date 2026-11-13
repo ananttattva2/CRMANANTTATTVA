@@ -31,7 +31,7 @@ function createWriteInvalidation(invalidateCache = invalidateCrmCache) {
   return function writeInvalidation(req, res, next) {
     const path = req.originalUrl.split('?')[0];
     const mutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
-    const skipped = /^\/api\/auth\/(?:activity-heartbeat|login|resend-otp|verify-otp|logout|forgot-password|reset-password)(?:\/|$)/.test(path);
+    const skipped = /^\/api\/auth\/(?:activity-heartbeat|request-otp|resend-otp|verify-otp|logout|forgot-password|reset-password)(?:\/|$)/.test(path);
     const milestoneCheck = /^\/api\/auth\/milestones\/[^/]+\/claim$/.test(path);
     // Genuine milestone writes are covered by the User model post-write hook.
     if (!mutation || /^\/api\/client-portal(?:\/|$)/.test(path) || skipped || milestoneCheck || /^\/api\/(?:assets|notifications)(?:\/|$)/.test(path)) return next();

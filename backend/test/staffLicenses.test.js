@@ -90,7 +90,7 @@ test('all three login endpoints reject missing license before touching authentic
   const app = express(); app.use(express.json()); app.use('/api/auth', authRoutes);
   const server = await new Promise(resolve => { const instance = app.listen(0, '127.0.0.1', () => resolve(instance)); });
   t.after(() => server.close());
-  for (const endpoint of ['login', 'resend-otp', 'verify-otp']) {
+  for (const endpoint of ['request-otp', 'resend-otp', 'verify-otp']) {
     const response = await fetch(`http://127.0.0.1:${server.address().port}/api/auth/${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user.email }) });
     assert.equal(response.status, 403);
     assert.equal((await response.json()).code, 'LICENSE_REQUIRED');
@@ -155,7 +155,7 @@ test('failed emails stay pending with backoff; another worker cannot duplicate a
   assert.equal(await service.deliverLicense(user, license), false);
 });
 
-test('license → password issues a real staff session for all three role types', async t => {
+test('license → password → OTP issues a real staff session for all three role types', async t => {
   const app = express(); app.use(express.json()); app.use('/api/auth', authRoutes);
   const server = await new Promise(resolve => { const instance = app.listen(0, '127.0.0.1', () => resolve(instance)); });
   t.after(() => server.close());
@@ -180,14 +180,17 @@ test('license → password issues a real staff session for all three role types'
     assert.equal(gate.data.loginMode, role === 'operation' ? 'user' : 'admin');
     assert.equal(gate.data.codeHash, undefined);
     const credentials = { email: account.email, password, licenseToken: gate.data.licenseToken, loginMode: gate.data.loginMode };
-    assert.equal((await post('login', { ...credentials, password: 'wrong' })).status, 401);
-    const request = await post('login', credentials);
+    assert.equal((await post('request-otp', { ...credentials, password: 'wrong' })).status, 401);
+    const request = await post('request-otp', credentials);
     assert.equal(request.status, 200);
-    const claims = jwt.verify(request.data.token, process.env.JWT_SECRET);
+    assert.ok(account.otp);
+    const verified = await post('verify-otp', { ...credentials, otp: account.otp });
+    assert.equal(verified.status, 200);
+    const claims = jwt.verify(verified.data.token, process.env.JWT_SECRET);
     assert.equal(claims.sub, user._id);
     assert.ok(claims.exp <= Math.floor(current.expiresAt.getTime() / 1000));
     assert.equal(claims.purpose, undefined);
-    assert.equal(request.data.user.role, role);
+    assert.equal(verified.data.user.role, role);
     assert.equal(account.otp, undefined);
   }
 });

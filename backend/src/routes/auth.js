@@ -8,7 +8,7 @@ const { licenseRateLimit, validateLicense, requireLicense } = require('../middle
 
 
 router.post('/license/validate', licenseRateLimit, validateLicense);
-router.post('/login', licenseRateLimit, requireLicense, authCtrl.login);
+router.post('/request-otp', licenseRateLimit, requireLicense, authCtrl.requestOtp);
 router.post('/resend-otp', licenseRateLimit, requireLicense, authCtrl.resendOtp);
 router.post('/verify-otp', licenseRateLimit, requireLicense, authCtrl.verifyOtp);
 router.post('/forgot-password', authCtrl.forgotPassword);

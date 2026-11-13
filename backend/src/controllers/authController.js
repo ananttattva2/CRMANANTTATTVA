@@ -327,7 +327,7 @@ async function issueLoginSession(req, user, loginMode, path = '/api/auth/login')
   return { ok: true, token, user: publicUser(user) };
 }
  
-exports.login = async (req, res) => {
+exports.requestOtp = async (req, res) => {
   const email = String(req.body.email || '').toLowerCase().trim();
   const password = String(req.body.password || '');
   const loginMode = normalizeLoginMode(req.body.loginMode);
@@ -354,9 +354,17 @@ exports.login = async (req, res) => {
     user.password = await bcrypt.hash(password, 10);
   }
  
-  const result = await issueLoginSession(req, user, loginMode);
-  console.info('Login verified', { email, userId: String(user._id), role: user.role });
-  return res.json(result);
+  const otp = generateOtp();
+  user.otp = otp;
+  user.otpExpires = Date.now() + OTP_EXPIRY_MS;
+  await user.save();
+
+  try {
+    const result = await sendLoginOtp(user, otp);
+    return res.json(result);
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ error: err.message || 'OTP email could not be sent' });
+  }
 };
  
 exports.resendOtp = async (req, res) => {
