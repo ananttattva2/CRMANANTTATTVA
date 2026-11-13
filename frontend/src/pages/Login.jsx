@@ -3,9 +3,10 @@ import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Eye, EyeOff, KeyRound, Mail, ShieldCheck } from 'lucide-react'
 import AuthLayout from '../components/AuthLayout'
 import ToastMessage from '../components/ToastMessage'
-import api, { readApiError } from '../services/api'
+import api, { readApiError, storeSessionUser } from '../services/api'
 import { API_ENDPOINTS } from '../services/apiEndpoints'
 import { readLicenseSession, clearLicenseSession } from '../utils/licenseSession.mjs'
+import { defaultLandingPath } from '../utils/defaultLanding.mjs'
 import '../styles/license.css'
 
 export default function Login(){
@@ -23,19 +24,17 @@ export default function Login(){
     setLoading(true)
     setError('')
     try{
-      const res = await api.post(API_ENDPOINTS.auth.requestOtp, { email, password, loginMode, licenseToken: license.licenseToken })
-      localStorage.setItem('login_email', email)
-      localStorage.setItem('login_mode', loginMode)
-      if (import.meta.env.DEV && res.data?.devOtp) {
-        localStorage.setItem('dev_otp', res.data.devOtp)
-      } else {
-        localStorage.removeItem('dev_otp')
-      }
-      navigate('/verify', { state: { email, loginMode } })
+      const res = await api.post(API_ENDPOINTS.auth.login, { email, password, loginMode, licenseToken: license.licenseToken })
+      localStorage.setItem('token', res.data.token)
+      storeSessionUser(res.data.user)
+      localStorage.removeItem('login_email')
+      localStorage.removeItem('login_mode')
+      localStorage.removeItem('dev_otp')
+      navigate(defaultLandingPath(res.data.user), { replace: true })
     }catch(err){
       console.error(err)
       if (err.response?.data?.code === 'LICENSE_REQUIRED') { clearLicenseSession(); navigate('/license', { replace: true }); return }
-      setError(readApiError(err, 'Unable to send OTP'))
+      setError(readApiError(err, 'Unable to sign in'))
     }finally{ setLoading(false) }
   }
 
@@ -46,8 +45,8 @@ export default function Login(){
       eyebrow={loginMode === 'admin' ? 'Admin login' : 'User login'}
       title={loginMode === 'admin' ? 'Admin sign in' : 'Welcome back.'}
       subtitle={loginMode === 'admin'
-        ? 'Use Admin Login for Admin and Super Admin accounts only. We will send a secure one-time code for this session.'
-        : 'Use User Login for team accounts. We will send a secure one-time code for this session.'}
+        ? 'Use Admin Login for Admin and Super Admin accounts only. Sign in with your work email and password.'
+        : 'Use User Login for team accounts. Sign in with your work email and password.'}
     >
       <Link to="/" className="mb-1 inline-flex items-center gap-2 text-sm font-black text-emerald-700 hover:text-emerald-900">
         <ArrowLeft className="h-4 w-4" /> Back to website
@@ -99,7 +98,7 @@ export default function Login(){
           </div>
           <div className="mt-2 flex items-center gap-2 text-xs font-extrabold text-slate-500">
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-            Secure password is protected during OTP verification.
+            Secure password is protected during sign in.
           </div>
           <div className="mt-3 text-right">
             <Link to="/forgot-password" className="text-sm font-black text-emerald-700 hover:text-emerald-900">Forgot password?</Link>
@@ -108,7 +107,7 @@ export default function Login(){
         {error && <ToastMessage type="error">{error}</ToastMessage>}
         <button className="btn-lift group relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-700 via-teal-700 to-sky-700 px-5 py-4 font-black text-white shadow-xl shadow-emerald-900/20 transition disabled:cursor-not-allowed disabled:opacity-70" disabled={loading}>
           <span className="absolute inset-0 -translate-x-full bg-white/20 transition duration-700 group-hover:translate-x-full" />
-          <span className="relative">{loading ? 'Sending OTP...' : loginMode === 'admin' ? 'Send Admin OTP' : 'Send User OTP'}</span>
+          <span className="relative">{loading ? 'Signing in...' : loginMode === 'admin' ? 'Sign in as Admin' : 'Sign in'}</span>
           <ArrowRight className="relative h-5 w-5 transition duration-300 group-hover:translate-x-1" />
         </button>
       </form>

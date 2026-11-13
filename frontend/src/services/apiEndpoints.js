@@ -8,7 +8,7 @@ const API_ENDPOINTS = {
     me: '/auth/me',
     claimMilestone: (key) => `/auth/milestones/${encodePathValue(key)}/claim`,
     password: '/auth/me/password',
-    requestOtp: '/auth/request-otp',
+    login: '/auth/login',
     verifyOtp: '/auth/verify-otp',
     resendOtp: '/auth/resend-otp',
     forgotPassword: '/auth/forgot-password',

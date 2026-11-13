@@ -304,13 +304,36 @@ async function ensureCrmUserId(user) {
   return user;
 }
  
-exports.requestOtp = async (req, res) => {
+// Records the login trail and returns the signed token the SPA keeps as its
+// session. Shared by every authentication path so the audit/session/expiry rules
+// stay identical.
+async function issueLoginSession(req, user, loginMode, path = '/api/auth/login') {
+  user.lastLogin = new Date();
+  await user.save();
+
+  const sessionId = crypto.randomUUID();
+  await UserSession.create({
+    userId: user._id, sessionId, loginAt: user.lastLogin, lastActivityAt: user.lastLogin,
+    ipAddress: clientIp(req), userAgent: String(req.get('user-agent') || '').slice(0, 500), loginMode
+  });
+  await AuditLog.create({
+    userId: user._id, sessionId, action: 'LOGIN', module: 'Authentication', method: 'POST',
+    path, statusCode: 200, description: 'Logged in to CRM', ipAddress: clientIp(req),
+    userName: user.name || user.email, userEmail: user.email, role: user.role, department: user.team
+  });
+  const sessionExpiry = Math.min(Date.now() + 7 * 24 * 60 * 60 * 1000,
+    req.staffLicenseExpiresAt ? new Date(req.staffLicenseExpiresAt).getTime() : Infinity);
+  const token = jwt.sign({ sub: user._id, role: user.role, email: user.email, sid: sessionId, exp: Math.floor(sessionExpiry / 1000) }, process.env.JWT_SECRET || 'secret');
+  return { ok: true, token, user: publicUser(user) };
+}
+ 
+exports.login = async (req, res) => {
   const email = String(req.body.email || '').toLowerCase().trim();
   const password = String(req.body.password || '');
   const loginMode = normalizeLoginMode(req.body.loginMode);
   if (!email) return res.status(400).json({ error: 'Email required' });
   if (!password) return res.status(400).json({ error: 'Password required' });
-  let user = await User.findOne({ email });
+  const user = await User.findOne({ email });
   if (!user) {
     // user accounts are created by admin only
     return res.status(404).json({ error: 'User not found. Contact admin.' });
@@ -331,17 +354,9 @@ exports.requestOtp = async (req, res) => {
     user.password = await bcrypt.hash(password, 10);
   }
  
-  const otp = generateOtp();
-  user.otp = otp;
-  user.otpExpires = Date.now() + OTP_EXPIRY_MS;
-  await user.save();
- 
-  try {
-    const result = await sendLoginOtp(user, otp);
-    return res.json(result);
-  } catch (err) {
-    return res.status(err.statusCode || 500).json({ error: err.message || 'OTP email could not be sent' });
-  }
+  const result = await issueLoginSession(req, user, loginMode);
+  console.info('Login verified', { email, userId: String(user._id), role: user.role });
+  return res.json(result);
 };
  
 exports.resendOtp = async (req, res) => {
@@ -424,24 +439,10 @@ exports.verifyOtp = async (req, res) => {
   // clear otp
   user.otp = undefined;
   user.otpExpires = undefined;
-  user.lastLogin = new Date();
-  await user.save();
  
-  const sessionId = crypto.randomUUID();
-  await UserSession.create({
-    userId: user._id, sessionId, loginAt: user.lastLogin, lastActivityAt: user.lastLogin,
-    ipAddress: clientIp(req), userAgent: String(req.get('user-agent') || '').slice(0, 500), loginMode
-  });
-  await AuditLog.create({
-    userId: user._id, sessionId, action: 'LOGIN', module: 'Authentication', method: 'POST',
-    path: '/api/auth/verify-otp', statusCode: 200, description: 'Logged in to CRM', ipAddress: clientIp(req),
-    userName: user.name || user.email, userEmail: user.email, role: user.role, department: user.team
-  });
-  const sessionExpiry = Math.min(Date.now() + 7 * 24 * 60 * 60 * 1000,
-    req.staffLicenseExpiresAt ? new Date(req.staffLicenseExpiresAt).getTime() : Infinity);
-  const token = jwt.sign({ sub: user._id, role: user.role, email: user.email, sid: sessionId, exp: Math.floor(sessionExpiry / 1000) }, process.env.JWT_SECRET || 'secret');
+  const result = await issueLoginSession(req, user, loginMode, '/api/auth/verify-otp');
   console.info('OTP verified', { email, userId: String(user._id), role: user.role });
-  res.json({ ok: true, token, user: publicUser(user) });
+  res.json(result);
 };
  
 exports.createUserByAdmin = async (req, res) => {
