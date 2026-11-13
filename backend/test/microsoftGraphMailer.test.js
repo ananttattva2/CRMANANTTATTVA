@@ -8,7 +8,8 @@ const GRAPH_ENV_KEYS = [
   'MS_CLIENT_ID',
   'MS_CLIENT_SECRET',
   'OTP_SENDER_EMAIL',
-  'MAIL_REPLY_TO'
+  'MAIL_REPLY_TO',
+  'MAIL_HTTP_TIMEOUT_MS'
 ];
 
 function withGraphEnvironment(run) {
@@ -197,6 +198,29 @@ test('mixed-size PDFs keep the small attachment inline and upload only the large
       assert.equal(calls.filter((call) => call.url.endsWith('/attachments/createUploadSession')).length, 1);
     } finally {
       global.fetch = previousFetch;
+    }
+  });
+});
+
+test('a stalled Microsoft Graph call fails as a bounded timeout instead of hanging the request', async () => {
+  await withGraphEnvironment(async () => {
+    const previousFetch = global.fetch;
+    process.env.MAIL_HTTP_TIMEOUT_MS = '25';
+    global.fetch = (url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(options.signal.reason));
+    });
+    // AbortSignal.timeout uses an unref'd timer, so keep the loop alive long
+    // enough for it to fire in this isolated test.
+    const keepAlive = setTimeout(() => {}, 500);
+
+    try {
+      await assert.rejects(
+        () => sendMail('stalled@example.com', 'Stalled', '<p>Stalled</p>'),
+        (error) => error.code === 'MAIL_PROVIDER_TIMEOUT' && /timed out after 25ms/.test(error.message)
+      );
+    } finally {
+      global.fetch = previousFetch;
+      clearTimeout(keepAlive);
     }
   });
 });

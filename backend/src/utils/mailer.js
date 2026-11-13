@@ -6,6 +6,30 @@ let graphTokenCache = {
   cacheKey: ''
 };
 
+// The SMTP transporter has connection/greeting/socket timeouts, but Microsoft
+// Graph is called with bare fetch and has none. If Graph (or the login endpoint)
+// stalls, the OTP request stays open until the hosting gateway gives up and the
+// client sees a 502 instead of an actionable error. Bound every Graph call.
+const GRAPH_REQUEST_TIMEOUT_MS = 12000;
+
+function graphRequestTimeoutMs() {
+  const configured = Number(process.env.MAIL_HTTP_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : GRAPH_REQUEST_TIMEOUT_MS;
+}
+
+function graphFetch(url, options = {}) {
+  const timeoutMs = graphRequestTimeoutMs();
+  return fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) })
+    .catch((error) => {
+      if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+        const timeoutError = new Error(`Microsoft Graph request timed out after ${timeoutMs}ms`);
+        timeoutError.code = 'MAIL_PROVIDER_TIMEOUT';
+        throw timeoutError;
+      }
+      throw error;
+    });
+}
+
 function normalizeRecipients(to) {
   if (Array.isArray(to)) return to;
   return String(to || '')
@@ -157,7 +181,7 @@ async function getGraphAccessToken(config = readGraphConfig()) {
     scope: 'https://graph.microsoft.com/.default',
     grant_type: 'client_credentials'
   });
-  const response = await fetch(
+  const response = await graphFetch(
     `https://login.microsoftonline.com/${encodeURIComponent(config.tenantId)}/oauth2/v2.0/token`,
     {
       method: 'POST',
@@ -215,7 +239,7 @@ function attachmentBuffer(attachment = {}) {
 }
 
 async function graphRequest(url, accessToken, options = {}, expectedStatuses = [200, 201, 202]) {
-  const response = await fetch(url, {
+  const response = await graphFetch(url, {
     ...options,
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -260,7 +284,7 @@ async function sendMicrosoftGraphMailWithLargeAttachments({ config, accessToken,
     for (let start = 0; start < content.length; start += chunkSize) {
       const end = Math.min(start + chunkSize, content.length) - 1;
       const chunk = content.subarray(start, end + 1);
-      const uploadResponse = await fetch(session.uploadUrl, {
+      const uploadResponse = await graphFetch(session.uploadUrl, {
         method: 'PUT',
         headers: {
           'Content-Length': String(chunk.length),
@@ -310,7 +334,7 @@ async function sendMicrosoftGraphMail(recipients, subject, messageHtml, options 
     };
   }
 
-  const response = await fetch(
+  const response = await graphFetch(
     `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(config.senderEmail)}/sendMail`,
     {
       method: 'POST',

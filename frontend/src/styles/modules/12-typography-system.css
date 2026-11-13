@@ -1,6 +1,6 @@
 /* Centralized CRM typography system. Keep this module loaded last. */
 :root {
-  --font-primary: "Roboto", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --font-primary: "Nunito", sans-serif;
   --crm-font-sans: var(--font-primary);
   --text-xs: 12px;
   --text-sm: 13px;
@@ -14,10 +14,11 @@
   --weight-bold: 700;
 }
 
-html,
-body,
-#root,
-#root * { font-family: var(--font-primary) !important; }
+/* Project-wide typeface. Keep this the broadest, last-loaded rule so no
+   component, portal or third-party widget can reintroduce another family. */
+*,
+*::before,
+*::after { font-family: "Nunito", sans-serif !important; }
 
 html,
 body,

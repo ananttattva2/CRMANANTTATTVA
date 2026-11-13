@@ -85,6 +85,13 @@ export function storeSessionUser(user) {
 }
 
 export function readApiError(error, fallback = 'Something went wrong') {
+  const status = error?.response?.status
+  // A gateway/proxy failure (Render or Vercel) returns an HTML body with no JSON
+  // error, so axios only exposes the bare status. Surface something actionable
+  // instead of "Request failed with status code 502".
+  if (status === 502 || status === 503 || status === 504) {
+    return 'The server took too long to respond. Please try again in a moment.'
+  }
   const data = error?.response?.data
   const message = data?.error || data?.message || error?.message
 
