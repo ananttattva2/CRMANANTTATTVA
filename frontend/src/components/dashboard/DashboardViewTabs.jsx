@@ -8,18 +8,32 @@ const TABS = [
   { label: 'Operations', path: '/summary-dashboard/operations', icon: BarChart3 }
 ];
 
+function tabMatchesPath(pathname, path, aliases = []) {
+  if (pathname === path) return true;
+  if (path !== '/summary-dashboard' && pathname.startsWith(`${path}/`)) return true;
+  return aliases.some((alias) => pathname === alias || pathname.startsWith(`${alias}/`));
+}
+
 export default function DashboardViewTabs() {
   const { pathname } = useLocation();
   return <nav className="dashboard-view-tabs" aria-label="Summary dashboard section">
-    <span className="dashboard-view-tabs__label">Dashboard View</span>
-    <div role="tablist" aria-label="Sales and Operations dashboards">
-      {TABS.map(({ label, path, aliases = [], icon: Icon }) => <NavLink
-        key={path}
-        to={path}
-        role="tab"
-        aria-label={`${label} dashboard`}
-        className={({ isActive }) => isActive || aliases.includes(pathname) ? 'is-active' : ''}
-      ><Icon aria-hidden="true" />{label}</NavLink>)}
+    <span className="dashboard-view-tabs__label"><i aria-hidden="true" /><span><b>Dashboard View</b><small>Choose a workspace</small></span></span>
+    <div className="dashboard-view-tabs__switcher" role="tablist" aria-label="Sales and Operations dashboards">
+      {TABS.map(({ label, path, aliases = [], icon: Icon }) => {
+        const selected = tabMatchesPath(pathname, path, aliases);
+        return <NavLink
+          key={path}
+          to={path}
+          end={path === '/summary-dashboard'}
+          role="tab"
+          aria-selected={selected}
+          aria-current={selected ? 'page' : undefined}
+          aria-label={`${label} dashboard`}
+          className={selected ? 'is-active' : ''}
+        ><span className="dashboard-view-tabs__icon"><Icon aria-hidden="true" /></span><span>{label}</span></NavLink>;
+      })}
     </div>
   </nav>;
 }
+
+export { tabMatchesPath };
