@@ -2155,44 +2155,46 @@ export function AnnualReturnHistory({ client, quotations = [], proformaInvoices 
 
       {selected && (
         <section className="annual-workspace">
-          <div className="annual-toolbar">
-            <button type="button" onClick={() => onSelectYear('')} className="btn-lift annual-back-button" aria-label="Back" title="Back">
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-            <div className="annual-summary-strip">
-              <div className="annual-summary-card annual-summary-card-client">
-                <span className="annual-summary-icon"><Building2 className="h-5 w-5" /></span>
-                <div className="annual-summary-copy">
-                  <span className="annual-summary-label">{uniqueId}</span>
-                  <strong className="annual-summary-value">{clientName}</strong>
-                  <span className="annual-summary-meta">{data.basic?.piboCategory || data.basic?.eprCategory || 'Client'}</span>
+          <div className="annual-context-card">
+            <div className="annual-toolbar">
+              <button type="button" onClick={() => onSelectYear('')} className="btn-lift annual-back-button" aria-label="Back" title="Back">
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <div className="annual-summary-strip">
+                <div className="annual-summary-card annual-summary-card-client">
+                  <span className="annual-summary-icon"><Building2 className="h-6 w-6" /></span>
+                  <div className="annual-summary-copy">
+                    <strong className="annual-summary-value">{clientName}</strong>
+                    <div className="annual-summary-client-meta">
+                      <span className="annual-summary-id">{uniqueId}</span>
+                      <span className="annual-summary-separator" aria-hidden="true" />
+                      <span className="annual-summary-meta">{data.basic?.piboCategory || data.basic?.eprCategory || 'Client'}</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="annual-summary-card">
-                <span className="annual-summary-icon"><CalendarDays className="h-5 w-5" /></span>
-                <div className="annual-summary-copy">
-                  <span className="annual-summary-label">Annual Return Year</span>
-                  <strong className="annual-summary-value">{selected.label}</strong>
+                <div className="annual-summary-card">
+                  <span className="annual-summary-icon"><CalendarDays className="h-5 w-5" /></span>
+                  <div className="annual-summary-copy">
+                    <span className="annual-summary-label">Annual Return Year</span>
+                    <strong className="annual-summary-value">{selected.label}</strong>
+                  </div>
                 </div>
-              </div>
-              <div className="annual-summary-card annual-summary-card-user">
-                <span className="annual-summary-icon"><UserRound className="h-5 w-5" /></span>
-                <div className="annual-summary-copy">
-                  <span className="annual-summary-label">Current SPOC</span>
-                  <strong className="annual-summary-value">{assignedName || '-'}</strong>
+                <div className="annual-summary-card annual-summary-card-user">
+                  <span className="annual-summary-icon"><UserRound className="h-5 w-5" /></span>
+                  <div className="annual-summary-copy">
+                    <span className="annual-summary-label">Current SPOC</span>
+                    <strong className="annual-summary-value">{assignedName || '-'}</strong>
+                  </div>
                 </div>
-              </div>
-              <div className="annual-summary-card annual-summary-card-spoc">
-                <span className="annual-summary-icon"><RefreshCw className="h-5 w-5" /></span>
-                <div className="annual-summary-copy">
-                  <span className="annual-summary-label">Previous SPOC</span>
-                  <strong className="annual-summary-value">{previousSpocName || '-'}</strong>
+                <div className="annual-summary-card annual-summary-card-spoc">
+                  <span className="annual-summary-icon"><RefreshCw className="h-5 w-5" /></span>
+                  <div className="annual-summary-copy">
+                    <span className="annual-summary-label">Previous SPOC</span>
+                    <strong className="annual-summary-value">{previousSpocName || '-'}</strong>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-
-          <div className="annual-workspace-body">
             <aside className="annual-stepper">
               {processingTabs.map((tab) => {
                 const Icon = tab.icon;
@@ -2214,7 +2216,9 @@ export function AnnualReturnHistory({ client, quotations = [], proformaInvoices 
                 );
               })}
             </aside>
+          </div>
 
+          <div className="annual-workspace-body">
             <div className={`annual-tab-content min-w-0 ${annualTransitioning ? 'annual-tab-content-switching' : ''}`}>
               <div className="annual-panel-head">
                 <div>
