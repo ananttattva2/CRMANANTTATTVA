@@ -6198,41 +6198,45 @@ body:has(.annual-review-backdrop) .client-detail-card {
   font-weight: 900 !important;
 }
 
-/* Annual Return top tabs only — modern teal segmented navigation */
+/* Annual Return top tabs — polished segmented workflow nav */
 .annual-workspace .annual-stepper {
   position: relative !important;
   display: grid !important;
   grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-  gap: 7px !important;
+  gap: 6px !important;
   width: 100% !important;
-  margin: 0 0 14px !important;
-  overflow: hidden !important;
-  border: 1px solid #d7e7e5 !important;
-  border-radius: 16px !important;
-  background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(247,251,250,.98)) !important;
-  padding: 7px !important;
-  box-shadow: 0 10px 28px rgba(15, 73, 69, .06), inset 0 1px 0 #fff !important;
+  margin: 0 0 18px !important;
+  overflow: visible !important;
+  border: 1px solid #e6efec !important;
+  border-radius: 20px !important;
+  background: linear-gradient(180deg, #fbfefd 0%, #f1f9f7 100%) !important;
+  padding: 6px !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .9) inset,
+    0 10px 28px rgba(15, 73, 69, .06) !important;
+  counter-reset: annual-step !important;
 }
 
 .annual-workspace .annual-step {
   position: relative !important;
   isolation: isolate !important;
   min-width: 0 !important;
-  min-height: 52px !important;
+  min-height: 58px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
   gap: 10px !important;
-  overflow: hidden !important;
   border: 1px solid transparent !important;
-  border-radius: 11px !important;
+  border-radius: 14px !important;
   background: transparent !important;
-  padding: 7px 14px !important;
-  color: #365b58 !important;
-  font-size: 12px !important;
-  font-weight: 900 !important;
+  padding: 10px 14px !important;
+  color: #516e6b !important;
+  font-size: 12.5px !important;
+  font-weight: 800 !important;
+  letter-spacing: .01em !important;
   box-shadow: none !important;
-  transition: background .2s ease, border-color .2s ease, color .2s ease, transform .2s ease, box-shadow .2s ease !important;
+  transition: background .22s ease, border-color .22s ease, color .22s ease,
+    transform .22s ease, box-shadow .22s ease !important;
 }
 
 .annual-workspace .annual-step::before,
@@ -6241,56 +6245,61 @@ body:has(.annual-review-backdrop) .client-detail-card {
   content: none !important;
 }
 
+/* Step number badge — gives the tabs a clear workflow order */
+.annual-workspace .annual-step > span:not(.annual-step-icon) {
+  position: relative !important;
+}
+
 .annual-workspace .annual-step-icon {
-  width: 34px !important;
-  height: 34px !important;
-  flex: 0 0 34px !important;
+  width: 36px !important;
+  height: 36px !important;
+  flex: 0 0 36px !important;
   display: grid !important;
   place-items: center !important;
-  border: 1px solid #d8e7e5 !important;
-  border-radius: 10px !important;
-  background: #f7fbfa !important;
-  color: #177d78 !important;
-  box-shadow: 0 4px 10px rgba(15, 73, 69, .05) !important;
+  border: 1px solid #e2ece9 !important;
+  border-radius: 11px !important;
+  background: #ffffff !important;
+  color: #168b84 !important;
+  box-shadow: 0 2px 6px rgba(15, 73, 69, .06) !important;
   transition: inherit !important;
 }
 
 .annual-workspace .annual-step:not(.annual-step-active):hover {
-  border-color: #cce4e0 !important;
-  background: #f0faf8 !important;
+  background: #eef8f6 !important;
   color: #0c706a !important;
   transform: translateY(-1px) !important;
 }
 
 .annual-workspace .annual-step:not(.annual-step-active):hover .annual-step-icon {
-  border-color: #b9dcd7 !important;
-  background: #fff !important;
+  border-color: #cde5e0 !important;
+  box-shadow: 0 4px 10px rgba(15, 73, 69, .08) !important;
 }
 
 .annual-workspace .annual-step-active,
 .annual-workspace .annual-step-active:hover {
-  border-color: #0f837c !important;
-  background: linear-gradient(135deg, #168b84 0%, #08746f 100%) !important;
-  color: #fff !important;
-  transform: none !important;
-  box-shadow: 0 9px 20px rgba(8, 116, 111, .21) !important;
+  background: linear-gradient(135deg, #1a928b 0%, #0b7771 100%) !important;
+  color: #ffffff !important;
+  transform: translateY(-1px) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .18) inset,
+    0 12px 24px rgba(11, 119, 113, .26) !important;
 }
 
 .annual-workspace .annual-step-active .annual-step-icon {
-  border-color: rgba(255,255,255,.22) !important;
-  background: rgba(255,255,255,.16) !important;
-  color: #fff !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.14) !important;
+  border-color: rgba(255, 255, 255, .3) !important;
+  background: rgba(255, 255, 255, .18) !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2) !important;
 }
 
 .annual-workspace .annual-step-complete:not(.annual-step-active) {
-  color: #08745a !important;
+  color: #0a7a5e !important;
 }
 
 .annual-workspace .annual-step-complete:not(.annual-step-active) .annual-step-icon {
-  border-color: #bfe5d5 !important;
-  background: #eaf9f2 !important;
-  color: #08745a !important;
+  border-color: #c7e8d8 !important;
+  background: #ecfbf3 !important;
+  color: #0a7a5e !important;
 }
 
 .annual-workspace .annual-step-check {
@@ -6308,8 +6317,8 @@ body:has(.annual-review-backdrop) .client-detail-card {
     scrollbar-width: none !important;
   }
   .annual-workspace .annual-stepper::-webkit-scrollbar { display: none !important; }
-  .annual-workspace .annual-step { flex: 0 0 138px !important; min-height: 48px !important; padding-inline: 9px !important; }
-  .annual-workspace .annual-step-icon { width: 31px !important; height: 31px !important; flex-basis: 31px !important; }
+  .annual-workspace .annual-step { flex: 0 0 140px !important; min-height: 50px !important; padding-inline: 10px !important; }
+  .annual-workspace .annual-step-icon { width: 32px !important; height: 32px !important; flex-basis: 32px !important; }
 }
 
 /* Client context bar: keep after every legacy override */
