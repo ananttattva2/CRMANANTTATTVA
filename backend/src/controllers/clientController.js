@@ -1073,45 +1073,40 @@ async function readStoredPendingApprovals(listOnly = false) {
 }
 
 async function loadStoredPendingApprovals(listOnly = false) {
-  const projection = listOnly ? '-payload.data -payload.items -payload.scopeOfWork -payload.terms -payload.revisionHistory -payload.leadDetails -payload.managementApproval.proofUrl' : '';
+  const payloadFields = 'id uniqueId source quotationId quotationNumber leadId leadCode businessLeadCode companyName clientName contactPerson mobileNo1 quotationDate validUntil pricingMode combinedBasicAmount basicAmount grandTotal status approvalType createdBy userName leadGeneratedBy createdAt updatedAt service category piboCategory eprCategory managementApprovalStatus managementApproverId managementApproverName adminApprovalStatus priceApprovedByName managementApprovalSource managementApprovalNote selectedLeadId';
+  const listFields = 'type source sourceClientId uniqueId clientName approvalStatus piboCategory eprCategory createdByName requestDate requestTime actionBy actionAt remarks managementApprover managementApproverName managementApprovalSource managementApprovalNote reminderFlag redFlagAt greenFlagDeadline createdAt updatedAt ' + payloadFields.split(' ').map(field => `payload.${field}`).join(' ');
+  async function readIndex(filter, sort, limit) {
+    if (!listOnly) return PendingApproval.find(filter).populate('actionBy', 'name email').sort(sort).limit(limit).maxTimeMS(15000).lean();
+    const projection = Object.fromEntries(listFields.split(' ').map(field => [field, 1]));
+    const records = await require('../services/dashboardSnapshotCache').readDashboardCollection(PendingApproval, filter, projection);
+    records.sort((a, b) => { for (const [field, direction] of Object.entries(sort)) { const difference = new Date(a[field] || 0) - new Date(b[field] || 0); if (difference) return difference * direction; } return 0; });
+    return PendingApproval.populate(records.slice(0, limit), { path: 'actionBy', select: 'name email' });
+  }
   const [pendingClientRecords, pendingQuotationRecords, recentDecisionRecords] = await Promise.all([
-    PendingApproval.find({
-      type: 'client',
-      approvalStatus: { $in: ['PENDING', 'PARTIALLY_APPROVED', 'REVISION_REQUIRED'] }
-    })
-      .select(projection).maxTimeMS(15000).populate('actionBy', 'name email')
-      .sort({ createdAt: -1 })
-      .limit(500)
-      .lean(),
-    PendingApproval.find({
-      type: 'quotation',
-      approvalStatus: { $in: ['PENDING', 'PARTIALLY_APPROVED', 'REVISION_REQUIRED'] }
-    })
-      .select(projection).maxTimeMS(15000).populate('actionBy', 'name email')
-      // Revisions update the existing index row, so updatedAt represents the
-      // latest approval request while createdAt remains the original request.
-      .sort({ updatedAt: -1, createdAt: -1 })
-      .limit(500)
-      .lean(),
-    PendingApproval.find({
-      type: { $in: ['client', 'quotation'] },
-      approvalStatus: { $in: ['APPROVED', 'REJECTED'] }
-    })
-      .select(projection).maxTimeMS(15000).populate('actionBy', 'name email')
-      .sort({ actionAt: -1, createdAt: -1 })
-      .limit(100)
-      .lean()
+    readIndex({ type: 'client', approvalStatus: { $in: ['PENDING', 'PARTIALLY_APPROVED', 'REVISION_REQUIRED'] } }, { createdAt: -1 }, 500),
+    readIndex({ type: 'quotation', approvalStatus: { $in: ['PENDING', 'PARTIALLY_APPROVED', 'REVISION_REQUIRED'] } }, { updatedAt: -1, createdAt: -1 }, 500),
+    readIndex({ type: { $in: ['client', 'quotation'] }, approvalStatus: { $in: ['APPROVED', 'REJECTED'] } }, { actionAt: -1, createdAt: -1 }, 100)
   ]);
   const records = [...pendingClientRecords, ...pendingQuotationRecords, ...recentDecisionRecords];
 
   const clientRecords = records.filter((record) => record.type === 'client');
   const sourceClientIds = clientRecords.map((record) => record.sourceClientId).filter((id) => mongoose.Types.ObjectId.isValid(String(id)));
+  const clientIds = sourceClientIds.map(id => new mongoose.Types.ObjectId(String(id)));
+  async function compactReviewContext() {
+    const { readDashboardCollection } = require('../services/dashboardSnapshotCache');
+    const clients = await readDashboardCollection(Client, { _id: { $in: clientIds }, workflowStatus: 'submitted' }, { assignedServiceId: 1, 'data.assignedServiceId': 1, 'data.selectedLeadSnapshot.assignedServiceId': 1, selectedLead: 1 });
+    const ids = clients.map(client => client.selectedLead).filter(id => id && mongoose.isValidObjectId(String(id))).map(id => new mongoose.Types.ObjectId(String(id)));
+    const projection = Object.fromEntries('assignments.assignedServiceId assignments.poStatus assignments.poApprovalStatus assignments.closedAt assignments.closedBy assignments.closureFinalizedByManager assignments.assignedTo assignments.assignedStaff'.split(' ').map(field => [field, 1]));
+    const leads = ids.length ? await readDashboardCollection(Lead, { _id: { $in: ids } }, projection) : [];
+    const byId = new Map(leads.map(lead => [String(lead._id), lead]));
+    return clients.map(client => ({ ...client, selectedLead: byId.get(String(client.selectedLead)) || client.selectedLead }));
+  }
   const [submittedClients, complianceReviews] = await Promise.all([
-    Client.find({ _id: { $in: sourceClientIds }, workflowStatus: 'submitted' })
+    listOnly ? compactReviewContext() : Client.find({ _id: { $in: sourceClientIds }, workflowStatus: 'submitted' })
       .select('_id assignedServiceId data.assignedServiceId data.selectedLeadSnapshot.assignedServiceId selectedLead')
       .populate('selectedLead', 'assignments.assignedServiceId assignments.poStatus assignments.poApprovalStatus assignments.closedAt assignments.closedBy assignments.closureFinalizedByManager assignments.assignedTo assignments.assignedStaff')
       .lean(),
-    ClientComplianceReview.find({ client: { $in: sourceClientIds } })
+    listOnly ? require('../services/dashboardSnapshotCache').readDashboardCollection(ClientComplianceReview, { client: { $in: clientIds } }, { client: 1, status: 1, sections: 1, finalRemarks: 1, updatedAt: 1 }) : ClientComplianceReview.find({ client: { $in: sourceClientIds } })
       .select('client status sections finalRemarks updatedAt')
       .lean()
   ]);

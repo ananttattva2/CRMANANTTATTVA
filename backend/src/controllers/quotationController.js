@@ -800,7 +800,13 @@ exports.listQuotations = async (req, res) => {
     .sort({ quotationDate: -1, createdAt: -1 });
   if (!listView && req.query.view !== 'lead-review') query.populate('createdBy', 'name email').populate('approvalDecision.actionBy', 'name email role');
   if (limit) query.skip((page - 1) * limit).limit(limit);
-  const [quotations, counted] = await Promise.all([query.lean(), (req.query.view === 'lead-review' || snapshot) && !limit ? Promise.resolve(null) : Quotation.countDocuments(scopedFilter)]);
+  const listRead = async () => {
+    const projection = Object.fromEntries(listFields.split(' ').map(field => [field, 1]));
+    const rows = await require('../services/dashboardSnapshotCache').readDashboardCollection(Quotation, scopedFilter, projection);
+    rows.sort((a, b) => new Date(b.quotationDate || 0) - new Date(a.quotationDate || 0) || new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    return limit ? rows.slice((page - 1) * limit, page * limit) : rows;
+  };
+  const [quotations, counted] = await Promise.all([listView && Quotation.collection?.name ? listRead() : query.lean(), (req.query.view === 'lead-review' || snapshot) && !limit ? Promise.resolve(null) : Quotation.countDocuments(scopedFilter)]);
   if (listView) quotations.forEach(row => { row._listOnly = true; });
   const total = counted ?? quotations.length;
   res.json({ ok: true, quotations, pagination: { page, limit: limit || total, total, pages: limit ? Math.ceil(total / limit) : 1 } });

@@ -112,11 +112,8 @@ async function loadDashboardAssignments({ Client, Lead }, clientFilter, leadFilt
   // after loading it and no response is shared between authorization scopes.
   return cachedAssignments(JSON.stringify({ clientFilter, leadFilter }), async () => {
     const [clients, leads] = await Promise.all([
-      Client.aggregate([
-        { $match: clientFilter },
-        { $project: clientProjection }
-      ]).option({ maxTimeMS: 12000 }),
-      Lead.aggregate([{ $match: { $and: [leadFilter, permanentStaffFilter] } }, { $project: leadProjection }]).option({ maxTimeMS: 12000 })
+      require('./dashboardSnapshotCache').readDashboardCollection(Client, clientFilter, clientProjection),
+      require('./dashboardSnapshotCache').readDashboardCollection(Lead, { $and: [leadFilter, permanentStaffFilter] }, leadProjection)
     ]);
     const byId = new Map(leads.map(lead => [String(lead._id), lead]));
     // A legacy Client Master may have its own permanent owner even when its

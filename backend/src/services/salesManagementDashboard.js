@@ -640,11 +640,12 @@ async function getSalesManagementDashboard({ dateFrom, dateTo, department, manag
   const duration = period.end.getTime() - period.start.getTime() + 1;
   const previousEnd = new Date(period.start.getTime() - 1);
   const previousStart = new Date(previousEnd.getTime() - duration + 1);
+  const dashboardNow = new Date(Math.floor(Date.now() / 60000) * 60000);
   const [currentRows, previousRows, departments, carryForwardRows] = await Promise.all([
-    Lead.aggregate(buildSalesManagementAggregation({ ...period, department, managerId, ownerIds, interval })).option({ maxTimeMS: 30000 }),
-    Lead.aggregate(buildSalesManagementAggregation({ start: previousStart, end: previousEnd, department, managerId, ownerIds, interval })).option({ maxTimeMS: 30000 }),
+    require('./dashboardSnapshotCache').readDashboardAggregation(Lead, buildSalesManagementAggregation({ ...period, department, managerId, ownerIds, interval, now: dashboardNow })),
+    require('./dashboardSnapshotCache').readDashboardAggregation(Lead, buildSalesManagementAggregation({ start: previousStart, end: previousEnd, department, managerId, ownerIds, interval, now: dashboardNow })),
     User.distinct('team', { ...(ownerIds.length ? { _id: { $in: ownerIds } } : {}), isActive: { $ne: false } }),
-    Lead.aggregate(buildMonthlyCarryForwardAggregation({ ...period, department, ownerIds })).option({ maxTimeMS: 30000 })
+    require('./dashboardSnapshotCache').readDashboardAggregation(Lead, buildMonthlyCarryForwardAggregation({ ...period, department, ownerIds }))
   ]);
   const current = formatAggregation(currentRows[0] || {}, period, interval);
   const previous = formatAggregation(previousRows[0] || {}, { start: previousStart, end: previousEnd }, interval);

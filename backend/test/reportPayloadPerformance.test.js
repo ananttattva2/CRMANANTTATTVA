@@ -75,6 +75,15 @@ test('MIS projection drops multi-megabyte embedded bytes while preserving comple
   assert.equal(data.compliance.gstFile.length > 3_000_000, true);
 });
 
+test('targeted MIS client projection preserves completion and applicant identity without unrelated workflow trees', () => {
+  const { misClientProjection } = require('../src/services/misClientProjection');
+  const data = { basic: { clientLegalName: 'Example', piboCategory: 'Importer', companyType: 'Private Limited' }, compliance: { gstNo: 'GST1' }, authorisedPersons: [{ name: 'Contact' }], selectedLeadSnapshot: { applicantType: 'PIBO', subApplicantType: 'Importer', serviceSelections: Array(100).fill({ unrelated: 'large' }) }, annualReturn: { filings: Array(1000).fill({ document: 'large' }) } };
+  const compact = evaluate(misClientProjection.data, { data });
+  assert.deepEqual(analyzeClientMasterData(compact), analyzeClientMasterData(data));
+  assert.equal(compact.annualReturn, undefined); assert.equal(compact.selectedLeadSnapshot.serviceSelections, undefined);
+  assert.equal(compact.selectedLeadSnapshot.subApplicantType, 'Importer');
+});
+
 test('concurrent heartbeat requests update current session atomically without double-counting or versioned saves', async () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/controllers/authController.js'), 'utf8');
   const start = source.indexOf('exports.activityHeartbeat =');

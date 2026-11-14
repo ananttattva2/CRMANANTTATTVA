@@ -15,11 +15,15 @@ function presenceValue(input, depth = 3) {
   );
   return { $let: { vars: { value: input }, in: { $switch: { branches, default: '$$value' } } } };
 }
+const completionSections = 'authorised authorisedPersons basic communicationAddress companyOverview compliance coordinating cpcb cpcbOnboarding cpcbScreenshots cte msmeRows otp processDiagrams registeredAddress';
+const completionData = Object.fromEntries(completionSections.split(' ').map(section => [section, presenceValue(`$data.${section}`)]));
+completionData.assignedServiceId = '$data.assignedServiceId';
+completionData.selectedLeadSnapshot = Object.fromEntries('assignedServiceId applicantType piboParent subApplicantType piboCategory eprCategory serviceCategory servicesOffered applicableService plantUnit businessCategory'.split(' ').map(field => [field, `$data.selectedLeadSnapshot.${field}`]));
 const misClientProjection = { createdBy: 1, workflowStatus: 1, 'adminControls.approvalStatus': 1,
-  createdAt: 1, updatedAt: 1, selectedLead: 1, assignedServiceId: 1, data: presenceValue('$data') };
+  createdAt: 1, updatedAt: 1, selectedLead: 1, assignedServiceId: 1, data: completionData };
 async function readMisClients(Client, filter) {
   try {
-    return await Client.aggregate([{ $match: filter }, { $project: misClientProjection }]).option({ maxTimeMS: 20000 });
+    return await require('./dashboardSnapshotCache').readDashboardCollection(Client, filter, misClientProjection);
   } catch (error) {
     if (error.code !== 8000) throw error;
     console.warn('[MIS] Atlas rejected compact projection; reading original scoped records.');

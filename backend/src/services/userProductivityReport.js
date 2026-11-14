@@ -81,11 +81,11 @@ function buildDailyTimeline(sessions, activities) {
     current.awaySeconds += Math.max(0, openSeconds - (Number(session.activeSeconds) || 0));
     groups.set(date, current);
   });
-  activities.forEach((activity) => {
+  activities.filter(activity => !activity._recentOnly).forEach((activity) => {
     const date = indiaDateKey(activity.occurredAt);
     if (!groups.has(date)) groups.set(date, { date, firstLogin: null, lastSeen: activity.occurredAt, activeSeconds: 0, awaySeconds: 0, actions: 0, modules: new Set() });
     const current = groups.get(date);
-    current.actions += 1;
+    current.actions += Number(activity.count) || 1;
     if (activity.module) current.modules.add(activity.module);
     if (!current.lastSeen || new Date(activity.occurredAt) > new Date(current.lastSeen)) current.lastSeen = activity.occurredAt;
   });
@@ -165,7 +165,7 @@ function buildUserProductivityReport({ users, sessions, activities, leads, tempo
       const endAt = item.logoutAt || item.lastActivityAt || item.loginAt;
       return sum + Math.max(0, Math.round((new Date(endAt) - new Date(item.loginAt)) / 1000));
     }, 0);
-    const activityCount = ownActivities.length || ownSessions.reduce((sum, item) => sum + Math.max(0, Number(item.activityCount) || 0), 0);
+    const activityCount = ownActivities.reduce((sum, item) => sum + (item._recentOnly ? 0 : Number(item.count) || 1), 0) || ownSessions.reduce((sum, item) => sum + Math.max(0, Number(item.activityCount) || 0), 0);
     const awaySeconds = Math.max(0, openSeconds - activeSeconds);
     const online = Boolean(latestSession && !latestSession.logoutAt && now.getTime() - new Date(latestSession.lastActivityAt).getTime() < ONLINE_WINDOW_MS);
     const lastActivity = [...ownActivities.map((item) => item.occurredAt), ...ownSessions.map((item) => item.lastActivityAt), user.lastLogin]
@@ -191,7 +191,7 @@ function buildUserProductivityReport({ users, sessions, activities, leads, tempo
       presence: !user.lastLogin ? 'Never Logged In' : online ? (latestSession.presenceState === 'away' ? 'Away' : 'Active') : 'Offline',
       latestAccess: latestSession ? { ipAddress: latestSession.ipAddress || '', device: latestSession.userAgent || '' } : null,
       tickets: ticketByUser.get(id) || { total: 0, open: 0, resolved: 0 },
-      recentActions: [...ownActivities].sort((a, b) => new Date(b.occurredAt) - new Date(a.occurredAt)).slice(0, 12).map((item) => ({
+      recentActions: ownActivities.filter(item => !item._summary).sort((a, b) => new Date(b.occurredAt) - new Date(a.occurredAt)).slice(0, 12).map((item) => ({
         id: item._id, action: item.action, module: item.module, description: item.description, occurredAt: item.occurredAt, statusCode: item.statusCode
       })),
       timeline: buildDailyTimeline(ownSessions, ownActivities)
@@ -222,7 +222,7 @@ async function getUserProductivityReport({ from, to, requester }) {
   const requesterRole = String(requester?.role || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
   const isAdmin = ['admin', 'superadmin'].includes(requesterRole);
   const requesterId = requester?._id || requester?.id;
-  const reportPromise = require('./crmCache').getCrmCache().remember(`productivity-report-v4:${JSON.stringify({ from: period.from, to: period.to, isAdmin, requesterId: isAdmin ? 'all' : entityId(requesterId) })}`, async () => {
+  const reportPromise = require('./crmCache').getCrmCache().remember(`productivity-report-v5:${JSON.stringify({ from: period.from, to: period.to, isAdmin, requesterId: isAdmin ? 'all' : entityId(requesterId) })}`, async () => {
     const operationTeams = await reportQuery('teams', isAdmin
       ? Team.find().select('name manager operationHead members').sort({ name: 1 }).lean()
       : Team.find({ $or: [{ manager: requesterId }, { operationHead: requesterId }] }).select('name manager operationHead members').sort({ name: 1 }).lean());
@@ -235,9 +235,8 @@ async function getUserProductivityReport({ from, to, requester }) {
       reportQuery('users', User.find(userFilter).select('name email crmUserId role team teamId managerId operationHeadId isActive lastLogin').lean()),
       reportQuery('sessions', UserSession.find({ ...activityUserFilter, loginAt: createdAt })
         .select('userId loginAt lastActivityAt logoutAt activeSeconds activityCount presenceState ipAddress userAgent').sort({ loginAt: -1 }).limit(5000).maxTimeMS(15000).lean()),
-      reportQuery('activities', AuditLog.find({ ...activityUserFilter, occurredAt: createdAt })
-        .select('userId action module description occurredAt statusCode').sort({ occurredAt: -1 }).limit(10000).maxTimeMS(15000).lean()),
-      reportQuery('leads', Lead.find({ ...ownerFilter, createdAt }).select('createdBy createdByCrmUserId createdByEmail createdByName importedCreatedBy generatedForUser generatedForName generatedForEmail status closedBy closedByText closedAt createdAt').maxTimeMS(20000).lean()),
+      reportQuery('activities', require('./reportActivitySummary').readReportActivities(AuditLog, { ...activityUserFilter, occurredAt: createdAt })),
+      reportQuery('leads', require('./dashboardSnapshotCache').readDashboardCollection(Lead, { ...ownerFilter, createdAt }, Object.fromEntries('createdBy createdByCrmUserId createdByEmail createdByName importedCreatedBy generatedForUser generatedForName generatedForEmail status closedBy closedByText closedAt createdAt'.split(' ').map(field => [field, 1])))),
       reportQuery('temporary-leads', TemporaryLead.find({ ...ownerFilter, createdAt }).select('createdBy createdByName createdByEmail').maxTimeMS(15000).lean()),
       reportQuery('clients', require('./misClientProjection').readMisClients(Client, { ...ownerFilter, createdAt })),
       reportQuery('tickets', SupportTicket.aggregate([

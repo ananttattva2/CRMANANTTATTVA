@@ -74,7 +74,7 @@ function overallRecordsFromLeads(leads, scope = null) {
   return records;
 }
 async function loadOverallRecords(Lead, filter, scope = null) {
-  const leads = await Lead.aggregate(overallPipeline(filter)).option({ maxTimeMS: 12000 });
+  const leads = await require('./dashboardSnapshotCache').readDashboardCollection(Lead, filter, overallPipeline(filter)[1].$project);
   return overallRecordsFromLeads(leads, scope);
 }
 function createOverallCache({ ttl = 30000, maxEntries = 50, now = Date.now } = {}) {
