@@ -956,9 +956,17 @@ function canDirectlyApprovePoEdit(actor, modifyPoDetails, before = {}) {
 async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, submittedAssignments = [], poDebugId = '', modifyPoDetails = false }) {
   const beforeRows = Array.isArray(beforeLead.assignments) ? beforeLead.assignments : [];
   const rows = Array.isArray(lead.assignments) ? lead.assignments : [];
-  await Promise.all(rows.map(async (row, index) => {
-    if (row.poStatus !== 'received' || (!row.closedBy && !row.closureRequestedBy)) return;
-    const before = findExistingAssignment(beforeRows, row, index) || {};
+  const savedApprovals = await Promise.all(rows.map(async (row, index) => {
+    const before = findExistingAssignment(beforeRows, row, index) || beforeRows[index] || {};
+    const hasPoRows = Array.isArray(row.poYearRows) && row.poYearRows.length > 0;
+    const hasClosureEvidence = Boolean(
+      row.closedBy || row.closureRequestedBy || before.closedBy || before.closureRequestedBy
+      || lead.closedBy || lead.closedAt || beforeLead.closedBy || beforeLead.closedAt
+      || String(lead.status || beforeLead.status || '').toLowerCase() === 'closed'
+    );
+    // Existing legacy leads often saved closure at lead level only. An explicit
+    // Modify PO submission with complete PO rows must still create Admin review.
+    if (row.poStatus !== 'received' || (!hasClosureEvidence && !(modifyPoDetails && hasPoRows))) return null;
     const changed = String(before.poStatus || '') !== String(row.poStatus || '')
       || JSON.stringify(normalizedPoClosureRows(before)) !== JSON.stringify(normalizedPoClosureRows(row));
     const directlyApproved = canDirectlyApprovePoEdit(actor, modifyPoDetails, before);
@@ -966,7 +974,7 @@ async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, subm
     // stale PENDING flag as proof that the corresponding approval document still
     // exists: older/failed submissions can leave the flag behind and the UI would
     // otherwise report success while Admin receives neither a row nor an email.
-    if (!changed && row.poApprovalStatus && !modifyPoDetails) return;
+    if (!changed && row.poApprovalStatus && !modifyPoDetails) return null;
     row.poApprovalStatus = directlyApproved ? 'APPROVED' : 'PENDING';
     if (directlyApproved) {
       for (const key of ['closedBy', 'closedByText', 'closedAt', 'closureRequestedBy', 'closureRequestedByText']) row[key] = before[key] || row[key];
@@ -1002,7 +1010,7 @@ async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, subm
       } }, { upsert: true, new: true, setDefaultsOnInsert: true }
     );
     console.info('[POProof:approval:persisted]', { poDebugId, approvalId: String(savedApproval?._id || ''), leadCode: lead.leadCode || '', assignmentIndex: index, collection: PendingApproval.collection.collectionName, rowCount: poRowsSnapshot.length, proofCount: poProofManifest.filter((po) => po.poFileUrl).length });
-    if (directlyApproved) return savedApproval;
+    if (directlyApproved) return { approvalId: String(savedApproval?._id || ''), assignmentIndex: index, approvalStatus: 'APPROVED' };
     try {
       const notificationUsers = await User.find({
         isActive: { $ne: false },
@@ -1039,9 +1047,10 @@ async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, subm
     } catch (error) {
       console.error('Unable to send new PO approval notifications', error.message);
     }
-    return savedApproval;
+    return { approvalId: String(savedApproval?._id || ''), assignmentIndex: index, approvalStatus: 'PENDING' };
   }));
   lead.markModified('assignments');
+  return savedApprovals.filter(Boolean);
 }
 
 function leadCodeSequence(value) {
@@ -1988,7 +1997,7 @@ exports.updateLead = async (req, res) => {
     }
     lead.updatedBy = req.user?.name || req.user?.email || String(req.user?._id || '');
     if (data.closedBy && !lead.closedAt) lead.closedAt = new Date();
-    await upsertPurchaseOrderApprovals({ beforeLead, lead, actor: req.user, submittedAssignments: data.assignments, poDebugId, modifyPoDetails: req.body?.modifyPoDetails === true });
+    const poApprovalSubmissions = await upsertPurchaseOrderApprovals({ beforeLead, lead, actor: req.user, submittedAssignments: data.assignments, poDebugId, modifyPoDetails: req.body?.modifyPoDetails === true });
     await lead.save();
     if (poDebugId) console.info('[POProof:lead:persisted]', { poDebugId, leadId: String(lead._id), leadCode: lead.leadCode || '', collection: Lead.collection.collectionName, assignments: (lead.assignments || []).map((row, assignmentIndex) => ({ assignmentIndex, proofCount: (row.poYearRows || []).filter((po) => resolvePoProof(po).url).length, rowCount: (row.poYearRows || []).length })) });
     if (Object.prototype.hasOwnProperty.call(data, 'subApplicantType') || Array.isArray(data.serviceSelections)) {
@@ -2052,7 +2061,7 @@ exports.updateLead = async (req, res) => {
     }
     const changedFields = Object.keys(data).filter((key) => key !== 'followUpHistory');
     await LeadActivity.create({ lead: lead._id, type: 'lead_updated', title: 'Lead updated', description: changedFields.length ? `Updated ${changedFields.join(', ')}` : 'Lead details updated', actor: req.user?._id, metadata: { changedFields, modifyPoDetails: req.body?.modifyPoDetails === true } });
-    res.json({ ok: true, lead, introductionEmail });
+    res.json({ ok: true, lead, introductionEmail, poApprovalSubmissions });
   } catch (err) {
     res.status(err.status || err.statusCode || (err.code === 11000 || err.name === 'VersionError' ? 409 : 500)).json({ error: err.code === 11000 ? 'This PO entered Finance review while you were editing. Refresh the lead.' : err.message || 'Unable to update lead' });
   }

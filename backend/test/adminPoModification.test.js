@@ -70,3 +70,19 @@ test('explicit regular-user Modify PO repairs a missing approval even when the s
     assert.equal(requests[0][1].$set.approvalStatus,'PENDING');
   } finally {PendingApproval.findOne=originalFind;PendingApproval.findOneAndUpdate=originalCreate;User.find=originalUsers;}
 });
+
+test('legacy lead-level closure can resubmit PO details for Admin approval', async () => {
+  const originalCreate=PendingApproval.findOneAndUpdate, originalFind=PendingApproval.findOne, originalUsers=User.find;
+  const requests=[];
+  PendingApproval.findOne=()=>({select(){return this;},lean:async()=>null});
+  PendingApproval.findOneAndUpdate=async (...args)=>{requests.push(args);return {_id:'legacy-review'};};
+  User.find=()=>({select(){return this;},lean:async()=>[]});
+  try {
+    const legacyBefore={assignedServiceId:'s1',poStatus:'received',poApprovalStatus:'PENDING',poYearRows:structuredClone(before.poYearRows)};
+    const row=structuredClone(legacyBefore);
+    const lead={_id:'lead1',leadCode:'ATPL-LEAD-1',status:'Closed',assignments:[row],serviceSelections:[],markModified(){}};
+    const result=await controller.upsertPurchaseOrderApprovals({beforeLead:{status:'Closed',assignments:[legacyBefore]},lead,actor:{role:'operation',name:'User'},modifyPoDetails:true});
+    assert.equal(requests.length,1);
+    assert.deepEqual(result,[{approvalId:'legacy-review',assignmentIndex:0,approvalStatus:'PENDING'}]);
+  } finally {PendingApproval.findOne=originalFind;PendingApproval.findOneAndUpdate=originalCreate;User.find=originalUsers;}
+});

@@ -1298,6 +1298,10 @@ export default function LeadGeneration() {
       const savedLead = response.data.lead || response.data.data?.lead || response.data.data;
       if (!savedLead || !Array.isArray(savedLead.assignments)) throw new Error('CRM did not return saved PO details.');
       const savedAssignment = savedLead.assignments[closureDialog.index] || {};
+      const approvalSubmission = (response.data?.poApprovalSubmissions || []).find((item) => Number(item?.assignmentIndex) === Number(closureDialog.index));
+      if (closureDialog.choice === 'yes' && !approvalSubmission?.approvalId) {
+        throw new Error('PO details were saved, but the Admin approval request was not created. Please retry or contact Admin.');
+      }
       console.info('[POProof:closure:saved]', { poDebugId, leadCode: savedLead.leadCode || '', assignmentIndex: closureDialog.index, rows: (savedAssignment.poYearRows || []).map((row, rowIndex) => ({ rowIndex, poNumber: row.poNumber, hasPoFileUrl: Boolean(row.poFileUrl), poFileName: row.poFileName || '' })) });
       // This endpoint intentionally submits assignment/PO workflow state only.
       // Keep the already-loaded service profile authoritative so a partial API

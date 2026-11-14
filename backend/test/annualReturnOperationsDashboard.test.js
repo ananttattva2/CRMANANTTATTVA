@@ -101,6 +101,24 @@ test('legacy malformed assignment arrays do not crash or hide later valid servic
   assert.deepEqual(records[0].years, ['2025-26']);
 });
 
+test('closed Annual Return service remains in total while permanent staff assignment is pending', () => {
+  const client = {
+    _id: 'pending-staff-client', assignedServiceId: 'annual-service', workflowStatus: 'submitted',
+    data: { cpcb: { status: 'Approved' } },
+    selectedLead: {
+      _id: 'lead-pending-staff', company: 'SARVOTTAM POLYMERS PVT. LTD.', status: 'Closed',
+      serviceSelections: [{ assignedServiceId: 'annual-service', servicesOffered: 'Annual Return Filling', eprCategory: 'Plastic Waste', applicantType: 'PIBO', subApplicantType: 'Importer' }],
+      assignments: [{ assignedServiceId: 'annual-service', assignedTo: 'manager-1', closedByText: 'Sales User', poStatus: 'received', poYearRows: [{ annualReturnYear: '2025-26', poNumber: 'PO-1' }] }]
+    }
+  };
+  const records = buildRecords({ clients: [client], users: [], teams: [], filings: new Map() });
+  const dashboard = buildDashboard(records, { year: '2025-26', search: 'SARVOTTAM' });
+  assert.equal(dashboard.summary.total, 1);
+  assert.equal(dashboard.summary.pending, 1);
+  assert.equal(dashboard.records[0].assignedUser, 'Unassigned');
+  assert.equal(dashboard.records[0].staffAssignmentPending, true);
+});
+
 test('Operations records use the same Annual Return applicability gates as Application Status Summary', () => {
   const user = { _id: 'u1', name: 'Operations User', role: 'operation' };
   const eligible = (id, subType = 'Producer', overrides = {}) => ({

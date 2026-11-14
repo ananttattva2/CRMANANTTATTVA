@@ -158,9 +158,8 @@ function buildRecords({ clients = [], users = [], filings = new Map(), teams = [
       || (services.length === 1 && (lead.closedAt || lead.closedBy || lead.closedByText)) || key(lead.status) === 'closed');
     const clientStatus = key(client.workflowStatus || client.data?.importMeta?.clientStatus);
     const years = applicationAnnualYears(assignment, poRows);
-    if (clientStatus === 'draft' || !closed || !workflowReady || !isApprovedApplication(client, serviceId) || !years.length) continue;
+    if (clientStatus === 'draft' || !closed || !isApprovedApplication(client, serviceId) || !years.length) continue;
     const owner = findOwner(usersByIdentity, assignment.assignedStaff, assignment.assignedStaffEmail, assignment.assignedStaffText, lead.assignedStaff, lead.assignedStaffEmail, lead.assignedStaffText);
-    if (!owner) continue;
     const manager = owner ? usersById.get(text(owner.managerId)) : null;
     const team = owner?.teamId ? teamsById.get(text(owner.teamId)) : '';
     const applicantType = text(service.piboParent || service.piboCategoryParent || service.applicantType || lead.piboParent || lead.applicantType || 'Not specified');
@@ -180,6 +179,7 @@ function buildRecords({ clients = [], users = [], filings = new Map(), teams = [
       id: recordKey, clientId, sourceClientIds: clientId ? [clientId] : [], company, uniqueId, leadId, category, applicantType, subType, plantUnit: unit, serviceName, years,
       slaReceived: client?.sla?.status === 'Yes',
       assignedUserId: owner ? text(owner) : '', assignedUser: owner?.name || owner?.email || assignment.assignedStaffText || 'Unassigned',
+      staffAssignmentPending: !workflowReady,
       teamId: owner?.teamId ? text(owner.teamId) : '', team: team || manager?.name || manager?.email || 'No team assigned',
       managerId: manager ? text(manager) : '', dueDate, yearStates,
       openPath: clientId ? `/sales/client-data-processing/${encodeURIComponent(clientId)}/{year}` : `/sales/client-master?search=${encodeURIComponent(leadId)}`
