@@ -31,7 +31,7 @@ function eligibleForNoOwner(lead, now = Date.now()) {
 function noOwnerEligibilityFilter(now = Date.now()) {
   const cutoff = new Date(now - 30 * DAY);
   const closedRow = { $or: [
-    ...['closedAt', 'closedBy', 'closedByText', 'poYearRows.poNumber', 'poYearRows.poNo'].map(field => ({ [field]: { $exists: true, $nin: [null, ''] } })),
+    ...['closedAt', 'closedByText', 'poYearRows.poNumber', 'poYearRows.poNo'].map(field => ({ [field]: { $exists: true, $nin: [null, ''] } })),
     { status: /closed|won|converted|lost|cancel/i },
     { recordStatus: /inactive|deleted/i },
     { poStatus: { $in: ['provisional', 'permanently_closed'] } }
@@ -49,6 +49,16 @@ function noOwnerEligibilityFilter(now = Date.now()) {
     closedByText: { $in: [null, ''] },
     status: { $not: /closed|won|converted|lost|cancel/i },
     poStatus: { $nin: ['provisional', 'permanently_closed'] },
+    // Mongoose casts nested closedBy predicates using Lead.closedBy's ObjectId
+    // schema even inside these legacy Mixed arrays. Check blank/string/ObjectId
+    // values in an expression so a normal user's shared scope remains cast-safe.
+    $expr: { $and: ['assignments', 'serviceSelections'].map(path => ({
+      $not: [{ $anyElementTrue: [{ $map: {
+        input: { $cond: [{ $isArray: `$${path}` }, `$${path}`, []] },
+        as: 'closureRow',
+        in: { $ne: [{ $ifNull: ['$$closureRow.closedBy', ''] }, ''] }
+      } }] }]
+    })) },
     assignments: { $not: { $elemMatch: closedRow } },
     serviceSelections: { $not: { $elemMatch: closedRow } }
   };

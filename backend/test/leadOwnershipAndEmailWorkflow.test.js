@@ -79,8 +79,8 @@ test('an old open lead loses its current owner and records the resolved previous
   let saved, activity;
   t.mock.method(Lead, 'find', filter => {
     assert.deepEqual(filter.$and[0].$or[1], { updatedAt: { $lte: new Date(now - 30 * DAY) } });
-    const marker = filter.assignments.$not.$elemMatch.$or.find(item => item.closedBy);
-    assert.deepEqual(marker.closedBy.$nin, [null, '']);
+    assert.equal(filter.assignments.$not.$elemMatch.$or.some(item => item.closedBy), false);
+    assert.equal(filter.$expr.$and.length, 2);
     return query([lead]);
   });
   t.mock.method(User, 'findById', () => query({ name: 'Current Account Name', email: 'owner@example.test' }));

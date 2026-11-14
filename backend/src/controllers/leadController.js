@@ -1441,6 +1441,7 @@ exports.searchCompanies = async (req, res) => {
 };
 
 exports.listLeads = async (req, res) => {
+  try {
   const startedAt = process.hrtime.bigint();
   const accessStartedAt = process.hrtime.bigint();
   const requestedWorkspace = String(req.query.workspace || '').trim().toLowerCase();
@@ -1704,6 +1705,10 @@ exports.listLeads = async (req, res) => {
     },
     timings: process.env.API_PERF_TIMINGS === 'true' ? { accessMs, queryMs, totalMs } : undefined
   });
+  } catch (error) {
+    console.error('Lead directory read failed', { name: error.name, code: error.code, path: error.path });
+    return res.status(503).json({ error: 'Unable to load leads right now. Please retry.', code: 'LEAD_DIRECTORY_UNAVAILABLE' });
+  }
 };
 
 exports.getLead = async (req, res) => {
