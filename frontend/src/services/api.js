@@ -1,5 +1,6 @@
 import { getCrmGeneration, notifyCrmChanged } from './crmFreshness'
 import axios from 'axios'
+import { gatewayRetryDelay } from './gatewayRetry.mjs'
 import { API_ENDPOINTS } from './apiEndpoints'
 
 // Keep browser requests on the current origin. Vercel proxies /api to DigitalOcean,
@@ -151,7 +152,13 @@ api.interceptors.response.use(
     }
     return response
   },
-  (error) => {
+  async (error) => {
+    const delay = gatewayRetryDelay(error)
+    if (delay !== null) {
+      await new Promise(resolve => window.setTimeout(resolve, delay))
+      if (error.config.signal?.aborted) return Promise.reject(error)
+      return api.request({ ...error.config, _crmGatewayRetries: (error.config._crmGatewayRetries || 0) + 1 })
+    }
     const status = error?.response?.status
     const requestUrl = String(error?.config?.url || '')
     const message = String(error?.response?.data?.error || error?.response?.data?.message || '').toLowerCase()

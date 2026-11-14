@@ -120,3 +120,11 @@ test('unassigned-only and empty dashboards keep a visible count without a fake r
  const data=salesRepTableData(salesRepSummary([{kind:'hot',state:'open',owner:''}]));
  assert.equal(data.reps.length,0);assert.equal(data.totals.hotUnassigned,1);assert.equal(data.totals.totalLeads,1);
 });
+
+test('released leads are attributed to their recorded previous owner without inflating current open counts',async()=>{
+ const {salesRepSummary,salesRepTableData}=await import('../../frontend/src/utils/salesRepSummary.mjs');
+ const rows=[...Array.from({length:8},(_,i)=>({id:'a'+i,kind:'hot',state:'open',owner:'Anand'})),...Array.from({length:2},(_,i)=>({id:'u'+i,kind:'hot',state:'open',owner:'Unassigned',previousOwner:'Anand'})),{kind:'hot',state:'open',owner:'Unassigned',previousOwner:'Other'}, {kind:'hot',state:'open',owner:'Unassigned'}];
+ const {reps,totals}=salesRepTableData(salesRepSummary(rows));const anand=reps.find(rep=>rep.owner==='Anand');
+ assert.equal(anand.hotOpen,8);assert.equal(anand.hotUnassigned,2);assert.equal(anand.totalLeads,10);assert.equal(reps.find(rep=>rep.owner==='Other').hotUnassigned,1);
+ assert.equal(totals.hotUnassigned,4);assert.equal(totals.totalLeads,12);assert.equal(totals.hotOpen+totals.hotClosed+totals.hotUnassigned+totals.coldOpen,12);
+});

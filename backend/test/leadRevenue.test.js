@@ -99,7 +99,7 @@ test('converted cold leads remain in Cold Closed history and link to one unique 
   './leadController':{leadAccessFilter:async()=>({visible:'hot'})},
   './temporaryLeadController':{temporaryLeadAccessFilter:async()=>({visible:'cold'})},
   '../services/leadRevenue':require('../src/services/leadRevenue'),
-  '../services/latestLeadQuotation':require('../src/services/latestLeadQuotation'), '../utils/userRoles':{}
+  '../services/latestLeadQuotation':require('../src/services/latestLeadQuotation'), '../utils/userRoles':{userHasAnyRole:()=>false}
  };
  const context={exports:{},require:name=>deps[name]};
  vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../src/controllers/leadRevenueController.js'),'utf8'),context);

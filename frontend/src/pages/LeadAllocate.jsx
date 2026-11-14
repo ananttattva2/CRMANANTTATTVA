@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, RefreshCw, Search, ShieldCheck, UserCheck, UserPlus, Users } from 'lucide-react'
 import DashboardShell from '../components/dashboard/DashboardShell'
@@ -64,12 +64,16 @@ export default function LeadAllocate() {
   const [savingId, setSavingId] = useState('')
   const [message, setMessage] = useState(null)
 
+  const loadRequest = useRef(0)
   const load = async (quiet = false) => {
+    const requestId = ++loadRequest.current
     if (!quiet) setLoading(true)
     try {
       const dataRequest = activeTab === 'leads'
         ? api.get(API_ENDPOINTS.leads.list, { params: {
           paginated: true,
+          directory: true,
+          workspace: 'allocation',
           page,
           limit: 25,
           search: search.trim() || undefined,
@@ -85,8 +89,9 @@ export default function LeadAllocate() {
       const [meResult, dataResult, userResult] = await Promise.all([
         api.get(API_ENDPOINTS.auth.me),
         dataRequest,
-        api.get(API_ENDPOINTS.auth.users)
+        api.get(API_ENDPOINTS.leads.assignmentUsers, { params: { view: 'directory' } })
       ])
+      if (requestId !== loadRequest.current) return
       setCurrentUser(meResult.data?.user || meResult.data)
       if (activeTab === 'leads') {
         setLeads(dataResult.data?.leads || [])
@@ -101,9 +106,10 @@ export default function LeadAllocate() {
       const users = userResult.data?.users || userResult.data || []
       setAdmins(users.filter((user) => user.isActive !== false))
     } catch (error) {
+      if (requestId !== loadRequest.current) return
       setMessage({ kind: 'error', text: error.response?.data?.error || 'Unable to load lead allocation data.' })
     } finally {
-      setLoading(false)
+      if (requestId === loadRequest.current) setLoading(false)
     }
   }
 
@@ -159,6 +165,7 @@ export default function LeadAllocate() {
       const emailNote = delivery?.sent ? ` Assignment email sent to ${delivery.recipient}.` : delivery?.requested ? ' Allocation saved, but the email could not be delivered.' : ' Allocation saved; this user has no email address.'
       setMessage({ kind: delivery?.requested && !delivery?.sent ? 'error' : 'success', text: `${result.data.message || 'Lead allocation saved in database.'}${emailNote}` })
     } catch (error) {
+      if (requestId !== loadRequest.current) return
       setMessage({ kind: 'error', text: error.response?.data?.error || 'Unable to allocate this lead.' })
     } finally {
       setSavingId('')
@@ -174,6 +181,7 @@ export default function LeadAllocate() {
       setLeads((current) => current.map((item) => idOf(item) === leadId ? result.data.lead : item))
       setMessage({ kind: 'success', text: result.data.message || 'Created By saved in database.' })
     } catch (error) {
+      if (requestId !== loadRequest.current) return
       setMessage({ kind: 'error', text: error.response?.data?.error || 'Unable to update Created By.' })
     } finally {
       setSavingId('')
@@ -189,6 +197,7 @@ export default function LeadAllocate() {
       setTemporaryLeads((current) => current.map((item) => idOf(item) === leadId ? result.data.temporaryLead : item))
       setMessage({ kind: 'success', text: result.data.message || 'Temporary lead reassigned successfully.' })
     } catch (error) {
+      if (requestId !== loadRequest.current) return
       setMessage({ kind: 'error', text: error.response?.data?.error || 'Unable to reassign this temporary lead.' })
     } finally {
       setSavingId('')

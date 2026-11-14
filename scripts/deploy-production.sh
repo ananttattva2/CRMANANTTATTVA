@@ -137,7 +137,7 @@ if [[ -n "$(find "$NEXT_DIST" -type l -print -quit)" ]]; then
 fi
 fi
 
-if ! git diff --quiet "$PREVIOUS_SHA" "$EXPECTED_SHA" -- backend .puppeteerrc.cjs frontend/src/utils/quotationDocument.mjs frontend/src/utils/servicePeriod.mjs; then
+if ! git diff --quiet "$PREVIOUS_SHA" "$EXPECTED_SHA" -- backend/src backend/package.json backend/package-lock.json .puppeteerrc.cjs frontend/src/utils/quotationDocument.mjs frontend/src/utils/servicePeriod.mjs; then
   BACKEND_CHANGED=true
 fi
 if ! git diff --quiet "$PREVIOUS_SHA" "$EXPECTED_SHA" -- backend/package.json backend/package-lock.json .puppeteerrc.cjs; then

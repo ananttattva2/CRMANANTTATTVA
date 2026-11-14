@@ -1489,9 +1489,11 @@ exports.listLeads = async (req, res) => {
     ? String(req.query.sortBy)
     : 'leadCode';
   const sortOrder = String(req.query.sortOrder).toLowerCase() === 'desc' ? -1 : 1;
+  const allocationView = workspace === 'allocation';
+  if (allocationView && !userHasAnyRole(req.user, ADMIN_ROLES)) return res.status(403).json({ error: 'Lead allocation is restricted to administrators.' });
   const filters = workspace === 'no-owner'
     ? [noOwnerWorkspaceFilter()]
-    : [accessFilter, { 'noOwner.active': { $ne: true } }];
+    : allocationView ? [accessFilter] : [accessFilter, { 'noOwner.active': { $ne: true } }];
   if (req.query.dashboard === 'true') {
     const testLeadReferences = await getAdminCreatedLeadReferences();
     filters.push(dashboardLeadExclusionFilter(testLeadReferences));
@@ -2596,6 +2598,7 @@ exports.requestDuplicateLeadApproval = async (req, res) => {
 };
 
 exports.listDuplicateLeadApprovals = async (req, res) => {
+  try {
   const startedAt = Date.now();
   const poOnly = req.query.type === 'purchase_order';
   const admin = userHasAnyRole(req.user, ADMIN_ROLES);
@@ -2700,8 +2703,18 @@ exports.listDuplicateLeadApprovals = async (req, res) => {
     }
   }
   const listOnly = req.query.listOnly === 'true';
-  const listProjection = listOnly ? '-payload.poYearRows.poFileUrl -payload.poProofManifest.poFileUrl -payload.poRows.poFileUrl -payload.earlierQuotationProofUrl -payload.poFileUrl' : '';
-  const [activeApprovals, recentDecisions] = await Promise.all([
+  const listProjection = listOnly && poOnly ? [
+    'type source sourceClientId uniqueId clientName approvalStatus createdByName requestDate requestTime createdAt updatedAt actionAt actionBy remarks',
+    'payload.leadId payload.leadCode payload.company payload.service payload.assignmentIndex payload.assignedServiceId payload.poSubmittedById payload.poSubmittedByName payload.poSubmittedByEmail payload.leadCreatorId payload.leadCreatorName payload.leadCreatorEmail payload.closureRequestedBy payload.closureRequestedByName payload.quotationCreatorIds payload.quotationCreatorEmails',
+    ...['poYearRows', 'poRows', 'purchaseOrders'].flatMap(key => ['poNumber','poNo','poAmount','poDate','poEndDate','poFinancialYear','financialYear','fy','annualReturnYear','registrationYear','paymentTerm','poFileName','quotationSent','quotationId','quotationNumber','quotationBasicAmount','currency','quotationItems.unit','quotationItems.basicAmount','quotationItems.applicantType','quotationItems.subApplicantType','quotationItems.piboCategory','quotationItems.servicesOffered','quotationItems.serviceCategory'].map(field => `payload.${key}.${field}`))
+  ].join(' ') : listOnly ? '-payload.poYearRows.poFileUrl -payload.poProofManifest.poFileUrl -payload.poRows.poFileUrl -payload.earlierQuotationProofUrl -payload.poFileUrl' : '';
+  const snapshotApprovals = admin && poOnly && listOnly && PendingApproval.db?.readyState === 1
+    ? await require('../services/compactReadSnapshot').compactReadSnapshot(PendingApproval, { filter: { type: 'purchase_order', deletedAt: null }, versionIndex: { type: 1, deletedAt: 1, updatedAt: 1, _id: 1 }, selection: listProjection })
+    : null;
+  const [activeApprovals, recentDecisions] = snapshotApprovals ? await Promise.all([
+    PendingApproval.populate(snapshotApprovals.filter(row => ['PENDING', 'PARTIALLY_APPROVED', 'REVISION_REQUIRED'].includes(row.approvalStatus)).sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0,500), { path: 'actionBy', select: 'name email' }),
+    PendingApproval.populate(snapshotApprovals.filter(row => ['APPROVED', 'REJECTED'].includes(row.approvalStatus)).sort((a,b) => new Date(b.actionAt || 0) - new Date(a.actionAt || 0) || new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0,500), { path: 'actionBy', select: 'name email' })
+  ]) : await Promise.all([
     PendingApproval.find({
       ...query,
       approvalStatus: { $in: ['PENDING', 'PARTIALLY_APPROVED', 'REVISION_REQUIRED'] }
@@ -2842,6 +2855,10 @@ exports.listDuplicateLeadApprovals = async (req, res) => {
     approvalCollection: PendingApproval.collection.collectionName,
     approvalPaths: ['payload.poYearRows[].poFileUrl', 'payload.poProofManifest[].poFileUrl']
   } });
+  } catch (error) {
+    console.error('Approval feed read failed', { name: error.name, code: error.code });
+    return res.status(503).json({ error: 'Unable to refresh approvals right now. Please retry.', code: 'APPROVAL_FEED_UNAVAILABLE' });
+  }
 };
 
 exports.updateDuplicateLeadApproval = async (req, res) => {
