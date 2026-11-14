@@ -50,3 +50,23 @@ test('regular user PO edits still create a pending review even with modify flag'
     assert.equal(requests[0][2].upsert,true);
   } finally {PendingApproval.findOne=originalFind;PendingApproval.findOneAndUpdate=originalCreate;PendingApproval.updateOne=originalUpdate;User.find=originalUsers;}
 });
+
+test('explicit regular-user Modify PO repairs a missing approval even when the saved row is already pending', async () => {
+  const originalCreate=PendingApproval.findOneAndUpdate, originalFind=PendingApproval.findOne, originalUsers=User.find;
+  const requests=[];
+  PendingApproval.findOne=()=>({select(){return this;},lean:async()=>null});
+  PendingApproval.findOneAndUpdate=async (...args)=>{requests.push(args);return {_id:'repaired-review'};};
+  User.find=(query)=>({select(){return this;},async lean(){
+    assert.deepEqual(query, {isActive:{$ne:false},email:{$exists:true,$ne:''}});
+    return [];
+  }});
+  try {
+    const pendingBefore={...structuredClone(before),poApprovalStatus:'PENDING'};
+    const row=structuredClone(pendingBefore);
+    const lead={_id:'lead1',leadCode:'ATPL-LEAD-1',assignments:[row],serviceSelections:[],markModified(){}};
+    await controller.upsertPurchaseOrderApprovals({beforeLead:{assignments:[pendingBefore]},lead,actor:{role:'operation',name:'User'},modifyPoDetails:true});
+    assert.equal(row.poApprovalStatus,'PENDING');
+    assert.equal(requests.length,1);
+    assert.equal(requests[0][1].$set.approvalStatus,'PENDING');
+  } finally {PendingApproval.findOne=originalFind;PendingApproval.findOneAndUpdate=originalCreate;User.find=originalUsers;}
+});

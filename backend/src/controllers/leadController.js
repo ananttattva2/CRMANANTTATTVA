@@ -824,6 +824,11 @@ function normalizedPoClosureRows(assignment = {}) {
     paymentTerm: String(po?.paymentTerm || '').trim(),
     poAmount: Math.max(0, Number(po?.poAmount) || 0),
     poFileUrl: resolvePoProof(po).url,
+    poFileName: String(resolvePoProof(po).name || po?.poFileName || '').trim(),
+    quotationId: String(po?.quotationId || '').trim(),
+    quotationNumber: String(po?.quotationNumber || '').trim(),
+    quotationSent: String(po?.quotationSent || assignment?.quotationSent || '').trim().toLowerCase(),
+    earlierQuotationProofUrl: String(po?.earlierQuotationProofUrl || assignment?.earlierQuotationProofUrl || '').trim(),
     services: (Array.isArray(po?.services) ? po.services : [])
       .map((service) => String(service || '').trim())
       .filter(Boolean)
@@ -956,8 +961,12 @@ async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, subm
     const before = findExistingAssignment(beforeRows, row, index) || {};
     const changed = String(before.poStatus || '') !== String(row.poStatus || '')
       || JSON.stringify(normalizedPoClosureRows(before)) !== JSON.stringify(normalizedPoClosureRows(row));
-    if (!changed && row.poApprovalStatus) return;
     const directlyApproved = canDirectlyApprovePoEdit(actor, modifyPoDetails, before);
+    // Modify PO is an explicit workflow submission. Do not trust an assignment's
+    // stale PENDING flag as proof that the corresponding approval document still
+    // exists: older/failed submissions can leave the flag behind and the UI would
+    // otherwise report success while Admin receives neither a row nor an email.
+    if (!changed && row.poApprovalStatus && !modifyPoDetails) return;
     row.poApprovalStatus = directlyApproved ? 'APPROVED' : 'PENDING';
     if (directlyApproved) {
       for (const key of ['closedBy', 'closedByText', 'closedAt', 'closureRequestedBy', 'closureRequestedByText']) row[key] = before[key] || row[key];
@@ -995,13 +1004,14 @@ async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, subm
     console.info('[POProof:approval:persisted]', { poDebugId, approvalId: String(savedApproval?._id || ''), leadCode: lead.leadCode || '', assignmentIndex: index, collection: PendingApproval.collection.collectionName, rowCount: poRowsSnapshot.length, proofCount: poProofManifest.filter((po) => po.poFileUrl).length });
     if (directlyApproved) return savedApproval;
     try {
-      const notificationUsers = await User.find({ $or: [
-        { role: { $in: ADMIN_ROLES }, isActive: { $ne: false } },
-        ...(actor?._id && mongoose.isValidObjectId(actor._id) ? [{ _id: actor._id }] : [])
-      ] }).select('name email role').lean();
-      const recipients = [...new Set([
-        ...notificationUsers.map((user) => user.email), actor?.email
-      ].map((email) => String(email || '').trim().toLowerCase()).filter(Boolean))];
+      const notificationUsers = await User.find({
+        isActive: { $ne: false },
+        email: { $exists: true, $ne: '' }
+      }).select('_id name email role roles').lean();
+      const adminUsers = notificationUsers.filter((user) => userHasAnyRole(user, ADMIN_ROLES));
+      const recipients = [...new Set(adminUsers
+        .map((user) => String(user.email || '').trim().toLowerCase())
+        .filter(Boolean))];
       const poRows = Array.isArray(row.poYearRows) ? row.poYearRows : [];
       const emailHtml = buildPurchaseOrderEmail({
         eyebrow: 'New purchase order approval',
@@ -1013,14 +1023,19 @@ async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, subm
         status: 'PENDING',
         actionUrl: `${String(process.env.FRONTEND_URL || 'https://crmananttattva.vercel.app').replace(/\/$/, '')}/pending-approval`
       });
-      // Approval persistence is the critical path. Mail providers can take up
-      // to their network timeout per request, so do not hold the closure HTTP
-      // response open (and risk a proxy 502) while notifications are delivered.
-      void Promise.allSettled(recipients.map((email) => sendMail(email, `New PO Approval - ${lead.company || lead.leadCode}`, emailHtml, { branded: false })))
-        .then((results) => {
-          const failed = results.filter((result) => result.status === 'rejected');
-          if (failed.length) console.error('Unable to send some new PO approval notifications', { failed: failed.length, recipients: recipients.length });
-        });
+      if (!recipients.length) {
+        console.error('Unable to send new PO approval notifications: no active Admin recipients', { leadCode: lead.leadCode || '', approvalId: String(savedApproval?._id || '') });
+      } else {
+        // Keep the already-persisted approval response independent from a slow
+        // mail provider, while recording which Admin deliveries completed.
+        void Promise.allSettled(recipients.map((email) => sendMail(email, `New PO Approval - ${lead.company || lead.leadCode}`, emailHtml, { branded: false })))
+          .then(async (results) => {
+            const delivered = recipients.filter((_email, index) => results[index]?.status === 'fulfilled');
+            const failed = results.filter((result) => result.status === 'rejected');
+            if (delivered.length) await PendingApproval.updateOne({ _id: savedApproval._id }, { $set: { notifiedAdminEmails: delivered } }).catch(() => null);
+            if (failed.length) console.error('Unable to send some new PO approval notifications', { failed: failed.length, recipients: recipients.length, leadCode: lead.leadCode || '' });
+          });
+      }
     } catch (error) {
       console.error('Unable to send new PO approval notifications', error.message);
     }
