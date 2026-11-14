@@ -78,3 +78,21 @@
 }
 
 .upload-tracker .ut-footer > div > svg { flex-shrink: 0; }
+
+/* Receipt tracking: mounted panels retain native upload state while animating. */
+.upload-tracker .ut-table tbody .ut-detail-row > td { padding: 0; border: 0; }
+.upload-tracker .ut-collapse-inner > .ut-details { padding:16px 20px; }
+.upload-tracker .ut-collapse { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .25s ease, opacity .2s ease; }
+.upload-tracker .ut-detail-open .ut-collapse { grid-template-rows: 1fr; opacity: 1; }
+.upload-tracker .ut-collapse-inner { overflow: hidden; min-height: 0; }
+.upload-tracker .ut-expand { display: inline-flex; align-items:center; justify-content:center; width:24px; height:24px; margin-top:6px; border:1px solid #fed7aa; background:#fff7ed; color:#c2410c; border-radius:7px; transition:transform .25s ease; }
+.upload-tracker .ut-expand-open { transform:rotate(45deg); }
+.upload-tracker .ut-receipt-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; padding:0 20px 20px; }
+.upload-tracker .ut-receipt-card { border:1px solid #cbd5e1; border-radius:12px; padding:16px; background:white; }
+.upload-tracker .ut-receipt-card h3, .upload-tracker .ut-receipt-history h3 { font-size:13px; font-weight:800; margin-bottom:8px; }
+.upload-tracker .ut-receipt-date { display:flex; align-items:center; gap:6px; margin-bottom:12px; color:#475569; font-size:12px; }
+.upload-tracker .ut-receipt-card > small { display:block; margin-top:8px; color:#64748b; }
+.upload-tracker .ut-receipt-history { grid-column:1/-1; }
+.upload-tracker .ut-receipt-history li { display:flex; justify-content:space-between; gap:12px; padding:8px; border-bottom:1px solid #e2e8f0; font-size:12px; }
+.upload-tracker .ut-toast { position:sticky; top:12px; z-index:10; margin:12px; padding:14px; border:1px solid #fda4af; border-radius:10px; background:#fff1f2; color:#9f1239; display:flex; justify-content:space-between; gap:12px; }
+@media(prefers-reduced-motion:reduce) { .upload-tracker .ut-collapse, .upload-tracker .ut-expand { transition:none; } }

@@ -1,3 +1,4 @@
+const { receiptTracking } = require('../services/dataReceiptTracking');
 const mongoose = require('mongoose');
 const Client = require('../models/Client');
 const PurchaseData = require('../models/PurchaseData');
@@ -35,6 +36,7 @@ function cleanFile(file = {}) {
   return {
     name: String(file.name || file.originalName || 'file').trim().slice(0, 240), originalName: String(file.originalName || file.name || 'file').trim().slice(0, 240),
     mimeType: String(file.mimeType || file.type || '').trim().slice(0, 120), size: Math.max(0, Number(file.size || file.bytes) || 0),
+    receiptStage: ['partial', 'complete'].includes(file.receiptStage) ? file.receiptStage : '',
     url, secureUrl: url, publicId: String(file.publicId || '').trim(), uploadedAt: file.uploadedAt || new Date().toISOString()
   };
 }
@@ -150,9 +152,11 @@ exports.updateChecklist = async (req, res) => {
     purchase.checklist = PURCHASE_CHECKLIST_PARTICULARS.map((particular) => {
       const row = incoming.get(particular) || {};
       const existingProofs = new Map((existingRows.get(particular)?.files || []).filter((file) => file?.proofId).map((file) => [String(file.proofId), file]));
-      const requestedProofs = (Array.isArray(row.files) ? row.files : []).filter((file) => file?.proofId).map((file) => existingProofs.get(String(file.proofId))).filter(Boolean);
+      const requestedProofs = (Array.isArray(row.files) ? row.files : []).filter((file) => file?.proofId).map((file) => existingProofs.has(String(file.proofId)) ? { ...existingProofs.get(String(file.proofId)), receiptStage: ['partial', 'complete'].includes(file.receiptStage) ? file.receiptStage : '' } : null).filter(Boolean);
       const ordinaryFiles = cleanEvidenceFiles((Array.isArray(row.files) ? row.files : []).filter((file) => !file?.proofId));
-      return { particular, partialDataReceived: row.yesNo === 'Yes' && row.partialDataReceived === true, completeDataReceived: row.yesNo === 'Yes' && row.completeDataReceived === true, yesNo: ['Yes', 'No'].includes(row.yesNo) ? row.yesNo : '', date: /^\d{4}-\d{2}-\d{2}$/.test(row.date || '') ? row.date : '', files: [...requestedProofs, ...ordinaryFiles].slice(0, 20), remarks: String(row.remarks || '').trim().slice(0, 2000) };
+      const files = [...requestedProofs, ...ordinaryFiles].slice(0, 20);
+      const tracking = receiptTracking({ ...row, particular }, existingRows.get(particular) || {}, files, req.user);
+      return { ...tracking, particular, partialDataReceived: row.yesNo === 'Yes' && row.partialDataReceived === true, completeDataReceived: row.yesNo === 'Yes' && row.completeDataReceived === true, yesNo: ['Yes', 'No'].includes(row.yesNo) ? row.yesNo : '', date: ['Received from client', 'Ready to upload'].includes(particular) ? tracking.date || existingRows.get(particular)?.date || '' : (/^\d{4}-\d{2}-\d{2}$/.test(row.date || '') ? row.date : ''), files: [...requestedProofs, ...ordinaryFiles].slice(0, 20), remarks: String(row.remarks || '').trim().slice(0, 2000) };
     });
     if (req.body.userRemarks !== undefined) purchase.userRemarks = String(req.body.userRemarks || '').trim().slice(0, 3000);
     purchase.updatedBy = req.user._id;
@@ -165,7 +169,7 @@ exports.updateChecklist = async (req, res) => {
     }
     const uploadNotification = await notifyCompletedExcelUpload({ purchase, client, user: req.user });
     res.json({ ok: true, purchaseData: payload(purchase, req.user), managerUploadEmailSent: Number(uploadNotification?.emailSent || 0) > 0 });
-  } catch (error) { console.error('Purchase checklist update failed', error); res.status(500).json({ error: 'Unable to save Purchase Data checklist.' }); }
+  } catch (error) { if (error.status === 400) return res.status(400).json({ error: error.message }); console.error('Purchase checklist update failed', error); res.status(500).json({ error: 'Unable to save Purchase Data checklist.' }); }
 };
 
 exports.updateScreenshots = async (req, res) => {

@@ -113,7 +113,7 @@ export default function PurchaseDataWorkspace({ clientId, financialYear, current
     if (mandatory && patch.yesNo === 'Yes' && (!changedRow.date || !changedRow.files?.length)) setNotice({ type: 'warning', text: `${changedRow.particular}: date and supporting proof are required.` });
   };
 
-  const uploadProof = async (index, fileList) => {
+  const uploadProof = async (index, fileList, receiptStage = '') => {
     if (!fileList?.length) return;
     setBusy(`proof-${index}`);
     try {
@@ -123,17 +123,17 @@ export default function PurchaseDataWorkspace({ clientId, financialYear, current
       let working = purchase;
       for (const emailFile of emailFiles) {
         const mailOnlyFile = await emailProofWithoutAttachments(emailFile);
-        const form = new FormData(); form.append('file', mailOnlyFile); form.append('financialYear', financialYear); form.append('section', 'purchase'); form.append('progressParticular', purchase.checklist[index].particular);
+        const form = new FormData(); form.append('file', mailOnlyFile); form.append('financialYear', financialYear); form.append('receiptStage', receiptStage); form.append('section', 'purchase'); form.append('progressParticular', purchase.checklist[index].particular);
         const { data } = await api.post(API_ENDPOINTS.clients.purchaseEmailProof(clientId), form, { headers: { 'Content-Type': 'multipart/form-data' } });
         if (data.purchaseData) working = data.purchaseData;
         else if (data.proof && !working.checklist[index].files.some((file) => String(file.proofId || '') === String(data.proof.proofId || ''))) working = { ...working, checklist: working.checklist.map((row, rowIndex) => rowIndex === index ? { ...row, files: [...(row.files || []), data.proof].slice(0, 20) } : row) };
       }
       if (ordinaryFiles.length) {
         const uploaded = await uploadMediaBatch(ordinaryFiles, `crm/purchase-data/${clientId}/${financialYear}/proofs`);
-        working = { ...working, checklist: working.checklist.map((row, rowIndex) => rowIndex === index ? { ...row, files: [...(row.files || []), ...uploaded].slice(0, 20) } : row) };
+        working = { ...working, checklist: working.checklist.map((row, rowIndex) => rowIndex === index ? { ...row, files: [...(row.files || []), ...uploaded.map(file => ({ ...file, receiptStage }))].slice(0, 20) } : row) };
         await saveChecklist(working);
       }
-      setPurchase(working); setNotice({ type: 'success', text: emailFiles.length ? 'Email proof decoded and uploaded successfully.' : 'Proof uploaded.' });
+      if (!ordinaryFiles.length) setPurchase(withExplanationStages(working)); setNotice({ type: 'success', text: emailFiles.length ? 'Email proof decoded and uploaded successfully.' : 'Proof uploaded.' });
     } catch (error) { if (error?.response?.data?.proof) setMailPreview(error.response.data.proof); setNotice({ type: 'error', text: errorText(error) }); }
     finally { setBusy(''); }
   };

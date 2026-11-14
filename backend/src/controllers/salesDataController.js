@@ -1,3 +1,4 @@
+const { receiptTracking } = require('../services/dataReceiptTracking');
 const mongoose = require('mongoose');
 const Client = require('../models/Client');
 const SalesData = require('../models/SalesData');
@@ -28,7 +29,8 @@ async function findClient(value, user) {
 function cleanFile(file = {}) {
   const url = String(file.secureUrl || file.url || '').trim();
   if (!/^https:\/\//i.test(url)) return null;
-  return { name: String(file.name || file.originalName || 'file').trim().slice(0, 240), originalName: String(file.originalName || file.name || 'file').trim().slice(0, 240), mimeType: String(file.mimeType || file.type || '').trim().slice(0, 120), size: Math.max(0, Number(file.size || file.bytes) || 0), url, secureUrl: url, publicId: String(file.publicId || '').trim(), uploadedAt: file.uploadedAt || new Date().toISOString() };
+  return { name: String(file.name || file.originalName || 'file').trim().slice(0, 240), originalName: String(file.originalName || file.name || 'file').trim().slice(0, 240), mimeType: String(file.mimeType || file.type || '').trim().slice(0, 120), size: Math.max(0, Number(file.size || file.bytes) || 0), receiptStage: ['partial', 'complete'].includes(file.receiptStage) ? file.receiptStage : '',
+    url, secureUrl: url, publicId: String(file.publicId || '').trim(), uploadedAt: file.uploadedAt || new Date().toISOString() };
 }
 
 function cleanFiles(files) { return (Array.isArray(files) ? files : []).map(cleanFile).filter(Boolean).slice(0, 20); }
@@ -123,9 +125,11 @@ exports.updateChecklist = async (req, res) => {
     sales.checklist = PURCHASE_CHECKLIST_PARTICULARS.map((particular) => {
       const row = incoming.get(particular) || {};
       const existingProofs = new Map((existingRows.get(particular)?.files || []).filter((file) => file?.proofId).map((file) => [String(file.proofId), file]));
-      const requestedProofs = (Array.isArray(row.files) ? row.files : []).filter((file) => file?.proofId).map((file) => existingProofs.get(String(file.proofId))).filter(Boolean);
+      const requestedProofs = (Array.isArray(row.files) ? row.files : []).filter((file) => file?.proofId).map((file) => existingProofs.has(String(file.proofId)) ? { ...existingProofs.get(String(file.proofId)), receiptStage: ['partial', 'complete'].includes(file.receiptStage) ? file.receiptStage : '' } : null).filter(Boolean);
       const ordinaryFiles = cleanEvidenceFiles((Array.isArray(row.files) ? row.files : []).filter((file) => !file?.proofId));
-      return { particular, partialDataReceived: row.yesNo === 'Yes' && row.partialDataReceived === true, completeDataReceived: row.yesNo === 'Yes' && row.completeDataReceived === true, yesNo: ['Yes', 'No'].includes(row.yesNo) ? row.yesNo : '', date: /^\d{4}-\d{2}-\d{2}$/.test(row.date || '') ? row.date : '', files: [...requestedProofs, ...ordinaryFiles].slice(0, 20), remarks: String(row.remarks || '').trim().slice(0, 2000) };
+      const files = [...requestedProofs, ...ordinaryFiles].slice(0, 20);
+      const tracking = receiptTracking({ ...row, particular }, existingRows.get(particular) || {}, files, req.user);
+      return { ...tracking, particular, partialDataReceived: row.yesNo === 'Yes' && row.partialDataReceived === true, completeDataReceived: row.yesNo === 'Yes' && row.completeDataReceived === true, yesNo: ['Yes', 'No'].includes(row.yesNo) ? row.yesNo : '', date: ['Received from client', 'Ready to upload'].includes(particular) ? tracking.date || existingRows.get(particular)?.date || '' : (/^\d{4}-\d{2}-\d{2}$/.test(row.date || '') ? row.date : ''), files: [...requestedProofs, ...ordinaryFiles].slice(0, 20), remarks: String(row.remarks || '').trim().slice(0, 2000) };
     });
     if (req.body.userRemarks !== undefined) sales.userRemarks = String(req.body.userRemarks || '').trim().slice(0, 3000);
     sales.updatedBy = req.user._id; sales.calculatedStatus = calculatedStatus(sales); sales.markModified('checklist'); await sales.save();
@@ -139,7 +143,7 @@ exports.updateChecklist = async (req, res) => {
     }
     const uploadNotification = await notifyCompletedExcelUpload({ sales, client, user: req.user });
     res.json({ ok: true, salesData: payload(sales, req.user), managerUploadEmailSent: Number(uploadNotification?.emailSent || 0) > 0, autoSubmitted: Boolean(automaticSubmission && !automaticSubmission.duplicate), managerNotificationCreated: Boolean(automaticSubmission?.notification?.ok), managerEmailSent: Number(automaticSubmission?.notification?.emailSent || 0) > 0 });
-  } catch (error) { console.error('Sales checklist update failed', error); res.status(500).json({ error: 'Unable to save Sales Data checklist.' }); }
+  } catch (error) { if (error.status === 400) return res.status(400).json({ error: error.message }); console.error('Sales checklist update failed', error); res.status(500).json({ error: 'Unable to save Sales Data checklist.' }); }
 };
 
 exports.updateScreenshots = async (req, res) => {

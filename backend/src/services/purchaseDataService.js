@@ -288,7 +288,7 @@ function defaultChecklist(existing = []) {
   const map = new Map((Array.isArray(existing) ? existing : []).map((row) => [text(row.particular).toLowerCase(), row]));
   return PURCHASE_CHECKLIST_PARTICULARS.map((particular) => {
     const row = map.get(particular.toLowerCase()) || {};
-    return { particular, partialDataReceived: row.yesNo === 'Yes' && row.partialDataReceived === true, completeDataReceived: row.yesNo === 'Yes' && row.completeDataReceived === true, yesNo: ['Yes', 'No'].includes(row.yesNo) ? row.yesNo : '', date: /^\d{4}-\d{2}-\d{2}$/.test(row.date || '') ? row.date : '', files: Array.isArray(row.files) ? row.files : [], remarks: text(row.remarks) };
+    return { partialReceivedAt: row.partialReceivedAt || '', completeReceivedAt: row.completeReceivedAt || '', receiptHistory: Array.isArray(row.receiptHistory) ? row.receiptHistory : [], particular, partialDataReceived: row.yesNo === 'Yes' && row.partialDataReceived === true, completeDataReceived: row.yesNo === 'Yes' && row.completeDataReceived === true, yesNo: ['Yes', 'No'].includes(row.yesNo) ? row.yesNo : '', date: /^\d{4}-\d{2}-\d{2}$/.test(row.date || '') ? row.date : '', files: Array.isArray(row.files) ? row.files : [], remarks: text(row.remarks) };
   });
 }
 function checklistRow(purchase, name) { return defaultChecklist(purchase?.checklist).find((row) => row.particular === name) || {}; }
