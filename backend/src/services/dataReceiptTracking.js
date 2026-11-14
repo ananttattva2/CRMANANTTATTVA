@@ -13,7 +13,6 @@ function receiptTracking(row, existing, files, user, now = new Date()) {
       const at = now.toISOString();
       if (checked) {
         result[`${stage}ReceivedAt`] = at;
-        result.date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
       }
       result.receiptHistory.push({ stage, checked, at, userId: String(user?._id || ''), userName: user?.name || user?.email || '', files: evidence.map(file => ({ ...file })) });
     }

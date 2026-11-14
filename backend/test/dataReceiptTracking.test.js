@@ -5,8 +5,8 @@ const { defaultChecklist } = require('../src/services/purchaseDataService');
 const at = new Date('2026-11-14T08:00:00Z');
 const user = { _id: 'staff-1', name: 'Staff' };
 for (const particular of ['Received from client', 'Ready to upload']) {
-  test(`${particular}: checkbox selection precedes proof upload and server owns dates/history`, () => {
-    const row = { particular, yesNo: 'Yes', partialDataReceived: true, partialReceivedAt: '2000-01-01', receiptHistory: [{ forged: true }] };
+  test(`${particular}: checkbox selection precedes proof upload while the user owns the receipt date`, () => {
+    const row = { particular, yesNo: 'Yes', date: '2026-11-10', partialDataReceived: true, partialReceivedAt: '2000-01-01', receiptHistory: [{ forged: true }] };
     const pending = receiptTracking(row, {}, [], user, at);
     assert.equal(pending.partialDataReceived, true);
     assert.equal(pending.partialReceivedAt, at.toISOString());
@@ -16,7 +16,7 @@ for (const particular of ['Received from client', 'Ready to upload']) {
     const first = receiptTracking(row, {}, files, user, at);
     assert.equal(first.partialReceivedAt, at.toISOString());
     assert.equal(first.completeReceivedAt, '');
-    assert.equal(first.date, '2026-11-14');
+    assert.equal(first.date, undefined);
     assert.equal(first.receiptHistory.length, 1);
     assert.equal(first.receiptHistory[0].userId, 'staff-1');
     const same = receiptTracking(row, first, files, user, new Date('2026-11-15'));

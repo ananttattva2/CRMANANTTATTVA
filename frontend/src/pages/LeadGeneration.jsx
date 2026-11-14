@@ -1117,7 +1117,7 @@ export default function LeadGeneration() {
     const user = staff.find((item) => [item._id, item.id, item.crmUserId, item.userId].filter(Boolean).some((id) => String(id) === String(value)));
     const next = assignmentRows.map((row) => ({ ...row }));
     next[index] = field === 'assignedTo'
-      ? { ...next[index], assignedTo: value, assignedToText: user?.name || user?.email || '', assignedToEmail: user?.email || '', ...(value && String(next[index].poApprovalStatus || '').toUpperCase() === 'APPROVED' && next[index].closureRequestedBy ? { closedBy: next[index].closureRequestedBy, closedByText: next[index].closureRequestedByText || '', closedAt: new Date().toISOString(), closureFinalizedByManager: true } : {}) }
+      ? { ...next[index], assignedTo: value, assignedToText: user?.name || user?.email || '', assignedToEmail: user?.email || '', ...(value && ['FINANCE_PENDING', 'APPROVED'].includes(String(next[index].poApprovalStatus || '').toUpperCase()) && next[index].closureRequestedBy ? { closedBy: next[index].closureRequestedBy, closedByText: next[index].closureRequestedByText || '', closedAt: new Date().toISOString(), closureFinalizedByManager: true } : {}) }
       : field === 'assignedStaff'
         ? { ...next[index], assignedStaff: value, assignedStaffText: user?.name || user?.email || '', assignedStaffEmail: user?.email || '', ...extra }
         : {
@@ -1153,6 +1153,7 @@ export default function LeadGeneration() {
     const matchingAssignment = sourceAssignments.find((assignment) => matchingService.assignedServiceId
       && assignment?.assignedServiceId === matchingService.assignedServiceId) || sourceAssignments[index] || {};
     const reviewMode = matchingAssignment.poStatus === 'provisional';
+    const hasExistingPo = hasSavedPoDetails(matchingAssignment);
     const relevantQuotations = quotations.filter((quote) => {
       const leadMatch = [quote.leadId, quote.leadCode, quote.businessLeadCode].filter(Boolean).some((id) => [sourceLead._id, sourceLead.id, sourceLead.sourceLeadId, sourceLead.leadCode].filter(Boolean).map(String).includes(String(id?._id || id?.id || id)));
       return leadMatch && !['rejected'].includes(String(quote.status || '').toLowerCase());
@@ -1182,9 +1183,12 @@ export default function LeadGeneration() {
     const fetchedPoRows = selectedQuotationItems.length ? selectedQuotationItems.map(quoteRow) : [quoteRow()];
     const savedPoRows = Array.isArray(matchingAssignment.poYearRows) ? matchingAssignment.poYearRows : [];
     const poYearRows = hydrateClosurePoRows(fetchedPoRows, savedPoRows, matchingService);
+    const savedQuotationSent = matchingAssignment.quotationSent
+      || savedPoRows.find((row) => ['yes', 'no'].includes(String(row?.quotationSent || '').toLowerCase()))?.quotationSent
+      || (matchingAssignment.earlierQuotationProofUrl || savedPoRows.some((row) => row?.earlierQuotationProofUrl) ? 'no' : 'yes');
     const actorId = String(currentUser?._id || currentUser?.id || '');
     const leadOwner = primaryLeadOwner(sourceLead, staff, currentUser);
-    setClosureDialog({ index, value: actorId || value, behalfMode: 'lead-owner', behalfUserId: leadOwner.id, leadOwnerName: leadOwner.name, leadOwnerEmail: leadOwner.email, selectedService: matchingService, reviewMode, choice: reviewMode ? 'yes' : '', quotationSent: reviewMode ? 'yes' : '', quotation: latestQuotation, quotationItems: selectedQuotationItems, poModeConfirmed: true, poMode: 'quotation', poYearRows, crmPoYearRows: poYearRows, approvalProofUrl: '', approvalProofName: '', earlierQuotationProofUrl: '', earlierQuotationProofName: '' });
+    setClosureDialog({ index, value: actorId || value, behalfMode: 'lead-owner', behalfUserId: leadOwner.id, leadOwnerName: leadOwner.name, leadOwnerEmail: leadOwner.email, selectedService: matchingService, reviewMode, hasExistingPo, existingApprovedPo: hasExistingPo && String(matchingAssignment.poApprovalStatus || '').toUpperCase() === 'APPROVED', choice: reviewMode || hasExistingPo ? 'yes' : '', quotationSent: hasExistingPo ? String(savedQuotationSent).toLowerCase() : reviewMode ? 'yes' : '', quotation: latestQuotation, quotationItems: selectedQuotationItems, poModeConfirmed: true, poMode: 'quotation', poYearRows, crmPoYearRows: poYearRows, approvalProofUrl: '', approvalProofName: '', earlierQuotationProofUrl: matchingAssignment.earlierQuotationProofUrl || savedPoRows[0]?.earlierQuotationProofUrl || '', earlierQuotationProofName: matchingAssignment.earlierQuotationProofName || savedPoRows[0]?.earlierQuotationProofName || '' });
   }
 
   async function uploadClosureFile(event, type, rowIndex = 0) {
@@ -1259,8 +1263,8 @@ export default function LeadGeneration() {
     let closurePatch;
     if (closureDialog.choice === 'yes') {
       if (!closureDialog.quotationSent) return showToast('Please select whether a quotation was sent.', 'warning');
-      if (closureDialog.quotationSent === 'yes' && !(closureDialog.quotation?._id || closureDialog.quotation?.id)) return showToast('No CRM quotation was found for this lead. Select No and upload the earlier quotation proof.', 'warning');
-      if (closureDialog.quotationSent === 'no' && !closureDialog.earlierQuotationProofUrl) return showToast('Upload the earlier quotation proof before entering PO details.', 'warning');
+      if (closureDialog.quotationSent === 'yes' && !(closureDialog.quotation?._id || closureDialog.quotation?.id) && !closureDialog.existingApprovedPo) return showToast('No CRM quotation was found for this lead. Select No and upload the earlier quotation proof.', 'warning');
+      if (closureDialog.quotationSent === 'no' && !closureDialog.earlierQuotationProofUrl && !closureDialog.existingApprovedPo) return showToast('Upload the earlier quotation proof before entering PO details.', 'warning');
       const commercialError = closureDialog.poYearRows.map(poCommercialError).find(Boolean);
       if (commercialError) return showToast(commercialError, 'warning');
       const incomplete = closureDialog.poYearRows.some((row) => !row.fy || !String(row.poNumber || '').trim() || !/^\d{4}-\d{2}-\d{2}$/.test(String(row.poDate || '')) || Number.isNaN(new Date(`${row.poDate}T00:00:00`).getTime()) || !(Number(row.poAmount) > 0) || !row.poFileUrl || !row.services.length);
@@ -2897,8 +2901,9 @@ export default function LeadGeneration() {
                     const ownsService = effectiveOwnerTokens.some((token) => currentUserOwnerTokens.includes(token));
                     const rowFrozen = serviceOnlyMode && index < frozenAssignmentRowCount && !ownsService;
                     const leadClosed = Boolean(row.closedBy);
-                    const managerAssignmentReady = leadClosed || (String(row.poApprovalStatus || '').toUpperCase() === 'APPROVED' && Boolean(row.closureRequestedBy));
-                    const canAssignStaff = String(currentUser?.role || '').toLowerCase() === 'manager' && currentUserIds.includes(String(row.assignedTo || ''));
+                    const poApprovalStatus = String(row.poApprovalStatus || '').toUpperCase();
+                    const managerAssignmentReady = leadClosed || (['FINANCE_PENDING', 'APPROVED'].includes(poApprovalStatus) && Boolean(row.closureRequestedBy));
+                    const canAssignStaff = poApprovalStatus === 'APPROVED' && String(currentUser?.role || '').toLowerCase() === 'manager' && currentUserIds.includes(String(row.assignedTo || ''));
                     const assignedManagerOptions = row.assignedTo && !managerOptions.some((option) => String(option.value) === String(row.assignedTo))
                       ? [{ value: String(row.assignedTo), label: row.assignedToText || lead.assignedToText || 'Previously assigned manager' }, ...managerOptions]
                       : managerOptions;
@@ -2923,7 +2928,7 @@ export default function LeadGeneration() {
                     <div className="form-input flex min-h-11 items-center bg-slate-50 font-black text-slate-700">{matchingService.servicesOffered || '-'}</div>
                     <div className="flex items-center gap-2"><div className="min-w-0 flex-1"><SearchableSelect disabled={rowFrozen} value={row.closedBy} options={closedByOptions} placeholder="Select user who closed the lead" onChange={(value) => requestLeadClosure(index, value)} /></div>{row.poStatus === 'provisional' && <button type="button" onClick={() => requestLeadClosure(index, row.closedBy)} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-amber-200 bg-amber-50 text-amber-700" title="Review provisional closure and upload PO"><RefreshCw className="h-4 w-4" /></button>}</div>
                     <SearchableSelect disabled={rowFrozen || !managerAssignmentReady} value={row.assignedTo} options={assignedManagerOptions} placeholder={managerAssignmentReady ? 'Select manager to close service' : 'PO approval required'} onChange={(value) => updateAssignmentRow(index, 'assignedTo', value)} />
-                    <SearchableSelect disabled={!canAssignStaff} value={row.assignedStaff} options={assignedStaffOptions} placeholder={canAssignStaff ? 'Select staff member' : 'Assigned manager only'} onChange={(value) => requestStaffAssignment(index, value)} />
+                    <SearchableSelect disabled={!canAssignStaff} value={row.assignedStaff} options={assignedStaffOptions} placeholder={poApprovalStatus !== 'APPROVED' ? 'Finance approval required' : canAssignStaff ? 'Select staff member' : 'Assigned manager only'} onChange={(value) => requestStaffAssignment(index, value)} />
                     <div className="flex justify-center">
                       {approvedRoyalty && index === royaltyClaimRowIndex ? (
                         <span className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700">
@@ -5411,7 +5416,8 @@ function LeadDetailView({ lead, quotations = [], staff = [], currentUser = null,
                           || createServiceSelection(activeLead);
                         const managerId = row.assignedTo?._id || row.assignedTo || '';
                         const managerOwnsRow = currentUserTokens.includes(String(managerId));
-                        const canAssignThisRow = isAssignmentAdmin || (isManager && managerOwnsRow);
+                        const financeApproved = String(row.poApprovalStatus || '').toUpperCase() === 'APPROVED';
+                        const canAssignThisRow = financeApproved && (isAssignmentAdmin || (isManager && managerOwnsRow));
                         const selectedStaffOptions = row.assignedStaff && !detailStaffOptions.some((option) => String(option.value) === String(row.assignedStaff?._id || row.assignedStaff))
                           ? [{ value: String(row.assignedStaff?._id || row.assignedStaff), label: row.assignedStaffText || row.assignedStaff?.name || 'Assigned staff' }, ...detailStaffOptions]
                           : detailStaffOptions;
@@ -5428,6 +5434,7 @@ function LeadDetailView({ lead, quotations = [], staff = [], currentUser = null,
                           <td className="min-w-[270px] px-4 py-3">
                             {canAssignThisRow
                               ? <SearchableSelect allowCustom={false} disabled={assignmentSavingIndex === index} value={row.assignedStaff?._id || row.assignedStaff || ''} options={selectedStaffOptions} placeholder="Select staff member" onChange={(value) => requestStaffAssignmentFromDetail(index, value)} />
+                              : !financeApproved ? <span className="font-black text-amber-700">Finance approval required</span>
                               : <span className="font-black">{row.assignedStaff?.name || row.assignedStaffText || '-'}</span>}
                           </td>
                           <td className="min-w-[280px] px-4 py-3">

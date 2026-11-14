@@ -156,7 +156,7 @@ exports.updateChecklist = async (req, res) => {
       const ordinaryFiles = cleanEvidenceFiles((Array.isArray(row.files) ? row.files : []).filter((file) => !file?.proofId));
       const files = [...requestedProofs, ...ordinaryFiles].slice(0, 20);
       const tracking = receiptTracking({ ...row, particular }, existingRows.get(particular) || {}, files, req.user);
-      return { ...tracking, particular, partialDataReceived: row.yesNo === 'Yes' && row.partialDataReceived === true, completeDataReceived: row.yesNo === 'Yes' && row.completeDataReceived === true, yesNo: ['Yes', 'No'].includes(row.yesNo) ? row.yesNo : '', date: ['Received from client', 'Ready to upload'].includes(particular) ? tracking.date || existingRows.get(particular)?.date || '' : (/^\d{4}-\d{2}-\d{2}$/.test(row.date || '') ? row.date : ''), files: [...requestedProofs, ...ordinaryFiles].slice(0, 20), remarks: String(row.remarks || '').trim().slice(0, 2000) };
+      return { ...tracking, particular, partialDataReceived: row.yesNo === 'Yes' && row.partialDataReceived === true, completeDataReceived: row.yesNo === 'Yes' && row.completeDataReceived === true, yesNo: ['Yes', 'No'].includes(row.yesNo) ? row.yesNo : '', date: /^\d{4}-\d{2}-\d{2}$/.test(row.date || '') ? row.date : '', files: [...requestedProofs, ...ordinaryFiles].slice(0, 20), remarks: String(row.remarks || '').trim().slice(0, 2000) };
     });
     if (req.body.userRemarks !== undefined) purchase.userRemarks = String(req.body.userRemarks || '').trim().slice(0, 3000);
     purchase.updatedBy = req.user._id;

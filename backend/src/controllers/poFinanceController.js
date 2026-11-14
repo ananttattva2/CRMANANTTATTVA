@@ -116,7 +116,7 @@ exports.act = async (req, res) => {
         notification = { approval, lead, index, status, remarks: approval.remarks, screenshotUrl: '' };
       }
       approval.poReview = review;
-      return { ok: true, review, message: event === 'FINANCE_APPROVE' ? 'Finance approval saved. The user can now close the lead.' : event === 'FINANCE_REFER' ? 'Remark submitted. This PO is frozen until Super Admin gives Management Go Ahead.' : event === 'MANAGEMENT_GO_AHEAD' ? 'Management approval saved. Finance approval is now unlocked.' : 'Finance final decision saved.' };
+      return { ok: true, review, message: event === 'FINANCE_APPROVE' ? 'Finance approval saved. Staff assignment is now unlocked.' : event === 'FINANCE_REFER' ? 'Remark submitted. This PO is frozen until Super Admin gives Management Go Ahead.' : event === 'MANAGEMENT_GO_AHEAD' ? 'Management approval saved. Finance approval is now unlocked.' : 'Finance final decision saved.' };
     });
     if (notification) void require('./leadController').notifyPurchaseOrderDecision(notification).catch(error => console.error('Finance PO notification failed', { name: error.name }));
     return res.json(result);

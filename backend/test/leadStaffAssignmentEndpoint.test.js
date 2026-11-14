@@ -25,6 +25,14 @@ test('staff assignment permission matches unpopulated Mongoose ObjectIds', () =>
   ), true);
 });
 
+test('staff assignment stays locked until Finance gives final approval', () => {
+  assert.equal(_test.isPoFinanceApproved({ poApprovalStatus: 'FINANCE_PENDING' }), false);
+  assert.equal(_test.isPoFinanceApproved({ poApprovalStatus: 'APPROVED' }), true);
+  const controller = read('../src/controllers/leadController.js');
+  const handler = controller.slice(controller.indexOf('exports.assignLeadStaff'), controller.indexOf('exports.permanentlyCloseProvisionalLead'));
+  assert.match(handler, /Finance must finally approve the Purchase Order before staff can be assigned/);
+});
+
 test('staff lookup supports Mongo IDs and CRM user IDs without accepting inactive users', () => {
   const mongoId = '6a7426233e6eb1b90295ee19';
   assert.deepEqual(_test.activeUserLookup(mongoId), {

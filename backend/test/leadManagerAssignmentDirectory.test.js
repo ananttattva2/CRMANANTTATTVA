@@ -17,7 +17,7 @@ test('lead assignment loads all active managers after PO approval', () => {
   assert.match(routes, /get\('\/assignment-users', requireAuth, cacheRead, leadCtrl\.listAssignmentUsers\)/);
   assert.ok(routes.indexOf("get('/assignment-users'") < routes.indexOf("get('/:id/history'"));
   assert.match(endpoints, /assignmentUsers: '\/leads\/assignment-users'/);
-  assert.match(page, /api\.get\(API_ENDPOINTS\.leads\.assignmentUsers\)/);
+  assert.match(page, /api\.get\(API_ENDPOINTS\.leads\.assignmentUsers/);
   assert.match(page, /function userHasManagerRole/);
   assert.match(page, /staff\.filter\(userHasManagerRole\)/);
   assert.match(page, /managerAssignmentReady/);

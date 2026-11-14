@@ -2,6 +2,8 @@
 
 New PO submissions follow Admin initial approval, Accounts/Finance referral, Super Admin Management Go Ahead, and Accounts/Finance final decision. Initial approval sets PARTIALLY_APPROVED and assignment FINANCE_PENDING; it does not finally approve the PO. Historical final approvals remain unchanged.
 
+After Admin initial approval, the lead owner may complete the lead closure and assign the responsible Manager while Finance review continues. Permanent staff assignment remains locked in both the UI and API until Finance records the final APPROVED decision. Saved, already-approved POs reopen with their existing details in the closure dialog and do not create a duplicate Admin review when the PO itself is unchanged.
+
 | Stage | Action | Role |
 | --- | --- | --- |
 | FINANCE_READY | Submit Finance remarks to Management | Accounts |

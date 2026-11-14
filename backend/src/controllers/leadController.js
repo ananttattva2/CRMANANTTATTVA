@@ -290,6 +290,10 @@ function canAssignStaffToRow(user = {}, assignment = {}) {
   return managerTokens.some((token) => userTokens.includes(token));
 }
 
+function isPoFinanceApproved(assignment = {}) {
+  return String(assignment.poApprovalStatus || '').trim().toUpperCase() === 'APPROVED';
+}
+
 function activeUserLookup(value) {
   const identity = value && typeof value === 'object'
     ? String(value._id || value.id || value.crmUserId || value.userId || value.email || '').trim()
@@ -950,7 +954,8 @@ async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, subm
   await Promise.all(rows.map(async (row, index) => {
     if (row.poStatus !== 'received' || (!row.closedBy && !row.closureRequestedBy)) return;
     const before = findExistingAssignment(beforeRows, row, index) || {};
-    const changed = JSON.stringify(before.poYearRows || []) !== JSON.stringify(row.poYearRows || []);
+    const changed = String(before.poStatus || '') !== String(row.poStatus || '')
+      || JSON.stringify(normalizedPoClosureRows(before)) !== JSON.stringify(normalizedPoClosureRows(row));
     if (!changed && row.poApprovalStatus) return;
     const directlyApproved = canDirectlyApprovePoEdit(actor, modifyPoDetails, before);
     row.poApprovalStatus = directlyApproved ? 'APPROVED' : 'PENDING';
@@ -1950,10 +1955,17 @@ exports.updateLead = async (req, res) => {
       data.assignments = data.assignments.map((row, index) => {
         const previousAssignment = beforeLead.assignments?.[index] || {};
         const managerAssignedAt = managerAssignmentTimestamp(previousAssignment, row);
-        const approved = String(row?.poApprovalStatus || '').toUpperCase() === 'APPROVED';
-        if (!approved || !row?.assignedTo || !row?.closureRequestedBy || row?.closedBy) return { ...row, managerAssignedAt };
+        const adminApproved = ['FINANCE_PENDING', 'APPROVED'].includes(String(row?.poApprovalStatus || '').toUpperCase());
+        if (!adminApproved || !row?.assignedTo || !row?.closureRequestedBy || row?.closedBy) return { ...row, managerAssignedAt };
         return { ...row, managerAssignedAt, closedBy: row.closureRequestedBy, closedByText: row.closureRequestedByText || '', closedAt: new Date().toISOString(), closureFinalizedByManager: true };
       });
+      const prematureStaffAssignment = data.assignments.some((row, index) => {
+        const previous = beforeLead.assignments?.[index] || {};
+        const currentStaff = identityTokens(row?.assignedStaff, row?.assignedStaffText, row?.assignedStaffEmail).join('|');
+        const previousStaff = identityTokens(previous?.assignedStaff, previous?.assignedStaffText, previous?.assignedStaffEmail).join('|');
+        return Boolean(currentStaff) && currentStaff !== previousStaff && !isPoFinanceApproved(row);
+      });
+      if (prematureStaffAssignment) return res.status(409).json({ error: 'Finance must finally approve the Purchase Order before a manager can assign staff.' });
     }
     Object.assign(lead, data);
     if (Object.prototype.hasOwnProperty.call(data, 'subApplicantType') || Array.isArray(data.serviceSelections)) {
@@ -2144,6 +2156,9 @@ exports.assignLeadStaff = async (req, res) => {
     }
 
     const requestedStaffId = String(req.body?.staffUserId || '').trim();
+    if (requestedStaffId && !isPoFinanceApproved(assignment)) {
+      return res.status(409).json({ error: 'Finance must finally approve the Purchase Order before staff can be assigned.' });
+    }
     const kickoffEmailConsent = requestedStaffId && req.body?.kickoffEmailConsent === 'yes' ? 'yes'
       : requestedStaffId && req.body?.kickoffEmailConsent === 'no' ? 'no' : '';
     const staff = requestedStaffId
@@ -2936,6 +2951,7 @@ exports._test = {
   validateServiceRemovalPermission,
   stableUserIdentity,
   canAssignStaffToRow,
+  isPoFinanceApproved,
   activeUserLookup,
   leadCodeSequence,
   poClosureSubmissionChanged,

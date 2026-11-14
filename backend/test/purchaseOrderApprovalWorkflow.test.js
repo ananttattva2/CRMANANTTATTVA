@@ -38,7 +38,7 @@ test('lead closure auto-fetches quotation fields and supports one or multiple PO
   assert.match(page, /Enter PO details against every quotation service/);
   assert.match(page, /quotation service row/);
   assert.match(page, /Confirm & Save Closure/);
-  assert.match(page, /Lead closed and PO details saved in the database/);
+  assert.match(page, /PO details saved and submitted for Admin approval/);
   assert.match(page, /api\.put\(API_ENDPOINTS\.leads\.detail\(editingLeadId\), payload, \{ headers: \{ 'X-PO-Debug-ID': poDebugId \} \}\)/);
   assert.match(page, /\[POProof:closure:submit\]/);
 });
@@ -46,6 +46,7 @@ test('lead closure auto-fetches quotation fields and supports one or multiple PO
 test('PO received closure asks whether quotation was sent and supports earlier quotation proof', () => {
   const leadPage = read('../../frontend/src/pages/LeadGeneration.jsx');
   const leadController = read('../src/controllers/leadController.js');
+  const poFinanceController = read('../src/controllers/poFinanceController.js');
   const pendingApprovalPage = read('../../frontend/src/pages/PendingApproval.jsx');
   assert.match(leadPage, /Was a quotation sent to the customer\?/);
   assert.match(leadPage, /Yes — Quotation Sent/);
@@ -66,14 +67,14 @@ test('PO received closure asks whether quotation was sent and supports earlier q
   assert.match(leadController, /submittedAssignments: data\.assignments/);
   assert.match(leadController, /const snapshotSource = Array\.isArray\(submittedRow\?\.poYearRows\)/);
   assert.match(leadController, /const proof = resolvePoProof\(po\)/);
-  assert.match(leadController, /status === 'APPROVED'.*closureRequestedBy/s);
-  assert.match(leadController, /approval\.payload\?\.closureRequestedBy/);
-  assert.doesNotMatch(leadController, /status === 'APPROVED'[\s\S]{0,300}closureRequestedBy = ''/);
+  assert.match(poFinanceController, /status === 'APPROVED'.*closureRequestedBy/s);
+  assert.match(poFinanceController, /approval\.payload\?\.closureRequestedBy/);
+  assert.doesNotMatch(poFinanceController, /status === 'APPROVED'[\s\S]{0,300}closureRequestedBy = ''/);
   assert.match(leadController, /poApprovalStatus[\s\S]*assignedTo[\s\S]*closureRequestedBy[\s\S]*closureFinalizedByManager/);
   assert.match(pendingApprovalPage, /View earlier quotation proof/);
   assert.match(pendingApprovalPage, /const poRows = normalizedPoRows\.length/);
   assert.match(pendingApprovalPage, /function NormalizedPoProof/);
-  assert.match(pendingApprovalPage, /row\.quotationSent === 'no' \? 0/);
+  assert.match(pendingApprovalPage, /resolveQuotationBasicAmount/);
 });
 
 test('approved PO unlocks manager assignment and manager assignment closes the service', () => {
@@ -82,6 +83,9 @@ test('approved PO unlocks manager assignment and manager assignment closes the s
   const managerNotifications = read('../src/services/leadAssignmentNotifications.js');
   const staffWorkflow = read('../src/services/staffOnboardingWorkflow.js');
   assert.match(leadPage, /managerAssignmentReady/);
+  assert.match(leadPage, /\['FINANCE_PENDING', 'APPROVED'\]\.includes\(poApprovalStatus\)/);
+  assert.match(leadPage, /Finance approval required/);
+  assert.match(leadController, /const adminApproved = \['FINANCE_PENDING', 'APPROVED'\]/);
   assert.match(leadPage, /Select manager to close service/);
   assert.match(leadController, /changedManagerRows/);
   assert.match(managerNotifications, /assignmentIndex/);
@@ -93,6 +97,7 @@ test('PO approval is persisted and restricted to Admin and Super Admin', () => {
   const model = read('../src/models/PendingApproval.js');
   const routes = read('../src/routes/leads.js');
   const controller = read('../src/controllers/leadController.js');
+  const poFinanceController = read('../src/controllers/poFinanceController.js');
   assert.match(model, /'purchase_order'/);
   assert.match(model, /'REVISION_REQUIRED'/);
   assert.match(routes, /purchase-order-approvals.*requireRoles\(ADMIN_ROLES\)/);
@@ -101,7 +106,7 @@ test('PO approval is persisted and restricted to Admin and Super Admin', () => {
   assert.match(controller, /approval\.markModified\('payload'\)/);
   assert.match(controller, /lead\.markModified\('assignments'\)/);
   assert.match(controller, /upsertPurchaseOrderApprovals/);
-  assert.match(controller, /poApprovalStatus = status/);
+  assert.match(poFinanceController, /poApprovalStatus = status/);
   assert.match(controller, /attachments: screenshotAttachment \? \[screenshotAttachment\] : \[\]/);
   assert.match(controller, /poSubmittedByEmail/);
   assert.match(controller, /role: \{ \$in: ADMIN_ROLES \}/);

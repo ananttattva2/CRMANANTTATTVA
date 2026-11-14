@@ -245,6 +245,17 @@ test('mandatory status displays date and drag-drop proof validation', () => {
   assert.match(dropzone, /Drag & drop images, PDF, EML or Outlook MSG/);
   assert.match(workspace, /'Content-Type': 'multipart\/form-data'/);
 });
+
+test('receipt upload date is entered by the user and persisted by both checklist APIs', () => {
+  const checklist = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/SalesUploadChecklist.jsx'), 'utf8');
+  const purchaseController = fs.readFileSync(path.resolve(__dirname, '../src/controllers/purchaseDataController.js'), 'utf8');
+  const salesController = fs.readFileSync(path.resolve(__dirname, '../src/controllers/salesDataController.js'), 'utf8');
+  assert.match(checklist, /disabled=\{!editable \|\| !enabled\}/);
+  assert.match(checklist, /Enter the actual date the client data was received/);
+  assert.doesNotMatch(checklist, /disabled=\{!editable \|\| !enabled \|\| DATA_STAGES\.has/);
+  assert.match(purchaseController, /date: \/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$\/\.test\(row\.date/);
+  assert.match(salesController, /date: \/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$\/\.test\(row\.date/);
+});
 test('Outlook MSG proof opens a safe decoded mail viewer with attachments', () => {
   const viewer = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/OutlookMsgViewer.jsx'), 'utf8');
   assert.match(viewer, /import\('@kenjiuno\/msgreader'\)/);
