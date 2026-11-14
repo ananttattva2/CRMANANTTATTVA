@@ -1428,6 +1428,10 @@ exports.listLeads = async (req, res) => {
 
   // Preserve the historical response for non-directory consumers. The Lead
   // Generation screen opts into the bounded list below with paginated=true.
+  if (!paginated && req.query.view === 'mis') {
+    const leads = await Lead.find(accessFilter).select('company createdAt createdBy createdByName createdByCrmUserId createdByEmail importedCreatedBy generatedForUser generatedForName generatedForEmail leadCode sourceLeadId status closedAt closedBy assignments.assignedServiceId assignments.poStatus assignments.poApprovalStatus assignments.closedBy assignments.poYearRows.poNumber assignments.poYearRows.quotationId assignments.poYearRows.quotationNumber').maxTimeMS(15000).lean();
+    return res.json({ ok: true, leads });
+  }
   if (!paginated) {
     const queryStartedAt = process.hrtime.bigint();
     const readLeads = () => Lead.find(accessFilter)

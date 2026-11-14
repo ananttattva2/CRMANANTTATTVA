@@ -789,16 +789,19 @@ exports.listQuotations = async (req, res) => {
     accessFilter,
     testLeadReferences ? dashboardQuotationExclusionFilter(testLeadReferences) : {}
   );
+  const listView = ['directory', 'mis'].includes(req.query.view);
+  const listFields = 'quotationNumber leadId leadRef clientRef leadCode businessLeadCode companyName leadDetails.companyName leadDetails.contactPerson quotationDate validUntil serviceState pricingMode combinedBasicAmount grandTotal status source createdByName preparedByName leadGeneratedBy assignedUserName managementApproval.status managementApproval.approverId managementApproval.approverName createdBy createdAt updatedAt items.assignedServiceId items.sourceServiceIndex items.unit items.basicAmount';
   const query = Quotation.find(scopedFilter)
-    .select(req.query.view === 'lead-review'
+    .select(listView ? listFields : req.query.view === 'lead-review'
       ? 'quotationNumber leadId leadRef leadCode businessLeadCode companyName leadDetails.companyName pricingMode combinedBasicAmount grandTotal items.unit items.basicAmount createdAt updatedAt'
       : req.query.compact === 'true'
       ? 'quotationNumber leadId leadRef clientRef leadCode businessLeadCode companyName leadDetails quotationDate validUntil serviceState pricingMode combinedBasicAmount items subtotal grandTotal status source createdByName preparedByName leadGeneratedBy assignedUserName managementApproval approvalDecision createdBy createdAt updatedAt'
       : '')
     .sort({ quotationDate: -1, createdAt: -1 });
-  if (req.query.view !== 'lead-review') query.populate('createdBy', 'name email').populate('approvalDecision.actionBy', 'name email role');
+  if (!listView && req.query.view !== 'lead-review') query.populate('createdBy', 'name email').populate('approvalDecision.actionBy', 'name email role');
   if (limit) query.skip((page - 1) * limit).limit(limit);
   const [quotations, counted] = await Promise.all([query.lean(), (req.query.view === 'lead-review' || snapshot) && !limit ? Promise.resolve(null) : Quotation.countDocuments(scopedFilter)]);
+  if (listView) quotations.forEach(row => { row._listOnly = true; });
   const total = counted ?? quotations.length;
   res.json({ ok: true, quotations, pagination: { page, limit: limit || total, total, pages: limit ? Math.ceil(total / limit) : 1 } });
 };

@@ -18,6 +18,7 @@ function canonical(value) {
 // and multiple Node workers cannot resurrect a cache from before a CRM write.
 function createCrmCache({ store, revisions, namespace = 'crm:production:v1', ttl = 60, maxBytes = 8 * 1024 * 1024 }) {
   const inFlight = new Map();
+  const responseFlights = new Map();
   let invalidationFailed = false;
   const digest = value => createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
   const keyFor = (req, revision) => `${namespace}:${revision}:${digest({
@@ -87,6 +88,29 @@ function createCrmCache({ store, revisions, namespace = 'crm:production:v1', ttl
         }
       } catch { /* Redis failure never blocks a MongoDB read. */ }
     }
+    if (!force && responseFlights.has(key)) {
+      const body = await responseFlights.get(key).promise;
+      if (body && await revision() === before) {
+        res.set('X-CRM-Cache', 'SHARED');
+        return res.json(body);
+      }
+      return next();
+    }
+    let flight;
+    if (!force && responseFlights.size < 100) {
+      let resolve;
+      const promise = new Promise(done => { resolve = done; });
+      flight = { promise, resolve };
+      responseFlights.set(key, flight);
+      flight.finish = body => {
+        if (responseFlights.get(key) !== flight) return;
+        responseFlights.delete(key); clearTimeout(flight.timer); resolve(body);
+      };
+      flight.timer = setTimeout(() => flight.finish(null), 30000);
+      flight.timer.unref?.();
+      res.once?.('finish', () => flight.finish(null));
+      res.once?.('close', () => flight.finish(null));
+    }
     const lookupMs = Date.now() - lookupStarted;
     res.set('X-CRM-Cache', 'MISS');
     const originalJson = res.json.bind(res);
@@ -103,6 +127,7 @@ function createCrmCache({ store, revisions, namespace = 'crm:production:v1', ttl
           }
         } catch { /* Keep serving the authoritative controller result. */ }
       }
+      flight?.finish(res.statusCode === 200 && !body?.error && body?.ok !== false ? body : null);
       return originalJson(body);
     };
     return next();

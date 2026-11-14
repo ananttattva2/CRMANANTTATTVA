@@ -1,3 +1,4 @@
+import { readPageSnapshot, savePageSnapshot } from '../services/pageReadSnapshot'
 import useCrmRefresh from '../hooks/useCrmRefresh'
 import POMonthlyDashboard from '../components/dashboard/POMonthlyDashboard'
 import ApplicationPortfolio from '../components/dashboard/ApplicationPortfolio'
@@ -42,8 +43,8 @@ function YearMatrix({ section, onOpen, reducedMotion }) {
 }
 export default function OverallDashboard() {
   const [user] = useState(() => { try { return JSON.parse(localStorage.getItem('user') || '{}') } catch { return {} } })
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState(() => readPageSnapshot('overall-dashboard'))
+  const [loading, setLoading] = useState(() => !readPageSnapshot('overall-dashboard'))
   const [error, setError] = useState('')
   const [popup, setPopup] = useState(null)
   const [matrixYear, setMatrixYear] = useState('')
@@ -64,10 +65,10 @@ export default function OverallDashboard() {
     if (pendingRequest.current && !pendingRequest.current.signal?.aborted) return
     const sequence = ++requestSequence.current
     pendingRequest.current = { signal }
-    setLoading(true)
+    if (!readPageSnapshot('overall-dashboard')) setLoading(true)
     try {
       const response = await api.get('/dashboard-insights/overall', { signal, timeout: 45000 })
-      if (sequence === requestSequence.current && !signal?.aborted) { setData(response.data); setError('') }
+      if (sequence === requestSequence.current && !signal?.aborted) { savePageSnapshot('overall-dashboard', response.data, response); setData(response.data); setError('') }
     } catch (err) {
       if (sequence === requestSequence.current && err.code !== 'ERR_CANCELED') setError(err.response?.data?.error || 'Dashboard request timed out or could not load. Please refresh and retry.')
     } finally {

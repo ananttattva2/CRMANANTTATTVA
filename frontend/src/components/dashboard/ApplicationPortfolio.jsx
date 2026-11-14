@@ -1,3 +1,4 @@
+import { readPageSnapshot, savePageSnapshot } from '../../services/pageReadSnapshot'
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { ArrowUpRight, FileSpreadsheet, Loader2, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react'
@@ -33,8 +34,8 @@ function ClientRecordsPopup({ selection, onClose }) {
 }
 
 const ApplicationPortfolio = forwardRef(function ApplicationPortfolio({ mode, refreshToken = 0, onPdfAvailabilityChange }, ref) {
-  const [payload, setPayload] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [payload, setPayload] = useState(() => readPageSnapshot('application-portfolio'))
+  const [loading, setLoading] = useState(() => !readPageSnapshot('application-portfolio'))
   const [error, setError] = useState('')
   const [refresh, setRefresh] = useState(0)
   const [query, setQuery] = useState('')
@@ -45,8 +46,8 @@ const ApplicationPortfolio = forwardRef(function ApplicationPortfolio({ mode, re
   const reducedMotion = useReducedMotion()
   useEffect(() => {
     const controller = new AbortController()
-    setLoading(true); setError('')
-    api.get('/dashboard-insights/upload-tracker', { params: { assignmentsOnly: 'true', portfolioOnly: 'true' }, signal: controller.signal, timeout: 45000 }).then(response => { if (!controller.signal.aborted) setPayload(response.data) }).catch(err => { if (!controller.signal.aborted) setError(err.response?.data?.error || 'Unable to load application records. Please retry.') }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    if (!readPageSnapshot('application-portfolio')) setLoading(true); setError('')
+    api.get('/dashboard-insights/upload-tracker', { params: { assignmentsOnly: 'true', portfolioOnly: 'true' }, signal: controller.signal, timeout: 45000 }).then(response => { if (!controller.signal.aborted) { savePageSnapshot('application-portfolio', response.data, response); setPayload(response.data) } }).catch(err => { if (!controller.signal.aborted) setError(err.response?.data?.error || 'Unable to load application records. Please retry.') }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [refresh, refreshToken])
   useEffect(() => { setSelection(null) }, [mode, section])

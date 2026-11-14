@@ -1084,7 +1084,7 @@ export default function Quotations() {
       }) || quotationSnapshot;
       if (target) {
         if (location.state?.fromPendingApproval) setFromPendingApproval(true);
-        setPreviewQuotation(normalizeQuotationSnapshot(target));
+        void showQuotationDetail(target);
         navigate(location.pathname, { replace: true, state: {} });
       }
       return;
@@ -1111,6 +1111,13 @@ export default function Quotations() {
         && !['approved', 'rejected'].includes(String(row.status || '').toLowerCase()))
       .sort((left, right) => new Date(right.updatedAt || right.createdAt || 0) - new Date(left.updatedAt || left.createdAt || 0))[0];
     if (!savedQuotation) return;
+    if (savedQuotation._listOnly) {
+      let active = true;
+      api.get(API_ENDPOINTS.quotations.detail(savedQuotation._id || savedQuotation.id)).then(({ data }) => {
+        if (active && data.quotation) setQuotations(rows => rows.map(row => String(row._id || row.id) === String(savedQuotation._id || savedQuotation.id) ? data.quotation : row));
+      }).catch(err => { if (active) setError(err?.response?.data?.error || 'Unable to load quotation draft.'); });
+      return () => { active = false; };
+    }
     setQuotation((current) => ({
       ...current,
       pricingMode: savedQuotation.pricingMode,
@@ -1129,6 +1136,7 @@ export default function Quotations() {
   }, [currentUser, editingId, isExplicitAddQuotation, quotation.pricingMode, quotationContext, quotations, viewMode]);
 
   useCrmRefresh(() => loadPage({ silent: true }), viewMode === 'list');
+  useEffect(() => { if (viewMode === 'form') void loadPage({ silent: true }); }, [viewMode]);
 
   async function loadPage({ silent = false } = {}) {
     const sequence = ++listRequestRef.current;
@@ -1137,7 +1145,7 @@ export default function Quotations() {
     setError('');
     // Leads/catalogs enrich the editor. They must not hold the quotation list
     // behind an unrelated full lead read.
-    const references = Promise.allSettled([
+    const references = viewMode === 'form' ? Promise.allSettled([
       api.get(API_ENDPOINTS.leads.list, { params: { view: 'quotation-editor' } }),
       api.get(API_ENDPOINTS.quotations.serviceCategories),
       api.get(API_ENDPOINTS.quotations.piboCategories),
@@ -1157,10 +1165,10 @@ export default function Quotations() {
       if (pibos.status === 'fulfilled') setPiboCategories(pibos.value.data.categories || []);
       if (dropdowns.status === 'fulfilled') setCustomDropdownOptions(dropdowns.value.data.options || []);
       setPiboCategoriesLoading(false);
-    });
+    }) : Promise.resolve();
     try {
       const [meResult, quotationsResult] = await Promise.allSettled([
-        api.get(API_ENDPOINTS.auth.me), api.get(API_ENDPOINTS.quotations.list)
+        api.get(API_ENDPOINTS.auth.me), api.get(API_ENDPOINTS.quotations.list, { params: { view: 'directory' } })
       ]);
       if (sequence !== listRequestRef.current) return;
       if (meResult.status === 'fulfilled') setCurrentUser(meResult.value.data.user);
@@ -1313,12 +1321,20 @@ export default function Quotations() {
     if (location.search) navigate('/sales/quotations', { replace: true });
   }
 
-  function showQuotationDetail(row) {
+  async function showQuotationDetail(row) {
+    if (row._listOnly) {
+      try { const { data } = await api.get(API_ENDPOINTS.quotations.detail(row._id || row.id)); row = data.quotation; }
+      catch (err) { setError(err?.response?.data?.error || 'Unable to load quotation details.'); return; }
+    }
     setPreviewQuotation(normalizeQuotationSnapshot(row));
     setMenuId('');
   }
 
-  function editQuotation(row) {
+  async function editQuotation(row) {
+    if (row._listOnly) {
+      try { const { data } = await api.get(API_ENDPOINTS.quotations.detail(row._id || row.id)); row = data.quotation; }
+      catch (err) { setError(err?.response?.data?.error || 'Unable to load quotation details.'); return; }
+    }
     if (!canReviseQuotation(row)) {
       setNotice('Quotation can be revised only after it is approved or rejected.');
       setError('');

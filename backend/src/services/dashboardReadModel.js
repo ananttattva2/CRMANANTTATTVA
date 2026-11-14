@@ -1,13 +1,14 @@
 // Dashboard reads need status and ownership, never embedded proof documents.
 const { createOverallCache } = require('./overallDashboardData');
 const compactFields = (prefix, fields) => Object.fromEntries(fields.split(' ').map(field => [field, `${prefix}.${field}`]));
-const poFields = 'fy poFinancialYear annualReturnYear poNumber poNo poDate poReceivedDate poEndDate poAmount paymentTerm services';
+const poFields = 'fy poFinancialYear annualReturnYear poNumber poNo poDate poReceivedDate poEndDate poAmount paymentTerm';
 function compactPo(prefix) {
   const url = { $ifNull: [`${prefix}.poFileUrl`, ''] };
   return {
     ...compactFields(prefix, poFields),
-    // Retain ordinary links; base64 proofs can be several megabytes each.
-    poFileUrl: { $cond: [{ $lte: [{ $strLenBytes: url }, 4096] }, url, ''] },
+    // Analytics needs evidence presence; detail endpoints retain the real file URL.
+    poFileUrl: { $cond: [{ $ne: [url, ''] }, 'proof-present', ''] },
+    services: { $map: { input: { $ifNull: [`${prefix}.services`, []] }, as: 'service', in: { $cond: [{ $eq: [{ $type: '$$service' }, 'string'] }, '$$service', { name: { $ifNull: ['$$service.name', { $ifNull: ['$$service.label', { $ifNull: ['$$service.servicesOffered', '$$service.applicableService'] }] }] } }] } } },
     poFileName: { $cond: [
       { $ne: [{ $ifNull: [`${prefix}.poFileName`, ''] }, ''] }, `${prefix}.poFileName`,
       { $cond: [{ $ne: [url, ''] }, 'Purchase Order', ''] }
@@ -71,7 +72,7 @@ function invalidateDashboardReads() { for (const invalidate of caches) invalidat
 // v4 discards snapshots captured before permanent service-staff ownership was
 // made authoritative (for example ATUL LTD retaining Nitin import metadata
 // after its live service was assigned to Tushar).
-const cachedAssignments = createDashboardCache({ name: 'dashboard-assignments-v5', maxEntries: 2 });
+const cachedAssignments = createDashboardCache({ name: 'dashboard-assignments-v6', maxEntries: 2 });
 const staffFields = ['assignedStaff', 'assignedStaffText', 'assignedStaffEmail'];
 const legacyClosedOwnerFields = ['closedBy', 'closedByText', 'closedByEmail'];
 const present = field => ({ [field]: { $exists: true, $nin: [null, ''] } });

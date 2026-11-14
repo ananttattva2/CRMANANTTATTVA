@@ -197,3 +197,17 @@ test('failed invalidation also bypasses old in-flight snapshots in the affected 
   finish({ count: 10 }); await old;
   assert.equal(f.entries.size, 0);
 });
+
+test('simultaneous identical HTTP reads share one controller result within the same revision', async () => {
+  const f=fixture();let release;let started;const began=new Promise(resolve=>{started=resolve;});
+  const firstResponse=f.response();const first=f.cache.middleware(f.req(),firstResponse,async()=>{started();await new Promise(resolve=>{release=resolve;});await firstResponse.json({count:10});});
+  await began;let followerRead=false;const followerResponse=f.response();const follower=f.cache.middleware(f.req(),followerResponse,async()=>{followerRead=true;});
+  await new Promise(resolve=>setImmediate(resolve));release();await Promise.all([first,follower]);
+  assert.equal(followerRead,false);assert.equal(followerResponse.body.count,10);assert.equal(followerResponse.headers['X-CRM-Cache'],'SHARED');
+});
+
+test('a shared HTTP read never returns a pre-write result after the revision changes', async () => {
+  const f=fixture();let release;let started;const began=new Promise(resolve=>{started=resolve;});
+  const response=f.response();const first=f.cache.middleware(f.req(),response,async()=>{started();await new Promise(resolve=>{release=resolve;});await response.json({count:10});});await began;
+  let freshRead=false;const follower=f.cache.middleware(f.req(),f.response(),async()=>{freshRead=true;});await new Promise(resolve=>setImmediate(resolve));await f.cache.invalidate();release();await Promise.all([first,follower]);assert.equal(freshRead,true);
+});

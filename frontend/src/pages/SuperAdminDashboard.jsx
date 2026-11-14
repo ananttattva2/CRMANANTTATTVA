@@ -354,6 +354,19 @@ export default function SuperAdminDashboard({ misPage = false }) {
   async function load({ silent = false } = {}) {
     if (!silent) setLoading(true)
     setError('')
+    if (misPage && currentUserIsAdmin) {
+      setApprovalCountsLoading(true)
+      api.get(API_ENDPOINTS.quotations.list, { timeout: 30000, params: { view: 'mis' } })
+        .then((result) => setQuotations(result.data?.quotations || []))
+        .catch((quotationError) => console.error('Unable to load Quotation MIS', quotationError))
+      api.get(API_ENDPOINTS.leads.list, { timeout: 30000, params: { view: 'mis' } })
+        .then((result) => setQuotationLeads(result.data?.leads || []))
+        .catch((leadError) => console.error('Unable to load PO statuses for Quotation MIS', leadError))
+      api.get(API_ENDPOINTS.clients.pendingApprovals, { timeout: 30000, params: { listOnly: true } })
+        .then((result) => setApprovalWorkflowClients(result.data?.pendingClients || []))
+        .catch((approvalError) => console.error('Unable to load approval status counts for Operations MIS', approvalError))
+        .finally(() => setApprovalCountsLoading(false))
+    }
     try {
       let reportResult
       try { reportResult = await loadProductivityReport(60000) }
@@ -365,7 +378,7 @@ export default function SuperAdminDashboard({ misPage = false }) {
     } catch (requestError) {
       if (misPage && currentUserIsAdmin) {
         const fallbackResults = await Promise.allSettled([
-          api.get(API_ENDPOINTS.auth.users, { timeout: 30000 }), api.get(API_ENDPOINTS.leads.list, { timeout: 30000 }),
+          api.get(API_ENDPOINTS.auth.users, { timeout: 30000 }), api.get(API_ENDPOINTS.leads.list, { timeout: 30000, params: { view: 'mis' } }),
           api.get(API_ENDPOINTS.clients.list, { timeout: 30000 }), api.get(API_ENDPOINTS.teams.list, { timeout: 30000 }), loadTemporaryMisLeads()
         ])
         const [usersResult, leadsResult, clientsResult, teamsResult, temporaryResult] = fallbackResults
@@ -379,19 +392,7 @@ export default function SuperAdminDashboard({ misPage = false }) {
         } else setError(requestError?.response?.data?.error || 'Unable to load MIS data. Please try again.')
       } else setError(requestError?.response?.data?.error || 'Unable to load the user activity report. Please try again.')
     } finally { setLoading(false) }
-    if (misPage && currentUserIsAdmin) {
-      setApprovalCountsLoading(true)
-      api.get(API_ENDPOINTS.quotations.list, { timeout: 30000 })
-        .then((result) => setQuotations(result.data?.quotations || []))
-        .catch((quotationError) => console.error('Unable to load Quotation MIS', quotationError))
-      api.get(API_ENDPOINTS.leads.list, { timeout: 30000 })
-        .then((result) => setQuotationLeads(result.data?.leads || []))
-        .catch((leadError) => console.error('Unable to load PO statuses for Quotation MIS', leadError))
-      api.get(API_ENDPOINTS.clients.pendingApprovals, { timeout: 30000, params: { _: Date.now() } })
-        .then((result) => setApprovalWorkflowClients(result.data?.pendingClients || []))
-        .catch((approvalError) => console.error('Unable to load approval status counts for Operations MIS', approvalError))
-        .finally(() => setApprovalCountsLoading(false))
-    }
+
   }
 
   useCrmRefresh(() => load({ silent: true }))

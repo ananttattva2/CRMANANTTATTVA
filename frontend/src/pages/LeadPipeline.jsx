@@ -1,3 +1,4 @@
+import { readPageSnapshot, savePageSnapshot } from '../services/pageReadSnapshot';
 import { exportWithReason } from '../utils/dataExport.mjs'
 import TrafficSources from '../components/leads/TrafficSources';
 import { isExistingClientTrafficSource, trafficSourceHierarchy, trafficSourceKey } from '../utils/trafficSources.mjs';
@@ -7,7 +8,6 @@ import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'r
 import { useLocation } from 'react-router-dom';
 import { ArrowDown, ArrowUp, ArrowUpRight, CalendarDays, CircleDollarSign, Download, Flame, LayoutGrid, Minus, RefreshCw, Search, Snowflake, Target, Users, WalletCards, X } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, Cell, Legend, Line, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import * as XLSX from 'xlsx';
 import DashboardShell from '../components/dashboard/DashboardShell';
 import DashboardViewTabs from '../components/dashboard/DashboardViewTabs';
 import LeadRevenuePanel, { revenueMoney } from '../components/leads/LeadRevenuePanel';
@@ -213,6 +213,7 @@ function SalesDashboardRepTable({ reps: allReps, comparisonLabel, range, previou
   const visible = reps.slice(first, first + pageSize);
   useEffect(() => { setPage(1); }, [reps, pageSize]);
   async function exportReps() {
+    const XLSX = await import('xlsx');
     const exportRows = reps.map((rep) => ({
       'Sales Representative': rep.owner, 'Total Leads': rep.totalLeads, 'Hot Closed': rep.hotClosed, 'Hot Open': rep.hotOpen, 'Hot Unassigned': rep.hotUnassigned || 0, 'Cold Open': rep.coldOpen,
       'Expected Revenue (INR)': rep.expectedRevenuePaise / 100, 'PO Value (INR)': rep.poValuePaise / 100,
@@ -260,10 +261,11 @@ export default function LeadPipeline() {
   const salesDashboardView = location.pathname === '/sales-dashboard';
   const salesDesignView = summaryView || salesDashboardView;
   const [currentUser] = useState(storedUser);
-  const [rows, setRows] = useState([]);
+  const snapshotKey = summaryView || salesDashboardView ? 'summary-pipeline' : 'revenue-pipeline';
+  const [rows, setRows] = useState(() => readPageSnapshot(snapshotKey)?.rows || []);
   const [sourceModes, setSourceModes] = useState([]);
   const [sourceOptionsUnavailable, setSourceOptionsUnavailable] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !readPageSnapshot(snapshotKey));
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
@@ -297,6 +299,7 @@ export default function LeadPipeline() {
     try {
       const result = await api.get(summaryView || salesDashboardView ? '/leads/summary-dashboard' : '/leads/pipeline-revenue?view=sales-rep-v6');
       if (version !== sequence.current) return;
+      savePageSnapshot(snapshotKey, result.data, result);
       setRows(result.data.rows || []); setError('');
     } catch (e) { if (version === sequence.current) setError(e.response?.data?.error || 'Unable to load pipeline.'); }
     finally { if (version === sequence.current) setLoading(false); }
@@ -388,6 +391,7 @@ export default function LeadPipeline() {
   function openSource(source) { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ sources: source.keys || [source.key], sourceLabel: source.label }); }
   function openOwnerSource(selectedOwner, source) { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ owner: selectedOwner, sources: source.keys || [source.key], sourceLabel: source.label }); }
   async function exportRows(source, name) {
+    const XLSX = await import('xlsx');
     const data = source.map(r => ({
       'Lead ID': r.code, Company: r.company, 'Client Communication Mode': r.communicationMode || 'Other / Not specified', Status: r.converted ? 'Closed — Converted to Hot' : r.state, Owner: r.owner,
       'Latest Open Quotation (INR)': (r.quotationAmountPaise || 0) / 100, 'PO Amount (INR)': (r.poAmountPaise || 0) / 100, 'Estimated Revenue (INR)': r.revenuePaise / 100

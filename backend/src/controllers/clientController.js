@@ -1068,17 +1068,18 @@ async function syncPendingApprovalRows(rows, type = 'client') {
   return records.map(mapPendingApprovalRecord);
 }
 
-async function readStoredPendingApprovals() {
-  return require('../services/crmCache').getCrmCache().remember('pending-approval-index-v3', loadStoredPendingApprovals);
+async function readStoredPendingApprovals(listOnly = false) {
+  return require('../services/crmCache').getCrmCache().remember(`pending-approval-index-v4:${listOnly}`, () => loadStoredPendingApprovals(listOnly));
 }
 
-async function loadStoredPendingApprovals() {
+async function loadStoredPendingApprovals(listOnly = false) {
+  const projection = listOnly ? '-payload.data -payload.items -payload.scopeOfWork -payload.terms -payload.revisionHistory -payload.leadDetails -payload.managementApproval.proofUrl' : '';
   const [pendingClientRecords, pendingQuotationRecords, recentDecisionRecords] = await Promise.all([
     PendingApproval.find({
       type: 'client',
       approvalStatus: { $in: ['PENDING', 'PARTIALLY_APPROVED', 'REVISION_REQUIRED'] }
     })
-      .populate('actionBy', 'name email')
+      .select(projection).maxTimeMS(15000).populate('actionBy', 'name email')
       .sort({ createdAt: -1 })
       .limit(500)
       .lean(),
@@ -1086,7 +1087,7 @@ async function loadStoredPendingApprovals() {
       type: 'quotation',
       approvalStatus: { $in: ['PENDING', 'PARTIALLY_APPROVED', 'REVISION_REQUIRED'] }
     })
-      .populate('actionBy', 'name email')
+      .select(projection).maxTimeMS(15000).populate('actionBy', 'name email')
       // Revisions update the existing index row, so updatedAt represents the
       // latest approval request while createdAt remains the original request.
       .sort({ updatedAt: -1, createdAt: -1 })
@@ -1096,7 +1097,7 @@ async function loadStoredPendingApprovals() {
       type: { $in: ['client', 'quotation'] },
       approvalStatus: { $in: ['APPROVED', 'REJECTED'] }
     })
-      .populate('actionBy', 'name email')
+      .select(projection).maxTimeMS(15000).populate('actionBy', 'name email')
       .sort({ actionAt: -1, createdAt: -1 })
       .limit(100)
       .lean()
@@ -2047,7 +2048,8 @@ exports.listPendingApprovals = async (req, res) => {
   // collection without having an index row. Reconcile only quotations here;
   // unlike the former full client + quotation scan, this indexed query stays
   // small and keeps the approval page responsive.
-  const storedApprovalsPromise = readStoredPendingApprovals();
+  const listOnly = req.query.listOnly === 'true';
+  const storedApprovalsPromise = readStoredPendingApprovals(listOnly);
   const liveQuotationsPromise = isAdministrativeReviewer
     ? Quotation.find({
         status: { $in: ['draft', 'submitted', 'sent', 'admin_approved'] },
@@ -2058,7 +2060,8 @@ exports.listPendingApprovals = async (req, res) => {
           { managementApproval: null }
         ]
       })
-        .populate('createdBy', 'name email')
+        .select(listOnly ? 'quotationNumber leadId leadCode businessLeadCode companyName leadDetails.companyName leadDetails.contactPerson validUntil pricingMode combinedBasicAmount items.basicAmount items.serviceCategory items.eprCategory items.piboCategory grandTotal status createdAt updatedAt createdBy createdByName preparedByName leadGeneratedBy managementApproval.status managementApproval.approverId managementApproval.approverName managementApproval.requestedAt managementApproval.note approvalDecision' : '')
+        .maxTimeMS(15000).populate('createdBy', 'name email')
         .sort({ 'managementApproval.requestedAt': -1, createdAt: -1 })
         .limit(500)
         .lean()

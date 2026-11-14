@@ -1061,7 +1061,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
       });
       const [meResult, approvalsResult] = await Promise.allSettled([
         api.get(API_ENDPOINTS.auth.me, authRequestConfig),
-        api.get(API_ENDPOINTS.clients.pendingApprovals, dataRequestConfig)
+        api.get(API_ENDPOINTS.clients.pendingApprovals, { ...dataRequestConfig, params: { ...dataRequestConfig.params, listOnly: true } })
       ]);
 
       const meResponse = meResult.status === 'fulfilled' ? meResult.value : null;

@@ -253,7 +253,7 @@ export default function SalesManagementDashboard() {
     try {
       void Promise.allSettled([
         api.get(API_ENDPOINTS.auth.userProductivityReport, { params: { from: filters.dateFrom, to: filters.dateTo }, timeout: 60000 }),
-        api.get(API_ENDPOINTS.quotations.list, { timeout: 60000 })
+        api.get(API_ENDPOINTS.quotations.list, { timeout: 60000, params: { view: 'mis' } })
       ]).then(([operationResult, quotationResult]) => {
         if (operationResult.status === 'fulfilled') setOperations(operationResult.value.data || operationResult.value || EMPTY_OPERATIONS)
         if (quotationResult.status === 'fulfilled') setQuotations(quotationResult.value.data?.quotations || [])

@@ -71,15 +71,15 @@ test('lead dashboard snapshot retains access/exclusion filters and every record 
   assert.equal(body.leads.length, 251); assert.equal(body.pagination.total, 251); assert.equal(body.pagination.hasNextPage, false);
 });
 
-test('quotation list renders before slow lead/editor references and later receives service enrichment', async () => {
+test('quotation editor enriches asynchronously while list visits skip editor-only reads', async () => {
   const source = read('../../frontend/src/pages/Quotations.jsx');
   const start = source.indexOf('  async function loadPage(');
   const end = source.indexOf('  async function openManagementApproval', start);
-  let release, loading = true, savedRows = [];
+  let release, loading = true, savedRows = []; const calls = [];
   const references = new Promise(resolve => { release = resolve; });
-  const context = { listRequestRef: { current: 0 }, leads: [],
+  const context = { listRequestRef: { current: 0 }, leads: [], viewMode: 'form',
     API_ENDPOINTS: { auth: { me: 'me' }, leads: { list: 'leads' }, quotations: { list: 'quotes', serviceCategories: 'categories', piboCategories: 'pibos', dropdownOptions: 'dropdowns' } },
-    api: { get(url) { if (url === 'me') return Promise.resolve({ data: { user: {} } });
+    api: { get(url) { calls.push(url); if (url === 'me') return Promise.resolve({ data: { user: {} } });
       if (url === 'quotes') return Promise.resolve({ data: { quotations: [{ _id: 'q1', leadId: 'l1', items: [{ basicAmount: 100 }] }] } });
       return references.then(() => ({ data: { leads: [{ _id: 'l1' }], categories: [], options: [] } })); } },
     setLoading: value => { loading = value; }, setError() {}, setCurrentUser() {}, setLeads() {}, setCustomServiceCategories() {}, setPiboCategories() {}, setCustomDropdownOptions() {}, setPiboCategoriesLoading() {},
@@ -94,6 +94,8 @@ test('quotation list renders before slow lead/editor references and later receiv
   release(); await new Promise(resolve => setImmediate(resolve));
   assert.equal(savedRows[0].items[0].businessCategory, 'updated');
   assert.equal(savedRows[0].items[0].basicAmount, 100);
+  calls.length = 0; context.viewMode = 'list'; await context.loadPage();
+  assert.deepEqual(calls.sort(), ['me', 'quotes']);
 });
 
 test('client dashboard snapshot retains every scoped client and does not repeat directory counts', async () => {
