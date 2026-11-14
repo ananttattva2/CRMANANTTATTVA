@@ -1208,3 +1208,10 @@
 .sales-dashboard-reps-table .pipeline-card-comparison{display:flex;align-items:center;flex-direction:column;gap:4px;margin-top:7px;white-space:normal;font-size:10px}
 .sales-dashboard-reps-table .sales-rep-metric{min-width:85px}.sales-dashboard-reps-table .sales-rep-metric:disabled{opacity:1;cursor:default}
 .sales-dashboard-reps-table .sales-rep-metric strong{font-size:16px}.sales-dashboard-reps-table .sales-rep-metric small,.sales-dashboard-reps-table .sales-rep-previous,.sales-dashboard-reps-table .sales-rep-change{font-size:10px;white-space:normal}
+
+.sales-dashboard-reps th div.has-unassigned { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.sales-dashboard-reps .sales-unassigned-count { display:inline-flex; align-items:center; justify-content:center; min-width:22px; margin-left:3px; padding:2px 5px; border:1px solid #fed7aa; border-radius:6px; background:#fff7ed; color:#c2410c; font-weight:900; }
+.sales-dashboard-reps td.is-unassigned, .sales-dashboard-reps tfoot td.is-unassigned { color:#c2410c; }
+.sales-dashboard-reps td.is-unassigned button { color:#c2410c; font-size:12px; }
+.sales-dashboard-reps th:nth-child(3) { width:23%; }
+.sales-dashboard-reps table { min-width:1020px; }

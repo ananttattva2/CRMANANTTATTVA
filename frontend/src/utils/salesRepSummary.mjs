@@ -52,3 +52,23 @@ export function salesRepSummary(currentRows = [], previousRows = [], configuredS
     return bHot - aHot || b.hotOpen - a.hotOpen || a.owner.localeCompare(b.owner);
   });
 }
+
+// Unowned leads are a separate Hot Leads bucket, never a representative.
+export function salesRepTableData(allReps = []) {
+  const isUnassigned = rep => !String(rep.owner || '').trim() || String(rep.owner).trim().toLowerCase() === 'unassigned';
+  const keys = ['totalLeads', 'hotOpen', 'hotClosed', 'coldOpen', 'expectedRevenuePaise', 'poValuePaise', 'previousTotalLeads', 'previousHotOpen', 'previousHotClosed', 'previousColdOpen', 'previousExpectedRevenuePaise', 'previousPoValuePaise'];
+  const sum = rows => rows.reduce((total, rep) => {
+    for (const key of keys) total[key] += Number(rep[key]) || 0;
+    return total;
+  }, Object.fromEntries(keys.map(key => [key, 0])));
+  const reps = allReps.filter(rep => !isUnassigned(rep));
+  const unassigned = sum(allReps.filter(isUnassigned));
+  const totals = sum(allReps);
+  totals.hotOpen -= unassigned.hotOpen;
+  totals.hotClosed -= unassigned.hotClosed;
+  totals.previousHotOpen -= unassigned.previousHotOpen;
+  totals.previousHotClosed -= unassigned.previousHotClosed;
+  totals.hotUnassigned = unassigned.hotOpen + unassigned.hotClosed;
+  totals.previousHotUnassigned = unassigned.previousHotOpen + unassigned.previousHotClosed;
+  return { reps, unassigned, totals };
+}

@@ -93,3 +93,30 @@ test('week, month and quarter comparisons use the immediately preceding calendar
   assert.equal(new Date(quarter.end).getMonth(), 9);
   assert.equal(previousPipelinePeriodRange('year', '2026-01-01'), null);
 });
+
+test('dashboard separates unassigned Hot leads without losing totals or comparison values', async () => {
+ const { salesRepSummary, salesRepTableData } = await import('../../frontend/src/utils/salesRepSummary.mjs');
+ const raw = salesRepSummary([
+  {kind:'hot',state:'open',owner:'Asha',revenuePaise:100},
+  {kind:'hot',state:'closed',owner:'Asha',poAmountPaise:500},
+  {kind:'hot',state:'open',owner:'Unassigned',revenuePaise:200},
+  {kind:'hot',state:'closed',owner:'Unassigned',poAmountPaise:700},
+  {kind:'cold',state:'open',owner:'Unassigned',revenuePaise:300}
+ ], [{kind:'hot',state:'open',owner:'Unassigned'}]);
+ const before = JSON.stringify(raw);
+ const { reps, totals } = salesRepTableData(raw);
+ assert.deepEqual(reps.map(rep=>rep.owner), ['Asha']);
+ assert.equal(totals.hotClosed,1); assert.equal(totals.hotOpen,1); assert.equal(totals.hotUnassigned,2);
+ assert.equal(totals.totalLeads,5); assert.equal(totals.coldOpen,1);
+ assert.equal(totals.hotClosed+totals.hotOpen+totals.hotUnassigned+totals.coldOpen, totals.totalLeads);
+ assert.equal(totals.expectedRevenuePaise,600);assert.equal(totals.poValuePaise,1200);
+ assert.equal(totals.previousHotUnassigned,1);
+ assert.equal(JSON.stringify(raw),before);
+});
+
+test('unassigned-only and empty dashboards keep a visible count without a fake representative', async () => {
+ const {salesRepSummary,salesRepTableData}=await import('../../frontend/src/utils/salesRepSummary.mjs');
+ assert.equal(salesRepTableData([]).totals.hotUnassigned,0);
+ const data=salesRepTableData(salesRepSummary([{kind:'hot',state:'open',owner:''}]));
+ assert.equal(data.reps.length,0);assert.equal(data.totals.hotUnassigned,1);assert.equal(data.totals.totalLeads,1);
+});
