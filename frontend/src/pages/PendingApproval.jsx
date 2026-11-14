@@ -734,6 +734,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
   const [temporaryApprovals, setTemporaryApprovals] = useState([]);
   const [temporaryDecision, setTemporaryDecision] = useState(null);
   const [poApprovals, setPoApprovals] = useState([]);
+  const [poLoading, setPoLoading] = useState(true);
   const [poDecision, setPoDecision] = useState(null);
   const [poDetailView, setPoDetailView] = useState(null);
   const [poQuotationPreview, setPoQuotationPreview] = useState(null);
@@ -972,6 +973,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
 
   async function loadPage(options = {}) {
     const requestId = ++loadRequestRef.current;
+    setPoLoading(true);
     const cached = !options.force ? readPendingApprovalCache(currentUser) : null;
     const authRequestConfig = { timeout: PENDING_APPROVAL_AUTH_TIMEOUT_MS };
     const dataRequestConfig = {
@@ -993,7 +995,70 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
     setError('');
 
     try {
-      const duplicatePromise = Promise.allSettled([api.get(API_ENDPOINTS.leads.duplicateApprovals, { ...dataRequestConfig, params: { ...dataRequestConfig.params, listOnly: true } })]);
+      const crmLeads = [];
+      const duplicatePromise = Promise.allSettled([api.get(API_ENDPOINTS.leads.duplicateApprovals, { ...dataRequestConfig, params: { ...dataRequestConfig.params, listOnly: true, excludePurchaseOrders: true } })]);
+      const poPromise = Promise.allSettled([api.get(API_ENDPOINTS.leads.duplicateApprovals, { ...dataRequestConfig, params: { ...dataRequestConfig.params, listOnly: true, type: 'purchase_order' } })]);
+      const applyLeadFeed = ([duplicateResult], feed) => {
+        if (duplicateResult.status !== 'fulfilled') {
+          if (requestId === loadRequestRef.current) setError(readError(duplicateResult.reason, 'Unable to refresh PO and special approvals. Please retry.'));
+          return;
+        }
+        if (requestId !== loadRequestRef.current) return;
+        const poStorage = duplicateResult.status === 'fulfilled' ? duplicateResult.value.data?.poStorage : null;
+        if (poStorage) console.info('[POProof:database:locations]', poStorage);
+        const leadApprovals = hydratePurchaseOrderApprovals(duplicateResult.status === 'fulfilled' ? (duplicateResult.value.data?.approvals || []) : [], crmLeads).map((approval) => {
+          if (approval.type === 'lead_service') {
+            const leadId = String(approval.payload?.leadId || '');
+            const matchingLead = crmLeads.find((lead) => [lead._id, lead.id, lead.sourceLeadId, lead.leadCode]
+              .some((id) => String(id || '') === leadId));
+            const grouped = new Map();
+            (matchingLead?.serviceSelections || []).forEach((service) => {
+              const owner = String(
+                service.createdByName
+                || service.createdByEmail
+                || matchingLead.importedCreatedBy
+                || approval.payload?.originalCreator
+                || 'CRM User'
+              ).trim();
+              if (!grouped.has(owner)) grouped.set(owner, []);
+              grouped.get(owner).push(service);
+            });
+            const serviceGroups = [...grouped.entries()].map(([user, services]) => ({ user, count: services.length, services }));
+            return {
+              ...approval,
+              payload: {
+                ...(approval.payload || {}),
+                serviceGroups: serviceGroups.length ? serviceGroups : (approval.payload?.groups || [])
+              }
+            };
+          }
+          if (approval.type === 'lead_royalty' || approval.payload?.leadAssignedTo) return approval;
+          const existingId = String(approval.payload?.existingLeadId || '');
+          const matchingLead = crmLeads.find((lead) => [lead._id, lead.id, lead.sourceLeadId, lead.leadCode].some((id) => String(id || '') === existingId));
+          const leadAssignedTo = matchingLead?.assignedTo?.name
+            || matchingLead?.assignedToText
+            || matchingLead?.assignedStaff?.name
+            || matchingLead?.assignedStaffText
+            || matchingLead?.assignments?.find((item) => item?.assignedToText || item?.assignedStaffText)?.assignedToText
+            || matchingLead?.assignments?.find((item) => item?.assignedStaffText)?.assignedStaffText
+            || '';
+          return leadAssignedTo ? { ...approval, payload: { ...approval.payload, leadAssignedTo } } : approval;
+        });
+        if (feed !== 'po') {
+        setDuplicateLeadApprovals(leadApprovals.filter((row) => !['lead_royalty', 'lead_service', 'lead_temporary', 'purchase_order'].includes(row.type)));
+        setServiceApprovals(leadApprovals.filter((row) => row.type === 'lead_service'));
+        setRoyaltyApprovals(leadApprovals.filter((row) => row.type === 'lead_royalty'));
+        setTemporaryApprovals(leadApprovals.filter((row) => row.type === 'lead_temporary'));
+        }
+        if (feed !== 'po') return;
+        const normalizedPoApprovals = leadApprovals.filter((row) => row.type === 'purchase_order')
+          .map((approval) => ({ ...approval, normalizedPoRows: normalizeApprovalPoRows(approval) }));
+        setPoApprovals(normalizedPoApprovals);
+        if (!options.silent) setPoPage(1);
+      };
+      const leadFeed = Promise.all([duplicatePromise.then(result => applyLeadFeed(result, 'special')), poPromise.then(result => applyLeadFeed(result, 'po')).finally(() => { if (requestId === loadRequestRef.current) setPoLoading(false); })]).catch(error => {
+        if (requestId === loadRequestRef.current) setError(readError(error, 'Unable to refresh PO approvals.'));
+      });
       const [meResult, approvalsResult] = await Promise.allSettled([
         api.get(API_ENDPOINTS.auth.me, authRequestConfig),
         api.get(API_ENDPOINTS.clients.pendingApprovals, dataRequestConfig)
@@ -1001,8 +1066,8 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
 
       const meResponse = meResult.status === 'fulfilled' ? meResult.value : null;
       const approvalsResponse = approvalsResult.status === 'fulfilled' ? approvalsResult.value : null;
-      const crmLeads = [];
 
+      if (requestId !== loadRequestRef.current) return;
       if (meResponse?.data?.user) {
         setCurrentUser(meResponse.data.user);
         storeSessionUser(meResponse.data.user);
@@ -1031,63 +1096,9 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
       if (!options.silent) { setClientPage(1); setQuotePage(1); }
       if (!options.silent || !cached) setLoading(false);
 
-      // The special/PO feed started in parallel. Apply its result after the
-      // primary client and quotation response is visible. A slow PO enrichment must not hold the
-      // whole Pending Approval screen at zero until the data timeout expires.
-      const [duplicateResult] = await duplicatePromise;
-      if (requestId !== loadRequestRef.current) return;
-      const poStorage = duplicateResult.status === 'fulfilled' ? duplicateResult.value.data?.poStorage : null;
-      if (poStorage) console.info('[POProof:database:locations]', poStorage);
-      const leadApprovals = hydratePurchaseOrderApprovals(duplicateResult.status === 'fulfilled' ? (duplicateResult.value.data?.approvals || []) : [], crmLeads).map((approval) => {
-        if (approval.type === 'lead_service') {
-          const leadId = String(approval.payload?.leadId || '');
-          const matchingLead = crmLeads.find((lead) => [lead._id, lead.id, lead.sourceLeadId, lead.leadCode]
-            .some((id) => String(id || '') === leadId));
-          const grouped = new Map();
-          (matchingLead?.serviceSelections || []).forEach((service) => {
-            const owner = String(
-              service.createdByName
-              || service.createdByEmail
-              || matchingLead.importedCreatedBy
-              || approval.payload?.originalCreator
-              || 'CRM User'
-            ).trim();
-            if (!grouped.has(owner)) grouped.set(owner, []);
-            grouped.get(owner).push(service);
-          });
-          const serviceGroups = [...grouped.entries()].map(([user, services]) => ({ user, count: services.length, services }));
-          return {
-            ...approval,
-            payload: {
-              ...(approval.payload || {}),
-              serviceGroups: serviceGroups.length ? serviceGroups : (approval.payload?.groups || [])
-            }
-          };
-        }
-        if (approval.type === 'lead_royalty' || approval.payload?.leadAssignedTo) return approval;
-        const existingId = String(approval.payload?.existingLeadId || '');
-        const matchingLead = crmLeads.find((lead) => [lead._id, lead.id, lead.sourceLeadId, lead.leadCode].some((id) => String(id || '') === existingId));
-        const leadAssignedTo = matchingLead?.assignedTo?.name
-          || matchingLead?.assignedToText
-          || matchingLead?.assignedStaff?.name
-          || matchingLead?.assignedStaffText
-          || matchingLead?.assignments?.find((item) => item?.assignedToText || item?.assignedStaffText)?.assignedToText
-          || matchingLead?.assignments?.find((item) => item?.assignedStaffText)?.assignedStaffText
-          || '';
-        return leadAssignedTo ? { ...approval, payload: { ...approval.payload, leadAssignedTo } } : approval;
-      });
-      setDuplicateLeadApprovals(leadApprovals.filter((row) => !['lead_royalty', 'lead_service', 'lead_temporary', 'purchase_order'].includes(row.type)));
-      setServiceApprovals(leadApprovals.filter((row) => row.type === 'lead_service'));
-      setRoyaltyApprovals(leadApprovals.filter((row) => row.type === 'lead_royalty'));
-      setTemporaryApprovals(leadApprovals.filter((row) => row.type === 'lead_temporary'));
-      const normalizedPoApprovals = leadApprovals.filter((row) => row.type === 'purchase_order')
-        .map((approval) => ({ ...approval, normalizedPoRows: normalizeApprovalPoRows(approval) }));
-      setPoApprovals(normalizedPoApprovals);
-      console.groupCollapsed('[POProof:list:normalized]');
-      const normalizedRows = normalizedPoApprovals.flatMap((approval) => approval.normalizedPoRows);
-      console.table(normalizedRows.map((row) => ({ approvalId: row.approvalId, leadCode: row.leadCode, poNumber: row.poNumber, rowIndex: row.rowIndex, poFileUrl: row.poFileUrl, hasPoFileUrl: row.hasPoFileUrl })));
-      console.groupEnd();
-      if (!options.silent) setPoPage(1);
+      // Independent feeds have already applied their results as they arrive.
+      // Await completion only for refresh lifecycle handling.
+      await leadFeed;
     } catch (err) {
       if (isSoftApprovalLoadError(err)) {
         const fallback = cached || cachedApprovalData || {};
@@ -1112,7 +1123,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
         console.error('[PendingApproval:error]', err);
       }
     } finally {
-      if (!options.silent || !cached) setLoading(false);
+      if (requestId === loadRequestRef.current && (!options.silent || !cached)) setLoading(false);
     }
   }
 
@@ -1601,7 +1612,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
 
           {error && <ToastMessage type="error" className="mt-5">{error}</ToastMessage>}
           {notice && <ToastMessage type="success" className="mt-5">{notice}</ToastMessage>}
-          {loading && <div className="page-inline-loader">Refreshing approval data...</div>}
+          {(loading || poLoading) && <div className="page-inline-loader">{poLoading ? 'Refreshing PO approvals...' : 'Refreshing approval data...'}</div>}
 
           {!embedded && <div className="pending-metrics">
             {canViewClients && <Metric icon={Users} label={canApproveClients ? 'Pending Clients' : 'Client Decisions'} value={companyClients.length} hint={canApproveClients ? 'Needs your review' : 'Compliance results'} tone="mint" onClick={() => openMetric('clients', 'all')} />}
@@ -1685,7 +1696,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
 
             {activeTab === 'deactivation' ? <DeactivationApprovals onCountChange={setDeactivationCount} /> : activeTab === 'po' ? (
               <>
-                <ApprovalTable title="Purchase Order Approvals" className="pending-po-table" columns={['Company / Lead', 'Service', 'PO Amount', 'PO Proof', 'Basic Amount (INR)', 'Submitted By', { label: 'PO Uploaded', sortable: true, direction: poDateSort, onSort: () => { setPoDateSort((value) => value === 'desc' ? 'asc' : 'desc'); setPoPage(1); } }, 'Status', 'Actions']} emptyText="No Purchase Orders are waiting for approval." page={poPage} totalPages={poTotalPages} showing={visiblePoApprovals.length} total={filteredPoApprovals.length} onPrev={() => setPoPage((value) => Math.max(1, value - 1))} onNext={() => setPoPage((value) => Math.min(poTotalPages, value + 1))} actions={<div className="pending-po-status-tabs" aria-label="PO approval status"><button type="button" className={statusFilter === 'PENDING' ? 'is-active' : ''} onClick={() => { setStatusFilter('PENDING'); setPoPage(1); }}>Pending</button><button type="button" className={statusFilter === 'APPROVED' ? 'is-active' : ''} onClick={() => { setStatusFilter('APPROVED'); setPoPage(1); }}>Approved</button><button type="button" className={statusFilter === 'REJECTED' ? 'is-active' : ''} onClick={() => { setStatusFilter('REJECTED'); setPoPage(1); }}>Rejected</button><button type="button" className={statusFilter === 'all' ? 'is-active' : ''} onClick={() => { setStatusFilter('all'); setPoPage(1); }}>All</button></div>}>
+                <ApprovalTable title="Purchase Order Approvals" className="pending-po-table" columns={['Company / Lead', 'Service', 'PO Amount', 'PO Proof', 'Basic Amount (INR)', 'Submitted By', { label: 'PO Uploaded', sortable: true, direction: poDateSort, onSort: () => { setPoDateSort((value) => value === 'desc' ? 'asc' : 'desc'); setPoPage(1); } }, 'Status', 'Actions']} emptyText={poLoading ? 'Loading purchase order approvals...' : 'No Purchase Orders are waiting for approval.'} page={poPage} totalPages={poTotalPages} showing={visiblePoApprovals.length} total={filteredPoApprovals.length} onPrev={() => setPoPage((value) => Math.max(1, value - 1))} onNext={() => setPoPage((value) => Math.min(poTotalPages, value + 1))} actions={<div className="pending-po-status-tabs" aria-label="PO approval status"><button type="button" className={statusFilter === 'PENDING' ? 'is-active' : ''} onClick={() => { setStatusFilter('PENDING'); setPoPage(1); }}>Pending</button><button type="button" className={statusFilter === 'APPROVED' ? 'is-active' : ''} onClick={() => { setStatusFilter('APPROVED'); setPoPage(1); }}>Approved</button><button type="button" className={statusFilter === 'REJECTED' ? 'is-active' : ''} onClick={() => { setStatusFilter('REJECTED'); setPoPage(1); }}>Rejected</button><button type="button" className={statusFilter === 'all' ? 'is-active' : ''} onClick={() => { setStatusFilter('all'); setPoPage(1); }}>All</button></div>}>
                 {visiblePoApprovals.map((row) => {
                   const id = row._id || row.id;
                   const hasCompletedDecision = ['APPROVED', 'REJECTED', 'REVISION_REQUIRED'].includes(String(row.approvalStatus || '').toUpperCase());

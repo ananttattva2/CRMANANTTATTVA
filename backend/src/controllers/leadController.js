@@ -341,9 +341,9 @@ exports.listLeadDropdownOptions = async (_req, res) => {
   res.json({ ok: true, options });
 };
 
-exports.listAssignmentUsers = async (_req, res) => {
+exports.listAssignmentUsers = async (req, res) => {
   const users = await User.find({ isActive: { $ne: false } })
-    .select('crmUserId name email avatarUrl role roles team teamId managerId operationHeadId isActive')
+    .select(req.query.view === 'directory' ? 'crmUserId name email role roles team teamId managerId operationHeadId isActive' : 'crmUserId name email avatarUrl role roles team teamId managerId operationHeadId isActive')
     .sort({ name: 1, email: 1 })
     .lean();
   res.json({ ok: true, users });
@@ -2592,8 +2592,9 @@ exports.requestDuplicateLeadApproval = async (req, res) => {
 
 exports.listDuplicateLeadApprovals = async (req, res) => {
   const startedAt = Date.now();
+  const poOnly = req.query.type === 'purchase_order';
   const admin = userHasAnyRole(req.user, ADMIN_ROLES);
-  if (!admin && req.user?._id) {
+  if (!poOnly && !admin && req.user?._id) {
     const legacyServiceNotifications = await Notification.find({
       kind: 'lead_additional_services',
       audience: req.user._id,
@@ -2665,7 +2666,7 @@ exports.listDuplicateLeadApprovals = async (req, res) => {
       return approval;
     }));
   }
-  const query = { type: { $in: ['lead_duplicate', 'lead_royalty', 'lead_service', 'lead_temporary', 'purchase_order'] } };
+  const query = { type: { $in: poOnly ? ['purchase_order'] : req.query.excludePurchaseOrders === 'true' ? ['lead_duplicate', 'lead_royalty', 'lead_service', 'lead_temporary'] : ['lead_duplicate', 'lead_royalty', 'lead_service', 'lead_temporary', 'purchase_order'] } };
   if (!admin) {
     const userId = String(req.user?._id || req.user?.id || '');
     // A service approval belongs to both people displayed in the UI: the user
@@ -2730,8 +2731,11 @@ exports.listDuplicateLeadApprovals = async (req, res) => {
     if (leadIds.length) leadLookup.push({ _id: { $in: leadIds } });
     if (legacyLeadIds.length) leadLookup.push({ sourceLeadId: { $in: legacyLeadIds } });
     if (leadCodes.length) leadLookup.push({ leadCode: { $in: leadCodes } });
-    if (companies.length) leadLookup.push(...companies.map((company) => ({ company: { $regex: `^${escapeRegex(company)}$`, $options: 'i' } })));
-    const leads = leadLookup.length ? await Lead.find({ $or: leadLookup }).select('_id leadCode sourceLeadId company createdBy createdByEmail serviceSelections assignments').populate('createdBy', 'name email').maxTimeMS(15000).lean() : [];
+    const leads = await require('../services/approvalLeadLookup').approvalLeads({
+      Lead, lookup: leadLookup, companies, escapeRegex,
+      projection: '_id leadCode sourceLeadId company createdBy createdByEmail serviceSelections assignments',
+      matches: (rows, company) => rows.some(lead => String(lead.company || '').toLowerCase() === company.toLowerCase())
+    });
     const leadById = new Map(leads.map((lead) => [String(lead._id), lead]));
     const leadByCode = new Map(leads.map((lead) => [String(lead.leadCode || '').toLowerCase(), lead]).filter(([code]) => code));
     const leadByCompany = new Map(leads.map((lead) => [String(lead.company || '').toLowerCase(), lead]).filter(([company]) => company));

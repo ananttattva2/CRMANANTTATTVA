@@ -1603,6 +1603,7 @@ export default function LeadGeneration() {
     return candidates.some((candidate) => userTokens.includes(candidate));
   }
 
+  const leadMetadataRequestRef = useRef(0);
   const referenceRequest = useRef(null);
   function loadLeadReferenceData() {
     if (referenceRequest.current) return referenceRequest.current;
@@ -1636,14 +1637,20 @@ export default function LeadGeneration() {
     try {
       const requestedWorkspace = new URLSearchParams(location.search).get('tab');
       const initialWorkspace = ['notified', 'temporary', 'no-owner'].includes(requestedWorkspace) ? requestedWorkspace : 'leads';
-      const [meResponse, usersResult, crmLeadsResponse] = await Promise.all([
-        api.get(API_ENDPOINTS.auth.me),
-        api.get(API_ENDPOINTS.leads.assignmentUsers).catch(() => null),
-        api.get(API_ENDPOINTS.leads.list, { params: { paginated: true, directory: true, page: 1, limit: 10, workspace: initialWorkspace } })
-      ]);
-      const me = meResponse.data.user;
-      setCurrentUser(me);
-      setStaff(usersResult?.data?.users || [me]);
+      // Each result is applied as soon as it is ready. Staff avatars/profile
+      // reads must not delay the paginated lead table.
+      const metadataId = ++leadMetadataRequestRef.current;
+      const meRequest = api.get(API_ENDPOINTS.auth.me).then(response => {
+        if (metadataId === leadMetadataRequestRef.current) setCurrentUser(response.data.user);
+        return response.data.user;
+      }).catch(() => null);
+      void api.get(API_ENDPOINTS.leads.assignmentUsers, { params: { view: 'directory' } }).then(response => {
+        if (metadataId === leadMetadataRequestRef.current) setStaff(response.data.users || []);
+      }).catch(async () => {
+        const me = await meRequest;
+        if (metadataId === leadMetadataRequestRef.current && me) setStaff([me]);
+      });
+      const crmLeadsResponse = await api.get(API_ENDPOINTS.leads.list, { params: { paginated: true, directory: true, page: 1, limit: 10, workspace: initialWorkspace } });
       if (requestId !== leadListRequestRef.current) return;
       const crmLeads = crmLeadsResponse.data.leads || [];
       setAllCcpLeads(crmLeads);
