@@ -1610,7 +1610,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
 
           {error && <ToastMessage type="error" className="mt-5">{error}</ToastMessage>}
           {notice && <ToastMessage type="success" className="mt-5">{notice}</ToastMessage>}
-          {loading && <div className="page-inline-loader">Refreshing approval data...</div>}
+          {(loading || poLoading) && <div className="sr-only" aria-live="polite">{poLoading ? 'Refreshing PO approvals...' : 'Refreshing approval data...'}</div>}
 
           {!embedded && <div className="pending-metrics">
             {canViewClients && <Metric icon={Users} label={canApproveClients ? 'Pending Clients' : 'Client Decisions'} value={companyClients.length} hint={canApproveClients ? 'Needs your review' : 'Compliance results'} tone="mint" onClick={() => openMetric('clients', 'all')} />}

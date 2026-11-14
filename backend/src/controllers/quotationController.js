@@ -835,10 +835,12 @@ exports.emailQuotation = async (req, res, next) => {
   try {
     const { isApproved, clientEmailContent, createApprovedQuotationPdf, quotationFilename } = require('../services/quotationDelivery');
     const { sendMail } = require('../utils/mailer');
-    const email = String(req.body.email || '').trim().toLowerCase();
+    const emailInput = Array.isArray(req.body.email) ? req.body.email.join(',') : String(req.body.email || '');
+    const primaryRecipients = [...new Set(emailInput.split(/[,;\s]+/).map(value => value.trim().toLowerCase()).filter(Boolean))];
+    const email = primaryRecipients[0] || '';
     const ccInput = Array.isArray(req.body.cc) ? req.body.cc.join(',') : String(req.body.cc || '');
-    const cc = [...new Set(ccInput.split(/[,;\n]/).map(value => value.trim().toLowerCase()).filter(Boolean))].filter(value => value !== email);
-    if (ccInput.length > 3000 || cc.length > 10 || cc.some(value => value.length > 254 || !/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(value))) return res.status(400).json({ error: 'Enter up to 10 valid CC email addresses separated by commas or semicolons.' });
+    const cc = [...new Set([...primaryRecipients.slice(1), ...ccInput.split(/[,;\s]+/).map(value => value.trim().toLowerCase()).filter(Boolean)])].filter(value => value !== email);
+    if (emailInput.length > 3000 || ccInput.length > 3000 || primaryRecipients.length > 10 || cc.length > 10 || cc.some(value => value.length > 254 || !/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(value))) return res.status(400).json({ error: 'Enter up to 10 valid email addresses separated by commas or semicolons.' });
     const subject = String(req.body.subject || '').trim();
     const body = String(req.body.body || '').trim();
     if (!/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(email) || email.length > 254 || !subject || subject.length > 200 || /[\r\n]/.test(subject) || !body || body.length > 10000) return res.status(400).json({ error: 'Enter a valid client email, subject (up to 200 characters), and message (up to 10000 characters).' });

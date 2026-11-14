@@ -71,6 +71,14 @@ test('resolves the matching Annual Return PO through Client Master data.selected
   assert.equal(result.years[0].po.source, 'lead');
 });
 
+test('uses Annual Return Year instead of the later PO Financial Year for the hub', async () => {
+  const source = lead();
+  source.assignments[1].poYearRows = [annualPo({ fy: '2026-27', poFinancialYear: '2026-27', annualReturnYear: '2025-26' })];
+  const result = await resolveAnnualReturnPO({ clientMaster: client, financialYears: ['2025-26', '2026-27'], LeadModel: modelFor(source) });
+  assert.equal(result.years[0].poStatus, 'received');
+  assert.equal(result.years[1].poStatus, 'pending');
+});
+
 test('does not consume a same-year PO belonging only to an unrelated service', async () => {
   const source = lead();
   source.assignments[0].poYearRows = [annualPo({ poNumber: 'REG-PO', services: ['New Registration'] })];
@@ -146,6 +154,23 @@ test('uses applicant type to scope legacy Client Masters without a matching assi
   const result = await resolveAnnualReturnPO({ clientMaster: legacyProducer, financialYears: ['2025-26'], LeadModel: modelFor(source) });
   assert.equal(result.years[0].poStatus, 'received');
   assert.equal(result.years[0].po.number, 'PRODUCER-PO');
+});
+
+test('falls back to applicant type when a stale service id points to a sibling applicant', async () => {
+  const source = lead({
+    serviceSelections: [
+      { assignedServiceId: 'annual-brand-owner', piboCategory: 'Brand Owner', servicesOffered: 'Annual Return Filling' },
+      { assignedServiceId: 'annual-importer', piboCategory: 'Importer', servicesOffered: 'Annual Return Filling' }
+    ],
+    assignments: [
+      { assignedServiceId: 'annual-brand-owner', poStatus: 'received', poYearRows: [annualPo({ poNumber: 'BRAND-OWNER-PO' })] },
+      { assignedServiceId: 'annual-importer', poStatus: 'received', poYearRows: [annualPo({ poNumber: 'IMPORTER-PO' })] }
+    ]
+  });
+  const staleImporter = { ...client, assignedServiceId: 'annual-brand-owner', data: { ...client.data, assignedServiceId: 'annual-brand-owner', basic: { ...client.data.basic, piboCategory: 'Importer' } } };
+  const result = await resolveAnnualReturnPO({ clientMaster: staleImporter, financialYears: ['2025-26'], LeadModel: modelFor(source) });
+  assert.equal(result.years[0].poStatus, 'received');
+  assert.equal(result.years[0].po.number, 'IMPORTER-PO');
 });
 
 test('PO resolution does not mutate existing Lead, Client Master, or Annual Return data', async () => {

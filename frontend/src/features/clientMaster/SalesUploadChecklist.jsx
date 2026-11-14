@@ -12,6 +12,7 @@ const isComplete = (row) => !receiptProofMissing(row) && (SIMPLE.has(row.particu
 
 export default function SalesUploadChecklist({ title = 'Sales Data Upload Checklist', checklist = [], canEdit, busy, onChange, onUploadProof, onRemoveProof, onPreview, onError }) {
   const [expanded, setExpanded] = useState(null);
+  const [remarkDrafts, setRemarkDrafts] = useState({});
   const confirmReceipt = (index, row, stage, checked) => {
     if (checked) setExpanded(row.particular);
     onChange(index, { [`${stage}DataReceived`]: checked }, true);
@@ -49,7 +50,7 @@ export default function SalesUploadChecklist({ title = 'Sales Data Upload Checkl
           </tr>
           {!simple && <tr className={`ut-detail-row ${open ? 'ut-detail-open' : ''}`}><td colSpan="7"><div className="ut-collapse" aria-hidden={!open} inert={!open ? '' : undefined}><div className="ut-collapse-inner"><div className="ut-details" id={detailsId} style={DATA_STAGES.has(row.particular) ? { gridTemplateColumns: '1fr' } : undefined}>
             {!DATA_STAGES.has(row.particular) && <div><div className="ut-detail-title"><strong>Supporting documents</strong><button type="button" onClick={() => setExpanded(null)} aria-label="Close row details"><X size={16} /></button></div><PurchaseProofDropzone files={row.files || []} required={enabled} disabled={!editable || !enabled} busy={busy === `proof-${index}`} onUpload={(files) => onUploadProof(index, files)} onRemove={(fileIndex, file) => onRemoveProof(index, fileIndex, file)} onPreview={onPreview} onError={onError} /></div>}
-            <label className="ut-remarks">Remarks<textarea disabled={!editable || !enabled} rows="3" maxLength="2000" value={row.remarks || ''} onChange={(event) => onChange(index, { remarks: event.target.value })} placeholder="Add a note for this stage…" />{enabled && (!row.date || !row.files?.length) && <small>Date and supporting proof are required.</small>}</label>
+            <div className="ut-remarks"><span>Remarks</span><textarea aria-label={`${row.particular} remarks`} disabled={!editable || !enabled} rows="3" maxLength="2000" value={remarkDrafts[row.particular] ?? row.remarks ?? ''} onChange={(event) => setRemarkDrafts((current) => ({ ...current, [row.particular]: event.target.value }))} placeholder="Add a note for this stage…" /><span className="mt-2 flex flex-wrap items-center justify-between gap-2">{enabled && (!row.date || !row.files?.length) ? <small>Date and supporting proof are required.</small> : <span />}<button type="button" disabled={!editable || !enabled} onClick={() => onChange(index, { remarks: remarkDrafts[row.particular] ?? row.remarks ?? '' }, true)} className="rounded-lg bg-teal-700 px-4 py-2 text-xs font-black text-white disabled:opacity-50">Save Remarks</button></span></div>
           </div>{DATA_STAGES.has(row.particular) && <div className="ut-receipt-grid">{['partial', 'complete'].map(stage => {
             const stageFiles = (row.files || []).filter(file => file.receiptStage === stage);
             const at = row[`${stage}ReceivedAt`];

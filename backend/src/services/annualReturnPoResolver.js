@@ -147,7 +147,11 @@ function buildAnnualReturnContext(lead = {}, serviceScope = {}) {
     const applicantType = normalizeApplicantType(linkedService) || normalizeApplicantType(assignment);
     return { assignment, assignmentId, linkedService, applicantType };
   });
-  const hasExactServiceMatch = Boolean(scopedServiceId && rowsWithService.some((row) => row.assignmentId === scopedServiceId));
+  // Some older Client Masters retained a sibling service id after the applicant
+  // was changed. Trust the id only when it also agrees with the selected
+  // applicant; otherwise fall back to the Importer/Producer identity.
+  const hasExactServiceMatch = Boolean(scopedServiceId && rowsWithService.some((row) => row.assignmentId === scopedServiceId
+    && (!scopedApplicantType || row.applicantType === scopedApplicantType)));
   const hasApplicantMatch = Boolean(!hasExactServiceMatch && scopedApplicantType && rowsWithService.some((row) => row.applicantType === scopedApplicantType));
 
   rowsWithService.forEach(({ assignment, assignmentId, linkedService, applicantType }) => {
@@ -165,7 +169,9 @@ function buildAnnualReturnContext(lead = {}, serviceScope = {}) {
       const explicitService = rowServices.some(isAnnualReturnService);
       if (rowServices.length && !explicitService) return;
       if (!explicitService && !assignmentIsAnnual) return;
-      const financialYear = normalizeFinancialYear(row.fy || row.fyYear || row.financialYear || row.annualReturnYear);
+      // Annual Return Year is the hub key. PO Financial Year may legitimately
+      // be the following year and must not hide the applicable return.
+      const financialYear = normalizeFinancialYear(row.annualReturnYear || row.fy || row.fyYear || row.financialYear);
       if (!financialYear || !validPo(row)) return;
       const service = rowServices.find(isAnnualReturnService)
         || assignmentServices.find(isAnnualReturnService)

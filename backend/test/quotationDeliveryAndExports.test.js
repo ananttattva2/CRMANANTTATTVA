@@ -55,6 +55,20 @@ test('invalid or excessive CC recipients are rejected before sending', async t =
   }
 });
 
+test('multiple addresses pasted into Client email use the first as To and the rest as CC', async t => {
+  let message;
+  t.mock.method(Lead, 'find', () => query([]));
+  t.mock.method(Quotation, 'findOne', () => query(quote));
+  t.mock.method(Quotation, 'updateOne', async () => {});
+  t.mock.method(delivery, 'createApprovedQuotationPdf', async () => Buffer.from('%PDF-test'));
+  t.mock.method(mailer, 'sendMail', async (...args) => { message = args; });
+  const res = response();
+  await controller.emailQuotation({ user: actor, params: { id: quote._id }, body: { email: 'client@example.test project@example.test; accounts@example.test', cc: '', subject: 'Quote', body: 'Review' } }, res, error => { throw error; });
+  assert.equal(res.code, 200);
+  assert.equal(message[0], 'client@example.test');
+  assert.deepEqual(message[3].cc, ['project@example.test', 'accounts@example.test']);
+});
+
 test('unapproved quotations cannot be emailed or downloaded by staff', async t => {
   t.mock.method(Lead, 'find', () => query([]));
   let current = { ...quote, status: 'submitted' };

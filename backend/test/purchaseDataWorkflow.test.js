@@ -256,6 +256,14 @@ test('receipt upload date is entered by the user and persisted by both checklist
   assert.match(purchaseController, /date: \/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$\/\.test\(row\.date/);
   assert.match(salesController, /date: \/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$\/\.test\(row\.date/);
 });
+
+test('tracker remarks save only from the explicit Save Remarks button', () => {
+  const checklist = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/SalesUploadChecklist.jsx'), 'utf8');
+  assert.match(checklist, /Save Remarks/);
+  assert.match(checklist, /setRemarkDrafts/);
+  assert.match(checklist, /onChange\(index, \{ remarks: remarkDrafts\[row\.particular\]/);
+  assert.doesNotMatch(checklist, /onChange=\{\(event\) => onChange\(index, \{ remarks:/);
+});
 test('Outlook MSG proof opens a safe decoded mail viewer with attachments', () => {
   const viewer = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/OutlookMsgViewer.jsx'), 'utf8');
   assert.match(viewer, /import\('@kenjiuno\/msgreader'\)/);
