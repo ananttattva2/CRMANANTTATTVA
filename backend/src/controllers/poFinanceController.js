@@ -89,15 +89,15 @@ exports.initialApproval = async (req, res) => {
   } catch (error) { return report(res, error); }
 };
 exports.act = async (req, res) => {
-  const event = req.params.action === 'refer' ? 'FINANCE_REFER' : req.params.action === 'go-ahead' ? 'MANAGEMENT_GO_AHEAD' : req.params.action === 'final' ? 'FINANCE_FINAL' : '';
+  const event = req.params.action === 'approve' ? 'FINANCE_APPROVE' : req.params.action === 'refer' ? 'FINANCE_REFER' : req.params.action === 'go-ahead' ? 'MANAGEMENT_GO_AHEAD' : req.params.action === 'final' ? 'FINANCE_FINAL' : '';
   if (!event) return res.status(404).json({ error: 'Unknown review action.' });
   try {
     let notification;
     const result = await inTransaction(req.params.id, async ({ approval, lead, index }) => {
       requireUnchanged(approval, lead.assignments[index], lead.serviceSelections?.[index]);
       const review = transition(approval.poReview, event, req.user, req.body.remarks, req.body.version);
-      if (event === 'FINANCE_FINAL') {
-        const status = String(req.body.status || '').toUpperCase();
+      if (event === 'FINANCE_APPROVE' || event === 'FINANCE_FINAL') {
+        const status = event === 'FINANCE_APPROVE' ? 'APPROVED' : String(req.body.status || '').toUpperCase();
         if (!['APPROVED', 'REJECTED', 'REVISION_REQUIRED'].includes(status)) fail(400, 'Choose Approve, Reject, or Revise.');
         review.finalStatus = status;
         approval.approvalStatus = status;
@@ -116,7 +116,7 @@ exports.act = async (req, res) => {
         notification = { approval, lead, index, status, remarks: approval.remarks, screenshotUrl: '' };
       }
       approval.poReview = review;
-      return { ok: true, review, message: event === 'FINANCE_REFER' ? 'Remark submitted. This PO is frozen until Super Admin gives Management Go Ahead.' : event === 'MANAGEMENT_GO_AHEAD' ? 'Go Ahead saved. Finance final actions are now unlocked.' : 'Finance final decision saved.' };
+      return { ok: true, review, message: event === 'FINANCE_APPROVE' ? 'Finance approval saved. The user can now close the lead.' : event === 'FINANCE_REFER' ? 'Remark submitted. This PO is frozen until Super Admin gives Management Go Ahead.' : event === 'MANAGEMENT_GO_AHEAD' ? 'Management approval saved. Finance approval is now unlocked.' : 'Finance final decision saved.' };
     });
     if (notification) void require('./leadController').notifyPurchaseOrderDecision(notification).catch(error => console.error('Finance PO notification failed', { name: error.name }));
     return res.json(result);

@@ -3,6 +3,8 @@ const {transition,sourceSignature,termsSnapshot}=require('../src/services/poAppr
 const actor=role=>({_id:'507f1f77bcf86cd799439011',name:role,role});
 test('PO requires Admin → Finance referral/freeze → Super Admin Go Ahead → Finance final decision',()=>{
  const initial=transition(null,'ADMIN_APPROVE',actor('admin'),'Initial review');assert.equal(initial.stage,'FINANCE_READY');assert.equal(initial.frozen,false);
+ const direct=transition(initial,'FINANCE_APPROVE',actor('accounts'),'Finance approved directly',1);assert.equal(direct.stage,'FINALIZED');assert.equal(direct.frozen,false);assert.equal(direct.financeFinal.remarks,'Finance approved directly');
+ assert.throws(()=>transition(initial,'FINANCE_APPROVE',actor('admin'),'Approve',1),error=>error.status===403);
  assert.throws(()=>transition(initial,'FINANCE_FINAL',actor('accounts'),'Final',1),error=>error.status===409);
  assert.throws(()=>transition(initial,'FINANCE_REFER',actor('admin'),'Refer',1),error=>error.status===403);
  const referred=transition(initial,'FINANCE_REFER',actor('accounts'),'Finance remarks',1);assert.equal(referred.stage,'MANAGEMENT_PENDING');assert.equal(referred.frozen,true);

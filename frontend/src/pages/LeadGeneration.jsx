@@ -277,6 +277,14 @@ function displayLeadId(item = {}) {
   return /^[a-f\d]{24}$/i.test(value) ? '-' : (value || '-');
 }
 
+function leadAccountsRecordIds(item = {}) {
+  const serviceIds = (Array.isArray(item.serviceSelections) ? item.serviceSelections : [])
+    .map((service) => String(service?.accountsRecordId || '').trim())
+    .filter(Boolean);
+  const legacyId = String(item.accountsRecordId || '').trim();
+  return [...new Set([...serviceIds, ...(legacyId ? [legacyId] : [])])];
+}
+
 function nextVisibleLeadCode(leads = []) {
   const maximum = leads.reduce((max, item) => {
     const match = String(item.leadCode || item.leadNumber || '').match(/^ATPL(?:-LEAD)?-(\d+)$/i);
@@ -4036,11 +4044,11 @@ function LeadDirectoryView({ leads, pagination, summary, staff, currentUser, loa
           <NotifiedLeadsTable rows={visibleNotifiedRows} loading={loading} onView={onView} onEdit={onEdit} canEdit={canDeleteLead} currentUser={currentUser} />
         ) : <div className="lead-directory-table-card overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-950/5">
           <div className="lead-directory-scroll max-h-[680px] overflow-auto">
-            <table className="crm-data-table lead-directory-table w-full min-w-[2050px] table-fixed text-left text-sm">
+            <table className="crm-data-table lead-directory-table w-full min-w-[2200px] table-fixed text-left text-sm">
               <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-black uppercase tracking-[0.06em] text-slate-500 shadow-sm">
                 <tr>
                   {[
-                    ['Lead ID', 'w-[140px]'], ['Company', 'w-[170px]'], ['Service Category', 'w-[160px]'],
+                    ['Lead ID', 'w-[140px]'], ['Account ID', 'w-[150px]'], ['Company', 'w-[170px]'], ['Service Category', 'w-[160px]'],
                     ['Contact Person', 'w-[170px]'], ['Mobile 1', 'w-[135px]'],
                     ['Email', 'w-[215px]'], ['Assigned To', 'w-[145px]'], ['Assigned By', 'w-[145px]'],
                     ['Created By', 'w-[145px]'], ['Created For / Behalf Of', 'w-[170px]'],
@@ -4050,10 +4058,17 @@ function LeadDirectoryView({ leads, pagination, summary, staff, currentUser, loa
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {visibleLeads.length === 0 ? (
-                  <tr><td colSpan={11} className="px-5 py-12 text-center font-black text-slate-400">{loading ? 'Loading leads...' : 'No leads found.'}</td></tr>
+                  <tr><td colSpan={15} className="px-5 py-12 text-center font-black text-slate-400">{loading ? 'Loading leads...' : 'No leads found.'}</td></tr>
                 ) : visibleLeads.map((item) => (
                   <tr key={item._id || item.id} className="transition hover:bg-orange-50/60">
                     <td className="lead-directory-id-cell px-4 py-4"><span title={displayLeadId(item)}>{displayLeadId(item)}</span></td>
+                    <td className="px-4 py-4">
+                      {leadAccountsRecordIds(item).length ? (
+                        <div className="flex flex-col items-start gap-1">
+                          {leadAccountsRecordIds(item).map((accountId) => <span key={accountId} title={accountId} className="max-w-full truncate font-black text-orange-700">{accountId}</span>)}
+                        </div>
+                      ) : <span className="text-slate-400">-</span>}
+                    </td>
                     <td className="px-4 py-4 font-semibold uppercase text-slate-700"><span className="cell-clamp">{item.company || '-'}</span></td>
                     <td className="px-4 py-4"><span className="lead-service-tag">{item.eprCategory || '-'}</span></td>
                     <td className="px-4 py-4"><LeadPersonCell name={item.contactPerson} /></td>

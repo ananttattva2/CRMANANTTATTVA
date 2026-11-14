@@ -8,12 +8,13 @@ const start = source.indexOf('function LeadDirectoryView');
 const end = source.indexOf('function MetricOutputCard', start);
 const directory = source.slice(start, end);
 
-test('lead directory omits Applicant Type while preserving the service column and table alignment', () => {
+test('lead directory shows service Accounts IDs, omits Applicant Type, and preserves table alignment', () => {
   assert.ok(start >= 0 && end > start);
-  assert.match(directory, /\['Lead ID', 'w-\[140px\]'\], \['Company', 'w-\[170px\]'\], \['Service Category'/);
+  assert.match(directory, /\['Lead ID', 'w-\[140px\]'\], \['Account ID', 'w-\[150px\]'\], \['Company', 'w-\[170px\]'\], \['Service Category'/);
+  assert.match(directory, /leadAccountsRecordIds\(item\)/);
   assert.doesNotMatch(directory, /\['Applicant Type', 'w-\[120px\]'\]/);
   assert.doesNotMatch(directory, /\{item\.piboCategory \|\| '-'\}/);
-  assert.match(directory, /colSpan=\{11\}/);
+  assert.match(directory, /colSpan=\{15\}/);
 });
 
 test('lead directory and Excel export show PO-backed closure status', () => {

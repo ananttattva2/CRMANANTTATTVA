@@ -21,6 +21,7 @@ function transition(review, event, user, remarks, expectedVersion, now = new Dat
   if (!text || text.length > 2500) fail(400, 'Enter remarks between 1 and 2,500 characters.');
   const rules = {
     ADMIN_APPROVE: { roles: ['admin', 'superadmin'], from: null, to: 'FINANCE_READY' },
+    FINANCE_APPROVE: { roles: ['accounts'], from: 'FINANCE_READY', to: 'FINALIZED' },
     FINANCE_REFER: { roles: ['accounts'], from: 'FINANCE_READY', to: 'MANAGEMENT_PENDING' },
     MANAGEMENT_GO_AHEAD: { roles: ['superadmin'], from: 'MANAGEMENT_PENDING', to: 'FINANCE_RELEASED' },
     FINANCE_FINAL: { roles: ['accounts'], from: 'FINANCE_RELEASED', to: 'FINALIZED' }
@@ -33,6 +34,7 @@ function transition(review, event, user, remarks, expectedVersion, now = new Dat
   return { ...(review || {}), stage: rule.to, frozen: rule.to === 'MANAGEMENT_PENDING', version: (review?.version || 0) + 1,
     history: [...(review?.history || []), entry],
     ...(event === 'ADMIN_APPROVE' ? { adminApproval: entry } : {}),
+    ...(event === 'FINANCE_APPROVE' ? { financeFinal: entry } : {}),
     ...(event === 'FINANCE_REFER' ? { financeReferral: entry } : {}),
     ...(event === 'MANAGEMENT_GO_AHEAD' ? { managementGoAhead: entry } : {}),
     ...(event === 'FINANCE_FINAL' ? { financeFinal: entry } : {}) };
