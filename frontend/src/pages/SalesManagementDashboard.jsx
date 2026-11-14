@@ -1,5 +1,5 @@
 import useCrmRefresh from '../hooks/useCrmRefresh'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Bar, CartesianGrid, Cell, ComposedChart, LabelList, Legend, Line, Pie, PieChart, Tooltip, XAxis, YAxis
@@ -247,30 +247,50 @@ export default function SalesManagementDashboard() {
   const [exporting, setExporting] = useState('')
   const [lastUpdated, setLastUpdated] = useState(null)
 
+  const requestVersion = useRef(0)
+  const appliedVersion = useRef({ sales: 0, operations: 0, quotations: 0, scope: null })
+  const filterRef = useRef(filters)
+  const tabRef = useRef(activeTab)
+  filterRef.current = filters
+  tabRef.current = activeTab
   async function load({ quiet = false } = {}) {
+    const version = ++requestVersion.current
+    const scope = filters
+    const tab = activeTab
+    const live = () => filterRef.current === scope
     quiet ? setRefreshing(true) : setLoading(true)
     setError('')
     try {
-      void Promise.allSettled([
-        api.get(API_ENDPOINTS.auth.userProductivityReport, { params: { from: filters.dateFrom, to: filters.dateTo }, timeout: 60000 }),
-        api.get(API_ENDPOINTS.quotations.list, { timeout: 60000, params: { view: 'mis' } })
-      ]).then(([operationResult, quotationResult]) => {
-        if (operationResult.status === 'fulfilled') setOperations(operationResult.value.data || operationResult.value || EMPTY_OPERATIONS)
-        if (quotationResult.status === 'fulfilled') setQuotations(quotationResult.value.data?.quotations || [])
-      })
-      const salesResult = await api.get(API_ENDPOINTS.salesMis.managementDashboard, { params: filters, timeout: 60000 })
-      setData(salesResult.data || EMPTY_DATA)
-      setLastUpdated(new Date())
+      const jobs = [api.get(API_ENDPOINTS.salesMis.managementDashboard, { params: filters, timeout: 60000 }).then(result => {
+        if (!live() || version < appliedVersion.current.sales) return
+        appliedVersion.current.sales = version
+        appliedVersion.current.scope = scope
+        setData(result.data || EMPTY_DATA)
+        setLastUpdated(new Date())
+      })]
+      if (['operations', 'overview'].includes(tab)) jobs.push(api.get(API_ENDPOINTS.auth.userProductivityReport, { params: { from: filters.dateFrom, to: filters.dateTo }, timeout: 60000 }).then(result => {
+        if (!live() || version < appliedVersion.current.operations) return
+        appliedVersion.current.operations = version
+        setOperations(result.data || EMPTY_OPERATIONS)
+      }))
+      if (['quotations', 'overview'].includes(tab)) jobs.push(api.get(API_ENDPOINTS.quotations.list, { timeout: 60000, params: { view: 'mis' } }).then(result => {
+        if (!live() || version < appliedVersion.current.quotations) return
+        appliedVersion.current.quotations = version
+        setQuotations(result.data?.quotations || [])
+      }))
+      await Promise.all(jobs)
     } catch (requestError) {
-      setError(requestError?.response?.data?.error || 'Unable to load the sales management dashboard.')
+      if (live() && version === requestVersion.current) setError(requestError?.response?.data?.error || 'Unable to load the management dashboard.')
     } finally {
-      setLoading(false)
-      setRefreshing(false)
+      if (live() && tabRef.current === tab && (version === requestVersion.current || appliedVersion.current.scope === scope)) {
+        setLoading(false)
+        setRefreshing(false)
+      }
     }
   }
 
-  useEffect(() => { load() }, [filters])
-  useCrmRefresh(() => load({ quiet: true }))
+  useEffect(() => { load() }, [filters, activeTab])
+  useCrmRefresh(() => load({ quiet: true }), true, loading)
 
   const managers = useMemo(() => [...(data.managerPerformance || [])].sort((left, right) => {
     const delta = (Number(left[sort.field]) || 0) - (Number(right[sort.field]) || 0)

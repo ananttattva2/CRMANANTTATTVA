@@ -58,6 +58,7 @@ export default function OverallDashboard() {
   const [exportProgress, setExportProgress] = useState('')
   const [portfolioCanExport, setPortfolioCanExport] = useState(false)
   const portfolioRef = useRef(null)
+  const hasData = useRef(Boolean(readPageSnapshot('overall-dashboard')))
   const pendingRequest = useRef(null)
   const requestSequence = useRef(0)
   const reducedMotion = useReducedMotion()
@@ -65,10 +66,10 @@ export default function OverallDashboard() {
     if (pendingRequest.current && !pendingRequest.current.signal?.aborted) return
     const sequence = ++requestSequence.current
     pendingRequest.current = { signal }
-    if (!readPageSnapshot('overall-dashboard')) setLoading(true)
+    if (!hasData.current) setLoading(true)
     try {
       const response = await api.get('/dashboard-insights/overall', { signal, timeout: 45000 })
-      if (sequence === requestSequence.current && !signal?.aborted) { savePageSnapshot('overall-dashboard', response.data, response); setData(response.data); setError('') }
+      if (sequence === requestSequence.current && !signal?.aborted) { hasData.current = true; savePageSnapshot('overall-dashboard', response.data, response); setData(response.data); setError('') }
     } catch (err) {
       if (sequence === requestSequence.current && err.code !== 'ERR_CANCELED') setError(err.response?.data?.error || 'Dashboard request timed out or could not load. Please refresh and retry.')
     } finally {
@@ -76,7 +77,7 @@ export default function OverallDashboard() {
     }
   }, [])
   useEffect(() => { if (!matrixView) { setLoading(false); return } const controller = new AbortController(); load(controller.signal); return () => { controller.abort() } }, [load, matrixView])
-  useCrmRefresh(() => { setRefreshToken(value => value + 1); if (matrixView) return load() })
+  useCrmRefresh(() => { if (matrixView) return load(); if (!portfolioRef.current?.isLoading?.()) setRefreshToken(value => value + 1) }, true, loading)
   async function exportPdf(exportView) {
     if (!data || exporting || (exportView === 'users' && !canViewUsers)) return
     setShowPdfChoice(false)

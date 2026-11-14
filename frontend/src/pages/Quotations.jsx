@@ -1135,7 +1135,7 @@ export default function Quotations() {
     setEditingId(savedQuotation._id || savedQuotation.id || '');
   }, [currentUser, editingId, isExplicitAddQuotation, quotation.pricingMode, quotationContext, quotations, viewMode]);
 
-  useCrmRefresh(() => loadPage({ silent: true }), viewMode === 'list');
+  useCrmRefresh(() => loadPage({ silent: true }), viewMode === 'list', loading);
   useEffect(() => { if (viewMode === 'form') void loadPage({ silent: true }); }, [viewMode]);
 
   async function loadPage({ silent = false } = {}) {

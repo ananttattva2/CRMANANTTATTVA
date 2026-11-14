@@ -969,11 +969,11 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
     document.querySelector('.pending-approval-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  useCrmRefresh(() => loadPage({ force: true, silent: true }));
+  useCrmRefresh(() => loadPage({ force: true, silent: true }), true, loading || poLoading);
 
   async function loadPage(options = {}) {
     const requestId = ++loadRequestRef.current;
-    setPoLoading(true);
+    if (!options.silent) setPoLoading(true);
     const cached = !options.force ? readPendingApprovalCache(currentUser) : null;
     const authRequestConfig = { timeout: PENDING_APPROVAL_AUTH_TIMEOUT_MS };
     const dataRequestConfig = {

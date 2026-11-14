@@ -5,11 +5,14 @@ let revision
 let readRevision
 let lastRefresh = Date.now()
 let generation = 0
+let writeGeneration = 0
 
 export function getCrmGeneration() { return generation }
+export function getCrmWriteGeneration() { return writeGeneration }
 
-export function notifyCrmChanged(broadcast = true) {
+export function notifyCrmChanged(broadcast = true, mutation = broadcast) {
   generation++
+  if (mutation) writeGeneration++
   lastRefresh = Date.now()
   for (const listener of listeners) listener()
   if (broadcast) {
@@ -32,7 +35,7 @@ async function poll() {
   } finally { pollPending = false }
 }
 function focus() { if (document.visibilityState !== 'hidden') { notifyCrmChanged(false); void poll() } }
-function storage(event) { if (event.key === 'crm:data:changed') notifyCrmChanged(false) }
+function storage(event) { if (event.key === 'crm:data:changed') notifyCrmChanged(false, true) }
 
 export function subscribeCrmChanges(listener, fetchRevision) {
   listeners.add(listener)

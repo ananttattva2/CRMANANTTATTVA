@@ -355,7 +355,7 @@ export default function SuperAdminDashboard({ misPage = false }) {
     if (!silent) setLoading(true)
     setError('')
     if (misPage && currentUserIsAdmin) {
-      setApprovalCountsLoading(true)
+      if (!silent) setApprovalCountsLoading(true)
       api.get(API_ENDPOINTS.quotations.list, { timeout: 30000, params: { view: 'mis' } })
         .then((result) => setQuotations(result.data?.quotations || []))
         .catch((quotationError) => console.error('Unable to load Quotation MIS', quotationError))
@@ -395,7 +395,7 @@ export default function SuperAdminDashboard({ misPage = false }) {
 
   }
 
-  useCrmRefresh(() => load({ silent: true }))
+  useCrmRefresh(() => load({ silent: true }), true, loading || approvalCountsLoading)
   useEffect(() => { load() }, [appliedFilters.from, appliedFilters.to])
 
   useEffect(() => {

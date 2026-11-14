@@ -34,6 +34,8 @@ function ClientRecordsPopup({ selection, onClose }) {
 }
 
 const ApplicationPortfolio = forwardRef(function ApplicationPortfolio({ mode, refreshToken = 0, onPdfAvailabilityChange }, ref) {
+  const hasPayload = useRef(Boolean(readPageSnapshot('application-portfolio')))
+  const fetching = useRef(false)
   const [payload, setPayload] = useState(() => readPageSnapshot('application-portfolio'))
   const [loading, setLoading] = useState(() => !readPageSnapshot('application-portfolio'))
   const [error, setError] = useState('')
@@ -46,9 +48,11 @@ const ApplicationPortfolio = forwardRef(function ApplicationPortfolio({ mode, re
   const reducedMotion = useReducedMotion()
   useEffect(() => {
     const controller = new AbortController()
-    if (!readPageSnapshot('application-portfolio')) setLoading(true); setError('')
-    api.get('/dashboard-insights/upload-tracker', { params: { assignmentsOnly: 'true', portfolioOnly: 'true' }, signal: controller.signal, timeout: 45000 }).then(response => { if (!controller.signal.aborted) { savePageSnapshot('application-portfolio', response.data, response); setPayload(response.data) } }).catch(err => { if (!controller.signal.aborted) setError(err.response?.data?.error || 'Unable to load application records. Please retry.') }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
-    return () => controller.abort()
+    if (!hasPayload.current) setLoading(true)
+    fetching.current = true
+    setError('')
+    api.get('/dashboard-insights/upload-tracker', { params: { assignmentsOnly: 'true', portfolioOnly: 'true' }, signal: controller.signal, timeout: 45000 }).then(response => { if (!controller.signal.aborted) { hasPayload.current = true; savePageSnapshot('application-portfolio', response.data, response); setPayload(response.data) } }).catch(err => { if (!controller.signal.aborted) setError(err.response?.data?.error || 'Unable to load application records. Please retry.') }).finally(() => { if (!controller.signal.aborted) { fetching.current = false; setLoading(false) } })
+    return () => { controller.abort(); fetching.current = false }
   }, [refresh, refreshToken])
   useEffect(() => { setSelection(null) }, [mode, section])
   const groups = useMemo(() => buildApplicationPortfolio(payload?.assignments || [], payload?.users || []), [payload])
@@ -102,6 +106,7 @@ const ApplicationPortfolio = forwardRef(function ApplicationPortfolio({ mode, re
     return () => onPdfAvailabilityChange?.(false)
   }, [error, loading, onPdfAvailabilityChange, shown.length])
   useImperativeHandle(ref, () => ({
+    isLoading: () => fetching.current,
     async downloadPdf() {
       if (loading || !payload) throw new Error('Dashboard data is still loading. Please retry in a moment.')
       const { downloadApplicationPortfolioPdf } = await import('../../utils/applicationPortfolioPdf.mjs')

@@ -1,4 +1,4 @@
-import { getCrmGeneration, notifyCrmChanged } from './crmFreshness'
+import { getCrmGeneration, getCrmWriteGeneration, notifyCrmChanged } from './crmFreshness'
 import axios from 'axios'
 import { gatewayRetryDelay } from './gatewayRetry.mjs'
 import { API_ENDPOINTS } from './apiEndpoints'
@@ -123,6 +123,7 @@ export function apiDelete(endpoint, config) {
 
 api.interceptors.request.use((config) => {
   config._crmReadGeneration = getCrmGeneration()
+  config._crmReadWriteGeneration = getCrmWriteGeneration()
   const token = getStoredToken()
 
   if (token) {
@@ -136,10 +137,11 @@ api.interceptors.response.use(
   (response) => {
     const method = String(response.config?.method || 'get').toLowerCase()
     const url = String(response.config?.url || '')
-    // A GET started before a detected write must not overwrite freshly loaded
-    // dashboard/list state when its slower response eventually arrives.
+    // A GET started before our own write must not overwrite freshly loaded
+    // dashboard/list state. External polls already schedule background refreshes;
+    // retrying their in-flight reads would keep first-load data hidden.
     if (method === 'get' && !url.includes('/cache/revision')
-      && response.config._crmReadGeneration !== getCrmGeneration()
+      && response.config._crmReadWriteGeneration !== getCrmWriteGeneration()
       && (response.config._crmFreshnessRetries || 0) < 2) {
       return api.request({ ...response.config, _crmFreshnessRetries: (response.config._crmFreshnessRetries || 0) + 1 })
     }

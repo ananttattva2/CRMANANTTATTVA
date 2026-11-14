@@ -5,6 +5,15 @@ const Team = require('../models/Team');
 const { userHasAnyRole } = require('../utils/userRoles');
 const { ADMIN_ROLES } = require('../constants/roles');
 
+// Only semantic lookup fields invalidate financial summaries. OTPs, avatars and
+// reminder delivery timestamps do not change an approved PO or sales total.
+const aggregateDependencies = {
+  users: { projection: Object.fromEntries('name email role roles team teamId managerId operationHeadId isActive crmUserId'.split(' ').map(field => [field, 1])) },
+  quotations: { projection: Object.fromEntries('leadRef leadId leadCode businessLeadCode quotationNumber status serviceState grandTotal quotationDate createdAt deletedAt'.split(' ').map(field => [field, 1])) },
+  pendingapprovals: { filter: { type: 'purchase_order', approvalStatus: 'APPROVED', actionAt: { $ne: null } }, projection: { type: 1, approvalStatus: 1, actionAt: 1, 'payload.leadId': 1 } }
+};
+const readSalesAggregation = pipeline => require('./dashboardSnapshotCache').readDashboardAggregation(Lead, pipeline, { dependencies: aggregateDependencies });
+
 const ACTIVE_THRESHOLD = 25;
 const WARNING_THRESHOLD = 10;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -642,10 +651,10 @@ async function getSalesManagementDashboard({ dateFrom, dateTo, department, manag
   const previousStart = new Date(previousEnd.getTime() - duration + 1);
   const dashboardNow = new Date(Math.floor(Date.now() / 60000) * 60000);
   const [currentRows, previousRows, departments, carryForwardRows] = await Promise.all([
-    require('./dashboardSnapshotCache').readDashboardAggregation(Lead, buildSalesManagementAggregation({ ...period, department, managerId, ownerIds, interval, now: dashboardNow })),
-    require('./dashboardSnapshotCache').readDashboardAggregation(Lead, buildSalesManagementAggregation({ start: previousStart, end: previousEnd, department, managerId, ownerIds, interval, now: dashboardNow })),
+    readSalesAggregation(buildSalesManagementAggregation({ ...period, department, managerId, ownerIds, interval, now: dashboardNow })),
+    readSalesAggregation(buildSalesManagementAggregation({ start: previousStart, end: previousEnd, department, managerId, ownerIds, interval, now: dashboardNow })),
     User.distinct('team', { ...(ownerIds.length ? { _id: { $in: ownerIds } } : {}), isActive: { $ne: false } }),
-    require('./dashboardSnapshotCache').readDashboardAggregation(Lead, buildMonthlyCarryForwardAggregation({ ...period, department, ownerIds }))
+    readSalesAggregation(buildMonthlyCarryForwardAggregation({ ...period, department, ownerIds }))
   ]);
   const current = formatAggregation(currentRows[0] || {}, period, interval);
   const previous = formatAggregation(previousRows[0] || {}, { start: previousStart, end: previousEnd }, interval);

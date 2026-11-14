@@ -312,7 +312,7 @@ export default function LeadPipeline() {
     }).catch(() => { if (active) setSourceOptionsUnavailable(true); });
     return () => { active = false; };
   }, []);
-  useCrmRefresh(load);
+  useCrmRefresh(load, true, loading);
   useEffect(() => {
     if (selection && dialog.current && !dialog.current.open) dialog.current.showModal();
     if (!selection && dialog.current?.open) dialog.current.close();

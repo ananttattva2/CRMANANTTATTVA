@@ -2,14 +2,17 @@ import { useEffect, useRef } from 'react'
 import api from '../services/api'
 import { subscribeCrmChanges } from '../services/crmFreshness'
 
-export default function useCrmRefresh(refresh, enabled = true) {
+export default function useCrmRefresh(refresh, enabled = true, initialLoading = false) {
   const current = useRef(refresh)
-  const previousEnabled = useRef(enabled)
+  const ready = useRef(!initialLoading)
+  if (!initialLoading) ready.current = true
+  const activeEnabled = enabled && ready.current
+  const previousEnabled = useRef(activeEnabled)
   current.current = refresh
   useEffect(() => {
-    const resumed = enabled && !previousEnabled.current
-    previousEnabled.current = enabled
-    if (!enabled) return undefined
+    const resumed = activeEnabled && !previousEnabled.current
+    previousEnabled.current = activeEnabled
+    if (!activeEnabled) return undefined
     let active = true
     let running = false
     let queued = false
@@ -26,5 +29,5 @@ export default function useCrmRefresh(refresh, enabled = true) {
     const unsubscribe = subscribeCrmChanges(reload, () => api.get('/cache/revision', { timeout: 10000 }))
     if (resumed) void reload()
     return () => { active = false; unsubscribe() }
-  }, [enabled])
+  }, [activeEnabled])
 }

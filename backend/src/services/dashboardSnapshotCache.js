@@ -83,18 +83,19 @@ async function readDashboardAggregation(Model, pipeline, options = {}) {
   const { redisStore, cacheEnabled, namespace } = require('./redisStore');
   if (!cacheEnabled() && !options.store) return direct();
   const store = options.store || redisStore;
-  const key = `${namespace}:validated-aggregation:v1:${createHash('sha256').update(EJSON.stringify({ collection: Model.collection.name, pipeline })).digest('hex')}`;
+  const key = `${namespace}:validated-aggregation:v1:${createHash('sha256').update(EJSON.stringify({ collection: Model.collection.name, pipeline, dependencies: options.dependencies })).digest('hex')}`;
   const dependencies = new Set([Model.collection.name]);
   const visit = value => { if (!value || typeof value !== 'object') return; if (value.$lookup?.from) dependencies.add(value.$lookup.from); Object.values(value).forEach(visit); };
   visit(pipeline);
   if (dependencies.size > 1 && !Model.db?.collection) return direct();
   async function metadata() {
     return Promise.all([...dependencies].sort().map(async name => {
-      const sourceKey = `${Model.db?.name || ''}:${name}`;
+      const dependency = options.dependencies?.[name] || {};
+      const sourceKey = `${Model.db?.name || ''}:${name}:${EJSON.stringify(dependency)}`;
       if (aggregationMetadataFlights.has(sourceKey)) return { collection: name, rows: await aggregationMetadataFlights.get(sourceKey) };
       const query = name === Model.collection.name
         ? Model.aggregate([{ $project: fingerprintProjection }]).option({ maxTimeMS: 12000 })
-        : Model.db.collection(name).aggregate([{ $project: fingerprintProjection }], { maxTimeMS: 12000 }).toArray();
+        : Model.db.collection(name).aggregate([{ $match: dependency.filter || {} }, ...(dependency.projection ? [{ $project: dependency.projection }] : []), { $project: fingerprintProjection }], { maxTimeMS: 12000 }).toArray();
       const pending = Promise.resolve(query);
       aggregationMetadataFlights.set(sourceKey, pending);
       try { return { collection: name, rows: await pending }; } finally { if (aggregationMetadataFlights.get(sourceKey) === pending) aggregationMetadataFlights.delete(sourceKey); }

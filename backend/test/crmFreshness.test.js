@@ -30,16 +30,19 @@ test('browser writes refresh immediately; one shared poll refreshes other users 
   assert.equal(polls, 1);
   context.notifyCrmChanged();
   assert.equal(context.getCrmGeneration(), 1);
+  assert.equal(context.getCrmWriteGeneration(), 1);
   assert.equal(a, 1); assert.equal(b, 1); assert.equal(broadcasts, 1);
   revision = 'after-write';
   await timer();
   assert.equal(a, 2); assert.equal(b, 2); assert.equal(broadcasts, 1);
+  assert.equal(context.getCrmWriteGeneration(), 1);
   document.visibilityState = 'hidden';
   await timer();
   assert.equal(polls, 2);
   document.visibilityState = 'visible';
   windowListeners.get('storage')({ key: 'crm:data:changed' });
   assert.equal(a, 3); assert.equal(b, 3);
+  assert.equal(context.getCrmWriteGeneration(), 2);
   stopA(); assert.equal(timers, 1);
   stopB(); assert.equal(timers, 0);
   assert.equal(windowListeners.size, 0); assert.equal(documentListeners.size, 0);
@@ -60,7 +63,7 @@ test('a slow GET from before a write is retried before it reaches page state', a
   source = source.replace(/^import .*$/gm, '').replace(/import\.meta\.env/g, '({ DEV: false })')
     .replace(/export default api/g, '').replace(/export \{[^}]*\}/g, '').replace(/export /g, '');
   const context = vm.createContext({ axios: { create: () => client }, API_ENDPOINTS: { auth: {} },
-    getCrmGeneration: () => generation, notifyCrmChanged: () => { generation++; },
+    getCrmGeneration: () => generation, getCrmWriteGeneration: () => generation, notifyCrmChanged: () => { generation++; },
     localStorage: { getItem: () => '' }, window: { setTimeout: fn => fn() }, fetch: () => Promise.resolve(), console });
   vm.runInContext(source, context);
   const config = beforeRequest({ method: 'get', url: '/leads', headers: {} });
@@ -76,3 +79,5 @@ test('a slow GET from before a write is retried before it reaches page state', a
   const revisionResponse = { config: { method: 'get', url: '/cache/revision' }, data: {} };
   assert.equal(await afterResponse(revisionResponse), revisionResponse);
 });
+
+test('external polling refresh does not retry and hide an otherwise successful in-flight GET',async()=>{let generation=0,before,after,retries=0;const client={interceptors:{request:{use:fn=>before=fn},response:{use:fn=>after=fn}},request:async()=>{retries++;}};let source=fs.readFileSync(path.resolve(__dirname,'../../frontend/src/services/api.js'),'utf8').replace(/^import .*$/gm,'').replace(/import\.meta\.env/g,'({ DEV: false })').replace(/export default api/g,'').replace(/export \{[^}]*\}/g,'').replace(/export /g,'');const context=vm.createContext({axios:{create:()=>client},API_ENDPOINTS:{auth:{}},getCrmGeneration:()=>generation,getCrmWriteGeneration:()=>0,notifyCrmChanged(){},localStorage:{getItem:()=>''},window:{setTimeout:fn=>fn()},fetch:()=>Promise.resolve(),console});vm.runInContext(source,context);const config=before({method:'get',url:'/sales-mis/management-dashboard',headers:{}});generation++;const response={config,data:{count:10}};assert.equal(await after(response),response);assert.equal(retries,0);});
