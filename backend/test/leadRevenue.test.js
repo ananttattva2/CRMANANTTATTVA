@@ -17,12 +17,23 @@ test('adding revenue preserves history while separate groups retain separate tot
   assert.equal(entries[0].amountPaise, 1000000);
   assert.equal(result[0].contributions.length, 2);
 });
-test('service keys survive unrelated edits and partial closure stays open', () => {
-  const lead = { createdBy: 'owner', serviceSelections: [{ assignedServiceId: 'a', servicesOffered: 'Annual Return' }, { assignedServiceId: 'b' }], assignments: [{ assignedServiceId: 'a', closedBy: 'user' }, { assignedServiceId: 'b' }] };
+test('any closure marker (assignment, service, lead-level, or requested) marks the lead closed', () => {
+  const lead = { createdBy: 'owner', serviceSelections: [{ assignedServiceId: 'a', servicesOffered: 'Annual Return' }, { assignedServiceId: 'b' }], assignments: [{ assignedServiceId: 'a' }, { assignedServiceId: 'b' }] };
   assert.deepEqual(serviceRows(lead, 'hot').map(s => s.key), ['a', 'b']);
+  // No closure markers anywhere -> open.
   assert.equal(hotClosed(lead), false);
-  lead.assignments[1].closedAt = new Date();
+  // A single assignment-level closure is enough to close the lead.
+  lead.assignments[0].closedBy = 'user';
   assert.equal(hotClosed(lead), true);
+  // closureRequestedBy (awaiting staff assignment) also counts as closed.
+  const pending = { serviceSelections: [{ assignedServiceId: 'a' }], assignments: [{ assignedServiceId: 'a', closureRequestedBy: 'manager', closureRequestedByText: 'Manager' }] };
+  assert.equal(hotClosed(pending), true);
+  // Lead-level legacy closure counts regardless of service count.
+  const legacy = { closedBy: 'owner', serviceSelections: [{ assignedServiceId: 'a' }, { assignedServiceId: 'b' }] };
+  assert.equal(hotClosed(legacy), true);
+  // A provisional/permanently_closed PO status counts as closed.
+  const poClosed = { assignments: [{ poStatus: 'permanently_closed' }] };
+  assert.equal(hotClosed(poClosed), true);
   assert.equal(serviceRows({ createdBy: 'owner' }, 'cold')[0].key, 'cold-base');
 });
 test('pipeline owner falls back to the saved on-behalf allocation before the original creator', () => {

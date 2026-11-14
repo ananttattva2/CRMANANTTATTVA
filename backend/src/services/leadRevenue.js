@@ -19,13 +19,30 @@ function groupsFrom(entries) {
   }
   return [...groups.values()];
 }
+function closureMarker(row = {}) {
+  return Boolean(
+    row.closedAt || row.closedBy || row.closedByText ||
+    row.closureRequestedBy || row.closureRequestedByText ||
+    row.poStatus === 'provisional' || row.poStatus === 'permanently_closed' ||
+    (Array.isArray(row.poYearRows) && row.poYearRows.some(po => po.poNumber || po.poNo))
+  ) || /closed|won|converted|lost|cancel/i.test(String(row.status || '').trim());
+}
 function hotClosed(lead) {
-  const rows = lead.serviceSelections?.length ? lead.serviceSelections : [lead];
-  return rows.every((row, i) => {
-    const assignment = (lead.assignments || []).find(a => row.assignedServiceId && a.assignedServiceId === row.assignedServiceId) || lead.assignments?.[i] || {};
-    return Boolean(row.closedBy || row.closedByText || row.closedAt || assignment.closedBy || assignment.closedByText || assignment.closedAt || (rows.length === 1 && (lead.closedBy || lead.closedByText || lead.closedAt)))
-      || /^(closed|closed won|closed lost)$/i.test(String(row.status || lead.status || '').trim());
-  });
+  // A lead counts as closed the moment ANY service row, assignment, or the
+  // lead itself carries a closure marker — assignment-level closure, lead-level
+  // legacy closure, and closure requested (awaiting staff assignment) all
+  // qualify. We use .some() rather than .every() so a partially-closed lead
+  // (e.g. one of several services closed) is not miscounted as open.
+  if (closureMarker(lead)) return true;
+  const rows = lead.serviceSelections?.length ? lead.serviceSelections : [];
+  if (rows.some(closureMarker)) return true;
+  const assignments = lead.assignments || [];
+  if (assignments.some(closureMarker)) return true;
+  // Fall back to status on the lead when there are no service rows.
+  if (!rows.length && !assignments.length) {
+    return /^(closed|closed won|closed lost)$/i.test(String(lead.status || '').trim());
+  }
+  return false;
 }
 function purchaseOrders(lead = {}) {
   const unique = new Map();

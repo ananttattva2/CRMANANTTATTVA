@@ -17,7 +17,7 @@ function directoryProjection(projection) {
   } };
   result.serviceSelections = { $map: {
     input: { $cond: [{ $isArray: '$serviceSelections' }, '$serviceSelections', []] }, as: 'service',
-    in: fields('$$service', 'assignedServiceId serviceAssignmentId industryType businessCategory eprCategory applicantType piboParent piboCategoryParent subApplicantType piboCategory servicesOffered applicableService plantUnit firstAnnualReturnYearApplicable assignedManagerName assignedManagerEmail assignedStaffName assignedStaffEmail createdByName createdByEmail closedBy closedByText closedAt')
+    in: fields('$$service', 'assignedServiceId serviceAssignmentId industryType businessCategory eprCategory applicantType piboParent piboCategoryParent subApplicantType piboCategory servicesOffered applicableService plantUnit firstAnnualReturnYearApplicable assignedManagerName assignedManagerEmail assignedStaffName assignedStaffEmail createdByName createdByEmail closedBy closedByText closedAt accountsRecordId closureRequestedBy closureRequestedByText')
   } };
   return result;
 }
