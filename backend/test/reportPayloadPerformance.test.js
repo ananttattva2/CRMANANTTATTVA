@@ -39,9 +39,12 @@ function evaluate(expression, document, variables = {}) {
     case '$switch': { const branch = argument.branches.find(row => ev(row.case)); return ev(branch ? branch.then : argument.default); }
     case '$cond': return ev(ev(argument[0]) ? argument[1] : argument[2]);
     case '$map': return ev(argument.input).map(entry => evaluate(argument.in, document, { ...variables, [argument.as]: entry }));
-    case '$type': { const value = ev(argument); return typeof value === 'string' ? 'string' : value instanceof Date ? 'date' : Array.isArray(value) ? 'array' : value === null ? 'null' : typeof value; }
+    case '$type': { const value = ev(argument); return typeof value === 'string' ? 'string' : value instanceof Date ? 'date' : Array.isArray(value) ? 'array' : value === null ? 'null' : typeof value === 'boolean' ? 'bool' : typeof value === 'number' ? 'double' : typeof value; }
+    case '$in': { const [left, right] = ev(argument); return right.includes(left); }
     case '$isArray': return Array.isArray(ev(argument));
     case '$objectToArray': return Object.entries(ev(argument)).map(([k, v]) => ({ k, v }));
+    case '$filter': return ev(argument.input).filter(value => evaluate(argument.cond, document, { ...variables, [argument.as]: value }));
+    case '$mergeObjects': return Object.assign({}, ...ev(argument));
     case '$arrayToObject': return Object.fromEntries(ev(argument).map(({ k, v }) => [k, v]));
     case '$strLenBytes': return Buffer.byteLength(ev(argument));
     case '$trim': return ev(argument.input).trim();
@@ -49,6 +52,8 @@ function evaluate(expression, document, variables = {}) {
     case '$ne': return ev(argument[0]) !== ev(argument[1]);
     case '$gt': return ev(argument[0]) > ev(argument[1]);
     case '$ifNull': { const [left, right] = argument; return ev(left) ?? ev(right); }
+    case '$size': return ev(argument).length;
+    case '$setDifference': { const [left, right] = ev(argument); return [...new Map(left.map(value => [JSON.stringify(value ?? null), value ?? null])).values()].filter(value => !right.some(other => JSON.stringify(value) === JSON.stringify(other))); }
     case '$max': return ev(argument).reduce((left, right) => left > right ? left : right);
     case '$min': return Math.min(...ev(argument));
     case '$floor': return Math.floor(ev(argument));
@@ -82,6 +87,14 @@ test('targeted MIS client projection preserves completion and applicant identity
   assert.deepEqual(analyzeClientMasterData(compact), analyzeClientMasterData(data));
   assert.equal(compact.annualReturn, undefined); assert.equal(compact.selectedLeadSnapshot.serviceSelections, undefined);
   assert.equal(compact.selectedLeadSnapshot.subApplicantType, 'Importer');
+});
+
+test('terminal file metadata cannot retain embedded document bytes or change empty-file completion', () => {
+  const data = { cte: { plants: [{ ctoDocument: { url: 'data:application/pdf;base64,' + 'a'.repeat(2000000), name: 'proof.pdf' }, cteDocument: { url: '', name: false }, cteApplicable: 'Yes' }] }, basic: { piboCategory: 'Producer', companyType: 'Private Limited' } };
+  const { misClientProjection } = require('../src/services/misClientProjection');
+  const compact = evaluate(misClientProjection.data, { data });
+  assert.deepEqual(analyzeClientMasterData(compact), analyzeClientMasterData(data));
+  assert.ok(JSON.stringify(compact).length < 2000);
 });
 
 test('concurrent heartbeat requests update current session atomically without double-counting or versioned saves', async () => {

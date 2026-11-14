@@ -91,10 +91,10 @@ test('productivity report limits heavy telemetry queries and falls back per data
   const path = require('node:path');
   const source = fs.readFileSync(path.resolve(__dirname, '../src/services/userProductivityReport.js'), 'utf8');
   assert.match(source, /async function reportQuery\(label, query, fallback = \[\]\)/);
-  assert.match(source, /\.limit\(5000\)\.maxTimeMS\(15000\)/);
+  assert.match(source, /readReportSessions\(UserSession/);
   assert.match(source, /readReportActivities\(AuditLog/);
   const telemetry = fs.readFileSync(path.resolve(__dirname, '../src/services/reportActivitySummary.js'), 'utf8');
-  assert.match(telemetry, /\$limit: 10000/); assert.match(telemetry, /maxTimeMS: 15000/);
+  assert.match(telemetry, /\$limit: 10000/); assert.match(telemetry, /\$limit: 5000/); assert.match(telemetry, /maxTimeMS: 15000/);
   assert.doesNotMatch(source, /productivityReportCache|productivityReportInFlight/);
   assert.match(source, /managerId: entityId\(team\.manager\)/);
   assert.match(source, /memberIds: \(team\.members \|\| \[\]\)\.map\(entityId\)\.filter\(Boolean\)/);

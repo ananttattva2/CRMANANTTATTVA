@@ -24,3 +24,9 @@ test('aggregation snapshots revalidate joined collections before returning cache
  const Model={collection:{name:'joined-source-test'},db:{name:'test',collection(){return{aggregate(){return{toArray:async()=>[{_id:'quote',signature:String(version)}]};}};}},aggregate(stages){return{option:async()=>{if(stages[0].$project?.signature)return[{_id:'lead',signature:'stable'}];reads++;return[{amount:version}];}};}};
  const pipeline=[{$lookup:{from:'joined-quotes-test',as:'quotes'}}];assert.equal((await readDashboardAggregation(Model,pipeline,{store}))[0].amount,1);await readDashboardAggregation(Model,pipeline,{store});assert.equal(reads,1);version=2;assert.equal((await readDashboardAggregation(Model,pipeline,{store}))[0].amount,2);assert.equal(reads,2);
 });
+
+test('an edit during cold population keeps stable rows so the next read reloads only the changed document',async()=>{
+ let docs=[{_id:'editing',value:10},{_id:'stable',value:20}],full=0,delta=0;const cache=new Map(),store={get:async k=>cache.get(k),set:async(k,v)=>cache.set(k,v)};
+ const Model={collection:{name:'cold-population-test'},aggregate(stages){return{option:async()=>{if(stages[1].$project.signature)return docs.map(row=>({_id:row._id,signature:String(row.value)}));const ids=stages[0].$match.$and?.[1]?._id.$in;if(ids){delta++;return docs.filter(row=>ids.includes(row._id)).map(row=>({...row}));}full++;const rows=docs.map(row=>({...row}));docs[0].value=11;return rows;}};}};
+ await readDashboardCollection(Model,{}, {value:1},{store});const rows=await readDashboardCollection(Model,{}, {value:1},{store});assert.equal(rows[0].value,11);assert.equal(full,1);assert.equal(delta,1);
+});

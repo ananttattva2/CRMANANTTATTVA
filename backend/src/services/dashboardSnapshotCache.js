@@ -31,7 +31,7 @@ async function readDashboardCollection(Model, filter, projection, options = {}) 
     try { const value = await store.get(key); if (value) cached = EJSON.parse(value); if (!Array.isArray(cached?.meta) || !Array.isArray(cached?.rows)) cached = null; } catch { /* Read Mongo if Redis is unavailable. */ }
     if (!cached) {
       const before = await metadata(); const rows = await direct(); const after = await metadata();
-      if (same(before, after)) await save(after, rows);
+      await saveStable(before, after, rows);
       return rows;
     }
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -53,11 +53,18 @@ async function readDashboardCollection(Model, filter, projection, options = {}) 
         after.forEach(row => union.set(String(row._id), row));
         await save([...union.values()], [...byId.values()]); return rows;
       }
+      if (attempt === 1) { await saveStable(current, after, rows); return rows; }
       cached = { meta: current, rows };
     }
     return direct();
     async function metadata() { return Model.aggregate([{ $match: filter }, { $project: fingerprintProjection }]).option({ maxTimeMS: 12000 }); }
-    async function save(meta, rows) { try { const value = EJSON.stringify({ meta, rows }); if (Buffer.byteLength(value) <= 8 * 1024 * 1024) await store.set(key, value, 300); } catch { /* Cache writes cannot fail a read. */ } }
+    async function saveStable(before, after, rows) {
+      const previous = new Map(before.map(row => [String(row._id), EJSON.stringify(row)]));
+      const stable = after.filter(row => previous.get(String(row._id)) === EJSON.stringify(row));
+      const ids = new Set(stable.map(row => String(row._id)));
+      if (stable.length) await save(stable, rows.filter(row => ids.has(String(row._id))));
+    }
+    async function save(meta, rows) { try { const value = EJSON.stringify({ meta, rows }); if (Buffer.byteLength(value) <= 8 * 1024 * 1024) await store.set(key, value, 86400); } catch { /* Cache writes cannot fail a read. */ } }
   })().catch(async error => {
     // Older Mongo-compatible servers may not implement the hash operator.
     if ([168, 40324, 8000].includes(error.code)) return direct();
