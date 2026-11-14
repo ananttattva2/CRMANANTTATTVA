@@ -19,7 +19,7 @@ export default function FinanceApproval() {
   const [tab, setTab] = useState('finance'), [query, setQuery] = useState(''), [stage, setStage] = useState(''), [page, setPage] = useState(1);
   const [modal, setModal] = useState(null), [remarks, setRemarks] = useState(''), [saving, setSaving] = useState(false);
   const request = useRef(0), detailRequest = useRef(0), dialog = useRef(null);
-  const finance = hasAnyRole(user, ['accounts']), management = hasAnyRole(user, ['superadmin']);
+  const finance = hasAnyRole(user, ['accounts', 'finance']), management = hasAnyRole(user, ['superadmin']);
   async function load() {
     const ticket = ++request.current;
     setLoading(true); setError('');

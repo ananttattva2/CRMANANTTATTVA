@@ -151,7 +151,7 @@ function App(){
         <Route path="/summary-dashboard/operations" element={<ProtectedRoute allowedRoles={['admin', 'superadmin']}><AnnualReturnOperationsDashboard/></ProtectedRoute>} />
         <Route path="/po-dashboard" element={<ProtectedRoute><PurchaseOrderDashboard/></ProtectedRoute>} />
         <Route path="/purchase-sales-dashboard" element={<ProtectedRoute><PurchaseSalesDashboard/></ProtectedRoute>} />
-        <Route path="/finance-approval" element={<ProtectedRoute allowedRoles={['accounts', 'admin', 'superadmin']}><FinanceApproval/></ProtectedRoute>} />
+        <Route path="/finance-approval" element={<ProtectedRoute allowedRoles={['accounts', 'finance', 'admin', 'superadmin']}><FinanceApproval/></ProtectedRoute>} />
         <Route path="/pending-approval" element={<ProtectedRoute><PendingApproval/></ProtectedRoute>} />
         <Route path="/compliance/ar" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'compliance', 'manager']}><ArComplianceList/></ProtectedRoute>} />
         <Route path="/compliance/ar/:clientId" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'compliance', 'manager']}><ClientComplianceReview defaultAr/></ProtectedRoute>} />

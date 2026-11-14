@@ -4,7 +4,7 @@ const Lead = require('../models/Lead');
 const Quotation = require('../models/Quotation');
 const { userHasAnyRole } = require('../utils/userRoles');
 const { transition, sourceSignature, termsSnapshot, fail } = require('../services/poApprovalWorkflow');
-const REVIEW_ROLES = ['accounts', 'admin', 'superadmin'];
+const REVIEW_ROLES = ['accounts', 'finance', 'admin', 'superadmin'];
 const canView = user => userHasAnyRole(user, REVIEW_ROLES);
 function report(res, error) {
   console.error('PO review failed', { name: error.name, code: error.code, status: error.status });

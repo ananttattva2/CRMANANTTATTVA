@@ -34,3 +34,9 @@ test('CTE and CTO role spelling variants share the same permission family', () =
     assert.equal(userHasAnyRole({ role }, ['cte-cto']), true, role);
   }
 });
+
+test('an Admin with a secondary Finance role receives Finance workflow access', () => {
+  const user = { role: 'admin', roles: ['admin', 'finance'] };
+  assert.equal(userHasAnyRole(user, ['finance']), true);
+  assert.equal(userHasAnyRole(user, ['accounts']), false);
+});

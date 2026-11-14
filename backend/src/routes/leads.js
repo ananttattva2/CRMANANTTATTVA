@@ -49,9 +49,9 @@ router.post('/service-catalog/categories', requireAuth, requireRoles(ADMIN_ROLES
 router.post('/service-catalog/categories/:category/services', requireAuth, requireRoles(ADMIN_ROLES), leadCtrl.addServiceCatalogOffering);
 router.get('/search/company', requireAuth, cacheRead, leadCtrl.searchCompanies);
 const financeCtrl = require('../controllers/poFinanceController');
-router.get('/finance-approvals', requireAuth, requireRoles(['accounts', 'admin', 'superadmin']), cacheRead, financeCtrl.list);
-router.get('/finance-approvals/:id', requireAuth, requireRoles(['accounts', 'admin', 'superadmin']), cacheRead, financeCtrl.detail);
-router.post('/finance-approvals/:id/:action', requireAuth, requireRoles(['accounts', 'admin', 'superadmin']), financeCtrl.act);
+router.get('/finance-approvals', requireAuth, requireRoles(['accounts', 'finance', 'admin', 'superadmin']), cacheRead, financeCtrl.list);
+router.get('/finance-approvals/:id', requireAuth, requireRoles(['accounts', 'finance', 'admin', 'superadmin']), cacheRead, financeCtrl.detail);
+router.post('/finance-approvals/:id/:action', requireAuth, requireRoles(['accounts', 'finance', 'admin', 'superadmin']), financeCtrl.act);
 router.get('/duplicate-approvals', requireAuth, cacheRead, leadCtrl.listDuplicateLeadApprovals);
 router.get('/temporary', requireAuth, cacheRead, temporaryLeadCtrl.list);
 router.post('/temporary', requireAuth, temporaryLeadCtrl.create);
