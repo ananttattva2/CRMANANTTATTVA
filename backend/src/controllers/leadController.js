@@ -940,7 +940,9 @@ function buildPurchaseOrderEmail({ eyebrow, title, message, clientName, leadCode
   </div>`;
 }
 
-function canDirectlyApprovePoEdit() { return false; }
+function canDirectlyApprovePoEdit(actor, modifyPoDetails, before = {}) {
+  return modifyPoDetails === true && userHasAnyRole(actor, ADMIN_ROLES) && before.poStatus === 'received' && Array.isArray(before.poYearRows) && before.poYearRows.length > 0;
+}
 
 async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, submittedAssignments = [], poDebugId = '', modifyPoDetails = false }) {
   const beforeRows = Array.isArray(beforeLead.assignments) ? beforeLead.assignments : [];
@@ -950,7 +952,11 @@ async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, subm
     const before = findExistingAssignment(beforeRows, row, index) || {};
     const changed = JSON.stringify(before.poYearRows || []) !== JSON.stringify(row.poYearRows || []);
     if (!changed && row.poApprovalStatus) return;
-    row.poApprovalStatus = 'PENDING';
+    const directlyApproved = canDirectlyApprovePoEdit(actor, modifyPoDetails, before);
+    row.poApprovalStatus = directlyApproved ? 'APPROVED' : 'PENDING';
+    if (directlyApproved) {
+      for (const key of ['closedBy', 'closedByText', 'closedAt', 'closureRequestedBy', 'closureRequestedByText']) row[key] = before[key] || row[key];
+    }
     const service = (lead.serviceSelections || [])[index] || {};
     const sourceClientId = `${lead._id}:po:${row.assignedServiceId || index}`;
     // Build the approval snapshot from the validated request rows. Using the
@@ -973,15 +979,16 @@ async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, subm
       { type: 'purchase_order', source: 'crm', sourceClientId, 'poReview.stage': { $nin: ['FINANCE_READY', 'MANAGEMENT_PENDING', 'FINANCE_RELEASED'] } },
       { ...(previousReview?.poReview ? { $push: { poReviewHistory: previousReview.poReview } } : {}), $setOnInsert: { type: 'purchase_order', source: 'crm', sourceClientId }, $set: {
         poReview: null,
-        uniqueId: lead.leadCode || String(lead._id), clientName: lead.company || 'Lead', approvalStatus: 'PENDING',
+        uniqueId: lead.leadCode || String(lead._id), clientName: lead.company || 'Lead', approvalStatus: directlyApproved ? 'APPROVED' : 'PENDING',
         piboCategory: service.subApplicantType || service.piboCategory || service.applicantType || '',
         eprCategory: service.eprCategory || '', createdByName: actor?.name || actor?.email || '',
         requestDate: new Date().toLocaleDateString('en-GB'), requestTime: new Date().toLocaleTimeString('en-US'),
         payload: { leadId: String(lead._id), leadCode: lead.leadCode || '', assignmentIndex: index, assignedServiceId: row.assignedServiceId || '', service, poYearRows: poRowsSnapshot, poProofManifest, quotationSent: row.quotationSent || '', earlierQuotationProofUrl: row.earlierQuotationProofUrl || '', earlierQuotationProofName: row.earlierQuotationProofName || '', closureRequestedBy: row.closureRequestedBy || '', closureRequestedByText: row.closureRequestedByText || '', poSubmittedAt: new Date(), poSubmittedById: String(actor?._id || actor?.id || ''), poSubmittedByEmail: actor?.email || '', poSubmittedByName: actor?.name || actor?.email || '', leadCreatorId: String(lead.createdBy?._id || lead.createdBy || ''), leadCreatorEmail: lead.createdBy?.email || lead.createdByEmail || '', quotationCreatorIds: [...new Set(poRowsSnapshot.map((po) => po.quotationCreatedById).filter(Boolean))], quotationCreatorEmails: [...new Set(poRowsSnapshot.map((po) => po.quotationCreatedByEmail).filter(Boolean))] },
-        actionBy: null, actionAt: null, remarks: ''
+        actionBy: directlyApproved ? (actor?._id || actor?.id) : null, actionAt: directlyApproved ? new Date() : null, remarks: directlyApproved ? 'PO details updated and approved by administrator.' : ''
       } }, { upsert: true, new: true, setDefaultsOnInsert: true }
     );
     console.info('[POProof:approval:persisted]', { poDebugId, approvalId: String(savedApproval?._id || ''), leadCode: lead.leadCode || '', assignmentIndex: index, collection: PendingApproval.collection.collectionName, rowCount: poRowsSnapshot.length, proofCount: poProofManifest.filter((po) => po.poFileUrl).length });
+    if (directlyApproved) return savedApproval;
     try {
       const notificationUsers = await User.find({ $or: [
         { role: { $in: ADMIN_ROLES }, isActive: { $ne: false } },

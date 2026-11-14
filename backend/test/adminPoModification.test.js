@@ -4,8 +4,8 @@ const controller = require('../src/controllers/leadController')._test;
 const PendingApproval = require('../src/models/PendingApproval');
 const before = { assignedServiceId: 's1', poStatus: 'received', poApprovalStatus: 'APPROVED', closedBy: 'owner', closedByText: 'Owner', closedAt: '2026-10-01', closureRequestedBy: 'owner', poYearRows: [{ poNumber: 'PO1', poDate: '2026-10-01', poAmount: 100, poFileUrl: 'https://example.com/proof.pdf' }] };
 
-test('Admin and Super Admin PO edits cannot bypass the Finance final approval workflow', () => {
-  for (const role of ['admin', 'superadmin']) assert.equal(controller.canDirectlyApprovePoEdit({role}, true, before), false);
+test('Admin and Super Admin edits skip repeat initial approval only for existing received POs', () => {
+  for (const role of ['admin', 'superadmin']) assert.equal(controller.canDirectlyApprovePoEdit({role}, true, before), true);
   for (const role of ['operation', 'manager', 'sales', 'compliance', 'accounts']) assert.equal(controller.canDirectlyApprovePoEdit({role}, true, before), false);
   assert.equal(controller.canDirectlyApprovePoEdit({role:'admin'}, false, before), false);
   assert.equal(controller.canDirectlyApprovePoEdit({role:'admin'}, true, {...before,poYearRows:[]}), false);
@@ -13,7 +13,7 @@ test('Admin and Super Admin PO edits cannot bypass the Finance final approval wo
   assert.equal(controller.isAssignmentOnlyLeadUpdate({assignments:[before],modifyPoDetails:true}),true);
 });
 
-test('an Admin PO edit resubmits for initial review and archives the completed Finance audit', async () => {
+test('an Admin PO edit is approved directly and archives the completed Finance audit', async () => {
   const originalFind = PendingApproval.findOne, originalCreate = PendingApproval.findOneAndUpdate;
   const User = require('../src/models/User'), originalUsers = User.find;
   const requests=[];
@@ -24,8 +24,8 @@ test('an Admin PO edit resubmits for initial review and archives the completed F
     const row={...structuredClone(before),closedBy:'',poYearRows:[{...before.poYearRows[0],annualReturnYear:'2025-26',poAmount:200}]};
     const lead={_id:'lead1',leadCode:'ATPL-LEAD-1',assignments:[row],serviceSelections:[],markModified(){}};
     await controller.upsertPurchaseOrderApprovals({beforeLead:{assignments:[before]},lead,actor:{role:'admin',_id:'admin1',name:'Admin'},submittedAssignments:[row],modifyPoDetails:true});
-    assert.equal(row.poApprovalStatus,'PENDING');assert.equal(row.closedBy,'');assert.equal(row.closureRequestedBy,'owner');
-    assert.equal(requests.length,1);assert.equal(requests[0][1].$set.approvalStatus,'PENDING');
+    assert.equal(row.poApprovalStatus,'APPROVED');assert.equal(row.closedBy,'owner');assert.equal(row.closureRequestedBy,'owner');
+    assert.equal(requests.length,1);assert.equal(requests[0][1].$set.approvalStatus,'APPROVED');
     assert.equal(requests[0][1].$set.poReview,null);assert.equal(requests[0][1].$push.poReviewHistory.stage,'FINALIZED');
     assert.equal(requests[0][1].$set.payload.poYearRows[0].poAmount,200);
     assert.ok(requests[0][0]['poReview.stage'].$nin.includes('MANAGEMENT_PENDING'));
