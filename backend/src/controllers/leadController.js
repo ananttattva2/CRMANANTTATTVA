@@ -940,11 +940,7 @@ function buildPurchaseOrderEmail({ eyebrow, title, message, clientName, leadCode
   </div>`;
 }
 
-function canDirectlyApprovePoEdit(actor, modifyPoDetails, before = {}) {
-  return modifyPoDetails === true && userHasAnyRole(actor, ADMIN_ROLES)
-    && before.poStatus === 'received'
-    && (before.poYearRows || []).some(po => String(po.poNumber || '').trim() && po.poDate && Number(po.poAmount) > 0 && resolvePoProof(po).url);
-}
+function canDirectlyApprovePoEdit() { return false; }
 
 async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, submittedAssignments = [], poDebugId = '', modifyPoDetails = false }) {
   const beforeRows = Array.isArray(beforeLead.assignments) ? beforeLead.assignments : [];
@@ -972,39 +968,11 @@ async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, subm
     if (missingProofRows.length) console.error('[purchase-order-approval] validated PO proof missing from snapshot', { leadCode: lead.leadCode, assignmentIndex: index, poNumbers: missingProofRows });
     const poProofManifest = poRowsSnapshot.map((po, rowIndex) => ({ rowIndex, poNumber: String(po.poNumber || '').trim(), poFileUrl: String(po.poFileUrl || '').trim(), poFileName: String(po.poFileName || '').trim(), poFileMimeType: String(po.poFileMimeType || '').trim(), poFileSize: po.poFileSize ?? null }));
     console.info('[POProof:approval:snapshot]', { poDebugId, leadCode: lead.leadCode || '', assignmentIndex: index, sourceClientId, rows: poRowsSnapshot.map((po, rowIndex) => ({ rowIndex, poNumber: po.poNumber || '', poAmount: po.poAmount ?? null, hasPoFileUrl: Boolean(po.poFileUrl), poFileName: po.poFileName || '' })) });
-    if (canDirectlyApprovePoEdit(actor, modifyPoDetails, before)) {
-      row.poApprovalStatus = 'APPROVED';
-      row.poEditedBy = String(actor?._id || actor?.id || '');
-      row.poEditedByText = actor?.name || actor?.email || '';
-      row.poEditedAt = new Date();
-      if (before.closedBy) {
-        row.closedBy = before.closedBy;
-        row.closedByText = before.closedByText || '';
-        row.closedByEmail = before.closedByEmail || '';
-        row.closedAt = before.closedAt;
-      } else if (row.assignedTo && row.closureRequestedBy) {
-        row.closedBy = row.closureRequestedBy;
-        row.closedByText = row.closureRequestedByText || '';
-        row.closedAt = new Date();
-        row.closureFinalizedByManager = true;
-      }
-      // Update an existing review snapshot, without creating another request
-      // or sending approval notifications for an administrator's correction.
-      await PendingApproval.updateOne(
-        { type: 'purchase_order', source: 'crm', sourceClientId },
-        { $set: { approvalStatus: 'APPROVED', actionBy: actor?._id, actionAt: new Date(),
-          remarks: 'PO details updated directly by Admin.',
-          'payload.poYearRows': poRowsSnapshot, 'payload.poProofManifest': poProofManifest,
-          'payload.quotationSent': row.quotationSent || '',
-          'payload.earlierQuotationProofUrl': row.earlierQuotationProofUrl || '',
-          'payload.earlierQuotationProofName': row.earlierQuotationProofName || '',
-          'payload.decidedBy': actor?.name || actor?.email || '' } }
-      );
-      return;
-    }
+    const previousReview = await PendingApproval.findOne({ type: 'purchase_order', source: 'crm', sourceClientId }).select('poReview').lean();
     const savedApproval = await PendingApproval.findOneAndUpdate(
-      { type: 'purchase_order', source: 'crm', sourceClientId },
-      { $setOnInsert: { type: 'purchase_order', source: 'crm', sourceClientId }, $set: {
+      { type: 'purchase_order', source: 'crm', sourceClientId, 'poReview.stage': { $nin: ['FINANCE_READY', 'MANAGEMENT_PENDING', 'FINANCE_RELEASED'] } },
+      { ...(previousReview?.poReview ? { $push: { poReviewHistory: previousReview.poReview } } : {}), $setOnInsert: { type: 'purchase_order', source: 'crm', sourceClientId }, $set: {
+        poReview: null,
         uniqueId: lead.leadCode || String(lead._id), clientName: lead.company || 'Lead', approvalStatus: 'PENDING',
         piboCategory: service.subApplicantType || service.piboCategory || service.applicantType || '',
         eprCategory: service.eprCategory || '', createdByName: actor?.name || actor?.email || '',
@@ -1908,6 +1876,7 @@ exports.updateLead = async (req, res) => {
     data = enforcePrimaryOwnerClosureCredit(beforeLead, data, req.user);
     if (addServicesMode) data = buildAppendOnlyServicePatch(beforeLead, data, req.user);
     data = setProvisionalClosureDeadlines(data, beforeLead);
+    await require('../services/poReviewFreeze').assertLeadPoEditable(lead._id, beforeLead, data);
     if (poDebugId) console.info('[POProof:lead:sanitized]', { poDebugId, leadId: String(lead._id), leadCode: lead.leadCode || '', collection: Lead.collection.collectionName, assignments: (data.assignments || []).map((row, assignmentIndex) => ({ assignmentIndex, poStatus: row.poStatus || '', rows: (row.poYearRows || []).map((po, rowIndex) => ({ rowIndex, poNumber: po.poNumber || '', poAmount: po.poAmount ?? null, hasPoFileUrl: Boolean(po.poFileUrl), poFileName: po.poFileName || '' })) })) });
     delete data.sendIntroductionEmail;
     const followUpChangedIndexes = changedFollowUpIndexes(beforeLead, data);
@@ -2047,7 +2016,7 @@ exports.updateLead = async (req, res) => {
     await LeadActivity.create({ lead: lead._id, type: 'lead_updated', title: 'Lead updated', description: changedFields.length ? `Updated ${changedFields.join(', ')}` : 'Lead details updated', actor: req.user?._id, metadata: { changedFields, modifyPoDetails: req.body?.modifyPoDetails === true } });
     res.json({ ok: true, lead, introductionEmail });
   } catch (err) {
-    res.status(err.statusCode || 500).json({ error: err.message || 'Unable to update lead' });
+    res.status(err.status || err.statusCode || (err.code === 11000 || err.name === 'VersionError' ? 409 : 500)).json({ error: err.code === 11000 ? 'This PO entered Finance review while you were editing. Refresh the lead.' : err.message || 'Unable to update lead' });
   }
 };
 
@@ -2096,6 +2065,7 @@ exports.reassignPurchaseOrder = async (req, res) => {
         throw error;
       }
 
+      if (sourceApproval?.poReview) throw Object.assign(new Error('This PO has a Finance review. Submit a revision before moving it to another service.'), { statusCode: 409 });
       lead.assignments = result.nextAssignments;
       lead.updatedBy = req.user?.name || req.user?.email || String(req.user?._id || '');
       lead.markModified('assignments');
@@ -2303,50 +2273,7 @@ exports.permanentlyCloseProvisionalLead = async (req, res) => {
   }
 };
 
-exports.decidePurchaseOrderApproval = async (req, res) => {
-  const status = String(req.body.status || '').trim().toUpperCase();
-  if (!['APPROVED', 'REJECTED', 'REVISION_REQUIRED'].includes(status)) return res.status(400).json({ error: 'Select Approve, Reject, or Revision Required.' });
-  const remarks = String(req.body.remarks || '').trim();
-  if (!remarks) return res.status(400).json({ error: 'Decision remarks are required.' });
-  const screenshotUrl = String(req.body.screenshotUrl || '').trim();
-  const approval = await PendingApproval.findOne({ _id: req.params.id, type: 'purchase_order' });
-  if (!approval) return res.status(404).json({ error: 'PO approval request not found.' });
-  const lead = await Lead.findById(approval.payload?.leadId).populate('createdBy', 'name email');
-  if (!lead) return res.status(404).json({ error: 'Lead not found.' });
-  const index = Number(approval.payload?.assignmentIndex);
-  if (!lead.assignments?.[index]) return res.status(404).json({ error: 'Lead assignment not found.' });
-  lead.assignments[index].poApprovalStatus = status;
-  const closureRequestedBy = lead.assignments[index].closureRequestedBy || approval.payload?.closureRequestedBy;
-  if (status === 'APPROVED' && closureRequestedBy) {
-    lead.assignments[index].closureRequestedBy = closureRequestedBy;
-    lead.assignments[index].closureRequestedByText = lead.assignments[index].closureRequestedByText || approval.payload?.closureRequestedByText || '';
-    if (lead.assignments[index].assignedTo) {
-      lead.assignments[index].closedBy = closureRequestedBy;
-      lead.assignments[index].closedByText = lead.assignments[index].closureRequestedByText;
-      lead.assignments[index].closedAt = new Date();
-      lead.assignments[index].closureFinalizedByManager = true;
-    }
-  }
-  lead.markModified('assignments');
-  await lead.save();
-  if (approval.approvalStatus !== 'PENDING' && approval.approvalStatus !== status) {
-    approval.payload = { ...(approval.payload || {}), decisionCorrections: [
-      ...(approval.payload?.decisionCorrections || []),
-      { previousStatus: approval.approvalStatus, previousRemarks: approval.remarks || '', previousActionBy: approval.actionBy, previousActionAt: approval.actionAt, status, correctedAt: new Date(), correctedBy: req.user?._id, reason: remarks }
-    ] };
-  }
-  approval.approvalStatus = status;
-  approval.remarks = remarks;
-  approval.actionBy = req.user?._id;
-  approval.actionAt = new Date();
-  approval.payload = {
-    ...(approval.payload || {}),
-    decisionScreenshotUrl: screenshotUrl,
-    decidedBy: req.user?.name || req.user?.email || '',
-    poWorkflowReminders: {}
-  };
-  approval.markModified('payload');
-  await approval.save();
+async function notifyPurchaseOrderDecision({ approval, lead, index, status, remarks, screenshotUrl }) {
   const responsibleUsers = await User.find({ $or: [
     { role: { $in: ADMIN_ROLES }, isActive: { $ne: false } },
     ...(approval.payload?.poSubmittedById ? [{ _id: approval.payload.poSubmittedById }] : []),
@@ -2391,7 +2318,12 @@ exports.decidePurchaseOrderApproval = async (req, res) => {
   if (emailNotification.failed) {
     console.error('Some PO decision emails could not be sent', { approvalId: String(approval._id), status, ...emailNotification });
   }
-  res.json({ ok: true, approval, emailNotification });
+  return emailNotification;
+}
+exports.notifyPurchaseOrderDecision = notifyPurchaseOrderDecision;
+
+exports.decidePurchaseOrderApproval = async (req, res) => {
+  return require('./poFinanceController').initialApproval(req, res);
 };
 
 exports.recordIntroductionEmail = async (req, res) => {
@@ -2704,7 +2636,7 @@ exports.listDuplicateLeadApprovals = async (req, res) => {
   }
   const listOnly = req.query.listOnly === 'true';
   const listProjection = listOnly && poOnly ? [
-    'type source sourceClientId uniqueId clientName approvalStatus createdByName requestDate requestTime createdAt updatedAt actionAt actionBy remarks',
+    'type source sourceClientId uniqueId clientName approvalStatus createdByName requestDate requestTime createdAt updatedAt actionAt actionBy remarks poReview.stage poReview.version poReview.frozen',
     'payload.leadId payload.leadCode payload.company payload.service payload.assignmentIndex payload.assignedServiceId payload.poSubmittedById payload.poSubmittedByName payload.poSubmittedByEmail payload.leadCreatorId payload.leadCreatorName payload.leadCreatorEmail payload.closureRequestedBy payload.closureRequestedByName payload.quotationCreatorIds payload.quotationCreatorEmails',
     ...['poYearRows', 'poRows', 'purchaseOrders'].flatMap(key => ['poNumber','poNo','poAmount','poDate','poEndDate','poFinancialYear','financialYear','fy','annualReturnYear','registrationYear','paymentTerm','poFileName','quotationSent','quotationId','quotationNumber','quotationBasicAmount','currency','quotationItems.unit','quotationItems.basicAmount','quotationItems.applicantType','quotationItems.subApplicantType','quotationItems.piboCategory','quotationItems.servicesOffered','quotationItems.serviceCategory'].map(field => `payload.${key}.${field}`))
   ].join(' ') : listOnly ? '-payload.poYearRows.poFileUrl -payload.poProofManifest.poFileUrl -payload.poRows.poFileUrl -payload.earlierQuotationProofUrl -payload.poFileUrl' : '';
@@ -3056,6 +2988,8 @@ exports.uploadPurchaseOrderProof = async (req, res) => {
   const poDebugId = String(req.get('x-po-debug-id') || '').trim().slice(0, 100);
   const approval = await PendingApproval.findOne({ _id: req.params.id, type: 'purchase_order' });
   if (!approval) return res.status(404).json({ error: 'Purchase Order approval not found.' });
+  if (approval.poReview) return res.status(409).json({ error: 'Reviewed PO proof is locked. Submit a revised PO through the approval workflow.' });
+  approval.$where = { poReview: null }; // Reject a repair if initial review starts after this read.
   const poFileUrl = String(req.body.poFileUrl || '').trim();
   const poFileName = String(req.body.poFileName || 'PO proof').trim();
   const poFileMimeType = String(req.body.poFileMimeType || '').trim();

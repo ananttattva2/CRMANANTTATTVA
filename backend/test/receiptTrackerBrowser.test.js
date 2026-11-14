@@ -4,7 +4,7 @@ const path = require('node:path');
 const esbuild = require('../../frontend/node_modules/esbuild');
 
 
-test('receipt tracker gates confirmations, uploads per status and expands rows', async () => {
+test('receipt tracker accepts checkbox first, then enables matching proof upload', async () => {
  const bundle = await esbuild.build({stdin:{resolveDir:path.resolve(__dirname,'../../frontend'),loader:'jsx',contents:`
  import React, {useState} from 'react'; import {createRoot} from 'react-dom/client';
  import Tracker from './src/features/clientMaster/SalesUploadChecklist.jsx';
@@ -17,17 +17,16 @@ test('receipt tracker gates confirmations, uploads per status and expands rows',
  assert.deepEqual(await page.$$eval('thead th',els=>els.map(el=>el.textContent)),['Sr. No.','Particular','Status','Upload Proof','Data Status','Upload Date','Actions']);
  assert.equal(await page.$$eval('.ut-expand',els=>els.length),2);
  await page.evaluate(()=>document.querySelectorAll('input[type=checkbox]')[0].click());
- await page.waitForFunction(()=>window.error?.includes('Please upload'));
- assert.equal(await page.$eval('input[type=checkbox]',el=>el.checked),false);
+ await page.waitForFunction(()=>window.rows[2].partialDataReceived===true);
+ assert.equal(await page.$eval('input[type=checkbox]',el=>el.checked),true);
  assert.equal(await page.$eval('.ut-expand',el=>el.getAttribute('aria-expanded')),'true');
  await page.evaluate(()=>{const input=document.querySelector('section[aria-label="Received from client partial receipt evidence"] input[type=file]');const transfer=new DataTransfer();transfer.items.add(new File(['proof'],'partial.pdf',{type:'application/pdf'}));input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));});
  await page.waitForFunction(()=>window.rows[2].files.length===1);
- await page.evaluate(()=>document.querySelectorAll('input[type=checkbox]')[0].click());
  await page.waitForFunction(()=>window.rows[2].partialDataReceived===true);
  if (process.env.RECEIPT_SCREENSHOT) { await page.setViewport({width:1500,height:1100}); await page.screenshot({path:process.env.RECEIPT_SCREENSHOT,fullPage:true}); }
  await page.evaluate(()=>document.querySelectorAll('input[type=checkbox]')[1].click());
  assert.equal(await page.$eval('input[type=checkbox]',el=>el.checked),true);
- assert.equal(await page.evaluate(()=>window.rows[2].completeDataReceived||false),false);
+ assert.equal(await page.evaluate(()=>window.rows[2].completeDataReceived||false),true);
  await page.evaluate(()=>document.querySelector('.ut-expand').click());
  assert.equal(await page.$eval('.ut-expand',el=>el.getAttribute('aria-expanded')),'false');
  }finally{await browser.close();}

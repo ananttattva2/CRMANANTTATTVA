@@ -14,6 +14,8 @@ const PendingApprovalSchema = new mongoose.Schema({
   createdByName: { type: String, trim: true },
   requestDate: { type: String, trim: true },
   requestTime: { type: String, trim: true },
+  poReview: { type: mongoose.Schema.Types.Mixed, default: null },
+  poReviewHistory: { type: [mongoose.Schema.Types.Mixed], default: [] },
   payload: { type: mongoose.Schema.Types.Mixed, default: {} },
   lastReminderAt: { type: Date },
   nextReminderAt: { type: Date, index: true },
@@ -66,6 +68,8 @@ PendingApprovalSchema.index(
 // Keeping this as one compound index avoids scanning large historical payloads.
 PendingApprovalSchema.index({ type: 1, approvalStatus: 1, createdAt: -1 });
 PendingApprovalSchema.index({ type: 1, approvalStatus: 1, actionAt: -1, createdAt: -1 });
+
+PendingApprovalSchema.index({ type: 1, 'poReview.stage': 1, updatedAt: -1 });
 
 PendingApprovalSchema.plugin(require('../utils/approvalDeletionVisibility'));
 module.exports = mongoose.model('PendingApproval', PendingApprovalSchema);

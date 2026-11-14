@@ -7,10 +7,6 @@ function receiptTracking(row, existing, files, user, now = new Date()) {
     const checked = row.yesNo === 'Yes' && row[field] === true;
     const evidence = files.filter(file => file.receiptStage === stage);
     const changed = checked !== Boolean(existing[field]);
-    if (DATA_ROWS.has(row.particular) && checked && (!existing[field] || existing[`${stage}ReceivedAt`]) && !evidence.length) {
-      const error = new Error(`Please upload a supporting document before selecting ${stage === 'partial' ? 'Partially Data received' : 'Complete Data Received'}.`);
-      error.status = 400; throw error;
-    }
     result[field] = checked;
     result[`${stage}ReceivedAt`] = existing[`${stage}ReceivedAt`] || '';
     if (DATA_ROWS.has(row.particular) && changed) {

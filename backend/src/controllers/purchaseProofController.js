@@ -85,7 +85,6 @@ exports.deleteProof = async (req, res) => {
   if (!(String(proof.uploadedBy) === String(req.user._id) || userHasAnyRole(req.user, ['admin', 'superadmin']))) return res.status(403).json({ error: 'Only the uploader or an administrator can remove this proof.' });
   const section = proof.section === 'sales' ? 'sales' : 'purchase'; const DataModel = section === 'sales' ? SalesData : PurchaseData;
   const record = await DataModel.findOne({ clientId: proof.clientId, financialYear: proof.financialYear });
-  if (record && defaultChecklist(record.checklist).some(row => (row.files || []).some(file => String(file.proofId || '') === String(proof._id) && ['partial', 'complete'].includes(file.receiptStage) && row[`${file.receiptStage}DataReceived`]))) return res.status(400).json({ error: 'Uncheck the matching data receipt status before removing its supporting document.' });
   if (record) { record.checklist = defaultChecklist(record.checklist).map((row) => ({ ...row, files: (row.files || []).filter((file) => String(file.proofId || '') !== String(proof._id)) })); record.markModified('checklist'); await record.save(); }
   await audit(req, 'PURCHASE_EMAIL_PROOF_REMOVED', proof);
   await Promise.allSettled([deleteStored(proof.storageKey), ...(proof.attachments || []).map((attachment) => deleteStored(attachment.storageKey))]);

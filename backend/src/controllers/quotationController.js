@@ -969,6 +969,7 @@ exports.updateQuotationApproval = async (req, res) => {
   const approvalRecord = require('mongoose').Types.ObjectId.isValid(approvalRecordId)
     ? await PendingApproval.findById(approvalRecordId)
     : null;
+  if (approvalRecord?.type === 'purchase_order') return res.status(403).json({ error: 'Purchase Orders must use the staged PO Finance approval workflow.' });
   const update = {
     approvalStatus: status,
     nextReminderAt: null,

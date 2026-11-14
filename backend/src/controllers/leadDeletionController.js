@@ -9,7 +9,7 @@ exports.removePoApproval = async (req, res, next) => {
     if (!userHasAnyRole(req.user, ADMIN_ROLES)) return res.status(403).json({ error: 'Only admins can remove PO approvals.' });
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid approval ID.' });
     const approval = await PendingApproval.findOneAndUpdate(
-      { _id: req.params.id, type: 'purchase_order', deletedAt: null },
+      { _id: req.params.id, type: 'purchase_order', deletedAt: null, 'poReview.stage': { $nin: ['FINANCE_READY', 'MANAGEMENT_PENDING', 'FINANCE_RELEASED'] } },
       { $set: { deletedAt: new Date(), deletedBy: req.user._id, nextReminderAt: null } },
       { new: true }
     ).select('_id clientName');
@@ -21,8 +21,9 @@ exports.deleteLead = async (req, res, next) => {
   try {
     if (!userHasAnyRole(req.user, ADMIN_ROLES)) return res.status(403).json({ error: 'Only admins can delete leads.' });
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid lead ID.' });
+    if (await require('../models/PendingApproval').exists({ type: 'purchase_order', 'payload.leadId': req.params.id, 'poReview.stage': { $in: ['FINANCE_READY', 'MANAGEMENT_PENDING', 'FINANCE_RELEASED'] } })) return res.status(409).json({ error: 'This lead has a PO under Finance/Management review and cannot be deleted.' });
     const lead = await Lead.findOneAndUpdate(
-      { _id: req.params.id, deletedAt: null },
+      { _id: req.params.id, deletedAt: null, 'assignments.poApprovalStatus': { $ne: 'FINANCE_PENDING' } },
       { $set: { deletedAt: new Date(), deletedBy: req.user._id } },
       { new: true }
     ).select('_id company leadCode');

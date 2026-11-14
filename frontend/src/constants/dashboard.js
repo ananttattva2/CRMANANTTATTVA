@@ -164,7 +164,7 @@ export const navSections = [
   { label: 'Lead Management', items: [...pick(customerItems, ['Hot Leads', 'Cold Leads', 'Lead Allocate']), { label: 'Revenue Pipeline', icon: TrendingUp, path: '/sales/lead-pipeline' }, { ...pendingLeadsMenu, children: pendingLeadsMenu.children.filter(item => item.path !== '/sales/lead-pipeline') }] },
   { label: 'Client Management', items: pick(customerItems, ['Client Master', 'Client Master Allocate', 'Client Data Uploads', 'CTO & CTE', 'Health Report Check']) },
   { label: 'Quotations & Billing', items: [{ label: 'Quotation List', icon: FileText, path: '/sales/quotations' }, ...pick(customerItems, ['Add Quotation', 'Proforma Invoice'])] },
-  { label: 'Approvals', items: pick(homeItems, ['Pending Approval']) },
+  { label: 'Approvals', items: [...pick(homeItems, ['Pending Approval']), { label: 'Finance Approval', icon: FileText, path: '/finance-approval', roles: ['accounts', 'admin', 'superadmin'] }] },
   originalNavSections[2],
   { label: 'Communication & Planning', items: [...pick(homeItems, ['Notifications', 'Announcements', 'Calendar']), { label: 'Documents', icon: FileText, path: '/documents' }] },
   { label: 'Administration', items: pick(homeItems, ['User Management']) },

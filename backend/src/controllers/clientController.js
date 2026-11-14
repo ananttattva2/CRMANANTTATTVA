@@ -2621,6 +2621,7 @@ exports.updateClientApproval = async (req, res) => {
   const approvalRecord = mongoose.Types.ObjectId.isValid(approvalRecordId)
     ? await PendingApproval.findById(approvalRecordId)
     : null;
+  if (approvalRecord?.type === 'purchase_order') return res.status(403).json({ error: 'Purchase Orders must use the staged PO Finance approval workflow.' });
   const source = String(req.body.source || approvalRecord?.source || 'crm').trim() || 'crm';
   const sourceClientId = String(req.body.sourceClientId || req.params.id || approvalRecord?.sourceClientId || '').trim();
   const rawApprovalPayload = req.body.payload || approvalRecord?.payload?.payload || null;

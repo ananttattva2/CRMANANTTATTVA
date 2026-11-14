@@ -7,17 +7,14 @@ const HIDDEN = new Set(['Partially Data received', 'Complete Data Received', 'Wo
 const DATA_STAGES = new Set(['Received from client', 'Ready to upload']);
 const REQUIRED_NORMAL_ROWS = new Set(['Received from client', 'Ready to upload', 'Client Approval on data', 'Upload Complete']);
 const SIMPLE = new Set(['Nil Upload']);
-const isComplete = (row) => SIMPLE.has(row.particular) ? ['Yes', 'No'].includes(row.yesNo) : row.yesNo === 'Yes' && Boolean(row.date && row.files?.length);
+const receiptProofMissing = row => ['partial', 'complete'].some(stage => row[`${stage}DataReceived`] && !(row.files || []).some(file => file.receiptStage === stage));
+const isComplete = (row) => !receiptProofMissing(row) && (SIMPLE.has(row.particular) ? ['Yes', 'No'].includes(row.yesNo) : row.yesNo === 'Yes' && Boolean(row.date && row.files?.length));
 
 export default function SalesUploadChecklist({ title = 'Sales Data Upload Checklist', checklist = [], canEdit, busy, onChange, onUploadProof, onRemoveProof, onPreview, onError }) {
   const [expanded, setExpanded] = useState(null);
-  const [validation, setValidation] = useState('');
   const confirmReceipt = (index, row, stage, checked) => {
-    if (checked && !(row.files || []).some(file => file.receiptStage === stage)) {
-      const message = `Please upload a supporting document before selecting ${stage === 'partial' ? 'Partially Data received' : 'Complete Data Received'}.`;
-      setValidation(message); onError?.(message); setExpanded(row.particular); return;
-    }
-    setValidation(''); onChange(index, { [`${stage}DataReceived`]: checked }, true);
+    if (checked) setExpanded(row.particular);
+    onChange(index, { [`${stage}DataReceived`]: checked }, true);
   };
   const nilUpload = checklist.find((row) => row.particular === 'Nil Upload')?.yesNo === 'Yes';
   const rows = checklist.map((row, index) => ({ row, index })).filter(({ row }) => !HIDDEN.has(row.particular));
@@ -29,7 +26,7 @@ export default function SalesUploadChecklist({ title = 'Sales Data Upload Checkl
       <div className="ut-heading-copy"><span className="ut-logo"><FileText size={28} /></span><div><h2>Client Data Upload Tracker</h2><p>{title.replace(' Upload Checklist', '')} · Track status, supporting documents and completion.</p></div></div>
       <div className="ut-counters" aria-label="Tracker summary">{[[Clock3, rows.length - completed, 'Pending', 'pending'], [Check, completed, 'Completed', 'complete'], [List, rows.length, 'Total', 'total']].map(([Icon, count, label, tone]) => <div className={`ut-counter ut-counter-${tone}`} key={label}><span><Icon size={20} /></span><div><strong>{count}</strong><small>{label}</small></div></div>)}</div>
     </header>
-    {validation && <div role="alert" className="ut-toast">{validation}<button type="button" aria-label="Dismiss notification" onClick={() => setValidation('')}>×</button></div>}
+
     <div className="ut-table-scroll"><table className="ut-table"><caption className="sr-only">{title}</caption><colgroup><col style={{ width: '5%' }} /><col style={{ width: '19%' }} /><col style={{ width: '10%' }} /><col style={{ width: '16%' }} /><col style={{ width: '26%' }} /><col style={{ width: '15%' }} /><col style={{ width: '9%' }} /></colgroup>
       <thead><tr>{['Sr. No.', 'Particular', 'Status', 'Upload Proof', 'Data Status', 'Upload Date', 'Actions'].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead>
       <tbody>{rows.map(({ row, index }, position) => {
@@ -56,7 +53,7 @@ export default function SalesUploadChecklist({ title = 'Sales Data Upload Checkl
           </div>{DATA_STAGES.has(row.particular) && <div className="ut-receipt-grid">{['partial', 'complete'].map(stage => {
             const stageFiles = (row.files || []).filter(file => file.receiptStage === stage);
             const at = row[`${stage}ReceivedAt`];
-            return <section className="ut-receipt-card" key={stage} aria-label={`${row.particular} ${stage} receipt evidence`}><h3>{stage === 'partial' ? 'Partially Data received' : 'Complete Data Received'}</h3><p className="ut-receipt-date"><Clock3 size={14} />{at ? new Date(at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST' : 'Date recorded automatically when selected'}</p><PurchaseProofDropzone files={stageFiles} disabled={!editable || !enabled} busy={busy === `proof-${index}`} onUpload={files => onUploadProof(index, files, stage)} onRemove={(fileIndex, file) => onRemoveProof(index, row.files.indexOf(file), file)} onPreview={onPreview} onError={onError} /><small>Upload a document here, then select the matching checkbox above.</small></section>;
+            return <section className="ut-receipt-card" key={stage} aria-label={`${row.particular} ${stage} receipt evidence`}><h3>{stage === 'partial' ? 'Partially Data received' : 'Complete Data Received'}</h3><p className="ut-receipt-date"><Clock3 size={14} />{at ? new Date(at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST' : 'Date recorded automatically when selected'}</p><PurchaseProofDropzone files={stageFiles} disabled={!editable || !enabled || !row[`${stage}DataReceived`]} busy={busy === `proof-${index}`} onUpload={files => onUploadProof(index, files, stage)} onRemove={(fileIndex, file) => onRemoveProof(index, row.files.indexOf(file), file)} onPreview={onPreview} onError={onError} /><small>{row[`${stage}DataReceived`] && !stageFiles.length ? 'Document pending — upload the supporting document to complete this status.' : 'Select the checkbox above, then upload the supporting document here.'}</small></section>;
           })}{!!row.receiptHistory?.length && <section className="ut-receipt-history"><h3>Receipt activity</h3><ol>{row.receiptHistory.map((event, eventIndex) => <li key={`${event.at}-${eventIndex}`}><strong>{event.stage === 'partial' ? 'Partial' : 'Complete'} receipt {event.checked ? 'confirmed' : 'unchecked'}</strong><span>{new Date(event.at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST · {event.userName || 'User'} · {event.files?.length || 0} document(s)</span></li>)}</ol></section>}</div>}</div></div></td></tr>}
         </React.Fragment>;
       })}</tbody>

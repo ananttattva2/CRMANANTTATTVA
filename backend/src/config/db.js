@@ -78,6 +78,7 @@ const connectDB = async () => {
         ['quotations', { createdBy: 1, quotationDate: -1, createdAt: -1 }],
         ['quotations', { 'managementApproval.status': 1, status: 1, createdAt: -1 }],
         ['pendingapprovals', { type: 1, approvalStatus: 1, createdAt: -1 }],
+        ['pendingapprovals', { type: 1, 'poReview.stage': 1, updatedAt: -1 }],
         ['usersessions', { userId: 1, loginAt: -1 }],
         ['auditlogs', { userId: 1, occurredAt: -1 }],
         ['auditlogs', { occurredAt: -1, module: 1, action: 1 }]

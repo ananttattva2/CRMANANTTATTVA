@@ -2308,7 +2308,8 @@ export default function LeadGeneration() {
     );
   }
 
-  function openLeadPoDetails(sourceLead, index = Math.max(0, (sourceLead.assignments || []).findIndex(hasSavedPoDetails))) {
+  function openLeadPoDetails(sourceLead, index = Math.max(0, (sourceLead.assignments || []).findIndex(row => hasSavedPoDetails(row) && row.poApprovalStatus !== 'FINANCE_PENDING'))) {
+    if (sourceLead.assignments?.[index]?.poApprovalStatus === 'FINANCE_PENDING') { showToast('This PO is under Finance/Management review. Use Finance Approval for its next action.', 'error'); return; }
     const selected = normalizeLegacyServiceSelections(sourceLead)[index] || {};
     const savedAssignment = sourceLead.assignments?.find(row => selected.assignedServiceId && row.assignedServiceId === selected.assignedServiceId) || sourceLead.assignments?.[index];
     if (!hasSavedPoDetails(savedAssignment)) {
@@ -5277,7 +5278,7 @@ function LeadDetailView({ lead, quotations = [], staff = [], currentUser = null,
         <div className="flex flex-wrap gap-3">
           {hasProvisionalClosure && <button type="button" onClick={() => { setPermanentCloseError(''); setOriginalPoRows(buildOriginalPoRows()); setPermanentCloseStep('confirm'); }} className="btn-lift inline-flex min-h-10 items-center gap-2 rounded-lg bg-amber-500 px-5 text-sm font-black text-white shadow-lg shadow-amber-500/20"><CheckCircle2 className="h-4 w-4" />Original PO Received?</button>}
           {showCurrentUserServiceActions && <button type="button" onClick={onEdit} className="btn-lift inline-flex min-h-10 items-center gap-2 rounded-lg bg-violet-600 px-5 text-sm font-black text-white shadow-lg shadow-violet-600/20"><Edit3 className="h-4 w-4" />Change Status</button>}
-          {showCurrentUserServiceActions && <button type="button" disabled={!detailAssignments.some(hasSavedPoDetails)} title={detailAssignments.some(hasSavedPoDetails) ? 'Modify saved PO details' : 'Save PO through lead closure first'} onClick={() => onModifyPo?.(activeLead)} className="disabled:opacity-40 disabled:cursor-not-allowed btn-lift inline-flex min-h-10 items-center gap-2 rounded-lg bg-teal-700 px-5 text-sm font-black text-white shadow-lg shadow-teal-700/20"><FileText className="h-4 w-4" />Modify PO Details</button>}
+          {showCurrentUserServiceActions && <button type="button" disabled={!detailAssignments.some(row => hasSavedPoDetails(row) && row.poApprovalStatus !== 'FINANCE_PENDING')} title={detailAssignments.some(row => row.poApprovalStatus === 'FINANCE_PENDING') ? 'POs under Finance/Management review are locked' : detailAssignments.some(hasSavedPoDetails) ? 'Modify saved PO details' : 'Save PO through lead closure first'} onClick={() => onModifyPo?.(activeLead)} className="disabled:opacity-40 disabled:cursor-not-allowed btn-lift inline-flex min-h-10 items-center gap-2 rounded-lg bg-teal-700 px-5 text-sm font-black text-white shadow-lg shadow-teal-700/20"><FileText className="h-4 w-4" />Modify PO Details</button>}
           {showCurrentUserServiceActions && (
             <>
               <LeadToolbarMenu

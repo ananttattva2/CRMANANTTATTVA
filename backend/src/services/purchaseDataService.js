@@ -305,6 +305,9 @@ function purchaseReadiness(purchase = {}) {
     if (row.yesNo !== 'Yes') errors.push(`${row.particular}: status must be Yes.`);
     if (!row.date) errors.push(`${row.particular}: date is required.`);
     if (!row.files?.length) errors.push(`${row.particular}: proof is required.`);
+    for (const stage of ['partial', 'complete']) {
+      if (row[`${stage}DataReceived`] && row[`${stage}ReceivedAt`] && !(row.files || []).some(file => file.receiptStage === stage)) errors.push(`${row.particular}: upload the ${stage} receipt supporting document.`);
+    }
   });
   if (!nilUpload) {
     if (!purchase.baseUpload || purchase.baseUpload.importStatus !== 'Imported') errors.push('Purchase Base Data is required.');
