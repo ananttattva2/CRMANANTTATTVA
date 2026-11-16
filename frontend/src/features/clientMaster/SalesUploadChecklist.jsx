@@ -19,7 +19,9 @@ export default function SalesUploadChecklist({ title = 'Sales Data Upload Checkl
   };
   const nilUpload = checklist.find((row) => row.particular === 'Nil Upload')?.yesNo === 'Yes';
   const rows = checklist.map((row, index) => ({ row, index })).filter(({ row }) => !HIDDEN.has(row.particular)).sort(({ row: left }, { row: right }) => Number(right.particular === 'Nil Upload') - Number(left.particular === 'Nil Upload'));
-  const completed = rows.filter(({ row }) => isComplete(row)).length;
+  const countedRows = rows.filter(({ row }) => nilUpload ? row.particular === 'Nil Upload' : row.particular !== 'Nil Upload');
+  const completed = countedRows.filter(({ row }) => isComplete(row)).length;
+  const pending = countedRows.length - completed;
   const editable = canEdit && !busy;
   const toggle = (name) => setExpanded((current) => current === name ? null : name);
   useEffect(() => {
@@ -33,7 +35,7 @@ export default function SalesUploadChecklist({ title = 'Sales Data Upload Checkl
   return <section className="upload-tracker" aria-label={title}>
     <header className="ut-heading">
       <div className="ut-heading-copy"><span className="ut-logo"><FileText size={28} /></span><div><h2>Client Data Upload Tracker</h2><p>{title.replace(' Upload Checklist', '')} · Track status, supporting documents and completion.</p></div></div>
-      <div className="ut-counters" aria-label="Tracker summary">{[[Clock3, rows.length - completed, 'Pending', 'pending'], [Check, completed, 'Completed', 'complete'], [List, rows.length, 'Total', 'total']].map(([Icon, count, label, tone]) => <div className={`ut-counter ut-counter-${tone}`} key={label}><span><Icon size={20} /></span><div><strong>{count}</strong><small>{label}</small></div></div>)}</div>
+      <div className="ut-counters" aria-label="Tracker summary">{[[Clock3, pending, 'Pending', 'pending'], [Check, completed, 'Completed', 'complete'], [List, countedRows.length, 'Total', 'total']].map(([Icon, count, label, tone]) => <div className={`ut-counter ut-counter-${tone}`} key={label}><span><Icon size={20} /></span><div><strong>{count}</strong><small>{label}</small></div></div>)}</div>
     </header>
 
     <div className="ut-table-scroll"><table className="ut-table"><caption className="sr-only">{title}</caption><colgroup><col style={{ width: '5%' }} /><col style={{ width: '19%' }} /><col style={{ width: '10%' }} /><col style={{ width: '16%' }} /><col style={{ width: '26%' }} /><col style={{ width: '15%' }} /><col style={{ width: '9%' }} /></colgroup>
@@ -73,6 +75,6 @@ export default function SalesUploadChecklist({ title = 'Sales Data Upload Checkl
         </React.Fragment>;
       })}</tbody>
     </table></div>
-    <footer className="ut-footer"><div><Info size={18} /><p><strong>Upload Proof:</strong> Supporting documents for each stage. Select View to upload files or add remarks.<br /><span>Expand rows 3 and 4 to upload separate partial and complete receipt documents. Enter the actual receipt date in Upload Date.</span></p></div><span className="ut-row-count">{rows.length ? `1–${rows.length} of ${rows.length}` : '0 rows'}</span></footer>
+    <footer className="ut-footer"><div><Info size={18} /><p><strong>Upload Proof:</strong> Supporting documents for each stage. Select View to upload files or add remarks.<br /><span>Expand rows 3 and 4 to upload separate partial and complete receipt documents. Enter the actual receipt date in Upload Date.</span></p></div><span className="ut-row-count">{rows.length ? `${rows.length} stages shown · ${countedRows.length} active` : '0 rows'}</span></footer>
   </section>;
 }

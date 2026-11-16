@@ -21,8 +21,12 @@ test('Nil Upload is first, locks later rows on Yes, accepts optional proof, and 
  assert.equal(await page.$eval('.ut-table tbody tr:not(.ut-detail-row) th[scope="row"]',el=>el.textContent.trim()),'Nil Upload');
  assert.equal(await page.$$eval('.ut-expand',els=>els.length),2);
  assert.equal(await page.$eval('.ut-counter-complete strong',el=>el.textContent),'0');
+ assert.equal(await page.$eval('.ut-counter-total strong',el=>el.textContent),'5');
+ assert.equal(await page.$eval('.ut-counter-pending strong',el=>el.textContent),'5');
  await page.evaluate(()=>{const select=[...document.querySelectorAll('tr')].find(row=>row.textContent.includes('Nil Upload')).querySelector('select');select.value='Yes';select.dispatchEvent(new Event('change',{bubbles:true}));});
  await page.waitForFunction(()=>document.querySelector('.ut-counter-complete strong').textContent==='1');
+ assert.equal(await page.$eval('.ut-counter-total strong',el=>el.textContent),'1');
+ assert.equal(await page.$eval('.ut-counter-pending strong',el=>el.textContent),'0');
  assert.equal(await page.$eval('select[aria-label="Data Explained status"]',el=>el.disabled),true);
  assert.equal(await page.$eval('button[aria-label="Manage Received from client proof"]',el=>el.disabled),true);
  assert.equal(await page.$eval('select[aria-label="Client Approval on data status"]',el=>el.disabled),true);
@@ -31,6 +35,8 @@ test('Nil Upload is first, locks later rows on Yes, accepts optional proof, and 
  await page.waitForFunction(()=>window.rows[4].files.length===1);
  await page.evaluate(()=>{const select=[...document.querySelectorAll('tr')].find(row=>row.textContent.includes('Nil Upload')).querySelector('select');select.value='No';select.dispatchEvent(new Event('change',{bubbles:true}));});
  await page.waitForFunction(()=>document.querySelector('.ut-counter-complete strong').textContent==='0');
+ assert.equal(await page.$eval('.ut-counter-total strong',el=>el.textContent),'5');
+ assert.equal(await page.$eval('.ut-counter-pending strong',el=>el.textContent),'5');
  assert.equal(await page.$eval('select[aria-label="Data Explained status"]',el=>el.disabled),false);
  assert.equal(await page.$eval('select[aria-label="Client Approval on data status"]',el=>el.disabled),false);
 
