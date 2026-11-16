@@ -39,6 +39,11 @@ export function buildInvoicePdf(row) {
     fitted(value, x + 3, y + 10, w - 6, h - 12, 'bold')
   }
   const buyerAddress = [lead.addressLine1, lead.addressLine2, lead.addressLine3, [lead.city, lead.pinCode].filter(Boolean).join(' ')].filter(Boolean).join('\n')
+  const gstCode = String(lead.gstNumber || '').trim().slice(0, 2)
+  const intraState = gstCode === '27'
+  const buyerState = [lead.state, /^\d{2}$/.test(gstCode) && 'Code : ' + gstCode].filter(Boolean).join(', ')
+  const percentage = row.paymentPercentage ?? 100
+  const paymentLabel = `${row.paymentStage === 'later' ? 'Second Payment - Later' : 'First Payment - Advance'} (${percentage}%)`
   function party(label, name, address, gst, state, y, h) {
     box(left, y, split - left, h)
     text(label, left + 3, y + 8, { size: 7 })
@@ -50,21 +55,19 @@ export function buildInvoicePdf(row) {
     box(left, 26, split - left, 96)
     text('ANANTTATTVA PRIVATE LIMITED', left + 3, 37, { style: 'bold', size: 9 })
     fitted('Office No. 14, Midas Building,\nSahar Plaza, J B Nagar, Andheri (East)\nMumbai - 400059\nUDYAM : UDYAM-MH-19-0252978 (Micro/Services)\nGSTIN/UIN: 27AAZCA6657R1ZB\nState Name: Maharashtra, Code: 27\nCIN: U39000MH2023PTC413566\nE-Mail: info@ananttattva.com', left + 3, 39, split - left - 6, 80)
-    party('Consignee (Ship To)', details.consignee || lead.companyName || row.companyName, details.consigneeAddress || buyerAddress, details.consigneeGst || lead.gstNumber, details.consigneeState || lead.state, 122, 87)
-    party('Buyer (Bill To)', lead.companyName || row.companyName, buyerAddress, lead.gstNumber, [lead.state, details.buyerStateCode && 'Code : ' + details.buyerStateCode].filter(Boolean).join(', '), 209, 87)
+    party('Consignee (Ship To)', lead.companyName || row.companyName, buyerAddress, lead.gstNumber, buyerState, 122, 87)
+    party('Buyer (Bill To)', lead.companyName || row.companyName, buyerAddress, lead.gstNumber, buyerState, 209, 87)
     const pairs = [
       ['Invoice No.', row.proformaNumber, 'Dated', date(row.invoiceDate)],
-      ['Delivery Note', details.deliveryNote, 'Mode/Terms of Payment', details.paymentTerms],
-      ['Reference No. & Date', details.reference || row.quotationNumber, 'Other References', details.otherReferences],
-      ["Buyer's Order No.", details.buyerOrder || row.poNumber, 'Dated', date(details.buyerOrderDate)],
-      ['Dispatch Doc No.', details.dispatchDocument, 'Delivery Note Date', date(details.deliveryDate)],
-      ['Dispatched through', details.dispatchedThrough, 'Destination', details.destination]
+      ['PO Number', row.poNumber || details.reference, 'Mode/Terms of Payment', paymentLabel]
     ]
     pairs.forEach(([a, b, c, d], index) => {
       cell(a, b, split, 26 + index * 23, 113, 23)
       cell(c, d, 455, 26 + index * 23, 114, 23)
     })
-    cell('Terms of Delivery', details.deliveryTerms, split, 164, right - split, 132)
+    box(split, 72, right - split, 224)
+    text('Terms & Conditions', split + 3, 83, { size: 7 })
+    fitted([paymentLabel, ...(row.terms || [])].join('\n'), split + 3, 87, right - split - 6, 200)
   }
   const columns = [26, 41, 350, 395, 440, 485, 505, 569]
   function tableHeader() {
@@ -82,7 +85,8 @@ export function buildInvoicePdf(row) {
   let y = 329
   const items = row.items || []
   const combined = row.pricingMode === 'combined'
-  const base = combined ? Number(row.combinedBasicAmount ?? row.subtotal ?? 0) : items.reduce((sum, item) => sum + (Number(item.unit) || 1) * Number(item.basicAmount || 0), 0)
+  const fullBase = combined ? Number(row.combinedBasicAmount ?? row.subtotal ?? 0) : items.reduce((sum, item) => sum + (Number(item.unit) || 1) * Number(item.basicAmount || 0), 0)
+  const base = Math.round(fullBase * percentage) / 100
   const tax = Math.round(base * 18) / 100
   items.forEach((item, index) => {
     const title = item.serviceCategory || item.piboCategory || 'Service'
@@ -104,9 +108,9 @@ export function buildInvoicePdf(row) {
         text(details.hsn, 353, y, { size: 7 })
         if (!combined) {
           text(item.unit || '1', 417, y, { align: 'center', size: 7 })
-          fitted(cash(item.basicAmount), 442, y - 8, 41, 12, 'normal', 7)
+          fitted(cash(Number(item.basicAmount) * percentage / 100), 442, y - 8, 41, 12, 'normal', 7)
         }
-        const value = combined ? (index === 0 ? cash(base) : '') : cash((Number(item.unit) || 1) * Number(item.basicAmount || 0))
+        const value = combined ? (index === 0 ? cash(base) : '') : cash(Math.round((Number(item.unit) || 1) * Number(item.basicAmount || 0) * percentage) / 100)
         text(value, 566, y, { style: 'bold', size: 8, align: 'right' })
         first = false
       }
@@ -116,10 +120,14 @@ export function buildInvoicePdf(row) {
     y += 7
   })
   bodyBorders(600)
-  text('IGST OUTPUT 18%', 346, Math.min(582, y + 23), { style: 'bolditalic', size: 8, align: 'right' })
-  text('18', 482, Math.min(582, y + 23), { style: 'italic', align: 'right' })
-  text('%', 494, Math.min(582, y + 23), { size: 7 })
-  text(cash(tax), 566, Math.min(582, y + 23), { style: 'bold', align: 'right' })
+  const taxes = intraState ? [['CGST OUTPUT 9%', 9, Math.round(base * 9) / 100], ['SGST OUTPUT 9%', 9, Math.round((tax - Math.round(base * 9) / 100) * 100) / 100]] : [['IGST OUTPUT 18%', 18, tax]]
+  taxes.forEach(([label, rate, value], index) => {
+    const yy = Math.min(567, y + 23) + index * 14
+    text(label, 346, yy, { style: 'bolditalic', size: 8, align: 'right' })
+    text(rate, 482, yy, { style: 'italic', align: 'right' })
+    text('%', 494, yy, { size: 7 })
+    text(cash(value), 566, yy, { style: 'bold', align: 'right' })
+  })
   box(left, 600, width, 12)
   columns.slice(1, -1).forEach((x) => line(x, 600, x, 612))
   text('Total', 347, 609, { size: 7, align: 'right' })
@@ -134,23 +142,19 @@ export function buildInvoicePdf(row) {
   text('Amount Chargeable (in words)', 29, 620, { size: 7 })
   text('E. & O.E.', 566, 620, { size: 7, style: 'italic', align: 'right' })
   fitted('INR ' + currencyWords(base + tax), 29, 622, width - 8, 13, 'bold', 8)
-  const tx = [26, 390, 440, 485, 525, 569]
+  const tx = [26, 350, 410, 465, 510, 569]
   box(left, 636, width, 38)
-  tx.slice(1, -1).forEach((x) => line(x, x === 485 ? 646 : 636, x, 674))
-  line(left, 656, right, 656); line(left, 665, right, 665)
-  line(440, 646, 525, 646)
-  text('HSN/SAC', 208, 644, { size: 7, align: 'center' })
-  text('Taxable', 415, 644, { size: 7, align: 'center' }); text('Value', 415, 653, { size: 7, align: 'center' })
-  text('IGST', 482, 644, { size: 7, align: 'center' }); text('Rate', 462, 653, { size: 7, align: 'center' }); text('Amount', 505, 653, { size: 7, align: 'center' })
-  text('Total', 547, 644, { size: 7, align: 'center' }); text('Tax Amount', 547, 653, { size: 7, align: 'center' })
-  text(details.hsn, 29, 663, { size: 7 })
-  for (const [yy, bold] of [[663, false], [672, true]]) {
-    text(cash(base), 438, yy, { size: 7, align: 'right', style: bold ? 'bold' : 'normal' })
-    if (!bold) text('18%', 482, yy, { size: 7, align: 'right' })
-    text(cash(tax), 523, yy, { size: 7, align: 'right', style: bold ? 'bold' : 'normal' })
-    text(cash(tax), 567, yy, { size: 7, align: 'right', style: bold ? 'bold' : 'normal' })
-  }
-  text('Total', 387, 672, { size: 7, align: 'right', style: 'bold' })
+  tx.slice(1, -1).forEach(x => line(x, 636, x, 674))
+  line(left, 648, right, 648)
+  ;['HSN/SAC', 'Taxable Value', 'Tax', 'Rate', 'Tax Amount'].forEach((label, i) => text(label, (tx[i] + tx[i + 1]) / 2, 645, { size: 7, align: 'center' }))
+  text(details.hsn, 29, 659, { size: 7 })
+  text(cash(base), 407, 659, { size: 7, align: 'right' })
+  taxes.forEach(([label, rate, value], index) => {
+    const yy = 659 + index * 11
+    text(label.split(' ')[0], 438, yy, { size: 7, align: 'center' })
+    text(rate + '%', 487, yy, { size: 7, align: 'center' })
+    text(cash(value), 566, yy, { size: 7, align: 'right' })
+  })
   box(left, 674, width, 113)
   text('Tax Amount (in words):', 29, 687, { size: 7 })
   fitted('INR ' + currencyWords(tax), 117, 678, 445, 14, 'bold', 8)

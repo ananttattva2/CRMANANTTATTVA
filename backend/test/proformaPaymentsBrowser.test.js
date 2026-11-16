@@ -1,0 +1,45 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const fs = require('node:fs');
+const esbuild = require('../../frontend/node_modules/esbuild');
+test('invoice page loads only eligible services and submits the selected payment percentage', async () => {
+  const bundle = await esbuild.build({ stdin: { resolveDir: path.resolve(__dirname, '../../frontend'), loader: 'jsx', contents: `import React from 'react';import{createRoot}from'react-dom/client';import{MemoryRouter}from'react-router-dom';import Page from './src/pages/ProformaInvoices.jsx';createRoot(document.getElementById('root')).render(<MemoryRouter><Page/></MemoryRouter>);` }, bundle: true, write: false, format: 'iife', platform: 'browser', plugins: [{ name: 'fixture', setup(build) {
+    build.onResolve({ filter: /DashboardShell$/ }, () => ({ path: 'shell', namespace: 'fixture' }));
+    build.onResolve({ filter: /(^|\/)api$/ }, () => ({ path: 'api', namespace: 'fixture' }));
+    build.onLoad({ filter: /.*/, namespace: 'fixture' }, args => ({ loader: 'jsx', contents: args.path === 'shell' ? 'export default function Shell({children}){return children}' : `
+      const quote={_id:'507f1f77bcf86cd799439099',quotationNumber:'Q-TEST',pricingMode:'individual',leadDetails:{companyName:'TEST BUYER',gstNumber:'27ABCDE1234F1Z5'},items:[{serviceCategory:'OPEN SERVICE',basicAmount:50000},{serviceCategory:'CLOSED SERVICE',basicAmount:125000,unit:'1'}]};
+      const eligible={...quote.items[1],sourceItemIndex:1,assignedServiceId:'closed'};
+      export const readApiError=e=>e.message;export const storeSessionUser=user=>user;export const clearStoredSession=()=>{};
+      export default {get:async url=>({data:url==='/auth/me'?{user:{role:'superadmin',name:'Test'}}:url==='/quotations'?{quotations:[quote]}:url.includes('eligible-quotation')?{items:[eligible],poYearRows:[{fy:'2026-27',poNumber:'PO-TEST',compliancePoFile:{name:'po.pdf',secureUrl:'https://example.test/po.pdf'},serviceCategory:['CLOSED SERVICE']}]}:{proformaInvoices:[]}}),post:async(url,body)=>{window.savedPayload=body;return{data:{proformaInvoice:{proformaNumber:'PI-TEST'}}}},put:async()=>({data:{}})};
+    ` }));
+  }}] });
+  const { default: puppeteer } = await import('puppeteer');
+  const browser = await puppeteer.launch({ headless: true, ...(process.env.QUOTATION_CHROME_PATH ? { executablePath: process.env.QUOTATION_CHROME_PATH } : {}), args: process.platform === 'linux' ? ['--no-sandbox'] : [] });
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1450, height: 1000 });
+    await page.setContent('<div id="root"></div>');
+    await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.includes('Select a quotation')));
+    async function clickText(text) { await page.evaluate(text => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.includes(text)); if (!b) throw Error(text); b.click() }, text); }
+    await clickText('Select a quotation');
+    await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.includes('Q-TEST')));
+    await clickText('Q-TEST');
+    await page.waitForFunction(() => [...document.querySelectorAll('input')].some(i => i.value === 'CLOSED SERVICE'));
+    assert.equal(await page.evaluate(() => [...document.querySelectorAll('input')].some(i => i.value === 'OPEN SERVICE')), false);
+    assert.equal(await page.evaluate(() => document.body.textContent.includes('Invoice, Delivery & Bank Details')), false);
+    await page.evaluate(() => { const input = [...document.querySelectorAll('input')].find(i => i.max === '100' && i.step === '0.01'); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(input, '50'); input.dispatchEvent(new Event('input', { bubbles: true })); });
+    await page.waitForFunction(() => document.body.textContent.includes('₹62,500'));
+    await clickText('Save Proforma Invoice');
+    await page.waitForFunction(() => window.savedPayload);
+    const payload = await page.evaluate(() => window.savedPayload);
+    assert.equal(Number(payload.paymentPercentage), 50);
+    assert.equal(payload.subtotal, 62500);
+    assert.equal(payload.grandTotal, 73750);
+    assert.equal(payload.items.length, 1);
+    assert.equal(payload.items[0].sourceItemIndex, 1);
+    assert.equal(payload.poNumber, 'PO-TEST');
+  } finally { await browser.close(); }
+});
+

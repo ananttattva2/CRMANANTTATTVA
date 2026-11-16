@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 
 const ProformaItemSchema = new mongoose.Schema({
+  sourceItemIndex: { type: Number, min: 0 },
+  assignedServiceId: { type: String, trim: true },
   serviceCategory: { type: String, trim: true },
   servicesForYear: { type: String, trim: true },
   financialYear: { type: String, trim: true },
@@ -53,6 +55,9 @@ const ProformaInvoiceSchema = new mongoose.Schema({
   poYearRows: { type: [PurchaseOrderYearSchema], default: [] },
   terms: { type: [String], default: [] },
   scopeOfWork: { type: [String], default: [] },
+  fullSubtotal: { type: Number, default: 0 },
+  paymentPercentage: { type: Number, min: 0.01, max: 100, default: 100 },
+  paymentStage: { type: String, enum: ['advance', 'later'], default: 'advance' },
   subtotal: { type: Number, default: 0 },
   gstRate: { type: Number, default: 18 },
   gstAmount: { type: Number, default: 0 },
