@@ -42,7 +42,7 @@ test('approved client email uses server PDF, entered recipient, escaped message 
   assert.equal(message[3].attachments[0].content.subarray(0, 5).toString(), '%PDF-');
   assert.equal(message[3].attachments[1].contentDisposition, 'inline');
   assert.equal(history.to, 'client@example.test');
-  assert.deepEqual(message[3].cc, ['finance@example.test', 'manager@example.test']);
+  assert.deepEqual(message[3].cc, ['finance@example.test', 'manager@example.test', 'user@example.test']);
   assert.deepEqual(history.cc, message[3].cc);
 });
 
@@ -66,7 +66,28 @@ test('multiple addresses pasted into Client email use the first as To and the re
   await controller.emailQuotation({ user: actor, params: { id: quote._id }, body: { email: 'client@example.test project@example.test; accounts@example.test', cc: '', subject: 'Quote', body: 'Review' } }, res, error => { throw error; });
   assert.equal(res.code, 200);
   assert.equal(message[0], 'client@example.test');
-  assert.deepEqual(message[3].cc, ['project@example.test', 'accounts@example.test']);
+  assert.deepEqual(message[3].cc, ['project@example.test', 'accounts@example.test', 'user@example.test']);
+});
+
+test('sender is copied exactly once and automatic copy does not reduce the client recipient limit', async t => {
+  const messages = [];
+  t.mock.method(Lead, 'find', () => query([]));
+  t.mock.method(Quotation, 'findOne', () => query(quote));
+  t.mock.method(Quotation, 'updateOne', async () => {});
+  t.mock.method(delivery, 'createApprovedQuotationPdf', async () => Buffer.from('%PDF-test'));
+  t.mock.method(mailer, 'sendMail', async (...args) => { messages.push(args); });
+  for (const body of [
+    { email: 'USER@example.test', cc: 'user@example.test' },
+    { email: 'client@example.test', cc: 'USER@example.test; finance@example.test' },
+    { email: 'client@example.test', cc: Array.from({ length: 10 }, (_, i) => `recipient${i}@example.test`) }
+  ]) {
+    const res = response();
+    await controller.emailQuotation({ user: actor, params: { id: quote._id }, body: { ...body, subject: 'Quote', body: 'Review' } }, res, error => { throw error; });
+    assert.equal(res.code, 200);
+    const message = messages.at(-1);
+    assert.equal([message[0], ...message[3].cc].filter(email => email === actor.email).length, 1);
+  }
+  assert.equal(messages[2][3].cc.length, 11);
 });
 
 test('unapproved quotations cannot be emailed or downloaded by staff', async t => {

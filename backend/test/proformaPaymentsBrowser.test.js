@@ -11,7 +11,7 @@ test('invoice page loads only eligible services and submits the selected payment
       const quote={_id:'507f1f77bcf86cd799439099',quotationNumber:'Q-TEST',pricingMode:'individual',leadDetails:{companyName:'TEST BUYER',gstNumber:'27ABCDE1234F1Z5'},items:[{serviceCategory:'OPEN SERVICE',basicAmount:50000},{serviceCategory:'CLOSED SERVICE',basicAmount:125000,unit:'1'}]};
       const eligible={...quote.items[1],sourceItemIndex:1,assignedServiceId:'closed'};
       export const readApiError=e=>e.message;export const storeSessionUser=user=>user;export const clearStoredSession=()=>{};
-      export default {get:async url=>({data:url==='/auth/me'?{user:{role:'superadmin',name:'Test'}}:url==='/quotations'?{quotations:[quote]}:url.includes('eligible-quotation')?{items:[eligible],poYearRows:[{fy:'2026-27',poNumber:'PO-TEST',compliancePoFile:{name:'po.pdf',secureUrl:'https://example.test/po.pdf'},serviceCategory:['CLOSED SERVICE']}]}:{proformaInvoices:[]}}),post:async(url,body)=>{window.savedPayload=body;return{data:{proformaInvoice:{proformaNumber:'PI-TEST'}}}},put:async()=>({data:{}})};
+      export default {get:async url=>({data:url==='/auth/me'?{user:{role:'superadmin',name:'Test'}}:url==='/quotations'?{quotations:[quote]}:url.includes('eligible-quotation')?{items:window.noEligible?[]:[eligible],poYearRows:[{fy:'2026-27',poNumber:'PO-TEST',compliancePoFile:{name:'po.pdf',secureUrl:'https://example.test/po.pdf'},serviceCategory:['CLOSED SERVICE']}]}:{proformaInvoices:[]}}),post:async(url,body)=>{window.savedPayload=body;return{data:{proformaInvoice:{proformaNumber:'PI-TEST'}}}},put:async()=>({data:{}})};
     ` }));
   }}] });
   const { default: puppeteer } = await import('puppeteer');
@@ -29,6 +29,15 @@ test('invoice page loads only eligible services and submits the selected payment
     await page.waitForFunction(() => [...document.querySelectorAll('input')].some(i => i.value === 'CLOSED SERVICE'));
     assert.equal(await page.evaluate(() => [...document.querySelectorAll('input')].some(i => i.value === 'OPEN SERVICE')), false);
     assert.equal(await page.evaluate(() => document.body.textContent.includes('Invoice, Delivery & Bank Details')), false);
+    assert.equal(await page.$$eval('[aria-label="Invoice pricing type"] button', buttons => buttons.length), 2);
+    await clickText('Combined Price');
+    await page.waitForFunction(() => document.querySelector('[aria-label="Invoice pricing type"] button[aria-pressed="true"]')?.textContent.includes('Combined Price'));
+    await page.evaluate(() => { const input = document.querySelector('input[placeholder="50000"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '125000'); input.dispatchEvent(new Event('input', { bubbles: true })); });
+    await clickText('Individual Price');
+    await page.waitForFunction(() => [...document.querySelectorAll('input')].some(input => input.value === '125000'));
+    await clickText('Combined Price');
+    await page.waitForFunction(() => document.querySelector('input[placeholder="50000"]')?.value === '125000');
+    await clickText('Individual Price');
     await page.evaluate(() => { const input = [...document.querySelectorAll('input')].find(i => i.max === '100' && i.step === '0.01'); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(input, '50'); input.dispatchEvent(new Event('input', { bubbles: true })); });
     await page.waitForFunction(() => document.body.textContent.includes('₹62,500'));
     await clickText('Save Proforma Invoice');
@@ -40,6 +49,14 @@ test('invoice page loads only eligible services and submits the selected payment
     assert.equal(payload.items.length, 1);
     assert.equal(payload.items[0].sourceItemIndex, 1);
     assert.equal(payload.poNumber, 'PO-TEST');
+    await page.waitForFunction(() => document.body.textContent.includes('saved successfully'));
+    await page.evaluate(() => { window.noEligible = true; });
+    await clickText('Select a quotation');
+    await clickText('Q-TEST');
+    await page.waitForFunction(() => document.body.textContent.includes('No PO-uploaded, closed services found'));
+    assert.equal(await page.$$eval('[aria-label="Invoice pricing type"] button', buttons => buttons.length), 2);
+    await clickText('Combined Price');
+    assert.ok(await page.evaluate(() => document.body.textContent.includes('No PO-uploaded, closed services found')));
   } finally { await browser.close(); }
 });
 

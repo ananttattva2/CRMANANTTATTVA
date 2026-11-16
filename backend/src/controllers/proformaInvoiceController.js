@@ -159,7 +159,6 @@ async function validateInvoice(payload, editingId, user) {
   }
   if (new Set(payload.items.map(item => item.sourceItemIndex)).size !== payload.items.length) return 'Each quotation service can appear only once.';
   if (payload.items.some(item => !items.some(eligible => eligible.sourceItemIndex === item.sourceItemIndex))) return 'Only PO-uploaded, closed services can be invoiced. Reload the quotation.';
-  if (payload.pricingMode === 'combined' && items.length !== quote.items.length) return 'For partially closed quotations, select individual pricing and enter the approved service amounts.';
   const previous = await ProformaInvoice.find({ quotationId: payload.quotationId, status: { $ne: 'cancelled' }, ...(editingId ? { _id: { $ne: editingId } } : {}) }).select('items paymentPercentage').lean();
   for (const item of payload.items) {
     const billed = previous.filter(row => row.items.some(old => old.sourceItemIndex === item.sourceItemIndex || (old.sourceItemIndex == null && old.serviceCategory === item.serviceCategory && old.piboCategory === item.piboCategory))).reduce((sum, row) => sum + (row.paymentPercentage ?? 100), 0);

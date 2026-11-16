@@ -847,6 +847,9 @@ exports.emailQuotation = async (req, res, next) => {
     const quotation = await Quotation.findOne(combineFilters({ _id: req.params.id }, await quotationAccessFilter(req.user))).populate('createdBy', 'name email').populate('approvalDecision.actionBy', 'name email role').lean();
     if (!quotation) return res.status(404).json({ error: 'Quotation not found' });
     if (!isApproved(quotation)) return res.status(403).json({ error: 'Admin approval is required before emailing this quotation.' });
+    // Always copy the authenticated sender, independently of client-entered recipients.
+    const senderEmail = String(req.user.email || '').trim().toLowerCase();
+    if (senderEmail && senderEmail !== email && !cc.includes(senderEmail)) cc.push(senderEmail);
     const pdf = await createApprovedQuotationPdf(quotation);
     const content = clientEmailContent(subject, body);
     await sendMail(email, subject, content.html, { branded: false, cc, attachments: [{ filename: await quotationFilename(quotation), content: pdf, contentType: 'application/pdf' }, content.logo] });

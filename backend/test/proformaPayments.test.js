@@ -70,6 +70,9 @@ test('server rejects percentages above the remaining service balance and permits
     assert.match(await _test.validateInvoice(payload, null, actor), /Only 50% remains/);
     payload.paymentPercentage = 50;
     assert.equal(await _test.validateInvoice(payload, null, actor), '');
+    payload.pricingMode = 'combined';
+    payload.combinedBasicAmount = 75000;
+    assert.equal(await _test.validateInvoice(payload, null, actor), '');
     payload.items[0].sourceItemIndex = 0;
     assert.match(await _test.validateInvoice(payload, null, actor), /Only PO-uploaded, closed services/);
     payload.paymentPercentage = 0;
