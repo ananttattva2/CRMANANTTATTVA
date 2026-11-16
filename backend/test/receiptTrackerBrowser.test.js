@@ -25,13 +25,14 @@ test('Nil Upload is first, locks later rows on Yes, accepts optional proof, and 
  await page.waitForFunction(()=>document.querySelector('.ut-counter-complete strong').textContent==='1');
  assert.equal(await page.$eval('select[aria-label="Data Explained status"]',el=>el.disabled),true);
  assert.equal(await page.$eval('button[aria-label="Manage Received from client proof"]',el=>el.disabled),true);
- assert.equal(await page.$eval('select[aria-label="Client Approval on data status"]',el=>el.disabled),false);
+ assert.equal(await page.$eval('select[aria-label="Client Approval on data status"]',el=>el.disabled),true);
  assert.match(await page.$eval('.ut-nil-evidence',el=>el.textContent),/Choose files or drag and drop/);
  await page.evaluate(()=>{const input=document.querySelector('.ut-nil-evidence input[type=file]');const transfer=new DataTransfer();transfer.items.add(new File(['proof'],'nil-proof.pdf',{type:'application/pdf'}));input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));});
  await page.waitForFunction(()=>window.rows[4].files.length===1);
  await page.evaluate(()=>{const select=[...document.querySelectorAll('tr')].find(row=>row.textContent.includes('Nil Upload')).querySelector('select');select.value='No';select.dispatchEvent(new Event('change',{bubbles:true}));});
  await page.waitForFunction(()=>document.querySelector('.ut-counter-complete strong').textContent==='0');
  assert.equal(await page.$eval('select[aria-label="Data Explained status"]',el=>el.disabled),false);
+ assert.equal(await page.$eval('select[aria-label="Client Approval on data status"]',el=>el.disabled),false);
 
  await page.evaluate(()=>document.querySelectorAll('input[type=checkbox]')[0].click());
  await page.waitForFunction(()=>window.rows[2].partialDataReceived===true);
