@@ -1,3 +1,4 @@
+const { attachReviewClientIdentity } = require('../services/arReviewClientIdentity');
 const mongoose = require('mongoose');
 const Client = require('../models/Client');
 const AnnualReturn = require('../models/AnnualReturn');
@@ -22,6 +23,7 @@ const {
 } = require('../services/arComplianceDecisionNotifications');
 const yearKey = value => String(value || '').replace(/^FY\s*/i, '').trim();
 const nameOf = client => client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || client.selectedLead?.company || 'Client';
+const leadIdentityFields = 'company leadCode assignedStaff assignedStaffText assignedStaffEmail assignedTo piboCategory subApplicantType serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId serviceSelections.subApplicantType serviceSelections.piboCategory serviceSelections.applicantType assignments.assignedServiceId assignments.serviceAssignmentId assignments.assignedStaff assignments.assignedStaffText assignments.assignedStaffEmail';
 const readyFilter = {
   'baseUpload.importStatus': 'Imported',
   'portalUpload.importStatus': 'Imported'
@@ -49,8 +51,9 @@ async function source(req) {
     $and: [{
       _id: req.params.id
     }, await clientScope(req.user)]
-  }).populate('selectedLead', 'company leadCode assignedStaff assignedTo createdBy').lean();
+  }).populate('selectedLead', leadIdentityFields).lean();
   if (!client) return null;
+  await attachReviewClientIdentity([client]);
   const records = await AnnualReturn.find({
     client: client._id
   }).sort({
@@ -133,6 +136,7 @@ function publicPayload(data) {
     client: {
       _id: data.client._id,
       name: nameOf(data.client),
+      ...data.client.reviewIdentity,
       code: data.client.data?.importMeta?.uniqueId || data.client.selectedLead?.leadCode || '-'
     },
     years: data.years,
@@ -162,7 +166,8 @@ const wrap = fn => async (req, res, next) => {
   }
 };
 exports.list = wrap(async (req, res) => {
-  const clients = await Client.find(await clientScope(req.user)).select('data.basic data.importMeta data.annualReturn.filings selectedLead').populate('selectedLead', 'company').lean();
+  const clients = await Client.find(await clientScope(req.user)).select('data.basic data.importMeta data.assignedServiceId data.selectedLeadSnapshot data.annualReturn.filings selectedLead assignedServiceId adminControls.assignedTo').populate('selectedLead', leadIdentityFields).lean();
+  await attachReviewClientIdentity(clients);
   const ids = clients.map(client => client._id);
   const [annuals, purchases, sales, reviews] = await Promise.all([AnnualReturn.find({
     client: {
@@ -209,6 +214,7 @@ exports.list = wrap(async (req, res) => {
       return {
         clientId: client._id,
         clientName: nameOf(client),
+        ...client.reviewIdentity,
         financialYear,
         status: workflow.stage === 'MANAGER_REJECTED' ? 'REJECTED' : manager ? 'PENDING' : workflow.complianceStatus,
         ...workflow,

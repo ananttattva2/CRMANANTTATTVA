@@ -501,3 +501,17 @@ test('AR route permissions allow Manager and Compliance but reject operations', 
     assert.equal(denied.statusCode, 403);
   }
 });
+
+test('AR list and review header expose the selected applicant and assigned staff name', async t => {
+  const state = fixture(t);
+  state.client.assignedServiceId = 'importer-service';
+  state.client.selectedLead = {
+    serviceSelections: [{ assignedServiceId: 'producer-service', subApplicantType: 'Producer' }, { assignedServiceId: 'importer-service', subApplicantType: 'Importer' }],
+    assignments: [{ assignedServiceId: 'producer-service', assignedStaffText: 'Producer User' }, { assignedServiceId: 'importer-service', assignedStaffText: 'Importer User' }]
+  };
+  const list = await call('list', compliance);
+  assert.equal(list.body.rows[0].assignedUserName, 'Importer User');
+  const review = await call('get', compliance);
+  assert.equal(review.body.client.assignedUserName, 'Importer User');
+  assert.equal(review.body.client.applicantType, 'Importer');
+});
