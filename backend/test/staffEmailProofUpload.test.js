@@ -52,3 +52,31 @@ test('ordinary staff and administrators can upload genuine email proof only with
   const readOnly = response(); await controller.uploadEmailProof(request('purchase'), readOnly);
   assert.equal(readOnly.code, 403); assert.equal(stored.length, 14);
 });
+
+test('re-uploading a duplicate Outlook proof backfills missing sanitized HTML tables', async t => {
+  const duplicate = { _id: id, emailData: { format: 'msg', textBody: 'Approval details' }, saved: false, async save() { this.saved = true; } };
+  const htmlMail = `From: client@example.test\r\nTo: staff@example.test\r\nSubject: Approval\r\nDate: Wed, 04 Nov 2026 10:00:00 +0530\r\nMessage-ID: <table-proof@example.test>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=table-proof\r\n\r\n--table-proof\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nApproval details\r\n--table-proof\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<table><tr><th>Category</th><th>Quantity</th></tr><tr><td>Plastic</td><td>10</td></tr></table><script>bad()</script>\r\n--table-proof--`;
+  t.mock.method(clientController, 'clientAccessFilter', async () => ({}));
+  t.mock.method(Client, 'findOne', async () => ({ _id: id }));
+  t.mock.method(Proof, 'findOne', async () => duplicate);
+  const controllerPath = require.resolve('../src/controllers/purchaseProofController');
+  delete require.cache[controllerPath];
+  const controller = require(controllerPath);
+  t.after(() => { delete require.cache[controllerPath]; });
+
+  const req = {
+    user: { _id: id, role: 'operation', name: 'CRM Staff', email: 'staff@example.test' },
+    params: { clientId: id },
+    body: { section: 'purchase', financialYear: '2026-27', progressParticular: 'Received from client' },
+    file: { buffer: Buffer.from(htmlMail), size: Buffer.byteLength(htmlMail), originalname: 'approval.eml', mimetype: 'message/rfc822' }
+  };
+  const res = response();
+  await controller.uploadEmailProof(req, res);
+
+  assert.equal(res.code, 200);
+  assert.equal(res.body.duplicate, true);
+  assert.equal(duplicate.saved, true);
+  assert.match(duplicate.emailData.sanitizedHtmlBody, /<table>/);
+  assert.match(duplicate.emailData.sanitizedHtmlBody, /<td>Plastic<\/td>/);
+  assert.doesNotMatch(duplicate.emailData.sanitizedHtmlBody, /script|bad\(\)/i);
+});

@@ -16,6 +16,28 @@ function headerList(headers) { return [...(headers?.entries?.() || [])].slice(0,
 function cleanText(value) { return String(value || '').replace(/\0/g, '').slice(0, 500000); }
 function sanitized(value) { return sanitizeHtml(String(value || ''), ACTIVE_HTML).slice(0, 500000); }
 function dateValue(value) { const date = value ? new Date(value) : null; return date && !Number.isNaN(date.getTime()) ? date : null; }
+function extractHtmlFromRtf(rtf) {
+  const html = String(rtf || '')
+    .replace(/\{\\\*\\htmltag-?\d+\s*([^}]*)\}/g, (_match, fragment) => fragment)
+    .replace(/\\u(-?\d+)(?:\\'[0-9a-f]{2}|\?)?/gi, (_match, code) => String.fromCharCode(Number(code) < 0 ? Number(code) + 65536 : Number(code)))
+    .replace(/\\'([0-9a-f]{2})/gi, (_match, code) => String.fromCharCode(parseInt(code, 16)))
+    .replace(/\\([\\{}])/g, (_match, character) => ({ '\\': '&#92;', '{': '&#123;', '}': '&#125;' }[character]))
+    .replace(/\\~/g, '&nbsp;')
+    .replace(/\\_/g, '&#8209;')
+    .replace(/\\-/g, '')
+    .replace(/\\[a-z]+-?\d* ?/gi, '')
+    .replace(/[{}]/g, '')
+    .slice(0, 500000);
+  return /<(?:html|body|table|div|p)\b/i.test(html) ? html : '';
+}
+function htmlFromRtf(value) {
+  try {
+    const rtf = Buffer.from(decompressRTF(value)).toString('latin1');
+    return extractHtmlFromRtf(rtf);
+  } catch {
+    return '';
+  }
+}
 function readableRtf(value) {
   try {
     const rtf = Buffer.from(decompressRTF(value)).toString('latin1');
@@ -56,7 +78,8 @@ async function parseMsg(buffer) {
   const headers = cleanText(mail.headers).split(/\r?\n/).filter((line) => line.includes(':')).slice(0, 100).map((line) => { const separator = line.indexOf(':'); return { name: line.slice(0, separator).trim().slice(0, 100), value: line.slice(separator + 1).trim().slice(0, 2000) }; });
   const header = (name) => headers.find((item) => item.name.toLowerCase() === name)?.value || '';
   const rtfBody = !mail.body && mail.compressedRtf ? readableRtf(mail.compressedRtf) : '';
-  return { format: 'msg', messageId: header('message-id').slice(0, 500), subject: cleanText(mail.subject).slice(0, 1000), from: { name: cleanText(mail.senderName).slice(0, 200), email: cleanText(mail.senderEmail).toLowerCase().slice(0, 320) }, to: msgRecipients(mail, 'to'), cc: msgRecipients(mail, 'cc'), bcc: msgRecipients(mail, 'bcc'), replyTo: [], sentAt: dateValue(mail.clientSubmitTime || header('date')), receivedAt: dateValue(mail.messageDeliveryTime || mail.creationTime), textBody: cleanText(mail.body || rtfBody), sanitizedHtmlBody: sanitized(mail.bodyHTML || mail.htmlBody || ''), headers, attachments, decodeWarnings: mail.compressedRtf && !mail.body && !rtfBody ? ['RTF content was present but could not be converted safely.'] : [] };
+  const htmlBody = mail.bodyHTML || mail.htmlBody || (mail.compressedRtf ? htmlFromRtf(mail.compressedRtf) : '');
+  return { format: 'msg', messageId: header('message-id').slice(0, 500), subject: cleanText(mail.subject).slice(0, 1000), from: { name: cleanText(mail.senderName).slice(0, 200), email: cleanText(mail.senderEmail).toLowerCase().slice(0, 320) }, to: msgRecipients(mail, 'to'), cc: msgRecipients(mail, 'cc'), bcc: msgRecipients(mail, 'bcc'), replyTo: [], sentAt: dateValue(mail.clientSubmitTime || header('date')), receivedAt: dateValue(mail.messageDeliveryTime || mail.creationTime), textBody: cleanText(mail.body || rtfBody), sanitizedHtmlBody: sanitized(htmlBody), headers, attachments, decodeWarnings: mail.compressedRtf && !mail.body && !rtfBody ? ['RTF content was present but could not be converted safely.'] : [] };
 }
 
 function validateDecoded(data) {
@@ -113,4 +136,4 @@ function emailBodyOnlyBuffer(data = {}) {
   return Buffer.from(`${lines.join('\r\n')}\r\n\r\n${body}`, 'utf8');
 }
 
-module.exports = { LIMITS, safeName, sha256, validateFile, decodeEmail, emailBodyOnlyBuffer, uploadBuffer, deleteStored, publicEmailData };
+module.exports = { LIMITS, safeName, sha256, validateFile, decodeEmail, emailBodyOnlyBuffer, uploadBuffer, deleteStored, publicEmailData, __test: { extractHtmlFromRtf } };

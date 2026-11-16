@@ -23,6 +23,11 @@ function proofReference(proof, full = true) {
   const emailData = full ? proof.emailData : { format: proof.emailData?.format, subject: proof.emailData?.subject, from: proof.emailData?.from, sentAt: proof.emailData?.sentAt, receivedAt: proof.emailData?.receivedAt, decodeStatus: proof.emailData?.decodeStatus, decodeWarnings: proof.emailData?.decodeWarnings || [] };
   return { proofId: proof._id, name: proof.name, originalName: proof.originalName, fileType: proof.fileType, type: proof.mimeType, mimeType: proof.mimeType, size: proof.size, url: `/api/purchase-proofs/${proof._id}/download`, uploadedAt: proof.createdAt, emailData };
 }
+async function backfillProofHtml(proof, emailData) {
+  if (!proof || proof.emailData?.sanitizedHtmlBody || !emailData?.sanitizedHtmlBody) return;
+  proof.emailData = publicEmailData(emailData, []);
+  await proof.save();
+}
 function purchasePayload(purchase, user) { const object = purchase.toObject(); return { ...object, checklist: defaultChecklist(object.checklist), readiness: purchaseReadiness(object), calculatedStatus: calculatePurchaseStatus(object), permissions: { canEdit: canEdit(user), canManagerReview: userHasAnyRole(user, ['admin', 'superadmin', 'manager']), canComplianceReview: userHasAnyRole(user, ['admin', 'superadmin', 'compliance']) } }; }
 function dataPayload(record, user, section = 'purchase') {
   const value = purchasePayload(record, user);
@@ -49,9 +54,9 @@ exports.uploadEmailProof = async (req, res) => {
     const checksumInput = section === 'sales' ? Buffer.concat([Buffer.from('sales:'), mailOnlyBuffer]) : mailOnlyBuffer;
     const checksum = sha256(checksumInput);
     const duplicate = await PurchaseProof.findOne({ clientId: client._id, financialYear, section, progressParticular: particular, checksum });
-    if (duplicate) return res.json({ success: true, duplicate: true, message: 'This email proof is already uploaded.', proof: proofReference(duplicate) });
+    if (duplicate) { await backfillProofHtml(duplicate, emailData); return res.json({ success: true, duplicate: true, message: 'This email proof is already uploaded.', proof: proofReference(duplicate) }); }
     const messageDuplicate = emailData.messageId ? await PurchaseProof.findOne({ clientId: client._id, financialYear, section, progressParticular: particular, 'emailData.messageId': emailData.messageId }) : null;
-    if (messageDuplicate) return res.json({ success: true, duplicate: true, message: 'This email proof is already uploaded.', proof: proofReference(messageDuplicate) });
+    if (messageDuplicate) { await backfillProofHtml(messageDuplicate, emailData); return res.json({ success: true, duplicate: true, message: 'This email proof is already uploaded.', proof: proofReference(messageDuplicate) }); }
     const storedName = safeName(req.file.originalname).replace(/\.(eml|msg)$/i, '') + '-mail-only.eml';
     originalStorage = await uploadBuffer(mailOnlyBuffer, storedName, 'message/rfc822', `${folder}/originals`);
     const storedAttachments = [];

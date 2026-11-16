@@ -15,6 +15,66 @@ function cleanBody(value) {
   parsed.querySelectorAll('script,style,iframe,object,embed,svg,math,form,input,button,img,link,meta').forEach((node) => node.remove());
   return String(parsed.body?.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
 }
+const EMAIL_ALLOWED_TAGS = new Set(['p', 'br', 'div', 'span', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'caption', 'colgroup', 'col', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'a']);
+const EMAIL_REMOVED_TAGS = new Set(['script', 'style', 'iframe', 'object', 'embed', 'svg', 'math', 'form', 'input', 'button', 'img', 'link', 'meta']);
+const EMAIL_STYLE_PROPERTIES = new Set(['background-color', 'border', 'border-collapse', 'border-color', 'border-spacing', 'border-style', 'border-width', 'color', 'font-family', 'font-size', 'font-style', 'font-weight', 'line-height', 'margin', 'margin-bottom', 'margin-left', 'margin-right', 'margin-top', 'padding', 'padding-bottom', 'padding-left', 'padding-right', 'padding-top', 'text-align', 'text-decoration', 'vertical-align', 'white-space', 'width', 'height', 'max-width', 'min-width']);
+
+function safeEmailStyle(element) {
+  const style = {};
+  for (const property of EMAIL_STYLE_PROPERTIES) {
+    const value = element.style?.getPropertyValue(property)?.trim();
+    if (!value || /url\s*\(|expression|javascript:|@import|[{}]/i.test(value)) continue;
+    const name = property.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase());
+    style[name] = value;
+  }
+  return style;
+}
+
+function renderSafeEmailNode(node, key) {
+  if (node.nodeType === 3) return node.nodeValue;
+  if (node.nodeType !== 1) return null;
+  const tag = node.tagName.toLowerCase();
+  if (EMAIL_REMOVED_TAGS.has(tag)) return null;
+
+  const children = [...node.childNodes].map((child, index) => renderSafeEmailNode(child, `${key}-${index}`)).filter((child) => child !== null);
+  if (!EMAIL_ALLOWED_TAGS.has(tag)) return children;
+
+  const props = { key };
+  const style = safeEmailStyle(node);
+  if (Object.keys(style).length) props.style = style;
+  if (tag === 'a') {
+    const href = String(node.getAttribute('href') || '').trim();
+    if (/^(https?:\/\/|mailto:)/i.test(href)) {
+      props.href = href;
+      props.target = '_blank';
+      props.rel = 'noopener noreferrer';
+    }
+    const title = node.getAttribute('title');
+    if (title) props.title = title;
+  }
+  if (tag === 'td' || tag === 'th') {
+    for (const attribute of ['colspan', 'rowspan']) {
+      const value = node.getAttribute(attribute);
+      if (/^\d{1,2}$/.test(value || '') && Number(value) > 0) props[attribute] = Math.min(Number(value), 50);
+    }
+  }
+  if (tag === 'th') {
+    const scope = node.getAttribute('scope');
+    if (['row', 'col', 'rowgroup', 'colgroup'].includes(scope)) props.scope = scope;
+  }
+  if (tag === 'table') props.className = 'min-w-full border-collapse text-sm';
+  if (tag === 'th' || tag === 'td') {
+    props.className = tag === 'th'
+      ? 'border border-slate-300 bg-slate-100 px-3 py-2 text-left font-bold align-top'
+      : 'border border-slate-300 px-3 py-2 align-top';
+  }
+  return React.createElement(tag, props, ...children);
+}
+
+function renderSafeEmailHtml(value) {
+  const parsed = new DOMParser().parseFromString(String(value || ''), 'text/html');
+  return [...parsed.body.childNodes].map((node, index) => renderSafeEmailNode(node, `email-${index}`));
+}
 function addressText(value) { if (Array.isArray(value)) return value.map((item) => item.email ? `${item.name ? `${item.name} ` : ''}<${item.email}>` : item.name).filter(Boolean).join(', '); return [value?.name, value?.email].filter(Boolean).join(' · '); }
 function saveBlob(blob, name, open = false) { const url = URL.createObjectURL(blob); if (open) window.open(url, '_blank', 'noopener,noreferrer'); else { const anchor = document.createElement('a'); anchor.href = url; anchor.download = name || 'download'; anchor.click(); } setTimeout(() => URL.revokeObjectURL(url), 30000); }
 
@@ -40,7 +100,7 @@ export default function OutlookMsgViewer({ file, onClose }) {
     return () => { active = false; objectUrls.forEach((url) => URL.revokeObjectURL(url)); };
   }, [file, sourceUrl]);
 
-  const mail = state.mail || file?.emailData || {}; const body = cleanBody(mail.textBody || mail.body || mail.sanitizedHtmlBody || ''); const badge = String(mail.format || file?.fileType || (isOutlookMsg(file) ? 'msg' : 'eml')).toUpperCase(); const tabs = ['Email', 'Attachments', 'Headers', 'File Information'];
+  const mail = state.mail || file?.emailData || {}; const htmlBody = String(mail.sanitizedHtmlBody || ''); const body = cleanBody(mail.textBody || mail.body || ''); const badge = String(mail.format || file?.fileType || (isOutlookMsg(file) ? 'msg' : 'eml')).toUpperCase(); const tabs = ['Email', 'Attachments', 'Headers', 'File Information'];
   const downloadOriginal = async (open = false) => { setDownloading('original'); try { if (file.proofId) { const response = await api.get(API_ENDPOINTS.purchaseProofs.download(file.proofId), { responseType: 'blob' }); saveBlob(response.data, file.name, open); } else if (open) window.open(sourceUrl, '_blank', 'noopener,noreferrer'); else { const response = await fetch(sourceUrl); saveBlob(await response.blob(), file.name); } } finally { setDownloading(''); } };
   const downloadAttachment = async (attachment) => { setDownloading(attachment.attachmentId); try { if (file.proofId && attachment.attachmentId) { const response = await api.get(API_ENDPOINTS.purchaseProofs.attachment(file.proofId, attachment.attachmentId), { responseType: 'blob' }); saveBlob(response.data, attachment.fileName); } else if (attachment.url) saveBlob(await (await fetch(attachment.url)).blob(), attachment.fileName); } finally { setDownloading(''); } };
 
@@ -48,7 +108,7 @@ export default function OutlookMsgViewer({ file, onClose }) {
     <header className="flex flex-wrap items-start justify-between gap-3 border-b border-emerald-100 bg-[linear-gradient(90deg,#fff,#f0fdf9)] p-5"><div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">Preview</span><span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black text-slate-600">Email File ({badge})</span><StatusBadge value={mail.decodeStatus} /></div><h4 className="mt-3 text-lg font-black text-slate-950">{file?.name || 'Email proof'}</h4><p className="mt-1 text-sm font-bold text-slate-500">Server-decoded metadata with safe text rendering and protected downloads.</p></div><div className="flex items-center gap-2"><button type="button" onClick={() => downloadOriginal(true)} disabled={downloading === 'original'} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700"><ExternalLink className="h-4 w-4" />Open</button><button type="button" onClick={() => downloadOriginal(false)} disabled={downloading === 'original'} className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-black text-emerald-700">{downloading === 'original' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}Download</button><button type="button" onClick={onClose} className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600"><X className="h-5 w-5" /></button></div></header>
     <nav className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-white p-2">{tabs.map((item) => <button type="button" key={item} onClick={() => setTab(item)} className={`whitespace-nowrap rounded-lg px-4 py-2 text-xs font-black ${tab === item ? 'bg-[#087A70] text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{item}</button>)}</nav>
     <main className="flex-1 overflow-y-auto bg-slate-50/70 p-4 sm:p-6">{state.loading && <Loading />}{state.error && !state.mail && <ErrorState message={state.error} />}{!state.loading && (state.mail || file?.emailData) && <>{state.error && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800">{state.error}</div>}
-      {tab === 'Email' && <div className="space-y-5"><section className="overflow-hidden rounded-3xl border border-emerald-100 bg-white shadow-sm"><div className="border-b border-emerald-100 bg-emerald-50/70 p-5"><p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700">Mail Summary</p><h5 className="mt-2 text-xl font-black text-slate-950">{mail.subject || '(No subject)'}</h5>{mail.decodeWarnings?.map((warning) => <p key={warning} className="mt-1 text-xs font-bold text-amber-700">Warning: {warning}</p>)}</div><div className="grid gap-4 p-5 md:grid-cols-2 lg:grid-cols-3"><Info label="From" value={addressText(mail.from) || '-'} /><Info label="To" value={addressText(mail.to) || '-'} /><Info label="CC" value={addressText(mail.cc) || '-'} /><Info label="Sent" value={mail.sentAt ? new Date(mail.sentAt).toLocaleString('en-IN') : '-'} /><Info label="Received" value={mail.receivedAt ? new Date(mail.receivedAt).toLocaleString('en-IN') : '-'} /><Info label="Message ID" value={mail.messageId || '-'} /></div></section><section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"><div className="border-b p-5"><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Message Body</p><p className="mt-1 text-sm font-bold text-slate-500">Clean text view; scripts and remote images are never rendered.</p></div><pre className="min-h-48 whitespace-pre-wrap break-words p-6 font-sans text-sm font-medium leading-7 text-slate-700">{body || 'No readable message body was found.'}</pre></section></div>}
+      {tab === 'Email' && <div className="space-y-5"><section className="overflow-hidden rounded-3xl border border-emerald-100 bg-white shadow-sm"><div className="border-b border-emerald-100 bg-emerald-50/70 p-5"><p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700">Mail Summary</p><h5 className="mt-2 text-xl font-black text-slate-950">{mail.subject || '(No subject)'}</h5>{mail.decodeWarnings?.map((warning) => <p key={warning} className="mt-1 text-xs font-bold text-amber-700">Warning: {warning}</p>)}</div><div className="grid gap-4 p-5 md:grid-cols-2 lg:grid-cols-3"><Info label="From" value={addressText(mail.from) || '-'} /><Info label="To" value={addressText(mail.to) || '-'} /><Info label="CC" value={addressText(mail.cc) || '-'} /><Info label="Sent" value={mail.sentAt ? new Date(mail.sentAt).toLocaleString('en-IN') : '-'} /><Info label="Received" value={mail.receivedAt ? new Date(mail.receivedAt).toLocaleString('en-IN') : '-'} /><Info label="Message ID" value={mail.messageId || '-'} /></div></section><section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"><div className="border-b p-5"><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Message Body</p><p className="mt-1 text-sm font-bold text-slate-500">Clean text view with safe tables; scripts and remote images are never rendered.</p></div>{htmlBody ? <div className="min-h-48 overflow-x-auto p-5 text-sm leading-6 text-slate-700">{renderSafeEmailHtml(htmlBody)}</div> : <pre className="min-h-48 whitespace-pre-wrap break-words p-6 font-sans text-sm font-medium leading-7 text-slate-700">{body || 'No readable message body was found.'}</pre>}</section></div>}
       {tab === 'Attachments' && <AttachmentTable attachments={state.attachments} downloading={downloading} onDownload={downloadAttachment} />}
       {tab === 'Headers' && <section className="overflow-hidden rounded-2xl border bg-white"><table className="w-full text-left text-xs"><thead className="bg-slate-100"><tr><th className="px-4 py-3">Header</th><th className="px-4 py-3">Value</th></tr></thead><tbody>{(mail.headers || []).map((header, index) => <tr key={`${header.name}-${index}`} className="border-t"><td className="px-4 py-3 font-black">{header.name}</td><td className="break-all px-4 py-3 font-bold text-slate-600">{header.value}</td></tr>)}{!mail.headers?.length && <tr><td colSpan="2" className="p-8 text-center font-bold text-slate-400">No internet headers available.</td></tr>}</tbody></table></section>}
       {tab === 'File Information' && <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"><Info label="File name" value={file.name || '-'} /><Info label="Format" value={badge} /><Info label="MIME type" value={file.mimeType || file.type || '-'} /><Info label="File size" value={file.size ? `${Math.ceil(file.size / 1024)} KB` : '-'} /><Info label="Decode status" value={mail.decodeStatus || '-'} /><Info label="Uploaded at" value={file.uploadedAt ? new Date(file.uploadedAt).toLocaleString('en-IN') : '-'} /></div>}
