@@ -1432,7 +1432,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
   }
 
   function openQuotationDetails(row) {
-    const quotationId = row?._id || row?.quotationId || row?.id;
+    const quotationId = row?.quotationId || row?._id || row?.id;
     if (!quotationId) return;
     navigate('/sales/quotations', {
       state: {
@@ -1479,7 +1479,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
       setError('');
       return;
     }
-    const quotationId = row?._id || row?.quotationId || row?.id;
+    const quotationId = row?.quotationId || row?._id || row?.id;
     if (!quotationId) return;
     navigate('/sales/quotations', {
       state: {

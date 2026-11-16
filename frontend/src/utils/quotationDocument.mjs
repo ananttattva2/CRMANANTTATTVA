@@ -364,7 +364,7 @@ function buildQuotationPrintHtml(quotation, options = {}) {
       .title { color: #f97316; font-size: 18px; font-weight: 900; letter-spacing: 4px; text-transform: uppercase; }
       .top { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 16px 0 16px; border-bottom: 1px solid #d1d5db; line-height: 1.5; }
       .right { text-align: right; }
-      .amount { text-align: right; }
+      .amount { text-align: right; white-space: nowrap; overflow-wrap: normal; word-break: normal; font-size: 10.5px; }
       .to { padding: 15px 0 12px; line-height: 1.55; }
       .label { font-weight: 900; }
       .strong { font-weight: 800; }
@@ -375,7 +375,7 @@ function buildQuotationPrintHtml(quotation, options = {}) {
       td { background: #fff; border: 1px solid #020617; padding: 7px 6px; font-size: 12px; line-height: 1.4; font-weight: 700; text-transform: uppercase; overflow-wrap: anywhere; word-break: normal; }
       table:first-of-type th:nth-child(1), table:first-of-type td:nth-child(1) { text-align: center; }
       td.date-range { font-size: 10.5px; white-space: nowrap; }
-      td.amount { font-weight: 800; }
+      td.amount { font-weight: 800; white-space: nowrap; overflow-wrap: normal; font-size: 10.5px; }
       td.combined-amount { text-align: center; vertical-align: middle; font-size: 12px; }
       .center { text-align: center; }
       .package-header { margin-top: 4px; color: #020617; padding: 8px 2px; font-size: 12px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
@@ -436,7 +436,7 @@ function buildQuotationPrintHtml(quotation, options = {}) {
       </section>
       ${combinedPackageHeader}
       <table>
-        <colgroup>${[5, 13, 14, 12, 11, 15, 5, 12, 13].map((width) => `<col style="width:${width}%">`).join('')}</colgroup>
+        <colgroup>${[5, 12, 14, 12, 12, 14, 5, 10, 16].map((width) => `<col style="width:${width}%">`).join('')}</colgroup>
         <thead>
           <tr><th>Sr.<br>No</th><th>Business Category</th><th>Service Category</th><th>Service Period</th><th>Applicant Type</th><th>Services Offered</th><th>Unit</th><th>Unit Name</th><th>Basic Amount (INR)</th></tr>
         </thead>

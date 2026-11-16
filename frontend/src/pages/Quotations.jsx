@@ -1,3 +1,4 @@
+import { loadFullQuotation } from '../utils/quotationDetail.mjs';
 import {
   isMeaningfulQuotationItem,
   isCombinedQuotation,
@@ -666,7 +667,7 @@ function normalizeQuotationSnapshot(row) {
   if (!row) return null;
   const normalized = {
     ...row,
-    _id: row._id || row.quotationId || row.id,
+    _id: row.quotationId || row._id || row.id,
     id: row.id || row.quotationId || row._id,
     quotationNumber: row.quotationNumber || row.uniqueId || '',
     leadId: row.leadId || '',
@@ -1322,19 +1323,15 @@ export default function Quotations() {
   }
 
   async function showQuotationDetail(row) {
-    if (row._listOnly) {
-      try { const { data } = await api.get(API_ENDPOINTS.quotations.detail(row._id || row.id)); row = data.quotation; }
-      catch (err) { setError(err?.response?.data?.error || 'Unable to load quotation details.'); return; }
-    }
+    try { row = await loadFullQuotation(row, id => api.get(API_ENDPOINTS.quotations.detail(id))); }
+    catch (err) { setError(err?.response?.data?.error || err.message || 'Unable to load quotation details.'); return; }
     setPreviewQuotation(normalizeQuotationSnapshot(row));
     setMenuId('');
   }
 
   async function editQuotation(row) {
-    if (row._listOnly) {
-      try { const { data } = await api.get(API_ENDPOINTS.quotations.detail(row._id || row.id)); row = data.quotation; }
-      catch (err) { setError(err?.response?.data?.error || 'Unable to load quotation details.'); return; }
-    }
+    try { row = await loadFullQuotation(row, id => api.get(API_ENDPOINTS.quotations.detail(id))); }
+    catch (err) { setError(err?.response?.data?.error || err.message || 'Unable to load quotation details.'); return; }
     if (!canReviseQuotation(row)) {
       setNotice('Quotation can be revised only after it is approved or rejected.');
       setError('');

@@ -2021,11 +2021,10 @@ exports.getAnnualReturnPoStatus = async (req, res) => {
     .slice(0, 20);
   if (!years.length) return res.status(400).json({ error: 'At least one valid financial year is required' });
 
-  const scope = await getVisibleUserScope(req.user);
-  const query = Client.findOne({
-    _id: clientId,
-    ...ownerFilter(scope, 'createdBy', 'adminControls.assignedTo', ['data.importMeta.assignedTo'])
-  }).select('selectedLead assignedServiceId data.assignedServiceId data.basic.piboCategory data.selectedLead data.sourceLeadId data.leadId data.selectedLeadSnapshot data.importMeta.leadNumber data.annualReturn.filings');
+  const query = Client.findOne(combineAccessFilters(
+    { _id: clientId },
+    await clientAccessFilter(req.user)
+  )).select('selectedLead assignedServiceId data.assignedServiceId data.basic.piboCategory data.selectedLead data.sourceLeadId data.leadId data.selectedLeadSnapshot data.importMeta.leadNumber data.annualReturn.filings');
   const client = typeof query.lean === 'function' ? await query.lean() : await query;
   if (!client) return res.status(404).json({ error: 'Client Master record not found' });
 
