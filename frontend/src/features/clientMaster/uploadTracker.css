@@ -48,6 +48,13 @@
 .upload-tracker .ut-row-open > td, .upload-tracker .ut-row-open > th { background: #fffcf8; }
 .upload-tracker .ut-detail-row > td { padding: 16px 20px; background: #f8fafc; }
 .upload-tracker .ut-details { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1fr); gap: 20px; }
+.upload-tracker .ut-nil-evidence { display: grid; gap: 12px; padding: 16px 20px; border: 1px solid #cde9e1; border-radius: 12px; background: #f0fdfa; }
+.upload-tracker .ut-nil-evidence-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; color: #145b52; font-size: 13px; }
+.upload-tracker .ut-nil-evidence-heading strong span { color: #718096; font-size: 11px; font-weight: 700; }
+.upload-tracker .ut-nil-evidence-heading p { margin: 4px 0 0; color: #58756f; font-size: 11px; line-height: 1.5; }
+.upload-tracker .ut-nil-evidence-heading button { flex: 0 0 auto; border: 0; border-radius: 7px; background: transparent; padding: 4px; color: #58756f; cursor: pointer; }
+.upload-tracker .ut-row-frozen > * { background: #f7f9fb !important; }
+.upload-tracker .ut-row-frozen th strong { color: #718096 !important; }
 .upload-tracker .ut-detail-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; font-size: 12px; color: #415571; }
 .upload-tracker .ut-detail-title button { border: 0; background: transparent; padding: 3px; cursor: pointer; }
 .upload-tracker .ut-remarks { display: block; font-size: 12px; font-weight: 600; color: #415571; }
