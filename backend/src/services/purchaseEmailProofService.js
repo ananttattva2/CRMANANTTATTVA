@@ -5,7 +5,7 @@ const sanitizeHtml = require('sanitize-html');
 const MsgReader = require('@kenjiuno/msgreader').default;
 const { decompressRTF } = require('@kenjiuno/decompressrtf');
 
-const ACTIVE_HTML = { allowedTags: ['p', 'br', 'div', 'span', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'a'], allowedAttributes: { a: ['href', 'title'] }, allowedSchemes: ['http', 'https', 'mailto'], disallowedTagsMode: 'discard', transformTags: { a: sanitizeHtml.simpleTransform('a', { rel: 'noopener noreferrer', target: '_blank' }) } };
+const ACTIVE_HTML = { allowedTags: ['p', 'br', 'div', 'span', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'table', 'caption', 'colgroup', 'col', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'a'], allowedAttributes: { a: ['href', 'title'], table: ['summary'], th: ['colspan', 'rowspan', 'scope'], td: ['colspan', 'rowspan'], col: ['span'] }, allowedSchemes: ['http', 'https', 'mailto'], disallowedTagsMode: 'discard', transformTags: { a: sanitizeHtml.simpleTransform('a', { rel: 'noopener noreferrer', target: '_blank' }) } };
 const limit = (name, fallback) => Math.max(1, Number(process.env[name]) || fallback);
 const LIMITS = () => ({ maxFile: limit('EMAIL_PROOF_MAX_SIZE_MB', 15) * 1024 * 1024, maxAttachment: limit('EMAIL_ATTACHMENT_MAX_SIZE_MB', 10) * 1024 * 1024, maxCount: limit('EMAIL_ATTACHMENT_MAX_COUNT', 20), maxTotal: limit('EMAIL_EXTRACTED_TOTAL_MAX_MB', 30) * 1024 * 1024 });
 

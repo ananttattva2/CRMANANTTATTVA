@@ -1,5 +1,76 @@
 const MAX_BODY_CHARS = 1_000_000;
 
+function decodeRtfFragment(value = '') {
+  const source = String(value || '');
+  let output = '';
+  for (let index = 0; index < source.length;) {
+    const character = source[index];
+    if (character === '{' || character === '}') { index += 1; continue; }
+    if (character !== '\\') { output += character; index += 1; continue; }
+    const next = source[index + 1];
+    if (next === '\\' || next === '{' || next === '}') { output += next; index += 2; continue; }
+    if (next === "'" && /^[0-9a-f]{2}$/i.test(source.slice(index + 2, index + 4))) {
+      output += new TextDecoder('windows-1252').decode(Uint8Array.of(parseInt(source.slice(index + 2, index + 4), 16)));
+      index += 4; continue;
+    }
+    if (!/[a-z]/i.test(next || '')) { index += 2; continue; }
+    const control = source.slice(index + 1).match(/^([a-z]+)(-?\d+)? ?/i);
+    if (!control) { index += 1; continue; }
+    const [, word, numeric] = control;
+    index += 1 + control[0].length;
+    if (word === 'par' || word === 'line') output += '\n';
+    else if (word === 'tab') output += '\t';
+    else if (word === 'u' && numeric != null) {
+      const code = Number(numeric); output += String.fromCharCode(code < 0 ? code + 65536 : code);
+      if (source[index] && source[index] !== '\\' && source[index] !== '{' && source[index] !== '}') index += 1;
+    }
+  }
+  return output;
+}
+
+export function extractHtmlFromRtf(value = '') {
+  const source = String(value || '');
+  const marker = '{\\*\\htmltag';
+  let html = ''; let htmlText = false; let index = 0;
+  while (index < source.length) {
+    if (source.startsWith(marker, index)) {
+      let contentStart = index + marker.length;
+      while (/\d/.test(source[contentStart] || '')) contentStart += 1;
+      while (/\s/.test(source[contentStart] || '')) contentStart += 1;
+      let depth = 1; let cursor = contentStart;
+      for (; cursor < source.length && depth > 0; cursor += 1) {
+        if (source[cursor] === '\\') { cursor += 1; continue; }
+        if (source[cursor] === '{') depth += 1;
+        else if (source[cursor] === '}') depth -= 1;
+      }
+      if (depth === 0) html += decodeRtfFragment(source.slice(contentStart, cursor - 1));
+      index = Math.max(cursor, index + marker.length); continue;
+    }
+    const character = source[index];
+    if (character === '{' || character === '}') { index += 1; continue; }
+    if (character !== '\\') { if (htmlText) html += character; index += 1; continue; }
+    const next = source[index + 1];
+    if (next === '\\' || next === '{' || next === '}') { if (htmlText) html += next; index += 2; continue; }
+    if (next === "'" && /^[0-9a-f]{2}$/i.test(source.slice(index + 2, index + 4))) {
+      if (htmlText) html += new TextDecoder('windows-1252').decode(Uint8Array.of(parseInt(source.slice(index + 2, index + 4), 16)));
+      index += 4; continue;
+    }
+    const control = source.slice(index + 1).match(/^([a-z]+)(-?\d+)? ?/i);
+    if (!control) { index += 2; continue; }
+    const [, word, numeric] = control; index += 1 + control[0].length;
+    if (word === 'htmlrtf') { htmlText = numeric === '0'; continue; }
+    if (!htmlText) continue;
+    if (word === 'par' || word === 'line') html += '\n';
+    else if (word === 'tab') html += '\t';
+    else if (word === 'u' && numeric != null) {
+      const code = Number(numeric); html += String.fromCharCode(code < 0 ? code + 65536 : code);
+      if (source[index] && source[index] !== '\\' && source[index] !== '{' && source[index] !== '}') index += 1;
+    }
+  }
+  html = html.replace(/\0/g, '').trim();
+  return /<(?:html|body|table|p|div)\b/i.test(html) ? html.slice(0, MAX_BODY_CHARS) : '';
+}
+
 function splitEntity(value = '') {
   const match = String(value).match(/\r?\n\r?\n/);
   if (!match || match.index === undefined) return { headers: String(value), body: '' };
@@ -87,7 +158,12 @@ async function msgToMailOnlyEml(file) {
   const mail = reader.getFileData();
   if (mail?.error) throw new Error('The Outlook email could not be read.');
   const body = String(mail.body || '').trim();
-  const html = String(mail.bodyHTML || mail.htmlBody || '').trim();
+  let html = String(mail.bodyHTML || mail.htmlBody || '').trim();
+  if (!html && mail.compressedRtf) {
+    const { decompressRTF } = await import('@kenjiuno/decompressrtf');
+    const decompressed = new TextDecoder('windows-1252').decode(Uint8Array.from(decompressRTF(mail.compressedRtf)));
+    html = extractHtmlFromRtf(decompressed);
+  }
   if (!body && !html) throw new Error('The email body could not be read without its attachments.');
   const rawHeaders = String(mail.headers || '');
   return buildMailOnlyEml({
@@ -98,8 +174,8 @@ async function msgToMailOnlyEml(file) {
       subject: mail.subject, date: mail.clientSubmitTime || mail.messageDeliveryTime || mail.creationTime,
       messageId: headerValue(rawHeaders, 'Message-ID')
     },
-    body: body || html,
-    contentType: body ? 'text/plain; charset=utf-8' : 'text/html; charset=utf-8',
+    body: html || body,
+    contentType: html ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8',
     encoding: '8bit'
   });
 }
