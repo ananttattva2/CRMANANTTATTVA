@@ -38,8 +38,8 @@ test('AR Compliance manager approval is included in the grouped upload tracker',
   const ready = [{ clientId: 'c1', financialYear: '2025-26', baseUpload: { importStatus: 'Imported' }, portalUpload: { importStatus: 'Imported' }, managerVerificationStatus: 'Pending' }];
   const annualReviews = [{ client: 'c1', financialYear: '2025-26', managerStatus: 'APPROVED', status: 'PENDING' }];
   const [group] = buildUploadTracker(clients, users, ready, ready, { financialYear: '2025-26', annualReviews });
-  assert.equal(group.purchase[6].complete, 1);
-  assert.equal(group.sales[6].complete, 1);
+  assert.equal(group.purchase[7].complete, 1);
+  assert.equal(group.sales[7].complete, 1);
 });
 
 test('grouped upload tracker reports compliance rejection without retaining manager approval', () => {
@@ -48,11 +48,11 @@ test('grouped upload tracker reports compliance rejection without retaining mana
   const ready = [{ clientId: 'c1', financialYear: '2025-26', baseUpload: { importStatus: 'Imported' }, portalUpload: { importStatus: 'Imported' } }];
   const annualReviews = [{ client: 'c1', financialYear: '2025-26', managerStatus: 'APPROVED', status: 'REJECTED' }];
   const [group] = buildUploadTracker(clients, users, ready, ready, { financialYear: '2025-26', annualReviews });
-  assert.equal(group.purchase[6].complete, 0);
-  assert.equal(group.purchase[6].rejected, 1);
-  assert.equal(group.purchase[7].pending, 0);
+  assert.equal(group.purchase[7].complete, 0);
   assert.equal(group.purchase[7].rejected, 1);
-  assert.equal(group.sales[6].rejected, 1);
+  assert.equal(group.purchase[8].pending, 0);
+  assert.equal(group.purchase[8].rejected, 1);
+  assert.equal(group.sales[7].rejected, 1);
 });
 
 test('CCL SLA receipt survives blank sibling services and review counts stay unique per company', () => {
@@ -64,12 +64,12 @@ test('CCL SLA receipt survives blank sibling services and review counts stay uni
   assert.equal(group.clients[0].slaReceived, true);
   assert.equal(group.slaReceived, 1);
   assert.equal(group.slaNotReceived, 0);
-  assert.equal(group.purchase[6].complete, 1);
-  assert.equal(group.purchase[7].pending, 1);
-  assert.equal(group.sales[6].pending, 1);
-  assert.equal(group.sales[6].progress, 0);
-  assert.equal(group.clients[0].purchase[6], 'complete');
-  assert.equal(group.clients[0].purchase[7], 'pending');
+  assert.equal(group.purchase[7].complete, 1);
+  assert.equal(group.purchase[8].pending, 1);
+  assert.equal(group.sales[7].pending, 1);
+  assert.equal(group.sales[7].progress, 0);
+  assert.equal(group.clients[0].purchase[7], 'complete');
+  assert.equal(group.clients[0].purchase[8], 'pending');
 });
 const { buildDataWorkflowEmail } = require('../src/services/dataWorkflowEmail');
 test('tracker counts allocated clients once and separates Purchase and Sales stages', () => {
@@ -79,8 +79,8 @@ test('tracker counts allocated clients once and separates Purchase and Sales sta
   const result = buildUploadTracker(clients,users,purchases,[]);
   assert.equal(result.length,1); assert.equal(result[0].clients.length,2);
   assert.equal(result[0].slaReceived,1); assert.equal(result[0].slaNotReceived,1);
-  assert.equal(result[0].purchase[0].complete,1); assert.equal(result[0].purchase[5].complete,1);
-  assert.equal(result[0].sales[5].pending,2);
+  assert.equal(result[0].purchase[0].complete,1); assert.equal(result[0].purchase[6].complete,1);
+  assert.equal(result[0].sales[6].pending,2);
   assert.equal(result[0].purchase[0].pending,1);
 });
 test('partial data and single import stay in progress; empty rows stay pending', () => {
@@ -103,7 +103,7 @@ test('CCL permanent Operations owner wins over Tushar admin metadata', () => {
   const result = buildUploadTracker([ccl,own,sales,ccl],users,[{clientId:'ccl',baseUpload:{importStatus:'Imported'},portalUpload:{importStatus:'Imported'}}],[]);
   assert.deepEqual(result.map(row => row.userId),['shubham','tushar']);
   assert.equal(result[0].clients.length,1); assert.equal(result[0].clients[0].clientId,'ccl');
-  assert.equal(result[1].clients[0].clientId,'own'); assert.equal(result[1].purchase[5].complete,0);
+  assert.equal(result[1].clients[0].clientId,'own'); assert.equal(result[1].purchase[6].complete,0);
   assert.equal(buildUploadTracker([ccl],[users[1]],[],[])[0].clients.length,0);
 });
 test('service allocation metadata alone is excluded and permanent snapshot assignments are respected', () => {
@@ -127,4 +127,17 @@ test('managers appear with their own allocations and zero-count managers remain 
   assert.equal(result.find(row => row.userId === 't').clients[0].clientId,'t-client');
   assert.equal(result.find(row => row.userId === 'b').clients.length,0);
   assert.equal(result.find(row => row.userId === 's').clients[0].clientId,'s-client');
+});
+
+test('Nil Upload counts only Yes and follows Ready to upload in both dashboard modules', () => {
+  const { STAGES } = require('../src/services/clientUploadTracker');
+  const nilIndex = STAGES.indexOf('Nil Upload');
+  assert.equal(nilIndex, STAGES.indexOf('Ready to upload') + 1);
+  for (const yesNo of ['No', '', undefined]) assert.equal(stageState({ checklist: [{ particular: 'Nil Upload', yesNo, date: '2026-11-16', remarks: 'old evidence' }] }, 'Nil Upload'), 'pending');
+  assert.equal(stageState({ checklist: [{ particular: 'Nil Upload', yesNo: 'Yes' }] }, 'Nil Upload'), 'complete');
+  const clients = [{ _id: 'nil-client', selectedLead: { assignedStaff: 'nil-user', company: 'Nil Example' } }];
+  const records = [{ clientId: 'nil-client', checklist: [{ particular: 'Nil Upload', yesNo: 'Yes' }] }];
+  const [group] = buildUploadTracker(clients, [{ _id: 'nil-user', name: 'Nil User', role: 'operation' }], records, []);
+  assert.equal(group.purchase[nilIndex].complete, 1);
+  assert.equal(group.sales[nilIndex].complete, 0);
 });

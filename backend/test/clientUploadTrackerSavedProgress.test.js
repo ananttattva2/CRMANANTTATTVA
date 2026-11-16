@@ -9,7 +9,7 @@ test('ATUL saved 2025-26 progress stays under Tushar despite current-year eligib
   const group = result.find(row => row.userId === 'tushar');
   assert.equal(group.clients.length, 1); assert.equal(group.clients[0].clientName, 'ATUL LTD');
   assert.deepEqual(group.purchase.slice(0,4).map(stage => stage.complete), [1,1,1,1]);
-  assert.equal(group.purchase[5].complete, 0); assert.equal(group.purchase[6].complete, 0); assert.equal(group.sales[0].complete, 0);
+  assert.equal(group.purchase[6].complete, 0); assert.equal(group.purchase[7].complete, 0); assert.equal(group.sales[0].complete, 0);
   assert.ok(!result.some(row => row.userId === 'nitin'));
 });
 test('ATUL selected-year PO allocation appears under Tushar before upload progress begins', () => {

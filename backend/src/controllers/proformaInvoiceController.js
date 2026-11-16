@@ -1,4 +1,5 @@
 const ProformaInvoice = require('../models/ProformaInvoice');
+const { resolvePoProof } = require('../services/poProofResolver');
 const Lead = require('../models/Lead');
 const { eligibleItems } = require('../services/proformaEligibility');
 const Quotation = require('../models/Quotation');
@@ -121,7 +122,8 @@ exports._test = { cleanPayload, validateInvoice };
 async function quotationContext(id) {
   const quote = await Quotation.findById(id).lean();
   if (!quote) return {};
-  const refs = quote.leadRef ? { leadRef: quote.leadRef } : await resolveCrmRelationships({ leadId: quote.leadId, companyName: quote.leadDetails?.companyName || quote.companyName });
+  let refs = quote.leadRef ? { leadRef: quote.leadRef } : await resolveCrmRelationships({ leadId: quote.leadId || quote.leadCode });
+  if (!refs.leadRef) refs = await resolveCrmRelationships({ companyName: quote.leadDetails?.companyName || quote.companyName });
   const lead = refs.leadRef ? await Lead.findById(refs.leadRef).lean() : null;
   const items = lead ? eligibleItems(quote, lead) : [];
   const orders = new Map();
@@ -129,9 +131,10 @@ async function quotationContext(id) {
     const assignment = lead.assignments?.find(a => item.assignedServiceId && a.assignedServiceId === item.assignedServiceId) || lead.assignments?.[item.sourceServiceIndex] || (lead.assignments?.length === 1 ? lead.assignments[0] : lead);
     const rows = assignment?.poYearRows?.length ? assignment.poYearRows : assignment?.originalPoDetails ? [assignment.originalPoDetails] : [assignment];
     for (const po of rows.filter(Boolean)) {
-      if (!po.poNumber || !po.poFileUrl) continue;
+      const proof = resolvePoProof({ ...po, poFile: po.poFile || po.compliancePoFile });
+      if (!po.poNumber || !proof.url) continue;
       const key = `${po.poNumber}|${po.fy || po.poFinancialYear || ''}`;
-      const row = orders.get(key) || { fy: po.fy || po.poFinancialYear || '', poNumber: po.poNumber, compliancePoFile: { name: po.poFileName || 'PO proof', secureUrl: po.poFileUrl, url: po.poFileUrl }, serviceCategory: [] };
+      const row = orders.get(key) || { fy: po.fy || po.poFinancialYear || '', poNumber: po.poNumber, compliancePoFile: { name: proof.name || 'PO proof', secureUrl: proof.url, url: proof.url }, serviceCategory: [] };
       row.serviceCategory = [...new Set([...row.serviceCategory, item.serviceCategory])];
       orders.set(key, row);
     }

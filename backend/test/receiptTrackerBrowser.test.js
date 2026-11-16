@@ -8,7 +8,7 @@ test('receipt tracker accepts checkbox first, then enables matching proof upload
  const bundle = await esbuild.build({stdin:{resolveDir:path.resolve(__dirname,'../../frontend'),loader:'jsx',contents:`
  import React, {useState} from 'react'; import {createRoot} from 'react-dom/client';
  import Tracker from './src/features/clientMaster/SalesUploadChecklist.jsx';
- function Harness(){const [rows,setRows]=useState(['Data Explained','Data Format Sent','Received from client','Ready to upload'].map(particular=>({particular,yesNo:'Yes',files:[]})));
+ function Harness(){const [rows,setRows]=useState(['Data Explained','Data Format Sent','Received from client','Ready to upload'].map(particular=>({particular,yesNo:'Yes',files:[]})).concat([{particular:'Nil Upload',yesNo:'No',files:[]}]));
  window.rows=rows;return <Tracker checklist={rows} canEdit onError={message=>window.error=message} onChange={(i,patch)=>{window.changed=patch;setRows(items=>items.map((r,j)=>j===i?{...r,...patch}:r));}} onUploadProof={(i,files,stage)=>setRows(items=>items.map((r,j)=>j===i?{...r,files:[...r.files,...files.map(f=>({name:f.name,url:'https://example.com/'+f.name,receiptStage:stage}))]}:r))} onRemoveProof={()=>{}} onPreview={()=>{}}/>;}
  createRoot(document.getElementById('root')).render(<Harness/>);`},bundle:true,write:false,format:'iife',platform:'browser',loader:{'.css':'text'},plugins:[{name:'preview',setup(build){build.onResolve({filter:/OutlookMsgViewer$/},()=>({path:'preview',namespace:'mock'}));build.onLoad({filter:/.*/,namespace:'mock'},()=>({contents:'export const isEmailProof = () => false;'}));}}]});
  const {default:puppeteer}=await import('puppeteer');
@@ -16,6 +16,12 @@ test('receipt tracker accepts checkbox first, then enables matching proof upload
  try {const page=await browser.newPage();await page.setContent('<div id="root"></div>');await page.addScriptTag({content:bundle.outputFiles.find(f=>f.text.includes('createRoot')).text});await page.waitForSelector('.ut-table');await page.addStyleTag({content:require('node:fs').readFileSync(path.resolve(__dirname,'../../frontend/src/features/clientMaster/uploadTracker.css'),'utf8')});
  assert.deepEqual(await page.$$eval('thead th',els=>els.map(el=>el.textContent)),['Sr. No.','Particular','Status','Upload Proof','Data Status','Upload Date','Actions']);
  assert.equal(await page.$$eval('.ut-expand',els=>els.length),2);
+ assert.equal(await page.$eval('.ut-counter-complete strong',el=>el.textContent),'0');
+ await page.evaluate(()=>{const select=[...document.querySelectorAll('tr')].find(row=>row.textContent.includes('Nil Upload')).querySelector('select');select.value='Yes';select.dispatchEvent(new Event('change',{bubbles:true}));});
+ await page.waitForFunction(()=>document.querySelector('.ut-counter-complete strong').textContent==='1');
+ await page.evaluate(()=>{const select=[...document.querySelectorAll('tr')].find(row=>row.textContent.includes('Nil Upload')).querySelector('select');select.value='No';select.dispatchEvent(new Event('change',{bubbles:true}));});
+ await page.waitForFunction(()=>document.querySelector('.ut-counter-complete strong').textContent==='0');
+
  await page.evaluate(()=>document.querySelectorAll('input[type=checkbox]')[0].click());
  await page.waitForFunction(()=>window.rows[2].partialDataReceived===true);
  assert.equal(await page.$eval('input[type=checkbox]',el=>el.checked),true);

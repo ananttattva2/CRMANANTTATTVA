@@ -159,7 +159,7 @@ test('Purchase and Sales summary uses the same eligible Annual Return applicatio
   });
   const result = purchaseSalesSummary(rows, '2025-26', {}, [completeWorkflow('c1')], [completeWorkflow('c1')]);
   assert.deepEqual(result.summary, { allocated: 2, slaReceived: 1, slaNotReceived: 1, purchaseComplete: 1, salesComplete: 1, fullyComplete: 1 });
-  assert.equal(result.purchase.length, 8);
+  assert.equal(result.purchase.length, 9);
   assert.equal(result.purchase[0].complete, 1);
   assert.equal(result.purchase[0].pending, 1);
   assert.equal(result.users[0].allocated, 2);
@@ -176,9 +176,9 @@ test('Purchase and Sales summary reflects the AR Compliance manager decision', (
   };
   const review = { client: 'c1', financialYear: '2025-26', managerStatus: 'APPROVED', status: 'PENDING' };
   const result = purchaseSalesSummary(rows, '2025-26', {}, [ready], [ready], [review]);
-  assert.equal(result.purchase[6].complete, 1);
-  assert.equal(result.sales[6].complete, 1);
-  assert.equal(result.purchase[7].pending, 1);
+  assert.equal(result.purchase[7].complete, 1);
+  assert.equal(result.sales[7].complete, 1);
+  assert.equal(result.purchase[8].pending, 1);
   assert.equal(result.users[0].purchaseManagerReviewed, 1);
   assert.equal(result.users[0].salesManagerReviewed, 1);
   assert.equal(result.users[0].purchaseComplete, 0);
@@ -193,10 +193,10 @@ test('Purchase and Sales summary treats Compliance rejection as terminal', () =>
   };
   const review = { client: 'c1', financialYear: '2025-26', managerStatus: 'APPROVED', status: 'REJECTED' };
   const result = purchaseSalesSummary(rows, '2025-26', {}, [ready], [ready], [review]);
-  assert.equal(result.purchase[6].complete, 0);
-  assert.equal(result.purchase[6].rejected, 1);
-  assert.equal(result.purchase[7].pending, 0);
+  assert.equal(result.purchase[7].complete, 0);
   assert.equal(result.purchase[7].rejected, 1);
+  assert.equal(result.purchase[8].pending, 0);
+  assert.equal(result.purchase[8].rejected, 1);
   assert.equal(result.users[0].purchaseManagerReviewed, 0);
   assert.equal(result.users[0].salesManagerReviewed, 0);
   assert.equal(result.users[0].purchaseComplete, 0);

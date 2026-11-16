@@ -79,3 +79,23 @@ test('server rejects percentages above the remaining service balance and permits
     assert.match(await _test.validateInvoice(payload, null, actor), /payment percentage/);
   } finally { Quotation.findById = original.quote; Quotation.exists = original.exists; Lead.findById = original.lead; Invoice.find = original.invoices; }
 });
+
+test('PO closure submissions and legacy proof formats remain eligible without final manager assignment', () => {
+  const submitted = structuredClone(lead);
+  delete submitted.assignments[1].closedAt;
+  Object.assign(submitted.assignments[1], { closureRequestedBy: 'sales-user', poApprovalStatus: 'PENDING' });
+  submitted.assignments[1].poYearRows[0] = { poNumber: 'PO-1', poFile: { secureUrl: 'https://example.com/po.pdf', name: 'po.pdf' } };
+  assert.deepEqual(eligibleItems(quote, submitted).map(item => item.sourceItemIndex), [1]);
+  submitted.assignments[1].poApprovalStatus = 'REJECTED';
+  assert.deepEqual(eligibleItems(quote, submitted), []);
+  submitted.assignments[1].poApprovalStatus = 'PENDING';
+  delete submitted.assignments[1].closureRequestedBy;
+  assert.deepEqual(eligibleItems(quote, submitted), []);
+});
+
+test('legacy service labels and stale IDs match only one closed applicant service', () => {
+  const legacy = { items: [{ assignedServiceId: 'old-id', sourceServiceIndex: 0, serviceCategory: 'EPR - Plastic Waste', piboCategory: 'Brand Owner', servicesOffered: 'Annual Return Filing' }] };
+  const saved = { serviceSelections: [{ assignedServiceId: 'importer', eprCategory: 'Plastic Waste', subApplicantType: 'Importer', servicesOffered: 'Annual Return Filling' }, { assignedServiceId: 'brand', eprCategory: 'Plastic Waste', subApplicantType: 'Brand Owner', servicesOffered: 'Annual Return Filling' }], assignments: [{ assignedServiceId: 'importer' }, { assignedServiceId: 'brand', closureRequestedBy: 'sender', poStatus: 'received', poYearRows: [{ poNumber: 'PO-2', poProofUrl: 'https://example.com/po.pdf' }] }] };
+  assert.equal(eligibleItems(legacy, saved)[0]?.assignedServiceId, 'brand');
+  assert.equal(eligibleItems(legacy, saved)[0]?.sourceServiceIndex, 1);
+});

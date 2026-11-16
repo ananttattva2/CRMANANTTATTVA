@@ -8,7 +8,7 @@ export default function ArReadonlyTracker({ field, renderValue: Value }) {
   const rows = field.rows || [];
   const simple = row => row.particular === 'Nil Upload';
   const status = row => row.yesNo || row.status || '';
-  const complete = row => simple(row) ? ['Yes', 'No'].includes(status(row)) : status(row) === 'Yes' && Boolean(row.date && row.files?.length);
+  const complete = row => simple(row) ? status(row) === 'Yes' : status(row) === 'Yes' && Boolean(row.date && row.files?.length);
   const completed = rows.filter(complete).length;
   return <section className="upload-tracker ar-readonly-tracker" aria-label={field.label}>
     <header className="ut-heading"><div className="ut-heading-copy"><span className="ut-logo"><FileText size={28} /></span><div><h2>Client Data Upload Tracker</h2><p>{field.label.replace(' Upload Tracker', ' Data')} · Saved client data and supporting documents.</p></div></div>

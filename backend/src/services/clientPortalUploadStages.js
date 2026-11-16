@@ -5,13 +5,14 @@ const { STAGES, stageState, applicationDescriptor } = require('./clientUploadTra
 const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 function describeWorkflow(record, module, client) {
   const stages = STAGES.map(label => ({ label, state: stageState(record, label) }));
+  const applicableStages = stages.filter(stage => stage.label !== 'Nil Upload' || stage.state === 'complete');
   const label = record.complianceVerificationStatus === 'Approved' ? 'Completed'
     : record.complianceVerificationStatus === 'Rejected' ? 'Compliance review: changes requested'
     : record.managerVerificationStatus === 'Rejected' ? 'Manager review: changes requested'
     : record.complianceVerificationStatus === 'Pending' || record.managerVerificationStatus === 'Approved' ? 'Compliance Review'
     : record.managerVerificationStatus === 'Pending' ? 'Manager Review'
-    : stages.find(stage => stage.state !== 'complete')?.label || 'Completed';
-  return { clientId: String(client._id), unit: client.data?.basic?.plantUnit || '', module, financialYear: record.financialYear, currentStage: label, stages, updatedAt: record.updatedAt, completed: stages.filter(stage => stage.state === 'complete').length, total: stages.length };
+    : applicableStages.find(stage => stage.state !== 'complete')?.label || 'Completed';
+  return { clientId: String(client._id), unit: client.data?.basic?.plantUnit || '', module, financialYear: record.financialYear, currentStage: label, stages, updatedAt: record.updatedAt, completed: applicableStages.filter(stage => stage.state === 'complete').length, total: applicableStages.length };
 }
 async function uploadWorkflows(rows, leads) {
   if (!rows.length) return new Map();

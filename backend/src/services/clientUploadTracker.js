@@ -1,7 +1,7 @@
 const { userHasAnyRole } = require('../utils/userRoles');
 const { allocatedOwnerKeyGroups } = require('./overallDashboardUsers');
 const { assignedCompanyKey } = require('./assignedCompanyIdentity');
-const STAGES = ['Data Explained', 'Data Format Sent', 'Received from client', 'Ready to upload', 'Client Approval on data', 'Upload Complete', 'Manager Review', 'Compliance Review'];
+const STAGES = ['Data Explained', 'Data Format Sent', 'Received from client', 'Ready to upload', 'Nil Upload', 'Client Approval on data', 'Upload Complete', 'Manager Review', 'Compliance Review'];
 const id = value => String(value?._id || value || '');
 const normalizeYear = value => {
   const match = String(value || '').match(/(20\d{2})\s*[-/]\s*(\d{2,4})/);
@@ -58,6 +58,7 @@ function stageState(record, stage, annualReview = null) {
     return normalized === 'approved' ? 'complete' : normalized === 'rejected' ? 'rejected' : 'pending';
   }
   const row = record?.checklist?.find(item => item.particular === stage);
+  if (stage === 'Nil Upload') return row?.yesNo === 'Yes' ? 'complete' : 'pending';
   if (stage === 'Upload Complete') return record?.baseUpload?.importStatus === 'Imported' && record?.portalUpload?.importStatus === 'Imported' ? 'complete' : record?.baseUpload?.importStatus === 'Imported' || record?.portalUpload?.importStatus === 'Imported' || row?.yesNo === 'Yes' ? 'progress' : 'pending';
   if (row?.yesNo === 'Yes') return row.partialDataReceived && !row.completeDataReceived ? 'progress' : 'complete';
   return row?.date || row?.files?.length || row?.remarks ? 'progress' : 'pending';
@@ -152,8 +153,8 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
       existing.slaReceived = existing.slaReceived || detail.slaReceived;
       for (const module of ['purchase', 'sales']) existing[module] = existing[module].map((state, position) => {
         const next = detail[module][position];
-        if (position >= 6 && (state === 'rejected' || next === 'rejected')) return 'rejected';
-        return state === 'complete' && next === 'complete' ? 'complete' : position >= 6 || state === 'pending' && next === 'pending' ? 'pending' : 'progress';
+        if (position >= 7 && (state === 'rejected' || next === 'rejected')) return 'rejected';
+        return state === 'complete' && next === 'complete' ? 'complete' : position >= 7 || state === 'pending' && next === 'pending' ? 'pending' : 'progress';
       });
     } else group.clients.push(detail);
   }
@@ -175,8 +176,8 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
       detail.slaReceived = sources.some(source => source.slaReceived);
       for (const module of ['purchase', 'sales']) detail[module] = STAGES.map((_, position) => {
         const states = sources.map(source => source[module][position]);
-        if (position >= 6 && states.some(state => state === 'rejected')) return 'rejected';
-        return states.every(state => state === 'complete') ? 'complete' : position >= 6 || states.every(state => state === 'pending') ? 'pending' : 'progress';
+        if (position >= 7 && states.some(state => state === 'rejected')) return 'rejected';
+        return states.every(state => state === 'complete') ? 'complete' : position >= 7 || states.every(state => state === 'pending') ? 'pending' : 'progress';
       });
       delete detail.sources;
       return [detail];

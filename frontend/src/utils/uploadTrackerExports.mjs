@@ -1,14 +1,14 @@
 import { exportWithReason } from './dataExport.mjs'
-export const UPLOAD_TRACKER_STAGES = ['Data Explained', 'Data Format Sent', 'Data Received from Client', 'Ready to Upload', 'Client Approval Received', 'Upload Complete', 'Manager Review', 'Compliance Review']
+export const UPLOAD_TRACKER_STAGES = ['Data Explained', 'Data Format Sent', 'Data Received from Client', 'Ready to Upload', 'Nil Upload', 'Client Approval Received', 'Upload Complete', 'Manager Review', 'Compliance Review']
 const modules = ['purchase', 'sales']
-const stateLabel = (state, index) => state === 'complete' ? index >= 6 ? 'Approved' : 'Completed' : state === 'progress' ? 'In progress' : state === 'rejected' ? 'Rejected' : 'Pending'
+const stateLabel = (state, index) => state === 'complete' ? index >= 7 ? 'Approved' : 'Completed' : state === 'progress' ? 'In progress' : state === 'rejected' ? 'Rejected' : 'Pending'
 const safe = value => /^[=+@-]/.test(String(value || '')) ? `'${value}` : String(value || '')
 const ratio = (clients, module, index) => {
   const completed = clients.filter(client => client[module]?.[index] === 'complete').length
   const progress = clients.filter(client => client[module]?.[index] === 'progress').length
   const rejected = clients.filter(client => client[module]?.[index] === 'rejected').length
   const pending = clients.length - completed - progress - rejected
-  return `${completed}${index >= 6 ? completed === clients.length && clients.length ? '\nApproved' : rejected ? `\n${rejected} rejected${pending ? ` · ${pending} pending` : ''}` : `\n${pending} pending` : progress ? `\n${progress} in progress` : ''}`
+  return `${completed}${index >= 7 ? completed === clients.length && clients.length ? '\nApproved' : rejected ? `\n${rejected} rejected${pending ? ` · ${pending} pending` : ''}` : `\n${pending} pending` : progress ? `\n${progress} in progress` : ''}`
 }
 export function buildUploadTrackerExport(users) {
   const clients = users.flatMap(user => user.clients.map(client => ({ ...client, userName: user.userName })))
@@ -35,10 +35,10 @@ export async function createUploadTrackerWorkbook(users, year, scope = 'All user
     sheet.mergeCells(2, 1, 2, headers.length)
     sheet.getCell('A2').value = `${scope} | Data FY ${year} | Generated ${new Date().toISOString()}`
     sheet.getRow(2).height = 24
-    sheet.mergeCells(4, leading + 1, 4, leading + 8)
-    sheet.mergeCells(4, leading + 9, 4, leading + 16)
+    sheet.mergeCells(4, leading + 1, 4, leading + UPLOAD_TRACKER_STAGES.length)
+    sheet.mergeCells(4, leading + UPLOAD_TRACKER_STAGES.length + 1, 4, leading + UPLOAD_TRACKER_STAGES.length * 2)
     sheet.getCell(4, leading + 1).value = 'Purchase'
-    sheet.getCell(4, leading + 9).value = 'Sales'
+    sheet.getCell(4, leading + UPLOAD_TRACKER_STAGES.length + 1).value = 'Sales'
     headers.forEach((header, index) => { sheet.getCell(5, index + 1).value = header.replace(/^(Purchase|Sales) — /, '') })
     rows.forEach(row => sheet.addRow(row))
     sheet.columns.forEach((column, index) => { column.width = index === 0 ? 27 : name === 'Client Details' && index === 1 ? 43 : 20 })
@@ -49,7 +49,7 @@ export async function createUploadTrackerWorkbook(users, year, scope = 'All user
       row.eachCell({ includeEmpty: true }, (cell, index) => {
         cell.alignment = { vertical: 'middle', horizontal: index <= leading ? 'left' : 'center', wrapText: true }
         cell.font = { size: 10, color: { argb: 'FF334B6B' }, bold: number <= 5 || name === 'User Summary' && number === sheet.rowCount }
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: number <= 5 ? index <= leading ? 'FFF1F5FB' : index <= leading + 8 ? 'FFE4F8F3' : 'FFE7F0FF' : number % 2 ? 'FFF8FAFD' : 'FFFFFFFF' } }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: number <= 5 ? index <= leading ? 'FFF1F5FB' : index <= leading + UPLOAD_TRACKER_STAGES.length ? 'FFE4F8F3' : 'FFE7F0FF' : number % 2 ? 'FFF8FAFD' : 'FFFFFFFF' } }
         cell.border = { bottom: { style: 'hair', color: { argb: 'FFE3EAF3' } } }
       })
     })
@@ -75,8 +75,8 @@ export async function createUploadTrackerPdf(users, year, { scope = 'All users',
     const leading = clientMode ? 3 : 4
     const rows = clientMode ? data.clients : data.summary
     const headers = clientMode ? data.clientHeaders : data.summaryHeaders
-    const offset = leading + moduleIndex * 8
-    const body = rows.map(row => [...row.slice(0, leading), ...row.slice(offset, offset + 8)])
+    const offset = leading + moduleIndex * UPLOAD_TRACKER_STAGES.length
+    const body = rows.map(row => [...row.slice(0, leading), ...row.slice(offset, offset + UPLOAD_TRACKER_STAGES.length)])
     autoTable(doc, {
       startY: 36, margin: { top: 36, bottom: 20, left: 12, right: 12 },
       head: [[...headers.slice(0, leading), ...UPLOAD_TRACKER_STAGES]], body,

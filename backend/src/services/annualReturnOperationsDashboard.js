@@ -246,8 +246,8 @@ function purchaseSalesSummary(records, year, query = {}, purchases = [], sales =
     const sourceClientIds = array(record.sourceClientIds).length ? record.sourceClientIds : [record.clientId].filter(Boolean);
     const purchase = STAGES.map(stage => combinedStageState(sourceClientIds, purchaseIndex, reviewIndex, stage));
     const sales = STAGES.map(stage => combinedStageState(sourceClientIds, salesIndex, reviewIndex, stage));
-    const purchaseComplete = purchase.every(state => state === 'complete');
-    const salesComplete = sales.every(state => state === 'complete');
+    const purchaseComplete = purchase.every((state, index) => STAGES[index] === 'Nil Upload' || state === 'complete');
+    const salesComplete = sales.every((state, index) => STAGES[index] === 'Nil Upload' || state === 'complete');
     return {
       id: record.id, clientId: record.clientId, company: record.company, uniqueId: record.uniqueId, leadId: record.leadId, plantUnit: record.plantUnit,
       assignedUserId: record.assignedUserId, assignedUser: record.assignedUser, slaReceived: Boolean(record.slaReceived),
@@ -263,8 +263,8 @@ function purchaseSalesSummary(records, year, query = {}, purchases = [], sales =
   });
   const userRows = [...groups.values()].map(group => {
     const allocated = group.items.length;
-    const purchaseManagerReviewed = group.items.filter(item => item.purchase[6] === 'complete').length;
-    const salesManagerReviewed = group.items.filter(item => item.sales[6] === 'complete').length;
+    const purchaseManagerReviewed = group.items.filter(item => item.purchase[STAGES.indexOf('Manager Review')] === 'complete').length;
+    const salesManagerReviewed = group.items.filter(item => item.sales[STAGES.indexOf('Manager Review')] === 'complete').length;
     const purchaseComplete = group.items.filter(item => item.purchaseComplete).length;
     const salesComplete = group.items.filter(item => item.salesComplete).length;
     const fullyComplete = group.items.filter(item => item.purchaseComplete && item.salesComplete).length;

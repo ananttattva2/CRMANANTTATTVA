@@ -49,6 +49,7 @@ test('invoice page loads only eligible services and submits the selected payment
     assert.equal(payload.items.length, 1);
     assert.equal(payload.items[0].sourceItemIndex, 1);
     assert.equal(payload.poNumber, 'PO-TEST');
+    assert.equal(await page.evaluate(() => document.body.textContent.includes('PO Received For No Of Year')), false);
     await page.waitForFunction(() => document.body.textContent.includes('saved successfully'));
     await page.evaluate(() => { window.noEligible = true; });
     await clickText('Select a quotation');
