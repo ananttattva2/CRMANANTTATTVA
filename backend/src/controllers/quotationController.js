@@ -767,15 +767,29 @@ exports.listQuotations = async (req, res) => {
   const search = cleanString(req.query.search);
   const status = cleanString(req.query.status);
   const source = cleanString(req.query.source);
+  const leadId = cleanString(req.query.leadId);
   if (status) filter.status = status;
   if (source) filter.source = source;
+  // Scope quotations to a single lead when leadId is supplied (used by the
+  // pipeline "View Quotation" action so only the selected client's
+  // quotations are returned).
+  if (leadId) {
+    const leadRefMatch = mongoose.isValidObjectId(leadId) ? { leadRef: leadId } : null;
+    filter.$or = [
+      { leadId },
+      { leadCode: leadId },
+      { businessLeadCode: leadId },
+      ...(leadRefMatch ? [leadRefMatch] : [])
+    ];
+  }
   if (search) {
     const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp(escaped, 'i');
-    filter.$or = [
+    const searchClause = [
       { quotationNumber: regex }, { companyName: regex }, { leadCode: regex }, { businessLeadCode: regex },
       { 'leadDetails.companyName': regex }, { 'leadDetails.contactPerson': regex }
     ];
+    filter.$or = filter.$or ? [{ $and: [{ $or: filter.$or }, { $or: searchClause }] }] : searchClause;
   }
   const page = Math.max(1, Number(req.query.page) || 1);
   const snapshot = req.query.dashboard === 'true' && req.query.snapshot === 'true';

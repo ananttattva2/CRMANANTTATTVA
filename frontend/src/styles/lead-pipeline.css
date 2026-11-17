@@ -287,8 +287,8 @@
   outline-offset:3px
 }
 .pipeline-dialog {
-  width:min(1700px,98vw);
-  max-height:96vh;
+  width:min(1850px,99vw);
+  max-height:98vh;
   padding:0;
   border:0;
   border-radius:24px;
@@ -303,7 +303,7 @@
   align-items:center;
   justify-content:space-between;
   gap:12px;
-  padding:24px;
+  padding:16px 24px;
   border-bottom:1px solid #e6ebef;
   background:linear-gradient(120deg,#fff7ed,#fff)
 }
@@ -317,9 +317,9 @@
   color:#718099
 }
 .pipeline-dialog-body {
-  padding:20px;
+  padding:16px 20px 20px;
   overflow:auto;
-  max-height:88vh
+  max-height:calc(98vh - 130px)
 }
 .pipeline-table-wrap {
   overflow:auto;
@@ -333,7 +333,7 @@
   font-size:12px
 }
 .pipeline-dialog th {
-  padding:10px 13px;
+  padding:8px 12px;
   background:#f4f7fa;
   color:#718099;
   font-size:10px;
@@ -341,7 +341,7 @@
   letter-spacing:.04em
 }
 .pipeline-dialog td {
-  padding:10px 13px;
+  padding:8px 12px;
   border-top:1px solid #edf1f4;
   vertical-align:top
 }
@@ -515,7 +515,7 @@
 .pipeline-dialog td .pipeline-company-button { display:flex; align-items:center; gap:8px; border:0; background:none; padding:0; white-space:normal; text-align:left; font-size:12px; color:#14675e; }
 .pipeline-dialog td .pipeline-company-button:hover { color:#f36b26; text-decoration:underline; }
 .pipeline-company-button svg { flex-shrink:0; }
-.pipeline-services-dialog { width:min(1500px,98vw); }
+.pipeline-services-dialog { width:min(1800px,99vw); max-height:98vh; }
 .pipeline-service-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
 .pipeline-service-grid article { padding:20px; border:1px solid #dce8e6; border-radius:16px; background:linear-gradient(140deg,#fff,#f3faf7); }
 .pipeline-service-index { font-size:20px; font-weight:900; color:#b9d4cb; }
@@ -562,6 +562,17 @@
 .pipeline-quotation-table td { padding:9px 14px; border-bottom:1px solid #eef2f1; font-size:12px; color:#203650; }
 .pipeline-quotation-table tbody tr:last-child td { border-bottom:0; }
 .pipeline-quotation-table tbody tr:hover td { background:#f3faf7; }
+.pipeline-services-table { width:100%; min-width:1100px; border-collapse:collapse; background:#fff; font-size:12px; text-align:left; }
+.pipeline-services-table th { padding:10px 12px; background:#edf4f6; color:#405872; font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid #d5e2e5; white-space:nowrap; }
+.pipeline-services-table td { padding:10px 12px; border-bottom:1px solid #e8edef; vertical-align:top; color:#21364e; }
+.pipeline-services-table tbody tr:hover td { background:#f8fcfb; }
+.pipeline-services-table td small { display:block; color:#8190a3; margin-top:4px; font-size:11px; }
+.pipeline-service-index-cell { font-weight:900; color:#b9d4cb; font-size:14px; white-space:nowrap; }
+.pipeline-service-quotations-list, .pipeline-service-history-list { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+.pipeline-service-quotations-list li { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:6px 9px; background:#fff; border:1px solid #e4ece9; border-radius:8px; font-size:11px; }
+.pipeline-service-history-list li { display:grid; grid-template-columns:auto 1fr; gap:4px 10px; padding:6px 9px; background:#fff; border:1px solid #e4ece9; border-radius:8px; font-size:11px; }
+.pipeline-service-history-list .pipeline-history-at { grid-row:1 / span 2; }
+.pipeline-services-table-wrap { max-height:520px; }
 @media(max-width:640px) {
   .pipeline-root:after,.pipeline-branches:before,.pipeline-branch:before,.pipeline-category:before { display:none; }
   .pipeline-branch { padding-top:0; }
