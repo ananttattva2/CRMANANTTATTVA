@@ -1,5 +1,5 @@
 import { exportWithReason } from './dataExport.mjs'
-import { countCompletedUploadTrackerClients, isUploadTrackerClientComplete } from './uploadTrackerCompletion.mjs'
+import { countProgressedUploadTrackerClients, hasUploadTrackerClientProgress } from './uploadTrackerCompletion.mjs'
 export const UPLOAD_TRACKER_STAGES = ['Data Explained', 'Data Format Sent', 'Data Received from Client', 'Ready to Upload', 'Nil Upload', 'Client Approval Received', 'Upload Complete', 'Manager Review', 'Compliance Review']
 const modules = ['purchase', 'sales']
 const stateLabel = (state, index) => state === 'complete' ? index >= 7 ? 'Approved' : 'Completed' : state === 'progress' ? 'In progress' : state === 'rejected' ? 'Rejected' : 'Pending'
@@ -13,12 +13,12 @@ const ratio = (clients, module, index) => {
 }
 export function buildUploadTrackerExport(users) {
   const clients = users.flatMap(user => user.clients.map(client => ({ ...client, userName: user.userName })))
-  const summaryRow = (name, rows) => [safe(name), rows.length, `${countCompletedUploadTrackerClients(rows)} / ${rows.length}`, ...modules.flatMap(module => UPLOAD_TRACKER_STAGES.map((_, index) => ratio(rows, module, index)))]
+  const summaryRow = (name, rows) => [safe(name), rows.length, `${countProgressedUploadTrackerClients(rows)} / ${rows.length}`, ...modules.flatMap(module => UPLOAD_TRACKER_STAGES.map((_, index) => ratio(rows, module, index)))]
   return {
-    summaryHeaders: ['User Name', 'Allocated Clients', 'Completed / Total', ...modules.flatMap(module => UPLOAD_TRACKER_STAGES.map(stage => `${module === 'purchase' ? 'Purchase' : 'Sales'} — ${stage}`))],
+    summaryHeaders: ['User Name', 'Allocated Clients', 'Progress / Total', ...modules.flatMap(module => UPLOAD_TRACKER_STAGES.map(stage => `${module === 'purchase' ? 'Purchase' : 'Sales'} — ${stage}`))],
     summary: [...users.map(user => summaryRow(user.userName, user.clients)), summaryRow('Grand Total', clients)],
     clientHeaders: ['User Name', 'Client Name', 'Overall Status', ...modules.flatMap(module => UPLOAD_TRACKER_STAGES.map(stage => `${module === 'purchase' ? 'Purchase' : 'Sales'} — ${stage}`))],
-    clients: clients.map(client => [safe(client.userName), safe(client.category ? `${client.clientName}\n${client.category}${client.unit ? ' · ' + client.unit : ''} · ${client.offered}` : client.clientName), isUploadTrackerClientComplete(client) ? 'Completed' : 'In progress', ...modules.flatMap(module => UPLOAD_TRACKER_STAGES.map((_, index) => stateLabel(client[module]?.[index], index)))])
+    clients: clients.map(client => [safe(client.userName), safe(client.category ? `${client.clientName}\n${client.category}${client.unit ? ' · ' + client.unit : ''} · ${client.offered}` : client.clientName), hasUploadTrackerClientProgress(client) ? 'Progress recorded' : 'Not started', ...modules.flatMap(module => UPLOAD_TRACKER_STAGES.map((_, index) => stateLabel(client[module]?.[index], index)))])
   }
 }
 const filename = (scope, year, extension) => `Client-Upload-Tracker-${String(scope || 'All-users').replace(/[^a-zA-Z0-9_-]+/g, '-')}-${year}.${extension}`

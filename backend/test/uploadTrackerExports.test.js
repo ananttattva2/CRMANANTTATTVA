@@ -16,7 +16,7 @@ test('export summary and detail columns include separate reviews, all user-compa
   assert.deepEqual(data.summary.at(-1).slice(0, 3), ['Grand Total', 3, '1 / 3']);
   assert.equal(data.summary[0][10], '1\n1 pending');
   assert.equal(data.clients[0][1], "'=Company");
-  assert.equal(data.clients[0][2], 'Completed');
+  assert.equal(data.clients[0][2], 'Progress recorded');
   assert.equal(data.clients[0][10], 'Approved');
   assert.equal(data.clients[0][19], 'Approved');
   assert.equal(buildUploadTrackerExport([{ ...users[0], clients: [users[0].clients[0]] }]).summary[0][1], 1);
@@ -56,12 +56,11 @@ test('PDF exports paginate full user lists and retain the last client and both r
   assert.equal(summary.lastAutoTable.columns.length, 12);
 });
 
-test('a client counts once only after every Purchase and Sales stage is complete', async () => {
-  const { countCompletedUploadTrackerClients, isUploadTrackerClientComplete } = await import('../../frontend/src/utils/uploadTrackerCompletion.mjs');
-  const done = client('done', 'Atul Ltd', true);
-  const incomplete = client('open', 'Open Ltd', true);
-  incomplete.sales[4] = 'progress';
-  assert.equal(isUploadTrackerClientComplete(done), true);
-  assert.equal(isUploadTrackerClientComplete(incomplete), false);
-  assert.equal(countCompletedUploadTrackerClients([done, incomplete]), 1);
+test('a client with data in several Purchase and Sales stages is counted only once', async () => {
+  const { countProgressedUploadTrackerClients, hasUploadTrackerClientProgress } = await import('../../frontend/src/utils/uploadTrackerCompletion.mjs');
+  const atul = client('done', 'Atul Ltd', true);
+  const notStarted = client('open', 'Open Ltd');
+  assert.equal(hasUploadTrackerClientProgress(atul), true);
+  assert.equal(hasUploadTrackerClientProgress(notStarted), false);
+  assert.equal(countProgressedUploadTrackerClients([atul, notStarted]), 1);
 });

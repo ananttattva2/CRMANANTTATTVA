@@ -1,9 +1,9 @@
 const modules = ['purchase', 'sales']
 
-export function isUploadTrackerClientComplete(client) {
-  return modules.every(module => Array.isArray(client?.[module]) && client[module].length > 0 && client[module].every(state => state === 'complete'))
+export function hasUploadTrackerClientProgress(client) {
+  return modules.some(module => Array.isArray(client?.[module]) && client[module].some(state => state && state !== 'pending'))
 }
 
-export function countCompletedUploadTrackerClients(clients = []) {
-  return clients.filter(isUploadTrackerClientComplete).length
+export function countProgressedUploadTrackerClients(clients = []) {
+  return clients.filter(hasUploadTrackerClientProgress).length
 }
