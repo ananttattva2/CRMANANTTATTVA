@@ -287,8 +287,8 @@
   outline-offset:3px
 }
 .pipeline-dialog {
-  width:min(1400px,96vw);
-  max-height:92vh;
+  width:min(1700px,98vw);
+  max-height:96vh;
   padding:0;
   border:0;
   border-radius:24px;
@@ -319,7 +319,7 @@
 .pipeline-dialog-body {
   padding:20px;
   overflow:auto;
-  max-height:70vh
+  max-height:78vh
 }
 .pipeline-table-wrap {
   overflow:auto;
@@ -515,7 +515,7 @@
 .pipeline-dialog td .pipeline-company-button { display:flex; align-items:center; gap:8px; border:0; background:none; padding:0; white-space:normal; text-align:left; font-size:12px; color:#14675e; }
 .pipeline-dialog td .pipeline-company-button:hover { color:#f36b26; text-decoration:underline; }
 .pipeline-company-button svg { flex-shrink:0; }
-.pipeline-services-dialog { width:min(1240px,95vw); }
+.pipeline-services-dialog { width:min(1500px,98vw); }
 .pipeline-service-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
 .pipeline-service-grid article { padding:20px; border:1px solid #dce8e6; border-radius:16px; background:linear-gradient(140deg,#fff,#f3faf7); }
 .pipeline-service-index { font-size:20px; font-weight:900; color:#b9d4cb; }
@@ -551,6 +551,7 @@
 .pipeline-history-title { font-weight:800; color:#0f6b5c; }
 .pipeline-service-history em { color:#51606f; font-style:normal; }
 .pipeline-service-history small { color:#8190a3; }
+.pipeline-empty-small { margin:6px 0 0; padding:8px 10px; background:#f1f5f9; border-radius:8px; font-size:11px; color:#718099; }
 @media(max-width:640px) {
   .pipeline-root:after,.pipeline-branches:before,.pipeline-branch:before,.pipeline-category:before { display:none; }
   .pipeline-branch { padding-top:0; }

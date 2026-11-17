@@ -175,15 +175,23 @@ exports.services = async (req, res, next) => {
     if (lead) {
       const [quotations, activities] = await Promise.all([
         Quotation.find({
-          leadRef: lead._id,
-          status: { $in: ['submitted', 'sent', 'admin_approved', 'approved'] }
+          leadRef: lead._id
         }).select('assignedServiceId quotationNumber quotationDate grandTotal status serviceState createdAt').sort({ createdAt: -1 }).lean(),
         LeadActivity.find({ lead: lead._id }).sort({ createdAt: -1 }).limit(100).select('type title description actorName createdAt metadata').lean()
       ]);
       const serviceActivityKeywords = ['service', 'assignment', 'closure', 'accounts record', 'po', 'quotation'];
+      const hasGeneratedId = (id) => String(id || '').startsWith('service-');
       services = services.map((service) => {
+        // If the service has a real assignedServiceId, match quotations to it.
+        // For services with generated IDs (no assignedServiceId), and for
+        // quotations that are not assigned to any specific service, show them
+        // under the first service so the user always sees the quotation data.
         const serviceQuotations = quotations
-          .filter((q) => !service.id.startsWith('service-') && String(q.assignedServiceId || '') === String(service.id))
+          .filter((q) => {
+            if (hasGeneratedId(service.id)) return true;
+            const qServiceId = String(q.assignedServiceId || '');
+            return qServiceId === String(service.id) || !qServiceId;
+          })
           .map((q) => ({
             number: q.quotationNumber || 'Not numbered',
             date: q.quotationDate || q.createdAt || '',
