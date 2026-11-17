@@ -1,5 +1,5 @@
-const ArComplianceList = lazy(() => import('./pages/ArCompliance'))
 import React, { Suspense, lazy, useEffect } from 'react'
+const ArComplianceList = lazy(() => import('./pages/ArCompliance'))
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
 import ScrollToTop from './components/ScrollToTop'
