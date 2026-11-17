@@ -336,7 +336,7 @@ exports.uploadTracker = async (req, res) => {
       if (req.query.portfolioOnly === 'true') {
         res.set('Cache-Control', 'private, no-store');
         res.set('Server-Timing', `references;dur=${referencesAt - startedAt}, snapshot;dur=${snapshotAt - referencesAt}, assignments;dur=${Date.now() - startedAt}`);
-        return res.json({ ok: true, users, assignments: visibleClients });
+        return res.json({ ok: true, visibility: scope === null ? 'all' : scope.ids.length > 1 ? 'team' : 'own', users, assignments: visibleClients });
       }
       const realIds = visibleClients.filter(client => !client.assignmentOnly).map(client => client._id);
       const [reviews, approvals] = await cachedAssignmentReviews(JSON.stringify(realIds.map(String).sort()), () => Promise.all([

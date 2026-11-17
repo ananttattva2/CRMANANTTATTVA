@@ -49,9 +49,10 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
   function canShowItem(item) {
     if (Array.isArray(item.roles) && !hasAnyRole(currentUser, item.roles)) return false
     if (item.label === 'User Management' && !canChooseDashboard) return false
+    if (item.label === 'Dashboard') return true
     return !item.children?.length || item.children.some(canShowItem)
   }
-  function containsRoute(item) { return pathMatches(item.path) || item.children?.some(containsRoute) }
+  function containsRoute(item) { return (item.label === 'Dashboard' && pathMatches('/overall-dashboard')) || pathMatches(item.path) || item.children?.some(containsRoute) }
   function visit(item) {
     if (item.dashboardMode) onDashboardModeChange?.(item.dashboardMode)
     navigate(item.path)

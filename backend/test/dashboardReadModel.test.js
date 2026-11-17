@@ -117,4 +117,12 @@ test('assignment endpoint hydrates compact leads, isolates staff visibility and 
   assert.equal(payload.assignments[0].selectedLead.company, 'Company staff');
   assert.match(headers['Server-Timing'], /assignments;dur=\d+$/);
   assert.equal(headers['Cache-Control'], 'private, no-store');
+
+  let portfolioPayload;
+  await exported.uploadTracker({ user, query: { assignmentsOnly: 'true', portfolioOnly: 'true' } }, {
+    set() {}, status(code) { assert.fail(`Unexpected HTTP ${code}`); }, json(value) { portfolioPayload = value; }
+  });
+  assert.equal(portfolioPayload.visibility, 'own');
+  assert.deepEqual(portfolioPayload.assignments.map(client => client._id), ['client-lead-staff']);
+  assert.deepEqual(portfolioPayload.users.map(entry => entry._id), ['staff']);
 });

@@ -1,7 +1,7 @@
 import { readPageSnapshot, savePageSnapshot } from '../../services/pageReadSnapshot'
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
-import { ArrowUpRight, FileSpreadsheet, Loader2, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react'
+import { ArrowUpRight, FileSpreadsheet, Loader2, Minus, Plus, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react'
 import api from '../../services/api'
 import { formatDisplayDate } from '../../utils/dateFormat'
 import { buildApplicationPortfolio, applicationReportGroups, PIBO_CATEGORIES, STATUS_COLUMNS, matchesPortfolioSearch, applicationServiceSummaryRecords as applicationSummaryRecords, matchesApplicationService, matchesDistributionSummary, matchesServiceSummary, matchesStatusSummary, matchesPortfolioSection, annualActionReasons, uniquePortfolioServiceDetails } from '../../utils/applicationPortfolio.mjs'
@@ -10,6 +10,7 @@ import './applicationPortfolio.css'
 function ClientRecordsPopup({ selection, onClose }) {
   const dialog = useRef(null)
   const [query, setQuery] = useState('')
+  const [expandedRecord, setExpandedRecord] = useState('')
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
   async function exportExcel() {
@@ -24,20 +25,35 @@ function ClientRecordsPopup({ selection, onClose }) {
   const records = selection.records.filter(row => matchesPortfolioSearch(row, query)).map(row => ({
     ...row, services: uniquePortfolioServiceDetails(row.services)
   }))
+  const columnCount = selection.key === 'annualActionRequired' ? 10 : 9
   return <dialog ref={dialog} className="portfolio-dialog" onCancel={onClose} onClick={event => { if (event.target === event.currentTarget) onClose() }} aria-labelledby="portfolio-dialog-title">
     <header><div className="portfolio-heading"><span className="portfolio-icon"><Users size={23} /></span><div><small>ASSIGNED APPLICATIONS</small><h2 id="portfolio-dialog-title">{selection.name}</h2><p>{selection.label} · {selection.records.length} applications</p></div></div><button type="button" className="portfolio-icon-button" onClick={onClose} aria-label="Close client details"><X size={20} /></button></header>
     <div className="portfolio-toolbar"><label className="portfolio-search"><Search size={17} /><input aria-label="Search client name, lead ID or service" placeholder="Search client, lead ID or service" value={query} onChange={event => setQuery(event.target.value)} /></label><span>{records.length} records shown<button type="button" className="portfolio-icon-button" aria-label="Download Excel" title="Download Excel" disabled={exporting || !records.length} onClick={exportExcel}>{exporting ? <Loader2 size={18} className="animate-spin" /> : <FileSpreadsheet size={18} />}</button></span></div>
     {exportError && <p role="alert" className="portfolio-error">{exportError}</p>}
-    <div className="portfolio-dialog-table"><table><thead><tr>{['Unique ID', 'Legal Name', ...(selection.key === 'annualActionRequired' ? ['Action Required'] : []), 'Client Status', 'Visibility', 'CPCB Status', 'PIBo Category', 'Unit', 'State', 'Created'].map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{records.map(row => <tr key={row.id}><td>{row.code}</td><td><strong>{row.name}</strong>{row.services && <details className="portfolio-service-details"><summary>View {row.services.length} assigned service {row.services.length === 1 ? 'record' : 'records'}</summary><div className="portfolio-service-table"><table><thead><tr>{['Lead ID', 'Applicant', 'Industry', 'Service Category', 'Services Offered', 'Unit', 'CPCB Status'].map(header => <th key={header}>{header}</th>)}</tr></thead><tbody>{row.services.map(service => <tr key={service.id}><td>{service.leadCode || service.code}</td><td>{service.category}</td><td>{service.industry || 'Not recorded'}</td><td>{service.eprCategory || 'Not recorded'}</td><td>{service.offered || 'Not recorded'}</td><td>{service.unit || 'Not recorded'}</td><td>{service.cpcb}</td></tr>)}</tbody></table></div></details>}</td>{selection.key === 'annualActionRequired' && <td><ul className="portfolio-action-reasons">{annualActionReasons(row).map(reason => <li key={reason}>{reason}</li>)}</ul></td>}<td>{row.clientStatus}</td><td>{row.visibility}</td><td><span className={`portfolio-status portfolio-status-${row.bucket}`}>{row.cpcb}</span></td><td>{row.category}</td><td>{row.unit || 'Not recorded'}</td><td>{row.state}</td><td>{row.created ? formatDisplayDate(row.created) : 'Not recorded'}</td></tr>)}</tbody></table>{!records.length && <p className="portfolio-empty">No matching applications.</p>}</div>
+    <div className="portfolio-dialog-table"><table><thead><tr>{['Unique ID', 'Legal Name', ...(selection.key === 'annualActionRequired' ? ['Action Required'] : []), 'Client Status', 'Visibility', 'CPCB Status', 'PIBo Category', 'Unit', 'State', 'Created'].map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{records.map(row => {
+      const rowKey = String(row.id || row.code)
+      const expanded = expandedRecord === rowKey
+      const services = row.services || []
+      return <React.Fragment key={rowKey}><tr><td>{row.code}</td><td><div className="portfolio-client-name"><strong>{row.name}</strong>{services.length > 0 && <button type="button" className="portfolio-service-toggle" aria-expanded={expanded} aria-controls={`portfolio-services-${rowKey}`} aria-label={`${expanded ? 'Hide' : 'Show'} ${services.length} assigned service ${services.length === 1 ? 'record' : 'records'} for ${row.name}`} onClick={() => setExpandedRecord(current => current === rowKey ? '' : rowKey)}>{expanded ? <Minus size={16} /> : <Plus size={16} />}<span>{services.length} service{services.length === 1 ? '' : 's'}</span></button>}</div></td>{selection.key === 'annualActionRequired' && <td><ul className="portfolio-action-reasons">{annualActionReasons(row).map(reason => <li key={reason}>{reason}</li>)}</ul></td>}<td>{row.clientStatus}</td><td>{row.visibility}</td><td><span className={`portfolio-status portfolio-status-${row.bucket}`}>{row.cpcb}</span></td><td>{row.category}</td><td>{row.unit || 'Not recorded'}</td><td>{row.state}</td><td>{row.created ? formatDisplayDate(row.created) : 'Not recorded'}</td></tr>{expanded && <tr className="portfolio-service-detail-row"><td colSpan={columnCount}><section id={`portfolio-services-${rowKey}`} aria-label={`${row.name} assigned services`}><header><div><small>ASSIGNED SERVICE DETAILS</small><h3>{row.name}</h3></div><span>{services.length} record{services.length === 1 ? '' : 's'}</span></header><div className="portfolio-service-table"><table><thead><tr>{['Lead ID', 'Applicant', 'Industry', 'Service Category', 'Services Offered', 'Unit', 'CPCB Status'].map(header => <th key={header}>{header}</th>)}</tr></thead><tbody>{services.map(service => <tr key={service.id}><td>{service.leadCode || service.code}</td><td>{service.category}</td><td>{service.industry || 'Not recorded'}</td><td>{service.eprCategory || 'Not recorded'}</td><td>{service.offered || 'Not recorded'}</td><td>{service.unit || 'Not recorded'}</td><td><span className={`portfolio-status portfolio-status-${service.bucket || ''}`}>{service.cpcb}</span></td></tr>)}</tbody></table></div></section></td></tr>}</React.Fragment>
+    })}</tbody></table>{!records.length && <p className="portfolio-empty">No matching applications.</p>}</div>
     <footer><ShieldCheck size={16} />Saved client and CPCB statuses · Only accessible assigned records are shown</footer>
   </dialog>
 }
 
+function portfolioSnapshotKey() {
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || '{}')
+    return `application-portfolio:${user._id || user.id || user.crmUserId || user.email || 'anonymous'}`
+  } catch { return 'application-portfolio:anonymous' }
+}
+
 const ApplicationPortfolio = forwardRef(function ApplicationPortfolio({ mode, refreshToken = 0, onPdfAvailabilityChange }, ref) {
-  const hasPayload = useRef(Boolean(readPageSnapshot('application-portfolio')))
+  const snapshotKey = useMemo(portfolioSnapshotKey, [])
+  const initialPayload = useMemo(() => readPageSnapshot(snapshotKey), [snapshotKey])
+  const hasPayload = useRef(Boolean(initialPayload))
   const fetching = useRef(false)
-  const [payload, setPayload] = useState(() => readPageSnapshot('application-portfolio'))
-  const [loading, setLoading] = useState(() => !readPageSnapshot('application-portfolio'))
+  const [payload, setPayload] = useState(initialPayload)
+  const [loading, setLoading] = useState(() => !initialPayload)
   const [error, setError] = useState('')
   const [refresh, setRefresh] = useState(0)
   const [query, setQuery] = useState('')
@@ -51,9 +67,9 @@ const ApplicationPortfolio = forwardRef(function ApplicationPortfolio({ mode, re
     if (!hasPayload.current) setLoading(true)
     fetching.current = true
     setError('')
-    api.get('/dashboard-insights/upload-tracker', { params: { assignmentsOnly: 'true', portfolioOnly: 'true' }, signal: controller.signal, timeout: 45000 }).then(response => { if (!controller.signal.aborted) { hasPayload.current = true; savePageSnapshot('application-portfolio', response.data, response); setPayload(response.data) } }).catch(err => { if (!controller.signal.aborted) setError(err.response?.data?.error || 'Unable to load application records. Please retry.') }).finally(() => { if (!controller.signal.aborted) { fetching.current = false; setLoading(false) } })
+    api.get('/dashboard-insights/upload-tracker', { params: { assignmentsOnly: 'true', portfolioOnly: 'true' }, signal: controller.signal, timeout: 45000 }).then(response => { if (!controller.signal.aborted) { hasPayload.current = true; savePageSnapshot(snapshotKey, response.data, response); setPayload(response.data) } }).catch(err => { if (!controller.signal.aborted) setError(err.response?.data?.error || 'Unable to load application records. Please retry.') }).finally(() => { if (!controller.signal.aborted) { fetching.current = false; setLoading(false) } })
     return () => { controller.abort(); fetching.current = false }
-  }, [refresh, refreshToken])
+  }, [refresh, refreshToken, snapshotKey])
   useEffect(() => { setSelection(null) }, [mode, section])
   const groups = useMemo(() => buildApplicationPortfolio(payload?.assignments || [], payload?.users || []), [payload])
   const distribution = mode === 'spoc'
@@ -115,6 +131,7 @@ const ApplicationPortfolio = forwardRef(function ApplicationPortfolio({ mode, re
   }), [columns, loading, matches, payload, query, shown, title])
   return <motion.section role="tabpanel" id={`portfolio-${mode}`} aria-labelledby={`dashboard-tab-${mode}`} initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .2 }} className="application-portfolio">
     <h2 className="sr-only">{title}</h2>
+    <div className="portfolio-scope-note"><ShieldCheck size={15} /><span>{payload?.visibility === 'all' ? 'Showing applications for all users' : payload?.visibility === 'team' ? 'Showing applications assigned to you and your team' : 'Showing only applications assigned to you'}</span></div>
     <div className="portfolio-section-tabs" role="tablist" aria-label={`${title} section`}>
       {[['annualRegistration', 'Summary for Annual Return & Registration'], ['otherServices', 'Summary for Other Services']].map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={section === key} onClick={() => setSection(key)}>{label}</button>)}
     </div>

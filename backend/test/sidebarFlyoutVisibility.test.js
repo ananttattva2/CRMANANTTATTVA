@@ -15,3 +15,13 @@ test('desktop sidebar expands and shifts content instead of covering page contro
   assert.match(sidebar, /if \(collapsed\) \{[\s\S]*setOpenGroups\([\s\S]*onToggleCollapsed\?\.\(\)/);
   assert.doesNotMatch(sidebar, /if \(collapsed\) \{\s*setActiveFlyout\(\(value\)/);
 });
+
+test('Application Dashboard remains visible to ordinary authenticated users', () => {
+  const sidebar = fs.readFileSync(sidebarPath, 'utf8');
+  const app = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/App.jsx'), 'utf8');
+
+  assert.match(sidebar, /if \(item\.label === 'Dashboard'\) return true/);
+  assert.match(sidebar, /label: 'Application Dashboard'[\s\S]*path: '\/overall-dashboard'/);
+  assert.match(app, /path="\/overall-dashboard" element=\{<ProtectedRoute><OverallDashboard\/><\/ProtectedRoute>\}/);
+  assert.doesNotMatch(app, /path="\/overall-dashboard"[^\n]*allowedRoles/);
+});
