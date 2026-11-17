@@ -9,6 +9,10 @@ const normalizeYear = value => {
 };
 const yearsFrom = value => (Array.isArray(value) ? value : [value]).flatMap(item => String(item || '').split(/[,;\n]/)).map(normalizeYear).filter(Boolean);
 const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const selectedServiceIdFor = client => {
+  const data = client?.data || {};
+  return String(client?.assignedServiceId || data.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId || '').trim();
+};
 const isAnnualService = value => (Array.isArray(value) ? value : [value]).some(item => /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalize(item?.name || item?.label || item?.service || item)));
 const hasPoEvidence = row => [row?.poNumber, row?.poNo, row?.poDate, row?.poReceivedDate, row?.poFileName, row?.fileName, row?.poFileUrl]
   .some(value => Boolean(String(value || '').trim()));
@@ -20,7 +24,7 @@ function financialYearForDate(date = new Date()) {
 }
 function matchesTrackedService(client, type) {
   const data = client.data || {}, lead = client.selectedLead || {};
-  const selected = String(client.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId || '');
+  const selected = selectedServiceIdFor(client);
   const selections = lead.serviceSelections || [];
   const service = selections.find(item => String(item.assignedServiceId || item.serviceAssignmentId || '') === selected) || (selections.length === 1 ? selections[0] : {});
   const offered = service.servicesOffered ?? data.basic?.servicesOffered ?? data.selectedLeadSnapshot?.servicesOffered ?? [];
@@ -72,7 +76,7 @@ function hasWorkflowProgress(record, financialYear) {
 function applicationDescriptor(client, selectedFinancialYear = '') {
   const data = client.data || {}, basic = data.basic || {}, lead = client.selectedLead || {};
   const selections = lead.serviceSelections || [];
-  const selectedServiceId = String(client.assignedServiceId || '');
+  const selectedServiceId = selectedServiceIdFor(client);
   const serviceIndex = selections.findIndex(row => selectedServiceId && String(row.assignedServiceId || row.serviceAssignmentId || '') === selectedServiceId);
   const service = serviceIndex >= 0 ? selections[serviceIndex] : (selections.length === 1 ? selections[0] : {});
   const category = [service.subApplicantType, service.piboCategory, basic.piboCategory, basic.subApplicantType, service.applicantType, basic.applicantType].find(value => typeof value === 'string' && value.trim()) || 'Not recorded';

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildUploadTracker } = require('../src/services/clientUploadTracker');
+const { applicationDescriptor, buildUploadTracker, matchesTrackedService } = require('../src/services/clientUploadTracker');
 const user = { _id: 'tushar', name: 'TUSHAR GAWAS', role: 'operation' };
 const client = { _id: 'atul-brand', assignedServiceId: 'brand-service', workflowStatus: 'submitted', selectedLead: { _id: 'atul-lead', company: 'ATUL LTD', serviceSelections: [{ assignedServiceId: 'brand-service', subApplicantType: 'Brand Owner', servicesOffered: 'Annual Return Filling', plantUnit: 'Unit 1' }], assignments: [{ assignedServiceId: 'brand-service', assignedStaff: 'tushar', assignedStaffText: 'TUSHAR GAWAS', assignedTo: 'tushar', closedAt: '2026-01-01', poStatus: 'received', poYearRows: [{ poFinancialYear: '2026-27', annualReturnYear: '2025-26', poNumber: 'PO1' }] }] }, data: { basic: { piboCategory: 'Brand Owner' }, cpcb: { status: 'Approved' }, importMeta: { assignedTo: 'NITIN NAWAR' } } };
 test('ATUL saved 2025-26 progress stays under Tushar despite current-year eligibility and Nitin import metadata', () => {
@@ -27,4 +27,29 @@ test('progress saved only for another financial year does not bypass selected-ye
   const purchase = { clientId: 'atul-brand', financialYear: '2026-27', checklist: [{ particular: 'Data Explained', yesNo: 'Yes' }] };
   const result = buildUploadTracker([otherYearClient], [user], [purchase], [], { groupBy: 'application', serviceType: 'annual', financialYear: '2025-26' });
   assert.equal(result.reduce((count, row) => count + row.clients.length, 0), 0);
+});
+test('saved client service identity selects Brand Owner instead of stale Importer metadata', () => {
+  const updatedBrandOwner = structuredClone(client);
+  delete updatedBrandOwner.assignedServiceId;
+  updatedBrandOwner.data.assignedServiceId = 'brand-service';
+  updatedBrandOwner.data.basic.piboCategory = 'Importer';
+  updatedBrandOwner.selectedLead.serviceSelections.unshift({
+    assignedServiceId: 'importer-service',
+    subApplicantType: 'Importer',
+    servicesOffered: 'Registration',
+    plantUnit: 'Unit 1'
+  });
+  updatedBrandOwner.selectedLead.assignments.unshift({
+    assignedServiceId: 'importer-service',
+    assignedStaff: 'other-user',
+    assignedTo: 'other-user',
+    closedAt: '2025-01-01'
+  });
+
+  const descriptor = applicationDescriptor(updatedBrandOwner, '2025-26');
+  assert.equal(descriptor.category, 'Brand Owner');
+  assert.equal(descriptor.serviceType, 'annual');
+  assert.equal(descriptor.unit, 'Unit 1');
+  assert.equal(matchesTrackedService(updatedBrandOwner, 'annual'), true);
+  assert.equal(matchesTrackedService(updatedBrandOwner, 'registration'), false);
 });
