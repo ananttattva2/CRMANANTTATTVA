@@ -74,6 +74,7 @@ function clientContactDetails(lead = {}) {
   return {
     company: lead.company || lead.clientName || '',
     contactPerson: lead.contactPerson || lead.personName || contact.contactPerson || '',
+    designation: lead.designation || contact.designation || '',
     email: lead.emails || lead.email || contact.emails || '',
     phone: lead.mobileNo1 || lead.phone || contact.mobileNo1 || '',
     communicationMode: lead.communicationMode || '',

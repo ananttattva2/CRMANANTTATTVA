@@ -45,7 +45,7 @@ function harness({ lead = {}, entries = [], eligibleOwner = 'u', denied = false,
   const inserted = [];
   const updates = [];
   const hot = { _id: 'lead', createdBy: 'u', serviceSelections: [{ assignedServiceId: 's1', createdByCrmUserId: eligibleOwner }], ...lead };
-  const chain = value => ({ select() { return this; }, sort() { return this; }, async lean() { return value; } });
+  const chain = value => ({ select() { return this; }, sort() { return this; }, limit() { return this; }, async lean() { return value; } });
   const Revenue = { async findOneAndUpdate(filter, update) { if (conflict) return null; updates.push({filter,update}); return {_id: 'entry'}; }, find: () => chain(entries), findOne: ({ requestId }) => chain(entries.find(e => e.requestId === requestId)), async create(value) { if (duplicate) throw Object.assign(new Error('duplicate'), { code: 11000 }); inserted.push(value); } };
   const deps = {
     'node:crypto': require('node:crypto'), mongoose: { isValidObjectId: () => true },
@@ -53,6 +53,7 @@ function harness({ lead = {}, entries = [], eligibleOwner = 'u', denied = false,
     '../models/TemporaryLead': { findOne: () => chain(null) },
     '../models/LeadRevenue': Revenue,
     '../models/Quotation': { find: () => chain([]) },
+    '../models/LeadActivity': { find: () => chain([]) },
     './leadController': { leadAccessFilter: async () => ({ scoped: true }) },
     './temporaryLeadController': { temporaryLeadAccessFilter: async () => ({ scoped: true }) },
     '../services/leadRevenue': require('../src/services/leadRevenue'),

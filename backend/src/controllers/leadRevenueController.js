@@ -4,6 +4,7 @@ const Lead = require('../models/Lead');
 const TemporaryLead = require('../models/TemporaryLead');
 const Revenue = require('../models/LeadRevenue');
 const Quotation = require('../models/Quotation');
+const LeadActivity = require('../models/LeadActivity');
 const { leadAccessFilter } = require('./leadController');
 const { temporaryLeadAccessFilter } = require('./temporaryLeadController');
 const { amountPaise, serviceRows, groupsFrom, hotClosed, purchaseOrders, serviceDetails, clientContactDetails } = require('../services/leadRevenue');
@@ -98,8 +99,8 @@ exports.pipeline = async (req, res, next) => {
     const compactAdmin = Lead.db?.readyState === 1 && userHasAnyRole(req.user, ['admin', 'superadmin']);
     const [hotAccess, coldAccess] = await Promise.all([leadAccessFilter(req.user), temporaryLeadAccessFilter(req.user)]);
     const [hot, cold] = await Promise.all([
-      (compactAdmin ? require('../services/compactReadSnapshot').compactReadSnapshot(Lead, { filter: { deletedAt: null }, versionIndex: { deletedAt: 1, updatedAt: 1, _id: 1 }, selection: 'communicationModeParent communicationMode leadCode sourceLeadId company status serviceSelections.assignedServiceId serviceSelections.eprCategory serviceSelections.servicesOffered serviceSelections.applicableService serviceSelections.closedBy serviceSelections.closedByText serviceSelections.closedAt serviceSelections.closureRequestedBy serviceSelections.closureRequestedByText serviceSelections.poStatus serviceSelections.poYearRows.poNumber serviceSelections.poYearRows.poNo serviceSelections.status serviceSelections.accountsRecordId assignments.assignedServiceId assignments.closedBy assignments.closedByText assignments.closedAt assignments.closureRequestedBy assignments.closureRequestedByText assignments.poStatus assignments.poApprovalStatus assignments.poNumber assignments.poDate assignments.poFinancialYear assignments.poAmount assignments.poYearRows.poNumber assignments.poYearRows.poNo assignments.poYearRows.poDate assignments.poYearRows.poFinancialYear assignments.poYearRows.fy assignments.poYearRows.poAmount assignments.originalPoDetails.poNumber assignments.originalPoDetails.poDate assignments.originalPoDetails.poFinancialYear assignments.originalPoDetails.poAmount noOwner.active noOwner.previousOwner.id noOwner.previousOwner.name noOwner.previousOwner.email closedAt closedBy closedByText createdBy createdByName generatedForUser generatedForName createdOnBehalfOfUser createdOnBehalfOfName importedCreatedBy createdAt' }).then(rows => Lead.populate(rows, ['generatedForUser', 'createdOnBehalfOfUser', 'createdBy'].map(path => ({ path, select: 'name email isActive' })))) : Lead.find(hotAccess).select('communicationModeParent communicationMode leadCode sourceLeadId company status serviceSelections.assignedServiceId serviceSelections.eprCategory serviceSelections.servicesOffered serviceSelections.applicableService serviceSelections.closedBy serviceSelections.closedByText serviceSelections.closedAt serviceSelections.closureRequestedBy serviceSelections.closureRequestedByText serviceSelections.poStatus serviceSelections.poYearRows.poNumber serviceSelections.poYearRows.poNo serviceSelections.status serviceSelections.accountsRecordId assignments.assignedServiceId assignments.closedBy assignments.closedByText assignments.closedAt assignments.closureRequestedBy assignments.closureRequestedByText assignments.poStatus assignments.poApprovalStatus assignments.poNumber assignments.poDate assignments.poFinancialYear assignments.poAmount assignments.poYearRows.poNumber assignments.poYearRows.poNo assignments.poYearRows.poDate assignments.poYearRows.poFinancialYear assignments.poYearRows.fy assignments.poYearRows.poAmount assignments.originalPoDetails.poNumber assignments.originalPoDetails.poDate assignments.originalPoDetails.poFinancialYear assignments.originalPoDetails.poAmount noOwner.active noOwner.previousOwner.id noOwner.previousOwner.name noOwner.previousOwner.email closedAt closedBy closedByText createdBy createdByName generatedForUser generatedForName createdOnBehalfOfUser createdOnBehalfOfName importedCreatedBy createdAt').populate('generatedForUser', 'name email isActive').populate('createdOnBehalfOfUser', 'name email isActive').populate('createdBy', 'name email isActive').maxTimeMS(15000).lean()),
-      (compactAdmin ? require('../services/compactReadSnapshot').compactReadSnapshot(TemporaryLead, { filter: { deletedAt: null }, versionIndex: { deletedAt: 1, updatedAt: 1, _id: 1 }, selection: 'communicationMode tempLeadCode clientName status convertedLead pipelineClosedAt createdBy createdByName createdAt' }).then(rows => TemporaryLead.populate(rows, { path: 'createdBy', select: 'name email isActive' })) : TemporaryLead.find(coldAccess).select('communicationMode tempLeadCode clientName status convertedLead pipelineClosedAt createdBy createdByName createdAt').populate('createdBy', 'name email isActive').maxTimeMS(15000).lean())
+      (compactAdmin ? require('../services/compactReadSnapshot').compactReadSnapshot(Lead, { filter: { deletedAt: null }, versionIndex: { deletedAt: 1, updatedAt: 1, _id: 1 }, selection: 'communicationModeParent communicationMode leadCode sourceLeadId company status serviceSelections.assignedServiceId serviceSelections.eprCategory serviceSelections.servicesOffered serviceSelections.applicableService serviceSelections.closedBy serviceSelections.closedByText serviceSelections.closedAt serviceSelections.closureRequestedBy serviceSelections.closureRequestedByText serviceSelections.poStatus serviceSelections.poYearRows.poNumber serviceSelections.poYearRows.poNo serviceSelections.status serviceSelections.accountsRecordId assignments.assignedServiceId assignments.closedBy assignments.closedByText assignments.closedAt assignments.closureRequestedBy assignments.closureRequestedByText assignments.poStatus assignments.poApprovalStatus assignments.poNumber assignments.poDate assignments.poFinancialYear assignments.poAmount assignments.poYearRows.poNumber assignments.poYearRows.poNo assignments.poYearRows.poDate assignments.poYearRows.poFinancialYear assignments.poYearRows.fy assignments.poYearRows.poAmount assignments.originalPoDetails.poNumber assignments.originalPoDetails.poDate assignments.originalPoDetails.poFinancialYear assignments.originalPoDetails.poAmount noOwner.active noOwner.previousOwner.id noOwner.previousOwner.name noOwner.previousOwner.email noOwner.reassignedAt updatedAt closedAt closedBy closedByText createdBy createdByName generatedForUser generatedForName createdOnBehalfOfUser createdOnBehalfOfName importedCreatedBy createdAt' }).then(rows => Lead.populate(rows, ['generatedForUser', 'createdOnBehalfOfUser', 'createdBy'].map(path => ({ path, select: 'name email isActive' })))) : Lead.find(hotAccess).select('communicationModeParent communicationMode leadCode sourceLeadId company status serviceSelections.assignedServiceId serviceSelections.eprCategory serviceSelections.servicesOffered serviceSelections.applicableService serviceSelections.closedBy serviceSelections.closedByText serviceSelections.closedAt serviceSelections.closureRequestedBy serviceSelections.closureRequestedByText serviceSelections.poStatus serviceSelections.poYearRows.poNumber serviceSelections.poYearRows.poNo serviceSelections.status serviceSelections.accountsRecordId assignments.assignedServiceId assignments.closedBy assignments.closedByText assignments.closedAt assignments.closureRequestedBy assignments.closureRequestedByText assignments.poStatus assignments.poApprovalStatus assignments.poNumber assignments.poDate assignments.poFinancialYear assignments.poAmount assignments.poYearRows.poNumber assignments.poYearRows.poNo assignments.poYearRows.poDate assignments.poYearRows.poFinancialYear assignments.poYearRows.fy assignments.poYearRows.poAmount assignments.originalPoDetails.poNumber assignments.originalPoDetails.poDate assignments.originalPoDetails.poFinancialYear assignments.originalPoDetails.poAmount noOwner.active noOwner.previousOwner.id noOwner.previousOwner.name noOwner.previousOwner.email noOwner.reassignedAt updatedAt closedAt closedBy closedByText createdBy createdByName generatedForUser generatedForName createdOnBehalfOfUser createdOnBehalfOfName importedCreatedBy createdAt').populate('generatedForUser', 'name email isActive').populate('createdOnBehalfOfUser', 'name email isActive').populate('createdBy', 'name email isActive').maxTimeMS(15000).lean()),
+      (compactAdmin ? require('../services/compactReadSnapshot').compactReadSnapshot(TemporaryLead, { filter: { deletedAt: null }, versionIndex: { deletedAt: 1, updatedAt: 1, _id: 1 }, selection: 'communicationMode tempLeadCode clientName status convertedLead pipelineClosedAt createdBy createdByName updatedAt createdAt' }).then(rows => TemporaryLead.populate(rows, { path: 'createdBy', select: 'name email isActive' })) : TemporaryLead.find(coldAccess).select('communicationMode tempLeadCode clientName status convertedLead pipelineClosedAt createdBy createdByName updatedAt createdAt').populate('createdBy', 'name email isActive').maxTimeMS(15000).lean())
 
     ]);
     const hotIds = hot.map((lead) => lead._id);
@@ -143,7 +144,14 @@ exports.pipeline = async (req, res, next) => {
       const ownRevenue = revenueByLead.get(`${kind}:${lead._id}`) || 0;
       const inheritedRevenue = inheritedIds.reduce((sum, id) => sum + (revenueByLead.get(`cold:${id}`) || 0), 0);
       const serviceInterests = kind === 'hot' ? [...new Set((lead.serviceSelections || []).flatMap((service) => [service.servicesOffered, service.applicableService, service.eprCategory]).map((value) => String(value || '').trim()).filter(Boolean))] : [];
-      return { communicationModeParent: String(lead.communicationModeParent || '').trim(), communicationMode: String(lead.communicationMode || '').trim(), canonicalKey: kind === 'cold' && lead.status === 'CONVERTED' && lead.convertedLead ? `hot:${lead.convertedLead}` : `${kind}:${lead._id}`, converted: kind === 'cold' && lead.status === 'CONVERTED', convertedLeadId: kind === 'cold' && lead.convertedLead ? String(lead.convertedLead) : undefined, poAmountPaise: kind === 'hot' ? purchaseOrders(lead).reduce((n, po) => n + po.amountPaise, 0) : 0, quotationAmountPaise: kind === 'hot' && !closed ? (latestQuotationByLead.get(String(lead._id)) || 0) : 0, id: String(lead._id), kind, state: closed ? 'closed' : 'open', code: lead.leadCode || lead.tempLeadCode, company: lead.company || lead.clientName, previousOwner: lead.noOwner?.active ? ownerNames.get(String(lead.noOwner?.previousOwner?.id || '')) || lead.noOwner?.previousOwner?.name || lead.noOwner?.previousOwner?.email || '' : '', previousOwnerId: lead.noOwner?.active ? String(lead.noOwner?.previousOwner?.id || '') : '', owner: owner.name, ownerId: owner.id, ownerActive: owner.active, serviceCount: kind === 'hot' ? lead.serviceSelections?.length || 1 : 0, serviceInterests, revenuePaise: ownRevenue + inheritedRevenue, createdAt: lead.createdAt };
+      // Days since the lead's last recorded activity (creation, update or
+      // reassignment). Used to highlight stale unassigned leads.
+      const activityTimestamps = [lead.createdAt, lead.updatedAt, lead.noOwner?.reassignedAt]
+        .map(value => new Date(value).getTime())
+        .filter(Number.isFinite);
+      const lastActivityAt = activityTimestamps.length ? Math.max(...activityTimestamps) : NaN;
+      const inactiveDays = Number.isFinite(lastActivityAt) ? Math.max(0, Math.floor((Date.now() - lastActivityAt) / 86400000)) : null;
+      return { communicationModeParent: String(lead.communicationModeParent || '').trim(), communicationMode: String(lead.communicationMode || '').trim(), canonicalKey: kind === 'cold' && lead.status === 'CONVERTED' && lead.convertedLead ? `hot:${lead.convertedLead}` : `${kind}:${lead._id}`, converted: kind === 'cold' && lead.status === 'CONVERTED', convertedLeadId: kind === 'cold' && lead.convertedLead ? String(lead.convertedLead) : undefined, poAmountPaise: kind === 'hot' ? purchaseOrders(lead).reduce((n, po) => n + po.amountPaise, 0) : 0, quotationAmountPaise: kind === 'hot' && !closed ? (latestQuotationByLead.get(String(lead._id)) || 0) : 0, id: String(lead._id), kind, state: closed ? 'closed' : 'open', code: lead.leadCode || lead.tempLeadCode, company: lead.company || lead.clientName, previousOwner: lead.noOwner?.active ? ownerNames.get(String(lead.noOwner?.previousOwner?.id || '')) || lead.noOwner?.previousOwner?.name || lead.noOwner?.previousOwner?.email || '' : '', previousOwnerId: lead.noOwner?.active ? String(lead.noOwner?.previousOwner?.id || '') : '', owner: owner.name, ownerId: owner.id, ownerActive: owner.active, serviceCount: kind === 'hot' ? lead.serviceSelections?.length || 1 : 0, serviceInterests, revenuePaise: ownRevenue + inheritedRevenue, createdAt: lead.createdAt, inactiveDays };
 
     });
     res.set('Server-Timing', `pipeline;dur=${Date.now() - startedAt}`);
@@ -159,7 +167,48 @@ exports.services = async (req, res, next) => {
     if (c.kind === 'cold' && c.lead.status === 'CONVERTED' && c.lead.convertedLead) {
       lead = await Lead.findOne({ $and: [{ _id: c.lead.convertedLead }, await leadAccessFilter(req.user)] }).lean();
     }
-    res.json({ ok: true, company: c.lead.company || c.lead.clientName, converted: c.lead.status === 'CONVERTED', clientDetails: clientContactDetails(lead || c.lead), services: lead ? serviceDetails(lead) : [], purchaseOrders: lead ? purchaseOrders(lead) : [] });
+    let services = lead ? serviceDetails(lead) : [];
+    // Attach quotations and service change history to each service when a hot
+    // lead is available. Quotations are matched by assignedServiceId and the
+    // activity log surfaces service-related updates (service selection,
+    // assignment, closure and accounts-record changes).
+    if (lead) {
+      const [quotations, activities] = await Promise.all([
+        Quotation.find({
+          leadRef: lead._id,
+          status: { $in: ['submitted', 'sent', 'admin_approved', 'approved'] }
+        }).select('assignedServiceId quotationNumber quotationDate grandTotal status serviceState createdAt').sort({ createdAt: -1 }).lean(),
+        LeadActivity.find({ lead: lead._id }).sort({ createdAt: -1 }).limit(100).select('type title description actorName createdAt metadata').lean()
+      ]);
+      const serviceActivityKeywords = ['service', 'assignment', 'closure', 'accounts record', 'po', 'quotation'];
+      services = services.map((service) => {
+        const serviceQuotations = quotations
+          .filter((q) => !service.id.startsWith('service-') && String(q.assignedServiceId || '') === String(service.id))
+          .map((q) => ({
+            number: q.quotationNumber || 'Not numbered',
+            date: q.quotationDate || q.createdAt || '',
+            amountPaise: Math.round(Number(q.grandTotal || 0) * 100),
+            status: q.status || '',
+            serviceState: q.serviceState || ''
+          }));
+        const serviceIdToken = String(service.id).toLowerCase();
+        const history = activities
+          .filter((activity) => {
+            const haystack = `${activity.title} ${activity.description} ${activity.type}`.toLowerCase();
+            if (serviceIdToken && haystack.includes(serviceIdToken)) return true;
+            return serviceActivityKeywords.some((keyword) => haystack.includes(keyword));
+          })
+          .map((activity) => ({
+            type: activity.type,
+            title: activity.title,
+            description: activity.description,
+            actor: activity.actorName || 'System',
+            at: activity.createdAt
+          }));
+        return { ...service, quotations: serviceQuotations, history };
+      });
+    }
+    res.json({ ok: true, company: c.lead.company || c.lead.clientName, converted: c.lead.status === 'CONVERTED', clientDetails: clientContactDetails(lead || c.lead), services, purchaseOrders: lead ? purchaseOrders(lead) : [] });
   } catch (error) { next(error); }
 };
 
