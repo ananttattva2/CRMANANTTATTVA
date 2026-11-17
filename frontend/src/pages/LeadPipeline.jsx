@@ -6,7 +6,7 @@ import { currentPipelineRows, uniquePipelineRows, pipelinePeriodRange, previousP
 import { salesRepSummary, salesRepTableData, salesRepOwner, isUnassignedOwner } from '../utils/salesRepSummary.mjs';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ArrowDown, ArrowUp, ArrowUpRight, CalendarDays, CircleDollarSign, Download, Flame, LayoutGrid, Minus, RefreshCw, Search, Snowflake, Target, Users, WalletCards, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpRight, CalendarDays, CircleDollarSign, Download, FileText, Flame, LayoutGrid, Minus, RefreshCw, Search, Snowflake, Target, Users, WalletCards, X } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, Cell, Legend, Line, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import DashboardShell from '../components/dashboard/DashboardShell';
 import DashboardViewTabs from '../components/dashboard/DashboardViewTabs';
@@ -288,6 +288,7 @@ export default function LeadPipeline() {
   const deferredDialogSearch = useDeferredValue(dialogSearch);
   const [dialogPage, setDialogPage] = useState(1);
   const [dialogPageSize, setDialogPageSize] = useState(10);
+  const [expandedQuotations, setExpandedQuotations] = useState({}); // { 'kind-id': { loading, list } }
   const [revenueRow, setRevenueRow] = useState(null);
   const [closeRow, setCloseRow] = useState(null);
   const [serviceView, setServiceView] = useState(null);
@@ -342,7 +343,7 @@ export default function LeadPipeline() {
   const dialogSafePage = Math.min(dialogPage, dialogPageCount);
   const dialogFirst = (dialogSafePage - 1) * dialogPageSize;
   const dialogVisible = dialogListed.slice(dialogFirst, dialogFirst + dialogPageSize);
-  useEffect(() => { setDialogPage(1); setDialogSearch(''); }, [selection]);
+  useEffect(() => { setDialogPage(1); setDialogSearch(''); setExpandedQuotations({}); }, [selection]);
   const total = source => source.reduce((n, r) => n + r.revenuePaise, 0);
   const poTotal = source => source.reduce((n, r) => n + (r.poAmountPaise || 0), 0);
   const quotationTotal = source => source.reduce((n, r) => n + (r.quotationAmountPaise || 0), 0);
@@ -401,6 +402,21 @@ export default function LeadPipeline() {
     catch (e) { if (request === serviceRequest.current) setServiceView({ row, loading: false, error: e.response?.data?.error || 'Unable to load services.' }); }
   }
   function closeServices() { serviceRequest.current++; setServiceView(null); }
+  async function toggleQuotations(row) {
+    const key = `${row.kind}-${row.id}`;
+    setExpandedQuotations(prev => {
+      const current = prev[key];
+      if (current) return { ...prev, [key]: undefined };
+      return { ...prev, [key]: { loading: true, list: [] } };
+    });
+    try {
+      const response = await api.get(`/quotations`, { params: { leadId: row.id, limit: 100 } });
+      const list = Array.isArray(response.data?.quotations) ? response.data.quotations : (Array.isArray(response.data) ? response.data : []);
+      setExpandedQuotations(prev => ({ ...prev, [key]: { loading: false, list } }));
+    } catch {
+      setExpandedQuotations(prev => ({ ...(prev || {}), [key]: undefined }));
+    }
+  }
   function open(kind = '', state = '', selectedOwner = '') { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ kind, state, owner: selectedOwner }); }
   function openSource(source) { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ sources: source.keys || [source.key], sourceLabel: source.label }); }
   function openOwnerSource(selectedOwner, source) { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ owner: selectedOwner, sources: source.keys || [source.key], sourceLabel: source.label }); }
@@ -473,7 +489,7 @@ export default function LeadPipeline() {
     <dialog ref={dialog} className="pipeline-dialog" onCancel={() => setSelection(null)} onClose={() => setSelection(null)}>
       {selection && <><header><div><p className="pipeline-eyebrow">PIPELINE DETAILS</p><h2>{selection.owner ? `${selection.owner.toUpperCase()} · ` : ''}{selection.sourceLabel ? `Traffic Source · ${selection.sourceLabel}` : selection.kind ? `${selection.kind === 'hot' ? 'Hot' : 'Cold'} Leads` : 'All Leads'}{selection.state ? ` · ${selection.state === 'open' ? 'Open' : 'Closed'}` : ''}</h2><p>{selection.owner ? `Lead Owner: ${selection.owner.toUpperCase()} · ` : ''}{listed.length} clients · {revenueMoney(total(listed))} estimated revenue{selection.kind === 'hot' && selection.state === 'open' ? ` · ${revenueMoney(quotationTotal(listed))} latest quotation value` : ''}{selection.kind === 'hot' && selection.state === 'closed' ? ` · ${revenueMoney(poTotal(listed))} PO value` : ''}</p></div><div className="pipeline-toolbar"><button type="button" onClick={() => exportRows(listed, 'pipeline-details')} disabled={!listed.length}><Download size={16}/>Excel</button><button type="button" onClick={() => setSelection(null)} aria-label="Close lead list"><X/></button></div></header>
       <div className="pipeline-dialog-search"><label><Search size={15}/><input aria-label="Search leads in this dialog" value={dialogSearch} onChange={e => setDialogSearch(e.target.value)} placeholder="Search company, lead ID, owner or source…"/></label></div>
-      <div className="pipeline-dialog-body"><div className="pipeline-table-wrap"><table><thead><tr>{['Lead / Company', 'Status', 'Actual Lead Owner', 'Latest quotation', 'PO amount', 'Estimated revenue', 'Actions'].map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{dialogVisible.map(r => <tr key={`${r.kind}-${r.id}`}><td><button type="button" className="pipeline-company-button" onClick={() => showServices(r)}><b>{r.company}</b><ArrowUpRight size={14}/></button><small>{r.code}</small>{isUnassignedOwner(r.owner) && r.inactiveDays != null && <small className="pipeline-inactive">No activity for {r.inactiveDays} day{r.inactiveDays === 1 ? '' : 's'}</small>}</td><td><span className={`pipeline-badge ${r.state}`}>{r.state}</span>{r.converted && <small>Converted to Hot Lead</small>}</td><td><span className="pipeline-owner"><Users size={14}/>{r.owner.toUpperCase()}</span></td><td className="font-black">{r.kind === 'hot' && r.state === 'open' ? revenueMoney(r.quotationAmountPaise || 0) : '—'}</td><td className="font-bold">{r.kind === 'hot' ? revenueMoney(r.poAmountPaise) : '—'}</td><td className="font-black">{revenueMoney(r.revenuePaise)}</td><td><button type="button" onClick={() => { setRevenueRow(r); setCloseRow(null); }}>Revenue history</button>{r.kind === 'cold' && r.state === 'open' && <button type="button" onClick={() => { setCloseRow(r); setRevenueRow(null); setRemarks(''); setModalError(''); }}>Close cold lead</button>}</td></tr>)}</tbody></table>{!dialogListed.length && <p className="pipeline-empty">No leads match this search.</p>}</div>
+      <div className="pipeline-dialog-body"><div className="pipeline-table-wrap"><table><thead><tr>{['Lead / Company', 'Status', 'Actual Lead Owner', 'Latest quotation', 'PO amount', 'Estimated revenue', 'Actions'].map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{dialogVisible.map(r => { const rowKey = `${r.kind}-${r.id}`; const expanded = expandedQuotations[rowKey]; return (<React.Fragment key={rowKey}><tr><td><button type="button" className="pipeline-company-button" onClick={() => showServices(r)}><b>{r.company}</b><ArrowUpRight size={14}/></button><small>{r.code}</small>{isUnassignedOwner(r.owner) && r.inactiveDays != null && <small className="pipeline-inactive">No activity for {r.inactiveDays} day{r.inactiveDays === 1 ? '' : 's'}</small>}</td><td><span className={`pipeline-badge ${r.state}`}>{r.state}</span>{r.converted && <small>Converted to Hot Lead</small>}</td><td><span className="pipeline-owner"><Users size={14}/>{r.owner.toUpperCase()}</span></td><td className="font-black">{r.kind === 'hot' && r.state === 'open' ? revenueMoney(r.quotationAmountPaise || 0) : '—'}</td><td className="font-bold">{r.kind === 'hot' ? revenueMoney(r.poAmountPaise) : '—'}</td><td className="font-black">{revenueMoney(r.revenuePaise)}</td><td><button type="button" className="pipeline-view-q-btn" onClick={() => toggleQuotations(r)}><FileText size={14}/>{expanded ? 'Hide Quotations' : 'View Quotation'}</button><button type="button" onClick={() => { setRevenueRow(r); setCloseRow(null); }}>Revenue history</button>{r.kind === 'cold' && r.state === 'open' && <button type="button" onClick={() => { setCloseRow(r); setRevenueRow(null); setRemarks(''); setModalError(''); }}>Close cold lead</button>}</td></tr>{expanded && <tr className="pipeline-expanded-row"><td colSpan={7}><div className="pipeline-quotation-expand">{expanded.loading ? <p className="pipeline-empty-small">Loading quotations…</p> : !expanded.list.length ? <p className="pipeline-empty-small">No quotations recorded for this lead.</p> : <table className="pipeline-quotation-table"><thead><tr>{['Quotation No.', 'Date', 'Status', 'Amount'].map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>{expanded.list.map((q, qi) => <tr key={q._id || qi}><td><b>{q.quotationNumber || 'Not numbered'}</b></td><td>{q.quotationDate ? new Date(q.quotationDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td><td><span className={`pipeline-badge ${q.status || ''}`}>{q.status || 'draft'}</span>{q.serviceState ? <small> · {q.serviceState}</small> : null}</td><td className="font-bold">{revenueMoney(Math.round(Number(q.grandTotal || 0) * 100))}</td></tr>)}</tbody></table>}</div></td></tr>})}</React.Fragment>); })}</tbody></table>{!dialogListed.length && <p className="pipeline-empty">No leads match this search.</p>}</div>
         {!!dialogListed.length && <footer className="pipeline-dialog-pagination"><span>Showing <b>{dialogFirst + 1}</b>–<b>{Math.min(dialogFirst + dialogPageSize, dialogListed.length)}</b> of <b>{dialogListed.length}</b> leads</span><label>Rows per page<select value={dialogPageSize} onChange={(event) => setDialogPageSize(Number(event.target.value))}><option value="10">10</option><option value="25">25</option><option value="50">50</option></select></label><div><button type="button" onClick={() => setDialogPage(value => Math.max(1, value - 1))} disabled={dialogSafePage === 1}>Previous</button><span>Page {dialogSafePage} of {dialogPageCount}</span><button type="button" onClick={() => setDialogPage(value => Math.min(dialogPageCount, value + 1))} disabled={dialogSafePage === dialogPageCount}>Next</button></div></footer>}
 
         {revenueRow && <section className="mt-4"><h3 className="font-black">{revenueRow.company} · Revenue</h3><LeadRevenuePanel key={`${revenueRow.kind}-${revenueRow.id}`} kind={revenueRow.kind} leadId={revenueRow.id} onSaved={load}/></section>}
