@@ -58,6 +58,7 @@ export default function OverallDashboard() {
   const [exportProgress, setExportProgress] = useState('')
   const [portfolioCanExport, setPortfolioCanExport] = useState(false)
   const portfolioRef = useRef(null)
+  const lastChildRefreshAt = useRef(0)
   const hasData = useRef(Boolean(readPageSnapshot('overall-dashboard')))
   const pendingRequest = useRef(null)
   const requestSequence = useRef(0)
@@ -77,7 +78,12 @@ export default function OverallDashboard() {
     }
   }, [])
   useEffect(() => { if (!matrixView) { setLoading(false); return } const controller = new AbortController(); load(controller.signal); return () => { controller.abort() } }, [load, matrixView])
-  useCrmRefresh(() => { if (matrixView) return load(); if (!portfolioRef.current?.isLoading?.()) setRefreshToken(value => value + 1) }, true, loading)
+  useCrmRefresh(() => {
+    if (matrixView) return load()
+    const now = Date.now()
+    if (selectedView === 'upload' && now - lastChildRefreshAt.current < 60000) return
+    if (!portfolioRef.current?.isLoading?.()) { lastChildRefreshAt.current = now; setRefreshToken(value => value + 1) }
+  }, true, loading)
   async function exportPdf(exportView) {
     if (!data || exporting || (exportView === 'users' && !canViewUsers)) return
     setShowPdfChoice(false)

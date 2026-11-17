@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ArrowUpRight, RefreshCw, Search, X, FileSpreadsheet, FileDown, LoaderCircle } from 'lucide-react'
 import api from '../../services/api'
+import { readPageSnapshot, savePageSnapshot } from '../../services/pageReadSnapshot'
 import './clientUploadTracker.css'
 import { selectTrackerClients } from '../../utils/uploadTrackerSelection.mjs'
 import { UPLOAD_TRACKER_STAGES, downloadUploadTrackerExcel, downloadUploadTrackerPdf } from '../../utils/uploadTrackerExports.mjs'
@@ -46,18 +47,44 @@ export default function ClientUploadTracker({ financialYear, refreshToken = 0 })
   const selectedYear = financialYear
   const [serviceType, setServiceType] = useState('annual')
   const serviceLabel = serviceType === 'annual' ? 'AR Return' : 'Registration'
-  const [data, setData] = useState(null), [error, setError] = useState(''), [loading, setLoading] = useState(true), [refresh, setRefresh] = useState(0), [query, setQuery] = useState(''), [selectedUser, setSelectedUser] = useState(null), [selection, setSelection] = useState(null)
+  const snapshotKey = `upload-tracker:${selectedYear}:${serviceType}`
+  const [data, setData] = useState(() => readPageSnapshot(snapshotKey)), [error, setError] = useState(''), [loading, setLoading] = useState(() => !readPageSnapshot(snapshotKey)), [refresh, setRefresh] = useState(0), [query, setQuery] = useState(''), [selectedUser, setSelectedUser] = useState(null), [selection, setSelection] = useState(null)
+  const requestSequence = useRef(0), fetching = useRef(false), requestStartedAt = useRef(0), queuedRefresh = useRef(false), seenRefreshToken = useRef(refreshToken)
   useEffect(() => {
     const controller = new AbortController()
+    const sequence = ++requestSequence.current
     async function load() {
-      setLoading(true); setError(''); setData(previous => previous?.serviceType === serviceType ? previous : null)
-      try { const response = await api.get('/dashboard-insights/upload-tracker', { params: { financialYear: selectedYear, serviceType }, signal: controller.signal }); if (!controller.signal.aborted) setData(response.data) }
-      catch (err) { if (!controller.signal.aborted) { setData(null); setError(err.response?.data?.error || 'Could not load upload progress. Please retry.') } }
-      finally { if (!controller.signal.aborted) setLoading(false) }
+      const snapshot = readPageSnapshot(snapshotKey)
+      fetching.current = true; requestStartedAt.current = Date.now(); setLoading(!snapshot); setError('')
+      if (snapshot) setData(snapshot)
+      else setData(previous => previous?.serviceType === serviceType && previous?.financialYear === selectedYear ? previous : null)
+      try {
+        const response = await api.get('/dashboard-insights/upload-tracker', { params: { financialYear: selectedYear, serviceType }, signal: controller.signal, timeout: 45000 })
+        if (sequence === requestSequence.current && !controller.signal.aborted) { savePageSnapshot(snapshotKey, response.data, response); setData(response.data) }
+      } catch (err) {
+        if (sequence === requestSequence.current && !controller.signal.aborted) { if (!snapshot) setData(null); setError(err.response?.data?.error || 'Could not load upload progress. Please retry.') }
+      } finally {
+        if (sequence === requestSequence.current) {
+          fetching.current = false
+          if (!controller.signal.aborted) setLoading(false)
+          if (queuedRefresh.current && !controller.signal.aborted) { queuedRefresh.current = false; setRefresh(value => value + 1) }
+        }
+      }
     }
     load()
     return () => { controller.abort() }
-  }, [selectedYear, refresh, refreshToken, serviceType])
+  }, [selectedYear, refresh, serviceType, snapshotKey])
+  useEffect(() => {
+    if (seenRefreshToken.current === refreshToken) return
+    seenRefreshToken.current = refreshToken
+    if (fetching.current) {
+      // Do not cancel a slow authoritative read because the lightweight CRM
+      // revision poll fired. Queue only when the request itself is unusually old.
+      if (Date.now() - requestStartedAt.current >= 30000) queuedRefresh.current = true
+      return
+    }
+    setRefresh(value => value + 1)
+  }, [refreshToken])
   const users = (data?.users || []).filter(row => `${row.userName} ${row.clients.map(client => client.clientName).join(' ')}`.toLowerCase().includes(query.toLowerCase()))
   const total = users.reduce((sum, row) => sum + row.clients.length, 0)
   const totals = users.reduce((sum, row) => {

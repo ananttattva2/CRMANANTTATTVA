@@ -352,13 +352,17 @@ exports.uploadTracker = async (req, res) => {
     const trackerClients = visibleClients;
     const filter = { clientId: { $in: trackerClients.filter(client => !client.assignmentOnly).map(client => client._id) }, financialYear };
     const projection = 'clientId financialYear checklist baseUpload.importStatus portalUpload.importStatus managerVerificationStatus complianceVerificationStatus createdAt updatedAt';
+    const workflowAt = Date.now();
     const [purchases, sales, annualReviews] = await Promise.all([
       PurchaseData.find(filter).select(projection).maxTimeMS(15000).lean(),
       SalesData.find(filter).select(projection).maxTimeMS(15000).lean(),
       ArComplianceReview.find({ client: filter.clientId, financialYear }).select('client financialYear managerStatus status managerDecidedAt decidedAt').maxTimeMS(15000).lean()
     ]);
+    const buildAt = Date.now();
+    const trackerUsers = buildUploadTracker(trackerClients, users, purchases, sales, { groupBy: serviceType ? 'application' : 'company', serviceType, financialYear, annualReviews });
     res.set('Cache-Control', 'private, no-store');
-    res.json({ ok: true, financialYear, serviceType, scope: scope === null ? 'all' : 'role-scoped', stages: STAGES, users: buildUploadTracker(trackerClients, users, purchases, sales, { groupBy: serviceType ? 'application' : 'company', serviceType, financialYear, annualReviews }) });
+    res.set('Server-Timing', `references;dur=${referencesAt - startedAt}, snapshot;dur=${snapshotAt - referencesAt}, workflow;dur=${buildAt - workflowAt}, build;dur=${Date.now() - buildAt}, total;dur=${Date.now() - startedAt}`);
+    res.json({ ok: true, financialYear, serviceType, scope: scope === null ? 'all' : 'role-scoped', stages: STAGES, users: trackerUsers });
   } catch (error) {
     console.error('Upload tracker failed', { message: error.message });
     res.status(500).json({ error: 'Unable to load client upload tracker.' });
