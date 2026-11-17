@@ -1,23 +1,24 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const helpers = import('../../frontend/src/utils/uploadTrackerExports.mjs');
-const client = (id, name, complete = false) => ({ clientId: id, clientName: name, slaReceived: complete,
-  purchase: Array(9).fill(complete ? 'complete' : 'pending'), sales: Array(9).fill('pending') });
+const client = (id, name, complete = false) => ({ clientId: id, clientName: name,
+  purchase: Array(9).fill(complete ? 'complete' : 'pending'), sales: Array(9).fill(complete ? 'complete' : 'pending') });
 const users = [{ userName: 'Saurabh', clients: [client('a', '=Company', true), client('b', 'Second company')] },
   { userName: 'Sonal', clients: [client('c', 'Second company')] }];
 
 test('export summary and detail columns include separate reviews, all user-company allocations and grand totals', async () => {
   const { buildUploadTrackerExport } = await helpers;
   const data = buildUploadTrackerExport(users);
-  assert.equal(data.summaryHeaders.length, 22);
+  assert.equal(data.summaryHeaders.length, 21);
   assert.equal(data.clientHeaders.length, 21);
   assert.equal(data.summary.length, 3);
   assert.equal(data.clients.length, 3);
-  assert.deepEqual(data.summary.at(-1).slice(0, 4), ['Grand Total', 3, 1, 2]);
-  assert.equal(data.summary[0][11], '1\n1 pending');
+  assert.deepEqual(data.summary.at(-1).slice(0, 3), ['Grand Total', 3, '1 / 3']);
+  assert.equal(data.summary[0][10], '1\n1 pending');
   assert.equal(data.clients[0][1], "'=Company");
+  assert.equal(data.clients[0][2], 'Completed');
   assert.equal(data.clients[0][10], 'Approved');
-  assert.equal(data.clients[0][19], 'Pending');
+  assert.equal(data.clients[0][19], 'Approved');
   assert.equal(buildUploadTrackerExport([{ ...users[0], clients: [users[0].clients[0]] }]).summary[0][1], 1);
 });
 
@@ -31,8 +32,8 @@ test('Excel export creates a readable workbook with freeze panes, grouped headin
   const details = restored.getWorksheet('Client Details');
   assert.equal(summary.getCell('A8').value, 'Grand Total');
   assert.equal(summary.getCell('B8').value, 3);
-  assert.equal(summary.getCell('E4').value, 'Purchase');
-  assert.equal(summary.getCell('N4').value, 'Sales');
+  assert.equal(summary.getCell('D4').value, 'Purchase');
+  assert.equal(summary.getCell('M4').value, 'Sales');
   assert.equal(details.getCell('B6').value, "'=Company");
   assert.equal(details.rowCount, 8);
   assert.equal(details.views[0].ySplit, 5);
@@ -52,5 +53,15 @@ test('PDF exports paginate full user lists and retain the last client and both r
   assert.equal(bytes.subarray(0, 5).toString(), '%PDF-');
   const summary = await createUploadTrackerPdf(users, '2025-26');
   assert.equal(summary.lastAutoTable.body.at(-1).cells[0].text[0], 'Grand Total');
-  assert.equal(summary.lastAutoTable.columns.length, 13);
+  assert.equal(summary.lastAutoTable.columns.length, 12);
+});
+
+test('a client counts once only after every Purchase and Sales stage is complete', async () => {
+  const { countCompletedUploadTrackerClients, isUploadTrackerClientComplete } = await import('../../frontend/src/utils/uploadTrackerCompletion.mjs');
+  const done = client('done', 'Atul Ltd', true);
+  const incomplete = client('open', 'Open Ltd', true);
+  incomplete.sales[4] = 'progress';
+  assert.equal(isUploadTrackerClientComplete(done), true);
+  assert.equal(isUploadTrackerClientComplete(incomplete), false);
+  assert.equal(countCompletedUploadTrackerClients([done, incomplete]), 1);
 });
