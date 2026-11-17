@@ -41,6 +41,17 @@ test('pipeline owner falls back to the saved on-behalf allocation before the ori
  assert.equal(pipelineOwner({createdOnBehalfOfUser:{name:'Current Assignee'},createdBy:{name:'Original Creator'}},'hot'),'Current Assignee');
 });
 
+test('open Hot Leads become unassigned after 30 inactive days and retain the inactivity age', () => {
+ const {pipelineInactiveDays,pipelineDisplayOwner}=require('../src/controllers/leadRevenueController').__test;
+ const now=Date.parse('2026-11-17T00:00:00Z');
+ const stale={updatedAt:new Date(now-55*86400000),createdBy:{_id:'owner',name:'Gaurav Chandra'}};
+ assert.equal(pipelineInactiveDays(stale,now),55);
+ assert.equal(pipelineDisplayOwner(stale,'hot',false,55).name,'Unassigned');
+ assert.equal(pipelineDisplayOwner(stale,'hot',true,55).name,'Gaurav Chandra');
+ const released={noOwner:{active:true,movedAt:new Date(now-25*86400000)}};
+ assert.equal(pipelineInactiveDays(released,now),55);
+});
+
 function harness({ lead = {}, entries = [], eligibleOwner = 'u', denied = false, duplicate = false, admin = false, conflict = false } = {}) {
   const inserted = [];
   const updates = [];

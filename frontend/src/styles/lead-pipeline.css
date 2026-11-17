@@ -540,6 +540,20 @@
 .pipeline-dialog-pagination button { padding:6px 12px; border:1px solid #dce7e9; border-radius:8px; background:#fff; font-size:12px; font-weight:700; color:#19716c; }
 .pipeline-dialog-pagination button:disabled { opacity:.45; cursor:not-allowed; }
 .pipeline-inactive { display:inline-block; color:#b45309 !important; font-weight:800; margin-top:4px; padding:2px 8px; background:#fff7ed; border:1px solid #fed7aa; border-radius:6px; font-size:10px; }
+.pipeline-dialog:not(.pipeline-services-dialog) { width:calc(100vw - 12px); max-width:none; max-height:none; overflow:hidden; border-radius:18px; }
+.pipeline-dialog:not(.pipeline-services-dialog) .pipeline-dialog-body { max-height:none; overflow:visible; padding-top:12px; }
+.pipeline-dialog:not(.pipeline-services-dialog) .pipeline-table-wrap { overflow:visible; }
+.pipeline-dialog:not(.pipeline-services-dialog) .pipeline-table-wrap>table { min-width:0; table-layout:fixed; }
+.pipeline-dialog:not(.pipeline-services-dialog) .pipeline-table-wrap>table th:nth-child(1) { width:23%; }
+.pipeline-dialog:not(.pipeline-services-dialog) .pipeline-table-wrap>table th:nth-child(2) { width:7%; }
+.pipeline-dialog:not(.pipeline-services-dialog) .pipeline-table-wrap>table th:nth-child(3) { width:14%; }
+.pipeline-dialog:not(.pipeline-services-dialog) .pipeline-table-wrap>table th:nth-child(4) { width:12%; }
+.pipeline-dialog:not(.pipeline-services-dialog) .pipeline-table-wrap>table th:nth-child(5),
+.pipeline-dialog:not(.pipeline-services-dialog) .pipeline-table-wrap>table th:nth-child(6),
+.pipeline-dialog:not(.pipeline-services-dialog) .pipeline-table-wrap>table th:nth-child(7) { width:10%; }
+.pipeline-dialog:not(.pipeline-services-dialog) .pipeline-table-wrap>table th:nth-child(8) { width:14%; }
+.pipeline-dialog:not(.pipeline-services-dialog) .pipeline-actions-cell { white-space:normal; }
+.pipeline-dialog:not(.pipeline-services-dialog) .pipeline-owner { white-space:normal; }
 .pipeline-service-quotations { margin-top:14px; padding-top:12px; border-top:1px solid #e0ebe6; }
 .pipeline-service-quotations h4, .pipeline-service-history h4 { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#0f6b5c; margin-bottom:8px; }
 .pipeline-service-quotations ul, .pipeline-service-history ol { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
