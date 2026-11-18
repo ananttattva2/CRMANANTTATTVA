@@ -67,7 +67,9 @@ function quotationServiceDateRange(item = {}) {
   const startDate = normalizeDateInputValue(item.serviceStartDate);
   if (!startDate) return '-';
   const savedEndDate = normalizeDateInputValue(item.serviceEndDate);
-  const endDate = savedEndDate || serviceEndDateFrom(startDate, item.servicePeriod || 1, item.periodUnit || 'annual');
+  const endDate = isEprCreditItem(item)
+    ? serviceEndDateFrom(startDate, 1, 'days')
+    : savedEndDate || serviceEndDateFrom(startDate, item.servicePeriod || 1, item.periodUnit || 'annual');
   return `${formatServiceDate(startDate)} - ${formatServiceDate(endDate)}`;
 }
 
