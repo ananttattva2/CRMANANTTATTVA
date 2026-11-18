@@ -34,14 +34,24 @@ test('directory eye action always confirms applicant and sub-applicant type befo
 
   assert.match(handler, /API_ENDPOINTS\.clients\.discoveryServices/);
   assert.match(handler, /identity = clientMasterId \? `client:\$\{clientMasterId\}` : selectedLeadId/);
-  assert.match(handler, /clientMasterEligibleServiceIds/);
-  assert.match(handler, /hydratedDiscoveredServices = discoveredServices\.map/);
-  assert.match(handler, /selectedLead: chooserLead/);
-  assert.match(handler, /hydratedDiscoveredServices\.length \? hydratedDiscoveredServices : clients/);
+  assert.match(handler, /buildAssignedServiceChooserOptions\(discoveredServices, discoveredLead\)/);
+  assert.match(handler, /authoritativeOptions\.length \? authoritativeOptions : clients/);
   assert.equal((handler.match(/const servicesToView = relatedServices\.length \? relatedServices : \[selectedClient\]/g) || []).length, 2);
   assert.equal((handler.match(/setPendingServiceView\(\{ client: selectedClient, services: servicesToView \}\)/g) || []).length, 2);
   assert.doesNotMatch(handler, /relatedServices\.length > 1/);
   assert.doesNotMatch(handler, /await openClientView/);
+});
+
+test('directory chooser maps every closed assigned Lead service to its own card', () => {
+  const chooserBuilder = page.slice(page.indexOf('function buildAssignedServiceChooserOptions'), page.indexOf('function getRelatedClientServices'));
+
+  assert.match(chooserBuilder, /closedServices\.map/);
+  assert.match(chooserBuilder, /clientMasterEligibleServiceIds/);
+  assert.match(chooserBuilder, /assignedServiceId = readAssignedServiceId\(service\)/);
+  assert.match(chooserBuilder, /unusedRecordIndexes/);
+  assert.match(chooserBuilder, /plantUnit: service\.plantUnit/);
+  assert.match(chooserBuilder, /_clientMasterAvailable: Boolean\(matched\)/);
+  assert.match(chooserBuilder, /return dedupeClientServiceChooserOptions\(options\)/);
 });
 
 test('applicant chooser uses responsive applicant-specific premium cards', () => {

@@ -678,6 +678,71 @@ function dedupeClientServiceChooserOptions(services = []) {
   return [...optionsByApplicantAndCategory.values()].map(({ service }) => service);
 }
 
+function buildAssignedServiceChooserOptions(records = [], lead = null) {
+  const leadServices = Array.isArray(lead?.serviceSelections) ? lead.serviceSelections : [];
+  if (!leadServices.length) return records;
+  const eligibleIds = new Set((Array.isArray(lead?.clientMasterEligibleServiceIds) ? lead.clientMasterEligibleServiceIds : [])
+    .map((value) => String(value || '').trim()).filter(Boolean));
+  const closedServices = eligibleIds.size
+    ? leadServices.filter((service) => eligibleIds.has(readAssignedServiceId(service)))
+    : leadServices;
+  if (!closedServices.length) return records;
+
+  const unusedRecordIndexes = new Set(records.map((_, index) => index));
+  const options = closedServices.map((service, serviceIndex) => {
+    const assignedServiceId = readAssignedServiceId(service);
+    let recordIndex = records.findIndex((record, index) => (
+      unusedRecordIndexes.has(index)
+      && assignedServiceId
+      && String(record.assignedServiceId || readClientData(record).assignedServiceId || '').trim() === assignedServiceId
+    ));
+    if (recordIndex < 0) {
+      const groupingIdentity = clientMasterGroupingIdentity(service);
+      recordIndex = records.findIndex((record, index) => unusedRecordIndexes.has(index) && groupingIdentity
+        && clientMasterGroupingIdentity({
+          applicantType: record.applicantType || readClientData(record).selectedLeadSnapshot?.applicantType,
+          subApplicantType: record.piboCategory || readClientData(record).basic?.piboCategory,
+          plantUnit: record.plantUnit || readClientData(record).selectedLeadSnapshot?.plantUnit
+        }) === groupingIdentity);
+    }
+    const matched = recordIndex >= 0 ? records[recordIndex] : null;
+    if (recordIndex >= 0) unusedRecordIndexes.delete(recordIndex);
+    const matchedData = readClientData(matched || {});
+    return {
+      ...(matched || {}),
+      _clientMasterAvailable: Boolean(matched),
+      _serviceViewKey: assignedServiceId || `assigned-service-${serviceIndex}`,
+      assignedServiceId,
+      selectedLead: lead,
+      applicantType: service.applicantType || service.piboParent || service.piboCategoryParent || matched?.applicantType || '',
+      piboCategory: service.subApplicantType || service.piboCategory || matched?.piboCategory || '',
+      eprCategory: service.eprCategory || service.serviceCategory || matched?.eprCategory || '',
+      plantUnit: service.plantUnit || matched?.plantUnit || '',
+      servicesOffered: service.servicesOffered || service.applicableService || matched?.servicesOffered || '',
+      data: {
+        ...matchedData,
+        selectedLeadSnapshot: {
+          ...(matchedData.selectedLeadSnapshot || {}),
+          ...service,
+          assignedServiceId
+        },
+        basic: {
+          ...(matchedData.basic || {}),
+          piboCategory: service.subApplicantType || service.piboCategory || matchedData.basic?.piboCategory || '',
+          eprCategory: service.eprCategory || service.serviceCategory || matchedData.basic?.eprCategory || '',
+          plantUnit: service.plantUnit || matchedData.basic?.plantUnit || '',
+          servicesOffered: service.servicesOffered || service.applicableService || matchedData.basic?.servicesOffered || ''
+        }
+      }
+    };
+  });
+
+  // Preserve an existing legacy record that cannot be matched to a current
+  // assigned service, but never let it replace either Unit 1 or Unit 2.
+  unusedRecordIndexes.forEach((index) => options.push({ ...records[index], _clientMasterAvailable: true }));
+  return dedupeClientServiceChooserOptions(options);
+}
+
 function getRelatedClientServices(clients = [], selectedClient = null) {
   if (!selectedClient) return [];
   const selectedTokens = new Set(getClientServiceIdentityTokens(selectedClient));
@@ -2958,28 +3023,13 @@ export default function ClientMaster() {
 
       const discoveredServices = Array.isArray(response?.data?.services) ? response.data.services : [];
       const discoveredLead = response?.data?.lead && typeof response.data.lead === 'object' ? response.data.lead : null;
-      const eligibleServiceIds = new Set((Array.isArray(discoveredLead?.clientMasterEligibleServiceIds) ? discoveredLead.clientMasterEligibleServiceIds : [])
-        .map((value) => String(value || '').trim()).filter(Boolean));
-      const chooserLead = discoveredLead
-        ? {
-            ...discoveredLead,
-            serviceSelections: eligibleServiceIds.size
-              ? (Array.isArray(discoveredLead.serviceSelections) ? discoveredLead.serviceSelections : []).filter((service) => eligibleServiceIds.has(readAssignedServiceId(service)))
-              : discoveredLead.serviceSelections
-          }
-        : null;
-      // Discovery records are intentionally compact. Reattach the authoritative
-      // Lead so getRelatedClientServices can expand a single persisted record
-      // into every distinct closed assigned service (for example Unit 1 and
-      // Unit 2) instead of showing only the record saved most recently.
-      const hydratedDiscoveredServices = discoveredServices.map((service) => ({
-        ...service,
-        ...(chooserLead ? { selectedLead: chooserLead } : {})
-      }));
-      const serviceSource = hydratedDiscoveredServices.length ? hydratedDiscoveredServices : clients;
-      const selectedService = hydratedDiscoveredServices.find((service) => String(service.clientMasterId || service._id || service.id || '') === clientMasterId)
-        || (chooserLead ? { ...selectedClient, selectedLead: chooserLead } : selectedClient);
-      const relatedServices = getRelatedClientServices(serviceSource, selectedService);
+      const authoritativeOptions = buildAssignedServiceChooserOptions(discoveredServices, discoveredLead);
+      const serviceSource = authoritativeOptions.length ? authoritativeOptions : clients;
+      const selectedService = authoritativeOptions.find((service) => String(service.clientMasterId || service._id || service.id || '') === clientMasterId)
+        || selectedClient;
+      const relatedServices = authoritativeOptions.length
+        ? authoritativeOptions
+        : getRelatedClientServices(serviceSource, selectedService);
       const servicesToView = relatedServices.length ? relatedServices : [selectedClient];
       setViewServiceClients(servicesToView);
       setViewLoading(false);
