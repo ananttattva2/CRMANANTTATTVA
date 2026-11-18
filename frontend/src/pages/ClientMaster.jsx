@@ -829,6 +829,7 @@ function ClientServiceChooserModal({ selection, onClose, onSelect }) {
             const applicantType = serviceData.selectedLeadSnapshot?.applicantType || serviceData.selectedLeadSnapshot?.piboParent || serviceData.selectedLeadSnapshot?.piboCategoryParent || service.applicantType || service.piboParent || service.piboCategoryParent || 'Not provided';
             const subApplicantType = serviceData.basic?.piboCategory || serviceData.selectedLeadSnapshot?.subApplicantType || serviceData.selectedLeadSnapshot?.piboCategory || service.subApplicantType || service.piboCategory || 'Not applicable';
             const category = serviceData.basic?.eprCategory || serviceData.selectedLeadSnapshot?.eprCategory || 'Service category not provided';
+            const plantUnit = serviceData.basic?.plantUnit || serviceData.selectedLeadSnapshot?.plantUnit || service.plantUnit || 'Not provided';
             const theme = getApplicantCardTheme(applicantType);
             const ApplicantIcon = theme.icon;
             const ceprUserId = service.ceprUserId || serviceData.cpcb?.ceprUserId || '';
@@ -845,6 +846,7 @@ function ClientServiceChooserModal({ selection, onClose, onSelect }) {
                 <div className="mt-5 space-y-3">
                   <div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Applicant Type</p><h3 className="mt-1 text-2xl font-black tracking-tight text-slate-950">{applicantType}</h3></div>
                   <div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Sub Applicant Type</p><p className="mt-1 text-base font-black text-slate-700">{subApplicantType}</p></div>
+                  <div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Plant Unit</p><p className="mt-1 flex items-center gap-1.5 text-base font-black text-slate-700"><MapPin className="h-4 w-4 text-teal-600" />{plantUnit}</p></div>
                 </div>
                 <span className={`mt-3 w-fit rounded-xl px-3 py-2 text-sm font-black ring-1 ${theme.badgeClass}`}>{category}</span>
                 <div className="my-4 h-px bg-slate-100" />

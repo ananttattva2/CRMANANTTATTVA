@@ -51,6 +51,8 @@ test('applicant chooser uses responsive applicant-specific premium cards', () =>
   assert.doesNotMatch(chooser, /max-h-\[62vh\]/);
   assert.match(chooser, />Applicant Type</);
   assert.match(chooser, />Sub Applicant Type</);
+  assert.match(chooser, />Plant Unit</);
+  assert.match(chooser, /serviceData\.basic\?\.plantUnit \|\| serviceData\.selectedLeadSnapshot\?\.plantUnit \|\| service\.plantUnit/);
   assert.match(chooser, /service\.applicantType \|\| service\.piboParent/);
   assert.match(chooser, /service\.subApplicantType \|\| service\.piboCategory/);
   assert.match(chooser, /Confirm the applicant and sub-applicant type before opening this Client Master/);

@@ -227,3 +227,23 @@ test('review applicant chooser keeps assigned Brand Owner and Importer records s
   assert.equal(services.length, 2);
   assert.deepEqual(services.map((service) => service.piboCategory).sort(), ['Brand Owner', 'Importer']);
 });
+
+test('review applicant chooser keeps Unit 1 and Unit 2 records separate when saved plant labels are stale', () => {
+  const lead = {
+    serviceSelections: [
+      { assignedServiceId: 'producer-unit-1', applicantType: 'PIBO', subApplicantType: 'Producer', eprCategory: 'EPR - Plastic Waste', plantUnit: 'Unit 1' },
+      { assignedServiceId: 'producer-unit-2', applicantType: 'PIBO', subApplicantType: 'Producer', eprCategory: 'EPR - Plastic Waste', plantUnit: 'Unit 2' }
+    ]
+  };
+  const staleRecords = [
+    { clientMasterId: 'unit-1-master', assignedServiceId: 'producer-unit-1', applicantType: 'PIBO', piboCategory: 'Producer', eprCategory: 'EPR - Plastic Waste', plantUnit: 'Unit 1' },
+    { clientMasterId: 'unit-2-master', assignedServiceId: 'producer-unit-2', applicantType: 'PIBO', piboCategory: 'Producer', eprCategory: 'EPR - Plastic Waste', plantUnit: 'Unit 1' }
+  ];
+
+  const services = __test.uniqueClientMasterReviewServices(
+    staleRecords.map((record) => __test.enrichClientMasterReviewServiceFromLead(record, lead))
+  );
+
+  assert.equal(services.length, 2);
+  assert.deepEqual(services.map((service) => service.plantUnit).sort(), ['Unit 1', 'Unit 2']);
+});
