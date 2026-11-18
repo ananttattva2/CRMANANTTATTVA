@@ -29,6 +29,7 @@ import { formatDisplayDate } from '../utils/dateFormat';
 import { leadServiceExportRecords } from '../utils/leadServiceExport.mjs';
 import { COMMUNICATION_MODE_GROUPS, COMMUNICATION_MODE_PARENTS, communicationModeParent, hydrateCommunicationMode } from '../constants/communicationModes.mjs';
 import { expandEprCreditServiceRow, isEprCreditBusinessCategory } from '../utils/eprCreditServiceRows.mjs';
+import { groupEprCreditPoRowsByService, selectEprCreditPoService, updateEprCreditPoRows } from '../utils/eprCreditPoDetails.mjs';
 
 const emptyLead = {
   sourceLeadId: '',
@@ -1190,30 +1191,56 @@ export default function LeadGeneration() {
     });
     const latestQuotation = quotationSelection.quotation;
     const selectedQuotationItems = quotationSelection.items;
-    const defaultAmount = latestQuotation?.pricingMode === 'combined'
-      ? Number(latestQuotation.combinedBasicAmount || latestQuotation.grandTotal || 0)
-      : selectedQuotationItems.reduce((sum, item) => sum + ((Number(item.unit) || 1) * (Number(item.basicAmount) || 0)), 0);
-    const quoteRow = (item = matchingService, itemIndex = 0) => ({
-      fy: item.servicesForYear || item.financialYear || item.firstAnnualReturnYearApplicable || matchingService.firstAnnualReturnYearApplicable || '',
-      poNumber: '', poDate: '', poEndDate: '', poFinancialYear: '', annualReturnYear: '', registrationYear: '', paymentTerm: latestQuotation?.paymentTerm || '', poAmount: latestQuotation?.pricingMode === 'combined' ? defaultAmount : ((Number(item.unit) || 1) * (Number(item.basicAmount) || 0)), poFileUrl: '', poFileName: '', poFileMimeType: '', poFileSize: null, currency: 'INR', poReceivedDate: '',
-      services: [item.servicesOffered || item.applicableService || matchingService.servicesOffered].filter(Boolean),
+    const creditServiceOptions = normalizeLegacyServiceSelections(sourceLead)
+      .map((service, serviceIndex) => ({ service, serviceIndex }))
+      .filter(({ service }) => String(service.businessCategory || '').trim().toLowerCase() === 'epr credit');
+    const eprCreditMultiService = creditServiceOptions.length > 1
+      && creditServiceOptions.every(({ service }) => {
+        const assignment = sourceAssignments.find((row) => row?.assignedServiceId === service.assignedServiceId) || {};
+        const savedPoRows = Array.isArray(assignment.poYearRows) ? assignment.poYearRows : [];
+        const hasSavedPo = savedPoRows.some((row) => String(row?.poNumber || row?.poFileUrl || row?.poProofUrl || '').trim())
+          || Boolean(assignment.originalPoDetails?.poNumber || assignment.originalPoDetails?.poFileUrl || assignment.originalPoFileUrl);
+        return Boolean(String(service.assignedServiceId || '').trim()) && !hasSavedPo && assignment.poStatus !== 'provisional';
+      });
+    const quoteRow = (item = matchingService, itemIndex = 0, quotation = latestQuotation, quoteItems = selectedQuotationItems, service = matchingService) => ({
+      fy: service.servicesForYear || service.financialYear || service.firstAnnualReturnYearApplicable || item.servicesForYear || item.financialYear || '',
+      poNumber: '', poDate: '', poEndDate: '', poFinancialYear: '', annualReturnYear: '', registrationYear: '', paymentTerm: quotation?.paymentTerm || '', poAmount: quotation?.pricingMode === 'combined' ? Number(quotation.combinedBasicAmount || quotation.grandTotal || 0) : ((Number(item.unit) || 1) * (Number(item.basicAmount) || 0)), poFileUrl: '', poFileName: '', poFileMimeType: '', poFileSize: null, currency: 'INR', poReceivedDate: '',
+      services: [service.servicesOffered || service.applicableService || item.servicesOffered].filter(Boolean),
+      assignedServiceId: service.assignedServiceId || '',
       quotationItemIndex: itemIndex,
-      quotationId: latestQuotation?._id || latestQuotation?.id || '', quotationNumber: latestQuotation?.quotationNumber || '',
-      quotationBasicAmount: latestQuotation?.pricingMode === 'combined'
-        ? (itemIndex === 0 ? defaultAmount : 0)
+      quotationId: quotation?._id || quotation?.id || '', quotationNumber: quotation?.quotationNumber || '',
+      quotationBasicAmount: quotation?.pricingMode === 'combined'
+        ? (itemIndex === 0 ? Number(quotation.combinedBasicAmount || quotation.grandTotal || 0) : 0)
         : ((Number(item.unit) || 1) * (Number(item.basicAmount) || 0)),
-      quotationItems: selectedQuotationItems, quotationCreatedById: latestQuotation?.createdBy?._id || latestQuotation?.createdBy || '',
-      quotationCreatedByEmail: latestQuotation?.createdBy?.email || latestQuotation?.createdByEmail || ''
+      quotationItems: quoteItems, quotationCreatedById: quotation?.createdBy?._id || quotation?.createdBy || '',
+      quotationCreatedByEmail: quotation?.createdBy?.email || quotation?.createdByEmail || ''
     });
-    const fetchedPoRows = selectedQuotationItems.length ? selectedQuotationItems.map(quoteRow) : [quoteRow()];
+    const creditRows = eprCreditMultiService ? creditServiceOptions.map(({ service, serviceIndex }) => {
+      const assignment = sourceAssignments.find((row) => row?.assignedServiceId === service.assignedServiceId) || {};
+      const serviceQuotation = selectLeadClosureQuotation(relevantQuotations, { service, assignment, serviceIndex });
+      const quotation = serviceQuotation.quotation || latestQuotation;
+      const quoteItems = serviceQuotation.items;
+      const item = { ...service, ...(quoteItems[0] || {}) };
+      const fetchedRow = quoteRow(item, 0, quotation, quoteItems, service);
+      const savedRows = Array.isArray(assignment.poYearRows) ? assignment.poYearRows : [];
+      return hydrateClosurePoRows([fetchedRow], savedRows, service)[0];
+    }) : [];
+    const creditQuotationItems = eprCreditMultiService ? creditServiceOptions.map(({ service, serviceIndex }) => {
+      const assignment = sourceAssignments.find((row) => row?.assignedServiceId === service.assignedServiceId) || {};
+      const serviceQuotation = selectLeadClosureQuotation(relevantQuotations, { service, assignment, serviceIndex });
+      return { ...service, ...(serviceQuotation.items[0] || {}), assignedServiceId: service.assignedServiceId, servicesOffered: service.servicesOffered };
+    }) : selectedQuotationItems;
+    const fetchedPoRows = eprCreditMultiService
+      ? creditRows
+      : selectedQuotationItems.length ? selectedQuotationItems.map(quoteRow) : [quoteRow()];
     const savedPoRows = Array.isArray(matchingAssignment.poYearRows) ? matchingAssignment.poYearRows : [];
-    const poYearRows = hydrateClosurePoRows(fetchedPoRows, savedPoRows, matchingService);
+    const poYearRows = eprCreditMultiService ? fetchedPoRows : hydrateClosurePoRows(fetchedPoRows, savedPoRows, matchingService);
     const savedQuotationSent = matchingAssignment.quotationSent
       || savedPoRows.find((row) => ['yes', 'no'].includes(String(row?.quotationSent || '').toLowerCase()))?.quotationSent
       || (matchingAssignment.earlierQuotationProofUrl || savedPoRows.some((row) => row?.earlierQuotationProofUrl) ? 'no' : 'yes');
     const actorId = String(currentUser?._id || currentUser?.id || '');
     const leadOwner = primaryLeadOwner(sourceLead, staff, currentUser);
-    setClosureDialog({ index, value: actorId || value, behalfMode: 'lead-owner', behalfUserId: leadOwner.id, leadOwnerName: leadOwner.name, leadOwnerEmail: leadOwner.email, selectedService: matchingService, reviewMode, hasExistingPo, existingApprovedPo: hasExistingPo && String(matchingAssignment.poApprovalStatus || '').toUpperCase() === 'APPROVED', choice: reviewMode || hasExistingPo ? 'yes' : '', quotationSent: hasExistingPo ? String(savedQuotationSent).toLowerCase() : reviewMode ? 'yes' : '', quotation: latestQuotation, quotationItems: selectedQuotationItems, poModeConfirmed: true, poMode: 'quotation', poYearRows, crmPoYearRows: poYearRows, approvalProofUrl: '', approvalProofName: '', earlierQuotationProofUrl: matchingAssignment.earlierQuotationProofUrl || savedPoRows[0]?.earlierQuotationProofUrl || '', earlierQuotationProofName: matchingAssignment.earlierQuotationProofName || savedPoRows[0]?.earlierQuotationProofName || '' });
+    setClosureDialog({ index, value: actorId || value, behalfMode: 'lead-owner', behalfUserId: leadOwner.id, leadOwnerName: leadOwner.name, leadOwnerEmail: leadOwner.email, selectedService: matchingService, reviewMode, hasExistingPo, existingApprovedPo: hasExistingPo && String(matchingAssignment.poApprovalStatus || '').toUpperCase() === 'APPROVED', choice: reviewMode || hasExistingPo ? 'yes' : '', quotationSent: hasExistingPo ? String(savedQuotationSent).toLowerCase() : reviewMode ? 'yes' : '', quotation: latestQuotation, quotationItems: creditQuotationItems, eprCreditMultiService, eprCreditServiceOptions: eprCreditMultiService ? creditServiceOptions.map(({ service }) => service) : [], poModeConfirmed: true, poMode: 'quotation', poYearRows, crmPoYearRows: poYearRows, approvalProofUrl: '', approvalProofName: '', earlierQuotationProofUrl: matchingAssignment.earlierQuotationProofUrl || savedPoRows[0]?.earlierQuotationProofUrl || '', earlierQuotationProofName: matchingAssignment.earlierQuotationProofName || savedPoRows[0]?.earlierQuotationProofName || '' });
   }
 
   async function uploadClosureFile(event, type, rowIndex = 0) {
@@ -1226,7 +1253,9 @@ export default function LeadGeneration() {
       const uploaded = await uploadMedia(file, type === 'po' ? 'crm/leads/purchase-orders' : 'crm/leads/closure-approvals');
       console.info('[POProof:upload:complete]', { type, rowIndex, fileName: uploaded.name || file.name, hasSecureUrl: Boolean(uploaded.secureUrl), publicId: uploaded.publicId || '' });
       setClosureDialog((current) => type === 'po'
-        ? { ...current, poYearRows: current.poYearRows.map((row, index) => index === rowIndex ? { ...row, poFileUrl: uploaded.secureUrl, poFileName: uploaded.name || file.name, poFileMimeType: uploaded.type || file.type || '', poFileSize: Number.isFinite(uploaded.bytes) ? uploaded.bytes : (Number.isFinite(uploaded.size) ? uploaded.size : null), poReceivedDate: row.poReceivedDate || new Date().toISOString(), currency: row.currency || 'INR' } : row) }
+        ? { ...current, poYearRows: current.eprCreditMultiService
+          ? updateEprCreditPoRows(current.poYearRows, rowIndex, { poFileUrl: uploaded.secureUrl, poFileName: uploaded.name || file.name, poFileMimeType: uploaded.type || file.type || '', poFileSize: Number.isFinite(uploaded.bytes) ? uploaded.bytes : (Number.isFinite(uploaded.size) ? uploaded.size : null), poReceivedDate: current.poYearRows[rowIndex]?.poReceivedDate || new Date().toISOString(), currency: current.poYearRows[rowIndex]?.currency || 'INR' })
+          : current.poYearRows.map((row, index) => index === rowIndex ? { ...row, poFileUrl: uploaded.secureUrl, poFileName: uploaded.name || file.name, poFileMimeType: uploaded.type || file.type || '', poFileSize: Number.isFinite(uploaded.bytes) ? uploaded.bytes : (Number.isFinite(uploaded.size) ? uploaded.size : null), poReceivedDate: row.poReceivedDate || new Date().toISOString(), currency: row.currency || 'INR' } : row) }
         : type === 'quotation'
           ? { ...current, earlierQuotationProofUrl: uploaded.secureUrl, earlierQuotationProofName: uploaded.name || file.name }
           : { ...current, approvalProofUrl: uploaded.secureUrl, approvalProofName: file.name });
@@ -1241,6 +1270,19 @@ export default function LeadGeneration() {
       if (!current) return current;
       if (mode === 'no') {
         const switchingToEarlierProof = current.quotationSent !== 'no';
+        if (current.eprCreditMultiService) {
+          return {
+            ...current,
+            quotationSent: 'no',
+            poYearRows: current.poYearRows.map((row, index) => {
+              const service = current.eprCreditServiceOptions.find((item) => String(item.assignedServiceId || '') === String(row.assignedServiceId || ''))
+                || current.eprCreditServiceOptions[index]
+                || current.selectedService
+                || {};
+              return buildManualClosurePoRow(row, service, switchingToEarlierProof);
+            })
+          };
+        }
         const selectedRow = (current.poYearRows || []).find((row) => !current.selectedService?.assignedServiceId
           || String(row.assignedServiceId || '') === String(current.selectedService.assignedServiceId))
           || current.poYearRows?.[0]
@@ -1259,8 +1301,18 @@ export default function LeadGeneration() {
         earlierQuotationProofName: '',
         poYearRows: (current.crmPoYearRows || currentRows).map((quotationRow, index) => {
           const entered = currentRows[index] || {};
+          const service = current.eprCreditMultiService
+            ? current.eprCreditServiceOptions.find((item) => String(item.assignedServiceId || '') === String(entered.assignedServiceId || ''))
+              || current.eprCreditServiceOptions.find((item) => String(item.assignedServiceId || '') === String(quotationRow.assignedServiceId || ''))
+              || current.eprCreditServiceOptions[index]
+            : null;
           return {
             ...quotationRow,
+            ...(service ? {
+              assignedServiceId: service.assignedServiceId,
+              fy: service.firstAnnualReturnYearApplicable || service.servicesForYear || service.financialYear || quotationRow.fy,
+              services: [service.servicesOffered || service.applicableService].filter(Boolean)
+            } : {}),
             poNumber: entered.poNumber || '',
             poDate: entered.poDate || '',
             poEndDate: entered.poEndDate || '',
@@ -1300,11 +1352,35 @@ export default function LeadGeneration() {
       closurePatch = { poStatus: 'provisional', poYearRows: [], closureApprovalProofUrl: closureDialog.approvalProofUrl, closureApprovalProofName: closureDialog.approvalProofName, provisionalCloseExpiresAt: '', kickoffEmailConsent: '' };
     }
     closurePatch = { ...closurePatch, ...behalfFields };
-    const nextAssignments = buildUpdatedAssignmentRows(closureDialog.index, 'closedBy', closureDialog.value, closurePatch);
-    if (closureDialog.choice === 'yes') {
-      nextAssignments[closureDialog.index].closedBy = '';
-      nextAssignments[closureDialog.index].closedByText = '';
-      nextAssignments[closureDialog.index].closedByEmail = '';
+    let nextAssignments;
+    let targetAssignmentIndexes = [closureDialog.index];
+    if (closureDialog.choice === 'yes' && closureDialog.eprCreditMultiService) {
+      const groupedRows = groupEprCreditPoRowsByService(closurePatch.poYearRows, closureDialog.eprCreditServiceOptions);
+      if (groupedRows.error) return showToast(groupedRows.error, 'warning');
+      nextAssignments = assignmentRows.map((row) => ({ ...row }));
+      targetAssignmentIndexes = [];
+      for (const group of groupedRows.groups) {
+        const assignmentIndex = serviceRows.findIndex((service) => String(service.assignedServiceId || '') === String(group.service.assignedServiceId || ''));
+        if (assignmentIndex < 0 || !nextAssignments[assignmentIndex]) {
+          return showToast('A selected EPR Credit service no longer has an assignment. Refresh the lead and try again.', 'warning');
+        }
+        nextAssignments[assignmentIndex] = {
+          ...nextAssignments[assignmentIndex],
+          ...closurePatch,
+          poYearRows: group.rows,
+          closedBy: '',
+          closedByText: '',
+          closedByEmail: ''
+        };
+        targetAssignmentIndexes.push(assignmentIndex);
+      }
+    } else {
+      nextAssignments = buildUpdatedAssignmentRows(closureDialog.index, 'closedBy', closureDialog.value, closurePatch);
+      if (closureDialog.choice === 'yes') {
+        nextAssignments[closureDialog.index].closedBy = '';
+        nextAssignments[closureDialog.index].closedByText = '';
+        nextAssignments[closureDialog.index].closedByEmail = '';
+      }
     }
     if (!editingLeadId) return showToast('Save the lead before recording closure details.', 'warning');
     const poDebugId = globalThis.crypto?.randomUUID?.() || `po-${Date.now()}`;
@@ -1323,9 +1399,13 @@ export default function LeadGeneration() {
       const savedLead = response.data.lead || response.data.data?.lead || response.data.data;
       if (!savedLead || !Array.isArray(savedLead.assignments)) throw new Error('CRM did not return saved PO details.');
       const savedAssignment = savedLead.assignments[closureDialog.index] || {};
-      const approvalSubmission = (response.data?.poApprovalSubmissions || []).find((item) => Number(item?.assignmentIndex) === Number(closureDialog.index));
-      if (closureDialog.choice === 'yes' && !approvalSubmission?.approvalId) {
-        throw new Error('PO details were saved, but the Admin approval request was not created. Please retry or contact Admin.');
+      const approvalSubmissions = response.data?.poApprovalSubmissions || [];
+      const missingApproval = closureDialog.choice === 'yes' && targetAssignmentIndexes.some((assignmentIndex) => {
+        const submission = approvalSubmissions.find((item) => Number(item?.assignmentIndex) === Number(assignmentIndex));
+        return !submission?.approvalId;
+      });
+      if (missingApproval) {
+        throw new Error('PO details were saved, but an Admin approval request was not created for every selected service. Please retry or contact Admin.');
       }
       console.info('[POProof:closure:saved]', { poDebugId, leadCode: savedLead.leadCode || '', assignmentIndex: closureDialog.index, rows: (savedAssignment.poYearRows || []).map((row, rowIndex) => ({ rowIndex, poNumber: row.poNumber, hasPoFileUrl: Boolean(row.poFileUrl), poFileName: row.poFileName || '' })) });
       // This endpoint intentionally submits assignment/PO workflow state only.
@@ -2405,7 +2485,7 @@ export default function LeadGeneration() {
               </section>
               {!closureDialog.reviewMode && <div className="grid gap-3 sm:grid-cols-2"><button type="button" onClick={() => setClosureDialog((current) => ({ ...current, choice: 'yes', poModeConfirmed: true, poMode: 'quotation' }))} className={`rounded-2xl border-2 p-5 text-left ${closureDialog.choice === 'yes' ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : 'border-slate-200'}`}><strong className="text-lg font-black">Yes — PO Received</strong><span className="mt-1 block text-sm font-bold">Enter PO details against every quotation service.</span></button><button type="button" onClick={() => setClosureDialog((current) => ({ ...current, choice: 'no' }))} className={`rounded-2xl border-2 p-5 text-left ${closureDialog.choice === 'no' ? 'border-amber-500 bg-amber-50 text-amber-800' : 'border-slate-200'}`}><strong className="text-lg font-black">No — Close with Approval</strong><span className="mt-1 block text-sm font-bold">Upload Super Admin email/message approval proof.</span></button></div>}
               {closureDialog.reviewMode && <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-900"><p className="font-black">Purchase Order follow-up required</p><p className="mt-1 text-sm font-bold text-blue-700">This service was closed under special approval. Upload the received PO before the 7-business-day deadline to keep it closed.</p></div>}
-              {closureDialog.choice === 'yes' && <div className="mt-6 space-y-5"><section className="rounded-2xl border border-blue-200 bg-blue-50 p-5"><h3 className="font-black text-blue-950">Was a quotation sent to the customer?</h3><div className="mt-4 grid gap-3 sm:grid-cols-2"><button type="button" onClick={() => selectClosureQuotationMode('yes')} className={`rounded-xl border-2 p-4 text-left font-black ${closureDialog.quotationSent === 'yes' ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : 'border-white bg-white text-slate-700'}`}>Yes — Quotation Sent</button><button type="button" onClick={() => selectClosureQuotationMode('no')} className={`rounded-xl border-2 p-4 text-left font-black ${closureDialog.quotationSent === 'no' ? 'border-amber-500 bg-amber-50 text-amber-900' : 'border-white bg-white text-slate-700'}`}>No — Use Earlier Quotation Proof</button></div>{closureDialog.quotationSent === 'no' && <div className="mt-4"><p className="mb-3 text-sm font-bold text-amber-900">Upload proof of the earlier quotation. No CRM quotation will be linked; enter the PO details manually for Admin approval.</p><label className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-amber-400 bg-white px-4 font-black text-amber-900"><Upload className="mr-2 h-5 w-5" />{closureDialog.earlierQuotationProofName || 'Upload Earlier Quotation Proof'}<input type="file" className="sr-only" accept="image/*,.pdf" onChange={(event) => uploadClosureFile(event, 'quotation')} /></label></div>}</section>{closureDialog.quotationSent === 'yes' && <QuotationClosureSummary quotation={closureDialog.quotation} items={closureDialog.quotationItems} selectedService={closureDialog.selectedService} poRows={closureDialog.poYearRows} setClosureDialog={setClosureDialog} uploadClosureFile={uploadClosureFile} />}{closureDialog.quotationSent === 'no' && closureDialog.earlierQuotationProofUrl && <EarlierQuotationPoDetails selectedService={closureDialog.selectedService} poRows={closureDialog.poYearRows} setClosureDialog={setClosureDialog} uploadClosureFile={uploadClosureFile} />}</div>}
+              {closureDialog.choice === 'yes' && <div className="mt-6 space-y-5"><section className="rounded-2xl border border-blue-200 bg-blue-50 p-5"><h3 className="font-black text-blue-950">Was a quotation sent to the customer?</h3><div className="mt-4 grid gap-3 sm:grid-cols-2"><button type="button" onClick={() => selectClosureQuotationMode('yes')} className={`rounded-xl border-2 p-4 text-left font-black ${closureDialog.quotationSent === 'yes' ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : 'border-white bg-white text-slate-700'}`}>Yes — Quotation Sent</button><button type="button" onClick={() => selectClosureQuotationMode('no')} className={`rounded-xl border-2 p-4 text-left font-black ${closureDialog.quotationSent === 'no' ? 'border-amber-500 bg-amber-50 text-amber-900' : 'border-white bg-white text-slate-700'}`}>No — Use Earlier Quotation Proof</button></div>{closureDialog.quotationSent === 'no' && <div className="mt-4"><p className="mb-3 text-sm font-bold text-amber-900">Upload proof of the earlier quotation. No CRM quotation will be linked; enter the PO details manually for Admin approval.</p><label className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-amber-400 bg-white px-4 font-black text-amber-900"><Upload className="mr-2 h-5 w-5" />{closureDialog.earlierQuotationProofName || 'Upload Earlier Quotation Proof'}<input type="file" className="sr-only" accept="image/*,.pdf" onChange={(event) => uploadClosureFile(event, 'quotation')} /></label></div>}</section>{closureDialog.quotationSent === 'yes' && <QuotationClosureSummary quotation={closureDialog.quotation} items={closureDialog.quotationItems} selectedService={closureDialog.selectedService} poRows={closureDialog.poYearRows} setClosureDialog={setClosureDialog} uploadClosureFile={uploadClosureFile} serviceOptions={closureDialog.eprCreditServiceOptions} sharedDetails={closureDialog.eprCreditMultiService} />}{closureDialog.quotationSent === 'no' && closureDialog.earlierQuotationProofUrl && <EarlierQuotationPoDetails selectedService={closureDialog.selectedService} poRows={closureDialog.poYearRows} setClosureDialog={setClosureDialog} uploadClosureFile={uploadClosureFile} serviceOptions={closureDialog.eprCreditServiceOptions} sharedDetails={closureDialog.eprCreditMultiService} />}</div>}
               {closureDialog.choice === 'no' && <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5"><h3 className="font-black text-amber-950">Close under special approval</h3><p className="mt-2 text-sm font-bold leading-6 text-amber-900">This service will be closed provisionally and the user and Super Admin will be notified by email. The PO must be uploaded within 7 business days (Monday?Friday, excluding weekends). If it is still missing after the deadline, only this service will reopen automatically; services with received POs will remain closed.</p><label className="mt-4 flex min-h-14 cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-amber-400 bg-white px-4 font-black text-amber-900"><Upload className="mr-2 h-5 w-5" />{closureDialog.approvalProofName || 'Upload Super Admin approval proof'}<input type="file" className="sr-only" accept="image/*,.pdf" onChange={(event) => uploadClosureFile(event, 'approval')} /></label><p className="mt-2 text-xs font-bold text-amber-700">Accepted formats: image or PDF.</p></div>}
             </div>
             <footer className="flex justify-end gap-3 border-t bg-slate-50 px-6 py-4"><button type="button" disabled={closureSaving} onClick={() => setClosureDialog(null)} className="rounded-xl border bg-white px-5 py-3 font-black disabled:opacity-50">Cancel</button><button type="button" disabled={!closureDialog.choice || closureUploading || closureSaving} onClick={confirmLeadClosure} className="rounded-xl bg-[#0f5d46] px-6 py-3 font-black text-white disabled:opacity-50">{closureUploading ? 'Uploading...' : closureSaving ? 'Saving PO...' : 'Confirm & Save Closure'}</button></footer>
@@ -4400,19 +4480,31 @@ function TemporaryLeadFollowUpTracker({ row, onClose, onSaved }) {
   </section>;
 }
 
-function QuotationClosureSummary({ quotation, items = [], poRows = [], selectedService = {}, setClosureDialog, uploadClosureFile }) {
+function QuotationClosureSummary({ quotation, items = [], poRows = [], selectedService = {}, setClosureDialog, uploadClosureFile, serviceOptions = [], sharedDetails = false }) {
   if (!quotation) return <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800">No quotation was found for this lead. Enter the PO information manually.</div>;
   const combined = quotation.pricingMode === 'combined';
-  const rows = poRows.length > items.length ? [...items, ...Array(poRows.length - items.length).fill({})] : items;
+  const rows = serviceOptions.length
+    ? poRows.map((po, index) => items.find((item) => String(item.assignedServiceId || '') === String(po.assignedServiceId || '')) || items[index] || {})
+    : poRows.length > items.length ? [...items, ...Array(poRows.length - items.length).fill({})] : items;
   const quotationValue = Number(quotation.combinedBasicAmount || quotation.grandTotal || 0)
     || items.reduce((sum, item) => sum + ((Number(item.unit) || 1) * (Number(item.basicAmount) || 0)), 0);
-  const updatePo = (rowIndex, patch) => setClosureDialog((current) => ({ ...current, poYearRows: current.poYearRows.map((row, index) => index === rowIndex ? { ...row, ...patch } : row) }));
-  return <section className="overflow-hidden rounded-2xl border border-teal-200 bg-white shadow-sm"><header className="flex flex-wrap items-center justify-between gap-2 bg-teal-50 px-5 py-4"><div><p className="text-xs font-black uppercase tracking-wider text-teal-700">Quotation details auto-fetched</p><strong className="text-slate-900">{quotation.quotationNumber || 'Latest quotation'}</strong></div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-white px-3 py-1 text-xs font-black text-teal-700">CRM Quotation Value: ₹{quotationValue.toLocaleString('en-IN')}</span><span className="rounded-full bg-white px-3 py-1 text-xs font-black text-teal-700">{combined ? 'Combined Price' : 'Individual Price'}</span></div></header><div className="overflow-auto"><table className="w-full min-w-[2200px] text-left text-xs"><thead className="bg-slate-100 uppercase text-slate-500"><tr>{['#', 'EPR / Service Period', 'Industry Type', 'Business Category', 'Service Category', 'Service Start Date', 'Service End Date', 'Applicant Type', 'Unit', 'UOM', 'Basic Amount (INR)', 'PO Number', 'PO Date', 'PO End Date', 'PO Financial Year', poYearLabel(poRows, selectedService), 'Payment Term', 'PO Amount (INR)', 'PO Proof', 'Service'].map((heading) => <th key={heading} className="whitespace-nowrap p-3">{heading}</th>)}</tr></thead><tbody>{rows.map((item, index) => { const po = poRows[index] || {}; return <tr key={item.id || index} className="border-t align-middle"><td className="p-3 font-black">{index + 1}</td><td className="p-3 font-black text-slate-700">{po.fy || item.servicesForYear || item.financialYear || '-'}</td><td className="p-3">{item.industryType || '-'}</td><td className="p-3">{item.businessCategory || '-'}</td><td className="p-3">{item.serviceCategory || item.eprCategory || '-'}</td><td className="p-3">{item.serviceStartDate || '-'}</td><td className="p-3">{item.serviceEndDate || '-'}</td><td className="p-3">{item.subApplicantType || item.piboCategory || item.applicantType || '-'}</td><td className="p-3">{item.unit || '1'}</td><td className="p-3">{item.unitLabel || '-'}</td>{(!combined || index === 0) && <td rowSpan={combined ? rows.length : 1} className={`p-3 font-black text-emerald-700 ${combined ? 'border-l border-r bg-emerald-50 align-middle' : ''}`}>₹{Number(combined ? quotation.combinedBasicAmount || quotation.grandTotal : (Number(item.unit) || 1) * (Number(item.basicAmount) || 0)).toLocaleString('en-IN')}</td>}<td className="p-3"><input required className="form-input min-w-36" value={po.poNumber || ''} onChange={(event) => updatePo(index, { poNumber: event.target.value })} placeholder="PO Number" /></td><td className="p-3"><input required type="date" aria-label={`PO Date row ${index + 1}`} className="form-input min-w-40" value={po.poDate || ''} onChange={(event) => updatePo(index, { poDate: event.target.value })} /></td><PoCommercialFields po={po} selectedService={selectedService} index={index} onChange={(patch) => updatePo(index, patch)} /><td className="p-3"><div className="relative min-w-40"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-black text-slate-500">₹</span><input required type="number" min="0.01" step="0.01" className="form-input pl-7" value={po.poAmount ?? ''} onChange={(event) => updatePo(index, { poAmount: event.target.value })} placeholder="PO Amount" /></div></td><td className="p-3"><label className="flex min-h-11 min-w-36 cursor-pointer items-center justify-center rounded-xl border border-emerald-300 bg-emerald-50 px-3 font-black text-emerald-700"><Upload className="mr-2 h-4 w-4" />{po.poFileName || 'Choose File'}<input type="file" className="sr-only" accept="image/*,.pdf" onChange={(event) => uploadClosureFile(event, 'po', index)} /></label><PoProofView po={po} /></td><td className="p-3 font-bold">{po.services?.[0] || item.servicesOffered || item.applicableService || '-'}</td></tr>; })}{!rows.length && <tr><td colSpan="20" className="p-8 text-center font-bold text-slate-400">No quotation service rows available.</td></tr>}</tbody></table></div></section>;
+  const updatePo = (rowIndex, patch) => setClosureDialog((current) => ({
+    ...current,
+    poYearRows: sharedDetails
+      ? updateEprCreditPoRows(current.poYearRows, rowIndex, patch)
+      : current.poYearRows.map((row, index) => index === rowIndex ? { ...row, ...patch } : row)
+  }));
+  return <section className="overflow-hidden rounded-2xl border border-teal-200 bg-white shadow-sm"><header className="flex flex-wrap items-center justify-between gap-2 bg-teal-50 px-5 py-4"><div><p className="text-xs font-black uppercase tracking-wider text-teal-700">Quotation details auto-fetched</p><strong className="text-slate-900">{quotation.quotationNumber || 'Latest quotation'}</strong>{sharedDetails && <p className="mt-1 text-xs font-bold text-teal-800">PO details are shared across EPR Credit services; enter a separate PO Amount for each service.</p>}</div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-white px-3 py-1 text-xs font-black text-teal-700">CRM Quotation Value: ₹{quotationValue.toLocaleString('en-IN')}</span><span className="rounded-full bg-white px-3 py-1 text-xs font-black text-teal-700">{combined ? 'Combined Price' : 'Individual Price'}</span></div></header><div className="overflow-auto"><table className="w-full min-w-[2200px] text-left text-xs"><thead className="bg-slate-100 uppercase text-slate-500"><tr>{['#', 'EPR / Service Period', 'Industry Type', 'Business Category', 'Service Category', 'Service Start Date', 'Service End Date', 'Applicant Type', 'Unit', 'UOM', 'Basic Amount (INR)', 'PO Number', 'PO Date', 'PO End Date', 'PO Financial Year', poYearLabel(poRows, selectedService), 'Payment Term', 'PO Amount (INR)', 'PO Proof', 'Service'].map((heading) => <th key={heading} className="whitespace-nowrap p-3">{heading}</th>)}</tr></thead><tbody>{rows.map((item, index) => { const po = poRows[index] || {}; return <tr key={item.id || index} className="border-t align-middle"><td className="p-3 font-black">{index + 1}</td><td className="p-3 font-black text-slate-700">{po.fy || item.servicesForYear || item.financialYear || '-'}</td><td className="p-3">{item.industryType || '-'}</td><td className="p-3">{item.businessCategory || '-'}</td><td className="p-3">{item.serviceCategory || item.eprCategory || '-'}</td><td className="p-3">{item.serviceStartDate || '-'}</td><td className="p-3">{item.serviceEndDate || '-'}</td><td className="p-3">{item.subApplicantType || item.piboCategory || item.applicantType || '-'}</td><td className="p-3">{item.unit || '1'}</td><td className="p-3">{item.unitLabel || '-'}</td>{(!combined || index === 0) && <td rowSpan={combined ? rows.length : 1} className={`p-3 font-black text-emerald-700 ${combined ? 'border-l border-r bg-emerald-50 align-middle' : ''}`}>₹{Number(combined ? quotation.combinedBasicAmount || quotation.grandTotal : (Number(item.unit) || 1) * (Number(item.basicAmount) || 0)).toLocaleString('en-IN')}</td>}<td className="p-3"><input required className="form-input min-w-36" value={po.poNumber || ''} onChange={(event) => updatePo(index, { poNumber: event.target.value })} placeholder="PO Number" /></td><td className="p-3"><input required type="date" aria-label={`PO Date row ${index + 1}`} className="form-input min-w-40" value={po.poDate || ''} onChange={(event) => updatePo(index, { poDate: event.target.value })} /></td><PoCommercialFields po={po} selectedService={selectedService} index={index} onChange={(patch) => updatePo(index, patch)} /><td className="p-3"><div className="relative min-w-40"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-black text-slate-500">₹</span><input required type="number" min="0.01" step="0.01" className="form-input pl-7" value={po.poAmount ?? ''} onChange={(event) => updatePo(index, { poAmount: event.target.value })} placeholder="PO Amount" /></div></td><td className="p-3"><label className="flex min-h-11 min-w-36 cursor-pointer items-center justify-center rounded-xl border border-emerald-300 bg-emerald-50 px-3 font-black text-emerald-700"><Upload className="mr-2 h-4 w-4" />{po.poFileName || 'Choose File'}<input type="file" className="sr-only" accept="image/*,.pdf" onChange={(event) => uploadClosureFile(event, 'po', index)} /></label><PoProofView po={po} /></td><td className="p-3 font-bold">{serviceOptions.length ? <select aria-label={`Service for PO row ${index + 1}`} className="form-input min-w-48" value={po.assignedServiceId || serviceOptions[index]?.assignedServiceId || ''} onChange={(event) => setClosureDialog((current) => selectEprCreditPoService(current, index, event.target.value))}>{serviceOptions.map((service, serviceIndex) => <option key={service.assignedServiceId || serviceIndex} value={service.assignedServiceId}>{service.servicesOffered || service.applicableService || `Service ${serviceIndex + 1}`}</option>)}</select> : po.services?.[0] || item.servicesOffered || item.applicableService || '-'}</td></tr>; })}{!rows.length && <tr><td colSpan="20" className="p-8 text-center font-bold text-slate-400">No quotation service rows available.</td></tr>}</tbody></table></div></section>;
 }
 
-function EarlierQuotationPoDetails({ poRows = [], selectedService = {}, setClosureDialog, uploadClosureFile }) {
-  const updatePo = (rowIndex, patch) => setClosureDialog((current) => ({ ...current, poYearRows: current.poYearRows.map((row, index) => index === rowIndex ? { ...row, ...patch } : row) }));
-  return <section className="overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm"><header className="flex flex-wrap items-center justify-between gap-2 bg-amber-50 px-5 py-4"><div><p className="text-xs font-black uppercase tracking-wider text-amber-700">Manual PO details</p><strong className="text-slate-900">Earlier quotation proof attached</strong></div><span className="rounded-full bg-white px-3 py-1 text-xs font-black text-amber-700">CRM quotation not used</span></header><div className="overflow-auto"><table className="w-full min-w-[1100px] text-left text-xs"><thead className="bg-slate-100 uppercase text-slate-500"><tr>{['#', 'EPR / Service Period', 'PO Number', 'PO Date', 'PO End Date', 'PO Financial Year', poYearLabel(poRows, selectedService), 'Payment Term', 'PO Amount (INR)', 'PO Proof', 'Service'].map((heading) => <th key={heading} className="whitespace-nowrap p-3">{heading}</th>)}</tr></thead><tbody>{poRows.map((po, index) => <tr key={index} className="border-t align-middle"><td className="p-3 font-black">{index + 1}</td><td className="p-3 font-black text-slate-700">{po.fy || '-'}</td><td className="p-3"><input required className="form-input min-w-36" value={po.poNumber || ''} onChange={(event) => updatePo(index, { poNumber: event.target.value })} placeholder="PO Number" /></td><td className="p-3"><input required type="date" aria-label={`PO Date row ${index + 1}`} className="form-input min-w-40" value={po.poDate || ''} onChange={(event) => updatePo(index, { poDate: event.target.value })} /></td><PoCommercialFields po={po} selectedService={selectedService} index={index} onChange={(patch) => updatePo(index, patch)} /><td className="p-3"><div className="relative min-w-40"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-black text-slate-500">₹</span><input required type="number" min="0.01" step="0.01" className="form-input pl-7" value={po.poAmount ?? ''} onChange={(event) => updatePo(index, { poAmount: event.target.value })} placeholder="Enter PO Amount" /></div></td><td className="p-3"><label className="flex min-h-11 min-w-36 cursor-pointer items-center justify-center rounded-xl border border-amber-300 bg-amber-50 px-3 font-black text-amber-700"><Upload className="mr-2 h-4 w-4" />{po.poFileName || 'Choose File'}<input type="file" className="sr-only" accept="image/*,.pdf" onChange={(event) => uploadClosureFile(event, 'po', index)} /></label><PoProofView po={po} /></td><td className="p-3 font-bold">{po.services?.[0] || '-'}</td></tr>)}{!poRows.length && <tr><td colSpan="11" className="p-8 text-center font-bold text-slate-400">No service rows available.</td></tr>}</tbody></table></div></section>;
+function EarlierQuotationPoDetails({ poRows = [], selectedService = {}, setClosureDialog, uploadClosureFile, serviceOptions = [], sharedDetails = false }) {
+  const updatePo = (rowIndex, patch) => setClosureDialog((current) => ({
+    ...current,
+    poYearRows: sharedDetails
+      ? updateEprCreditPoRows(current.poYearRows, rowIndex, patch)
+      : current.poYearRows.map((row, index) => index === rowIndex ? { ...row, ...patch } : row)
+  }));
+  return <section className="overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm"><header className="flex flex-wrap items-center justify-between gap-2 bg-amber-50 px-5 py-4"><div><p className="text-xs font-black uppercase tracking-wider text-amber-700">Manual PO details</p><strong className="text-slate-900">Earlier quotation proof attached</strong>{sharedDetails && <p className="mt-1 text-xs font-bold text-amber-800">PO details are shared across EPR Credit services; enter a separate PO Amount for each service.</p>}</div><span className="rounded-full bg-white px-3 py-1 text-xs font-black text-amber-700">CRM quotation not used</span></header><div className="overflow-auto"><table className="w-full min-w-[1100px] text-left text-xs"><thead className="bg-slate-100 uppercase text-slate-500"><tr>{['#', 'EPR / Service Period', 'PO Number', 'PO Date', 'PO End Date', 'PO Financial Year', poYearLabel(poRows, selectedService), 'Payment Term', 'PO Amount (INR)', 'PO Proof', 'Service'].map((heading) => <th key={heading} className="whitespace-nowrap p-3">{heading}</th>)}</tr></thead><tbody>{poRows.map((po, index) => <tr key={index} className="border-t align-middle"><td className="p-3 font-black">{index + 1}</td><td className="p-3 font-black text-slate-700">{po.fy || '-'}</td><td className="p-3"><input required className="form-input min-w-36" value={po.poNumber || ''} onChange={(event) => updatePo(index, { poNumber: event.target.value })} placeholder="PO Number" /></td><td className="p-3"><input required type="date" aria-label={`PO Date row ${index + 1}`} className="form-input min-w-40" value={po.poDate || ''} onChange={(event) => updatePo(index, { poDate: event.target.value })} /></td><PoCommercialFields po={po} selectedService={selectedService} index={index} onChange={(patch) => updatePo(index, patch)} /><td className="p-3"><div className="relative min-w-40"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-black text-slate-500">₹</span><input required type="number" min="0.01" step="0.01" className="form-input pl-7" value={po.poAmount ?? ''} onChange={(event) => updatePo(index, { poAmount: event.target.value })} placeholder="Enter PO Amount" /></div></td><td className="p-3"><label className="flex min-h-11 min-w-36 cursor-pointer items-center justify-center rounded-xl border border-amber-300 bg-amber-50 px-3 font-black text-amber-700"><Upload className="mr-2 h-4 w-4" />{po.poFileName || 'Choose File'}<input type="file" className="sr-only" accept="image/*,.pdf" onChange={(event) => uploadClosureFile(event, 'po', index)} /></label><PoProofView po={po} /></td><td className="p-3 font-bold">{serviceOptions.length ? <select aria-label={`Service for PO row ${index + 1}`} className="form-input min-w-48" value={po.assignedServiceId || serviceOptions[index]?.assignedServiceId || ''} onChange={(event) => setClosureDialog((current) => selectEprCreditPoService(current, index, event.target.value))}>{serviceOptions.map((service, serviceIndex) => <option key={service.assignedServiceId || serviceIndex} value={service.assignedServiceId}>{service.servicesOffered || service.applicableService || `Service ${serviceIndex + 1}`}</option>)}</select> : po.services?.[0] || '-'}</td></tr>)}{!poRows.length && <tr><td colSpan="11" className="p-8 text-center font-bold text-slate-400">No service rows available.</td></tr>}</tbody></table></div></section>;
 }
 
 function Field({ label, required, children, className = '' }) {
