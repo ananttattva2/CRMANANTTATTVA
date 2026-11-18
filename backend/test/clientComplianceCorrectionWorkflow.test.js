@@ -75,6 +75,7 @@ test('scheduled correction emails distinguish reminder, recoverable red and perm
 
 test('compliance correction workflow uses Saturday-aware deadlines and permits timely red-to-green approval', () => {
   const controller = fs.readFileSync(path.resolve(__dirname, '../src/controllers/clientComplianceReviewController.js'), 'utf8');
+  const clientController = fs.readFileSync(path.resolve(__dirname, '../src/controllers/clientController.js'), 'utf8');
   const scheduler = fs.readFileSync(path.resolve(__dirname, '../src/services/clientComplianceCorrectionReminders.js'), 'utf8');
   assert.match(controller, /greenFlagDeadline: addClientCorrectionHours\(decidedAt, 96\)/);
   assert.match(controller, /correctionDueAt: addClientCorrectionHours\(decidedAt, 48\)/);
@@ -90,6 +91,9 @@ test('compliance correction workflow uses Saturday-aware deadlines and permits t
   assert.match(scheduler, /greenFlagDeadline: \{ \$lte: now \}/);
   assert.match(scheduler, /reminderFlag: 'PERMANENT_RED'/);
   assert.match(scheduler, /correctionDeadlinePolicy: \{ \$ne: CLIENT_CORRECTION_DEADLINE_POLICY \}/);
+  assert.match(scheduler, /correctionWasSupersededByClientActivity/);
+  assert.match(scheduler, /updatedAt <= startedAt/);
+  assert.match(clientController, /status: 'CORRECTED'/);
 });
 
 test('server startup runs the legacy red recovery scan so deployed records receive email', () => {

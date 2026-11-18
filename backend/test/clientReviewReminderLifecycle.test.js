@@ -47,6 +47,16 @@ test('client review pauses timers, resumes remaining time, then completes on app
   assert.equal(assignment.nextActionAt.toISOString(), '2026-09-12T12:00:00.000Z');
   assert.equal(assignment.reminderCount, 2);
 
+  await syncClientReviewReminderState({ client, status: 'CORRECTED', now: new Date('2026-09-12T11:00:00Z') });
+  assert.equal(reminder.reviewStatus, 'PENDING_COMPLIANCE');
+  assert.equal(assignment.status, 'PENDING_COMPLIANCE');
+  assert.deepEqual(pendingUpdates[1][0].$or, [
+    { approvalStatus: { $in: ['PARTIALLY_APPROVED', 'REJECTED', 'REVISION_REQUIRED'] } },
+    { correctionStatus: { $in: ['OPEN', 'BREACHED'] } }
+  ]);
+  assert.equal(pendingUpdates[1][1].$set.reminderFlag, 'GREEN');
+  assert.equal(pendingUpdates[1][1].$set.correctionStatus, 'NONE');
+
   await syncClientReviewReminderState({ client, status: 'APPROVED', now: new Date('2026-09-13T10:00:00Z') });
   assert.equal(reminder.reviewStatus, 'APPROVED');
   assert.equal(reminder.completed, true);
@@ -80,5 +90,37 @@ test('startup reconciliation pauses legacy pending-client reminders idempotently
   assert.equal(changed, 1);
   assert.equal(assignment.status, 'PENDING_COMPLIANCE');
   assert.equal(assignment.pausedFromStatus, 'RED_FLAG');
+  assert.equal(assignment.saved, true);
+});
+
+test('correction activity clears an existing onboarding red flag instead of preserving it', async (t) => {
+  const originals = {
+    findOne: ClientOnboardingReminder.findOne,
+    updateMany: PendingApproval.updateMany,
+    find: StaffOnboardingAssignment.find
+  };
+  t.after(() => {
+    ClientOnboardingReminder.findOne = originals.findOne;
+    PendingApproval.updateMany = originals.updateMany;
+    StaffOnboardingAssignment.find = originals.find;
+  });
+  const assignment = {
+    status: 'RED_FLAG', redFlaggedAt: new Date('2026-09-01T00:00:00Z'), emailError: 'old error',
+    async save() { this.saved = true; }
+  };
+  ClientOnboardingReminder.findOne = async () => null;
+  PendingApproval.updateMany = async () => ({ modifiedCount: 1 });
+  StaffOnboardingAssignment.find = async () => [assignment];
+
+  await syncClientReviewReminderState({
+    client: { _id: 'client-1', selectedLead: 'lead-1', createdBy: 'user-1' },
+    status: 'CORRECTED',
+    now: new Date('2026-09-10T10:00:00Z')
+  });
+  assert.equal(assignment.status, 'PENDING_COMPLIANCE');
+  assert.equal(assignment.pausedFromStatus, 'ACTIVE');
+  assert.equal(assignment.pausedRemainingMs, 7 * 24 * 60 * 60 * 1000);
+  assert.equal(assignment.redFlaggedAt, undefined);
+  assert.equal(assignment.emailError, undefined);
   assert.equal(assignment.saved, true);
 });

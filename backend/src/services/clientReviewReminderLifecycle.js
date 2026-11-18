@@ -6,6 +6,8 @@ const PendingApproval = require('../models/PendingApproval');
 const StaffOnboardingAssignment = require('../models/StaffOnboardingAssignment');
 
 const ACTIVE_REVIEW_STATES = new Set(['REJECTED', 'PARTIALLY_APPROVED', 'CHANGES_REQUIRED']);
+const CORRECTION_ACTIVITY_STATES = new Set(['CORRECTED', 'EDITED', 'RESUBMITTED']);
+const ONBOARDING_RESET_MS = 7 * 24 * 60 * 60 * 1000;
 
 function id(value) {
   return String(value?._id || value?.id || value || '').trim();
@@ -39,13 +41,20 @@ async function resumeReminder(reminder, now) {
   await reminder.save();
 }
 
-async function pauseAssignment(record, now) {
+async function pauseAssignment(record, now, { clearRedFlag = false } = {}) {
   if (!record || record.status === 'PENDING_COMPLIANCE' || record.status === 'COMPLETED') return;
-  record.pausedFromStatus = record.status;
+  const wasRed = record.status === 'RED_FLAG';
+  record.pausedFromStatus = clearRedFlag && wasRed ? 'ACTIVE' : record.status;
   record.pausedAt = now;
-  record.pausedRemainingMs = record.status === 'ACTIVE'
+  record.pausedRemainingMs = clearRedFlag && wasRed
+    ? ONBOARDING_RESET_MS
+    : record.status === 'ACTIVE'
     ? Math.max(0, new Date(record.nextActionAt).getTime() - now.getTime())
     : 0;
+  if (clearRedFlag) {
+    record.redFlaggedAt = undefined;
+    record.emailError = undefined;
+  }
   record.status = 'PENDING_COMPLIANCE';
   await record.save();
 }
@@ -65,6 +74,7 @@ async function resumeAssignment(record, now) {
 
 async function syncClientReviewReminderState({ client, status, now = new Date() }) {
   const normalized = String(status || '').trim().toUpperCase();
+  const correctionActivity = CORRECTION_ACTIVITY_STATES.has(normalized);
   const identity = clientIdentity(client);
   if (!identity.clientKey) return { reminders: 0, assignments: 0 };
 
@@ -72,9 +82,18 @@ async function syncClientReviewReminderState({ client, status, now = new Date() 
   const assignmentFilter = await clientAssignmentFilter(client, identity);
   const assignments = assignmentFilter ? await StaffOnboardingAssignment.find(assignmentFilter) : [];
 
-  if (normalized === 'PENDING') {
+  if (normalized === 'PENDING' || correctionActivity) {
     await PendingApproval.updateMany(
-      { type: 'client', sourceClientId: identity.clientKey, approvalStatus: 'PENDING' },
+      {
+        type: 'client',
+        sourceClientId: identity.clientKey,
+        ...(correctionActivity
+          ? { $or: [
+            { approvalStatus: { $in: ['PARTIALLY_APPROVED', 'REJECTED', 'REVISION_REQUIRED'] } },
+            { correctionStatus: { $in: ['OPEN', 'BREACHED'] } }
+          ] }
+          : { approvalStatus: 'PENDING' })
+      },
       {
         $set: {
           nextReminderAt: null,
@@ -102,7 +121,7 @@ async function syncClientReviewReminderState({ client, status, now = new Date() 
       }
     );
     await pauseReminder(reminder, now);
-    await Promise.all(assignments.map((record) => pauseAssignment(record, now)));
+    await Promise.all(assignments.map((record) => pauseAssignment(record, now, { clearRedFlag: true })));
   } else if (normalized === 'APPROVED') {
     if (reminder) {
       reminder.reviewStatus = 'APPROVED';

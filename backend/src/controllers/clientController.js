@@ -2381,6 +2381,13 @@ exports.updateClient = async (req, res) => {
     await queueCreatedClientApproval(client, req.user, { resubmission: true, previousStatus: existingApprovalStatus });
   }
 
+  // Editing a Client Master after Partial Approval / Rejection is itself a
+  // correction action. Clear the old SLA and red flag immediately, even when
+  // the user saves before explicitly resubmitting for review.
+  if (!canApproveClient && !complianceResubmission && ['PARTIALLY_APPROVED', 'REJECTED'].includes(existingApprovalStatus)) {
+    await syncClientReviewReminderState({ client, status: 'CORRECTED' });
+  }
+
   if (canApproveClient && requestedApprovalStatus !== 'PENDING' && requestedApprovalStatus !== existingApprovalStatus) {
     const actionAt = new Date();
     await PendingApproval.findOneAndUpdate(

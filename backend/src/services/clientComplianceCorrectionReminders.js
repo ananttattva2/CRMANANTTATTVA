@@ -2,6 +2,7 @@ const PendingApproval = require('../models/PendingApproval');
 const Client = require('../models/Client');
 const { sendMail } = require('../utils/mailer');
 const { resolveClientManager } = require('./clientApprovalDecisionNotifications');
+const { syncClientReviewReminderState } = require('./clientReviewReminderLifecycle');
 const { CLIENT_CORRECTION_DEADLINE_POLICY, addClientCorrectionHours } = require('../utils/clientCorrectionDeadline');
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -74,10 +75,20 @@ async function sendCorrectionEmail(record, stage) {
   await sendMail(record.correctionRecipientEmail, content.subject, content.html, { branded: false });
 }
 
+async function correctionWasSupersededByClientActivity(record, now = new Date()) {
+  const startedAt = new Date(record?.correctionStartedAt || 0);
+  if (!/^[a-f\d]{24}$/i.test(String(record?.sourceClientId || '')) || Number.isNaN(startedAt.getTime()) || !startedAt.getTime()) return false;
+  const client = await Client.findById(record.sourceClientId).select('updatedAt selectedLead createdBy submittedBy').lean();
+  const updatedAt = new Date(client?.updatedAt || 0);
+  if (!client || Number.isNaN(updatedAt.getTime()) || updatedAt <= startedAt) return false;
+  await syncClientReviewReminderState({ client, status: 'CORRECTED', now });
+  return true;
+}
+
 async function runClientComplianceCorrectionReminders(now = new Date()) {
   if (running) return { skipped: 'already_running' };
   running = true;
-  const result = { reminders: 0, breached: 0, legacyRecoveryGrants: 0, redFlags: 0, permanentRedFlags: 0, errors: 0 };
+  const result = { reminders: 0, breached: 0, legacyRecoveryGrants: 0, resolvedByActivity: 0, redFlags: 0, permanentRedFlags: 0, errors: 0 };
   try {
     // Cancel stale correction timers left on records whose current compliance
     // decision is Pending or Approved. These records must never send an SLA
@@ -99,6 +110,16 @@ async function runClientComplianceCorrectionReminders(now = new Date()) {
         }
       }
     );
+
+    // Reconcile edits that occurred through an older endpoint or while the
+    // scheduler was offline. Any Client Master update after the correction
+    // decision resolves the old timer before reminder candidates are read.
+    const activeCorrections = await PendingApproval.find({
+      type: 'client', ...activeCorrectionFilter(), correctionStatus: { $in: ['OPEN', 'BREACHED'] }
+    }).select('sourceClientId correctionStartedAt').limit(500);
+    for (const record of activeCorrections) {
+      if (await correctionWasSupersededByClientActivity(record, now)) result.resolvedByActivity += 1;
+    }
 
     const legacyDeadlines = await PendingApproval.find({
       type: 'client', ...activeCorrectionFilter(),
@@ -176,6 +197,10 @@ async function runClientComplianceCorrectionReminders(now = new Date()) {
       );
       if (!claimed) continue;
       try {
+        if (await correctionWasSupersededByClientActivity(claimed, now)) {
+          result.resolvedByActivity += 1;
+          continue;
+        }
         await sendCorrectionEmail(claimed, 'REMINDER');
         claimed.correctionEmailError = '';
         await claimed.save();
@@ -207,6 +232,10 @@ async function runClientComplianceCorrectionReminders(now = new Date()) {
         { new: true }
       );
       if (!claimed) continue;
+      if (await correctionWasSupersededByClientActivity(claimed, now)) {
+        result.resolvedByActivity += 1;
+        continue;
+      }
       result.redFlags += 1;
     }
 
@@ -233,6 +262,10 @@ async function runClientComplianceCorrectionReminders(now = new Date()) {
       );
       if (!claimed) continue;
       try {
+        if (await correctionWasSupersededByClientActivity(claimed, now)) {
+          result.resolvedByActivity += 1;
+          continue;
+        }
         await sendCorrectionEmail(claimed, 'RED_RECOVERY');
         claimed.correctionEmailError = '';
         claimed.redRecoveryEmailSentAt = now;
@@ -257,6 +290,10 @@ async function runClientComplianceCorrectionReminders(now = new Date()) {
       );
       if (!claimed) continue;
       try {
+        if (await correctionWasSupersededByClientActivity(claimed, now)) {
+          result.resolvedByActivity += 1;
+          continue;
+        }
         await sendCorrectionEmail(claimed, 'PERMANENT');
         claimed.correctionEmailError = '';
       } catch (error) {
@@ -281,4 +318,4 @@ function startClientComplianceCorrectionReminderScheduler() {
   setInterval(run, SCAN_MS);
 }
 
-module.exports = { activeCorrectionFilter, correctionEmail, runClientComplianceCorrectionReminders, startClientComplianceCorrectionReminderScheduler };
+module.exports = { activeCorrectionFilter, correctionEmail, correctionWasSupersededByClientActivity, runClientComplianceCorrectionReminders, startClientComplianceCorrectionReminderScheduler };
