@@ -698,12 +698,16 @@ function buildAssignedServiceChooserOptions(records = [], lead = null) {
     ));
     if (recordIndex < 0) {
       const groupingIdentity = clientMasterGroupingIdentity(service);
-      recordIndex = records.findIndex((record, index) => unusedRecordIndexes.has(index) && groupingIdentity
+      recordIndex = records.findIndex((record, index) => {
+        const recordData = readClientData(record);
+        const recordAssignedServiceId = String(record.assignedServiceId || recordData.assignedServiceId || recordData.selectedLeadSnapshot?.assignedServiceId || '').trim();
+        return unusedRecordIndexes.has(index) && !recordAssignedServiceId && groupingIdentity
         && clientMasterGroupingIdentity({
-          applicantType: record.applicantType || readClientData(record).selectedLeadSnapshot?.applicantType,
-          subApplicantType: record.piboCategory || readClientData(record).basic?.piboCategory,
-          plantUnit: record.plantUnit || readClientData(record).selectedLeadSnapshot?.plantUnit
-        }) === groupingIdentity);
+          applicantType: record.applicantType || recordData.selectedLeadSnapshot?.applicantType,
+          subApplicantType: record.piboCategory || recordData.basic?.piboCategory,
+          plantUnit: record.plantUnit || recordData.selectedLeadSnapshot?.plantUnit
+        }) === groupingIdentity;
+      });
     }
     const matched = recordIndex >= 0 ? records[recordIndex] : null;
     if (recordIndex >= 0) unusedRecordIndexes.delete(recordIndex);

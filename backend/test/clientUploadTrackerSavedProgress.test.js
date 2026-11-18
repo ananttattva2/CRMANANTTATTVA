@@ -53,3 +53,24 @@ test('saved client service identity selects Brand Owner instead of stale Importe
   assert.equal(matchesTrackedService(updatedBrandOwner, 'annual'), true);
   assert.equal(matchesTrackedService(updatedBrandOwner, 'registration'), false);
 });
+
+test('saved Purchase progress stays visible under its updater when the permanent assignment is missing', () => {
+  const unassigned = structuredClone(client);
+  delete unassigned.selectedLead.assignments[0].assignedStaff;
+  delete unassigned.selectedLead.assignments[0].assignedStaffText;
+  delete unassigned.selectedLead.assignments[0].assignedTo;
+  const purchase = {
+    clientId: 'atul-brand',
+    financialYear: '2025-26',
+    updatedBy: 'tushar',
+    checklist: [{ particular: 'Data Explained', yesNo: 'Yes' }]
+  };
+
+  const result = buildUploadTracker([unassigned], [user], [purchase], [], {
+    groupBy: 'application', serviceType: 'annual', financialYear: '2025-26'
+  });
+  const group = result.find(row => row.userId === 'tushar');
+
+  assert.equal(group.clients.length, 1);
+  assert.equal(group.clients[0].purchase[0], 'complete');
+});

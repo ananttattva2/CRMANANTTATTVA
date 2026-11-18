@@ -130,13 +130,18 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
     const clientId = id(client._id);
     if (!clientId || seen.has(clientId)) continue;
     seen.add(clientId);
+    const purchaseRecord = purchaseIndex.get(clientId), salesRecord = salesIndex.get(clientId);
     const [permanent] = allocatedOwnerKeyGroups(client);
-    const user = permanent.map(key => identities.get(key)).find(Boolean);
+    const workflowOwners = [
+      purchaseRecord?.updatedBy, purchaseRecord?.submittedBy, purchaseRecord?.createdBy,
+      salesRecord?.updatedBy, salesRecord?.submittedBy, salesRecord?.createdBy
+    ].flatMap(value => [id(value).trim().toLowerCase()]).filter(Boolean);
+    const user = permanent.map(key => identities.get(key)).find(Boolean)
+      || workflowOwners.map(key => identities.get(key)).find(Boolean);
     if (!user) continue;
     const ownerId = id(user._id);
     if (!groups.has(ownerId)) groups.set(ownerId, emptyGroup(user));
     const group = groups.get(ownerId);
-    const purchaseRecord = purchaseIndex.get(clientId), salesRecord = salesIndex.get(clientId);
     const reviewYear = normalizeYear(options.financialYear || purchaseRecord?.financialYear || salesRecord?.financialYear);
     const annualReview = reviewIndex.get(`${clientId}:${reviewYear}`);
     const detail = { clientId: id(client._id), clientName: client.selectedLead?.company || client.selectedLead?.companyName || client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || client.data?.importMeta?.companyName || 'Untitled client', slaReceived: client.sla?.status === 'Yes', purchase: STAGES.map(stage => stageState(purchaseRecord, stage, annualReview)), sales: STAGES.map(stage => stageState(salesRecord, stage, annualReview)) };
@@ -169,7 +174,7 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
       if (!representative || options.serviceType && representative.serviceType !== options.serviceType) return [];
       const sources = detail.sources.filter(source => source.closed
         && source.serviceType === representative.serviceType
-        && (representative.serviceType !== 'annual' || source.annualWorkflowReady)
+        && (representative.serviceType !== 'annual' || source.workflowRecorded || source.annualWorkflowReady)
         && (representative.serviceType !== 'annual' || !options.financialYear || source.workflowRecorded || source.annualQualified && source.annualReturnYears.includes(options.financialYear)));
       if (!sources.length) return [];
       detail.clientId = representative.clientId;

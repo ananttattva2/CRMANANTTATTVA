@@ -349,9 +349,12 @@ exports.uploadTracker = async (req, res) => {
       res.set('Server-Timing', `references;dur=${referencesAt - startedAt}, snapshot;dur=${snapshotAt - referencesAt}, reviews;dur=${Date.now() - snapshotAt}, assignments;dur=${Date.now() - startedAt}`);
       return res.json({ ok: true, users, assignments: visibleClients.map(client => ({ ...client, complianceReview: reviewByClient.get(String(client._id)) || null, operationsSla: approvalByClient.get(String(client._id)) || null })) });
     }
-    const trackerClients = visibleClients;
+    // Load workflows for every assignment in scope before deciding which rows
+    // are visible. A saved Purchase/Sales record may be the only reliable owner
+    // link after a Lead service id or permanent assignment is edited.
+    const trackerClients = assignedClients;
     const filter = { clientId: { $in: trackerClients.filter(client => !client.assignmentOnly).map(client => client._id) }, financialYear };
-    const projection = 'clientId financialYear checklist baseUpload.importStatus portalUpload.importStatus managerVerificationStatus complianceVerificationStatus createdAt updatedAt';
+    const projection = 'clientId financialYear checklist baseUpload.importStatus portalUpload.importStatus managerVerificationStatus complianceVerificationStatus submittedBy createdBy updatedBy createdAt updatedAt';
     const workflowAt = Date.now();
     const [purchases, sales, annualReviews] = await Promise.all([
       PurchaseData.find(filter).select(projection).maxTimeMS(15000).lean(),
