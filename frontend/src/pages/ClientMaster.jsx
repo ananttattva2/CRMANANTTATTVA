@@ -3645,11 +3645,13 @@ function ClientViewModal({ client, serviceClients = [], onServiceChange, onEditS
   const data = readClientData(client);
   const msmeRows = getMsmeRows(data);
   const clientName = data.basic?.clientLegalName || data.basic?.tradeName || 'Client Details';
-  const selectedServiceClient = serviceClients.find((item) => getClientServiceOptionLabel(item) === getClientServiceOptionLabel(client))
+  const clientServiceKey = getClientServiceViewKey(client);
+  const selectedServiceClient = serviceClients.find((item) => getClientServiceViewKey(item) === clientServiceKey)
+    || serviceClients.find((item) => getClientServiceOptionLabel(item) === getClientServiceOptionLabel(client))
     || serviceClients.find((item) => String(item?._id || item?.id || '') === String(client?._id || client?.id || ''));
   const selectedServiceKey = getClientServiceViewKey(selectedServiceClient || client);
   const cityPin = `${data.registeredAddress?.city || ''} ${data.registeredAddress?.pincode || ''}`.trim();
-  const assignedName = getAssignedName(client, staff);
+  const assignedName = getAssignedName(selectedServiceClient || client, staff);
   const visibility = getVisibilityStatus(client);
   const rawDocumentUrls = data.validation?.documentUrls;
   const documentUrls = Array.isArray(rawDocumentUrls)
