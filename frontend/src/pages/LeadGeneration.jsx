@@ -28,6 +28,7 @@ import { poCommercialError, poYearLabel, hasSavedPoDetails } from '../utils/poCo
 import { formatDisplayDate } from '../utils/dateFormat';
 import { leadServiceExportRecords } from '../utils/leadServiceExport.mjs';
 import { COMMUNICATION_MODE_GROUPS, COMMUNICATION_MODE_PARENTS, communicationModeParent, hydrateCommunicationMode } from '../constants/communicationModes.mjs';
+import { expandEprCreditServiceRow, isEprCreditBusinessCategory } from '../utils/eprCreditServiceRows.mjs';
 
 const emptyLead = {
   sourceLeadId: '',
@@ -841,6 +842,9 @@ export default function LeadGeneration() {
   function updateServiceRow(index, field, value) {
     const next = serviceRows.map((row) => ({ ...row }));
     next[index] = { ...next[index], [field]: value };
+    if (field === 'businessCategory' && isEprCreditBusinessCategory(serviceRows[index]?.businessCategory) && !isEprCreditBusinessCategory(value)) {
+      next[index].servicesOffered = String(next[index].servicesOffered || '').split(',')[0].trim();
+    }
     if (field === 'eprCategory') {
       next[index].applicantType = '';
       next[index].piboCategory = '';
@@ -849,11 +853,31 @@ export default function LeadGeneration() {
     }
     if (field === 'applicantType') next[index].piboCategory = '';
     if (field === 'servicesOffered') next[index].applicableService = '';
-    if (isCompleteServiceSelection(next[index])) {
-      const duplicateIndex = next.findIndex((row, rowIndex) => rowIndex !== index && isCompleteServiceSelection(row) && serviceSelectionIdentity(row) === serviceSelectionIdentity(next[index]));
-      if (duplicateIndex >= 0) {
-        showToast(`This service combination already exists in row ${duplicateIndex + 1}. Please change at least one field.`, 'warning');
-        return;
+    const expandedRows = expandEprCreditServiceRow(next[index], () => `service_assignment_${crypto.randomUUID()}`);
+    const generatedRowCount = expandedRows.length - 1;
+    let nextAssignments = assignmentRows.map((assignment) => ({ ...assignment }));
+    if (generatedRowCount > 0) {
+      next.splice(index, 1, ...expandedRows);
+      nextAssignments.splice(index, 1, ...expandedRows.map((row) => createAssignmentRow({
+        assignedServiceId: row.assignedServiceId,
+        plantUnit: row.plantUnit
+      })));
+    }
+    for (let candidateIndex = index; candidateIndex < index + expandedRows.length; candidateIndex += 1) {
+      if (isCompleteServiceSelection(next[candidateIndex])) {
+        const duplicateIndex = next.findIndex((row, rowIndex) => rowIndex !== candidateIndex && isCompleteServiceSelection(row) && serviceSelectionIdentity(row) === serviceSelectionIdentity(next[candidateIndex]));
+        if (duplicateIndex >= 0) {
+          showToast(`This service combination already exists in row ${duplicateIndex + 1}. Please change at least one field.`, 'warning');
+          return;
+        }
+      }
+    }
+    if (generatedRowCount > 0) {
+      if (index < frozenServiceRowCount) {
+        setFrozenServiceRowCount((count) => count + generatedRowCount);
+      }
+      if (index < frozenAssignmentRowCount) {
+        setFrozenAssignmentRowCount((count) => count + generatedRowCount);
       }
     }
     const first = next[0];
@@ -861,6 +885,7 @@ export default function LeadGeneration() {
     setLead((current) => ({
       ...current,
       serviceSelections: next,
+      assignments: nextAssignments,
       industryType: first.industryType,
       eprCategory: first.eprCategory,
       applicantType: first.applicantType,
@@ -2771,7 +2796,7 @@ export default function LeadGeneration() {
                         <div className="lead-service-select-cell"><SearchableSelect allowCustom={false} disabled={rowFrozen} value={row.eprCategory} options={serviceCategoryOptions} onChange={(value) => updateServiceRow(index, 'eprCategory', value)} placeholder="Select Service Category" />{canManageServiceCatalog && !rowFrozen && <button type="button" onClick={() => openCatalogDialog('category', index)} className="lead-service-catalog-add"><Plus className="h-3.5 w-3.5" />Add Service Category</button>}</div>
                         <div className="lead-service-select-cell"><SearchableSelect disabled={rowFrozen} value={row.applicantType} options={withCustomOptions('applicantType', applicantOptions)} onChange={(value) => updateServiceRow(index, 'applicantType', value)} placeholder="Select Applicant Type" allowCustom={false} />{canManageServiceCatalog && !rowFrozen && <button type="button" onClick={() => openDropdownDialog({ field: 'applicantType', label: 'Applicant Type', scope: 'service', index, targetField: 'applicantType' })} className="lead-service-catalog-add"><Plus className="h-3.5 w-3.5" />Add Applicant Type</button>}</div>
                         {direct ? <div className="lead-service-not-applicable"><CheckCircle2 className="h-4 w-4" />Not applicable</div> : <div className="lead-service-select-cell"><SearchableSelect allowCustom={false} value={row.piboCategory} options={categoryOptions} disabled={rowFrozen || !row.applicantType || piboCategoriesLoading} onChange={(value) => updateServiceRow(index, 'piboCategory', value)} placeholder={row.applicantType ? `Select ${row.applicantType} category` : 'Select applicant first'} />{canManageServiceCatalog && !rowFrozen && row.applicantType && <button type="button" onClick={() => { setSpecifyNote(''); setSpecifyDialog({ categoryRow: index, applicantType: row.applicantType, label: 'Sub Applicant Type' }); }} className="lead-service-catalog-add"><Plus className="h-3.5 w-3.5" />Add Sub Applicant Type</button>}</div>}
-                        <div className="lead-service-select-cell"><SearchableSelect allowCustom={false} disabled={rowFrozen || !row.eprCategory} value={row.servicesOffered} options={servicesForCategory(row.eprCategory)} onChange={(value) => updateServiceRow(index, 'servicesOffered', value)} placeholder={row.eprCategory ? 'Select Services Offered' : 'Select category first'} />{canManageServiceCatalog && !rowFrozen && row.eprCategory && <button type="button" onClick={() => openCatalogDialog('service', index, row.eprCategory)} className="lead-service-catalog-add"><Plus className="h-3.5 w-3.5" />Add Services Offered</button>}</div>
+                        <div className="lead-service-select-cell"><SearchableSelect allowCustom={false} multiple={isEprCreditBusinessCategory(row.businessCategory)} disabled={rowFrozen || !row.eprCategory} value={row.servicesOffered} options={servicesForCategory(row.eprCategory)} onChange={(value) => updateServiceRow(index, 'servicesOffered', value)} placeholder={row.eprCategory ? (isEprCreditBusinessCategory(row.businessCategory) ? 'Select one or more services' : 'Select Services Offered') : 'Select category first'} />{canManageServiceCatalog && !rowFrozen && row.eprCategory && <button type="button" onClick={() => openCatalogDialog('service', index, row.eprCategory)} className="lead-service-catalog-add"><Plus className="h-3.5 w-3.5" />Add Services Offered</button>}{isEprCreditBusinessCategory(row.businessCategory) && <span className="text-[9px] font-semibold text-slate-500">Selecting a financial year creates one row per service.</span>}</div>
                         <div className="lead-service-select-cell"><SearchableSelect allowCustom={false} disabled={rowFrozen} value={row.plantUnit || ''} options={PLANT_UNIT_OPTIONS} onChange={(value) => updateServiceRow(index, 'plantUnit', value)} placeholder="Select unit" /></div>
                         <div className="lead-service-select-cell"><SearchableSelect disabled={rowFrozen} value={row.firstAnnualReturnYearApplicable || ''} options={withCustomOptions('financialYear', annualReturnYearOptions)} onChange={(value) => updateServiceRow(index, 'firstAnnualReturnYearApplicable', value)} placeholder="Select FY" allowCustom={false} />{canManageServiceCatalog && !rowFrozen && <button type="button" onClick={() => openDropdownDialog({ field: 'financialYear', label: 'Financial Year', scope: 'service', index, targetField: 'firstAnnualReturnYearApplicable' })} className="lead-service-catalog-add"><Plus className="h-3.5 w-3.5" />Add Financial Year</button>}</div>
                         <button type="button" disabled={rowFrozen || serviceRows.length === 1} onClick={() => setServiceRemoveIndex(index)} className="lead-matrix-remove" title="Remove row"><X className="h-4 w-4" /></button>
