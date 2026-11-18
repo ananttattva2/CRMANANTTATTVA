@@ -34,7 +34,10 @@ test('directory eye action always confirms applicant and sub-applicant type befo
 
   assert.match(handler, /API_ENDPOINTS\.clients\.discoveryServices/);
   assert.match(handler, /identity = clientMasterId \? `client:\$\{clientMasterId\}` : selectedLeadId/);
-  assert.match(handler, /discoveredServices\.length \? discoveredServices : clients/);
+  assert.match(handler, /clientMasterEligibleServiceIds/);
+  assert.match(handler, /hydratedDiscoveredServices = discoveredServices\.map/);
+  assert.match(handler, /selectedLead: chooserLead/);
+  assert.match(handler, /hydratedDiscoveredServices\.length \? hydratedDiscoveredServices : clients/);
   assert.equal((handler.match(/const servicesToView = relatedServices\.length \? relatedServices : \[selectedClient\]/g) || []).length, 2);
   assert.equal((handler.match(/setPendingServiceView\(\{ client: selectedClient, services: servicesToView \}\)/g) || []).length, 2);
   assert.doesNotMatch(handler, /relatedServices\.length > 1/);
@@ -58,6 +61,8 @@ test('applicant chooser uses responsive applicant-specific premium cards', () =>
   assert.match(chooser, /Confirm the applicant and sub-applicant type before opening this Client Master/);
   assert.match(chooser, /View Client Master/);
   assert.match(chooser, /Service-specific record available/);
+  assert.match(chooser, /Assigned service found/);
+  assert.match(chooser, /Client Master Not Available/);
   assert.match(chooser, /hasMultipleServices/);
   assert.match(chooser, /aria-labelledby="client-service-view-title"/);
 });

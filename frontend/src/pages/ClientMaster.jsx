@@ -696,6 +696,7 @@ function getRelatedClientServices(clients = [], selectedClient = null) {
       ...item,
       clientMasterId: recordId || item?.clientMasterId,
       assignedServiceId,
+      _clientMasterAvailable: true,
       _serviceViewKey: key
     });
   });
@@ -738,6 +739,7 @@ function getRelatedClientServices(clients = [], selectedClient = null) {
     const activeData = activateAssignedService(sourceData, service, services.length);
     return {
       ...source,
+      _clientMasterAvailable: Boolean(matched),
       _serviceViewKey: assignedServiceId || `legacy-service-${index}-${serviceFingerprint(service) || index}`,
       assignedServiceId,
       selectedLead: populatedLead,
@@ -800,6 +802,7 @@ function getApplicantCardTheme(applicantType = '') {
 function ClientServiceChooserModal({ selection, onClose, onSelect }) {
   const [visibleCredentials, setVisibleCredentials] = useState(() => new Set());
   const hasMultipleServices = selection.services.length > 1;
+  const unavailableServiceCount = selection.services.filter((service) => service._clientMasterAvailable === false).length;
   const toggleCredential = (key) => setVisibleCredentials((current) => {
     const next = new Set(current);
     if (next.has(key)) next.delete(key); else next.add(key);
@@ -836,8 +839,9 @@ function ClientServiceChooserModal({ selection, onClose, onSelect }) {
             const ceprPassword = service.ceprPassword || serviceData.cpcb?.ceprPassword || '';
             const credentialKey = `${getClientServiceViewKey(service) || index}:password`;
             const passwordVisible = visibleCredentials.has(credentialKey);
+            const clientMasterAvailable = service._clientMasterAvailable !== false;
             return (
-              <article key={getClientServiceViewKey(service) || index} className={`group relative flex min-h-[270px] flex-col rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-xl ${theme.hoverClass}`}>
+              <article key={getClientServiceViewKey(service) || index} className={`group relative flex min-h-[270px] flex-col rounded-3xl border bg-white p-5 shadow-sm transition duration-200 ${clientMasterAvailable ? `border-slate-200 hover:-translate-y-1 hover:shadow-xl ${theme.hoverClass}` : 'border-amber-200'}`}>
                 <span className={`grid h-16 w-16 place-items-center rounded-2xl ring-1 ${theme.iconClass}`}><ApplicantIcon className="h-8 w-8" /></span>
                 {(ceprUserId || ceprPassword) && <div className="absolute right-5 top-5 max-w-[58%] space-y-1.5 text-right">
                   {ceprUserId && <p className="truncate text-[10px] font-black text-slate-500" title={ceprUserId}>CEPR ID: <span className="text-slate-900">{ceprUserId}</span></p>}
@@ -850,8 +854,8 @@ function ClientServiceChooserModal({ selection, onClose, onSelect }) {
                 </div>
                 <span className={`mt-3 w-fit rounded-xl px-3 py-2 text-sm font-black ring-1 ${theme.badgeClass}`}>{category}</span>
                 <div className="my-4 h-px bg-slate-100" />
-                <p className="flex items-center gap-2 text-sm font-bold text-slate-500"><ShieldCheck className="h-5 w-5 text-slate-500" />Service-specific record available</p>
-                <button type="button" onClick={() => onSelect(service)} className={`mt-auto inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r px-4 text-sm font-black text-white shadow-lg transition group-hover:brightness-105 ${theme.buttonClass}`}>View Client Master<ChevronRight className="h-5 w-5" /></button>
+                <p className={`flex items-center gap-2 text-sm font-bold ${clientMasterAvailable ? 'text-slate-500' : 'text-amber-700'}`}><ShieldCheck className="h-5 w-5" />{clientMasterAvailable ? 'Service-specific record available' : 'Assigned service found — Client Master not created'}</p>
+                <button type="button" disabled={!clientMasterAvailable} onClick={() => onSelect(service)} className={`mt-auto inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-black transition ${clientMasterAvailable ? `bg-gradient-to-r text-white shadow-lg group-hover:brightness-105 ${theme.buttonClass}` : 'cursor-not-allowed bg-slate-100 text-slate-400'}`}>{clientMasterAvailable ? 'View Client Master' : 'Client Master Not Available'}{clientMasterAvailable && <ChevronRight className="h-5 w-5" />}</button>
               </article>
             );
           })}
@@ -859,8 +863,10 @@ function ClientServiceChooserModal({ selection, onClose, onSelect }) {
 
         <footer className="relative flex items-center gap-3 border-t border-emerald-100 bg-gradient-to-r from-emerald-50/80 to-cyan-50/60 px-5 py-4 text-sm font-bold text-slate-600 sm:px-8">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-teal-700 shadow-sm ring-1 ring-emerald-100"><ShieldCheck className="h-5 w-5" /></span>
-          {hasMultipleServices
-            ? `You can switch between this company's Client Master records at any time.`
+          {unavailableServiceCount
+            ? `${selection.services.length - unavailableServiceCount} Client Master record${selection.services.length - unavailableServiceCount === 1 ? '' : 's'} available; ${unavailableServiceCount} assigned service${unavailableServiceCount === 1 ? '' : 's'} still need onboarding.`
+            : hasMultipleServices
+              ? `You can switch between this company's Client Master records at any time.`
             : 'The service-specific Client Master record shown above will open.'}
         </footer>
       </section>
@@ -2951,8 +2957,28 @@ export default function ClientMaster() {
       if (lookupId !== clientRecordRequestRef.current) return;
 
       const discoveredServices = Array.isArray(response?.data?.services) ? response.data.services : [];
-      const serviceSource = discoveredServices.length ? discoveredServices : clients;
-      const selectedService = discoveredServices.find((service) => String(service.clientMasterId || service._id || service.id || '') === clientMasterId) || selectedClient;
+      const discoveredLead = response?.data?.lead && typeof response.data.lead === 'object' ? response.data.lead : null;
+      const eligibleServiceIds = new Set((Array.isArray(discoveredLead?.clientMasterEligibleServiceIds) ? discoveredLead.clientMasterEligibleServiceIds : [])
+        .map((value) => String(value || '').trim()).filter(Boolean));
+      const chooserLead = discoveredLead
+        ? {
+            ...discoveredLead,
+            serviceSelections: eligibleServiceIds.size
+              ? (Array.isArray(discoveredLead.serviceSelections) ? discoveredLead.serviceSelections : []).filter((service) => eligibleServiceIds.has(readAssignedServiceId(service)))
+              : discoveredLead.serviceSelections
+          }
+        : null;
+      // Discovery records are intentionally compact. Reattach the authoritative
+      // Lead so getRelatedClientServices can expand a single persisted record
+      // into every distinct closed assigned service (for example Unit 1 and
+      // Unit 2) instead of showing only the record saved most recently.
+      const hydratedDiscoveredServices = discoveredServices.map((service) => ({
+        ...service,
+        ...(chooserLead ? { selectedLead: chooserLead } : {})
+      }));
+      const serviceSource = hydratedDiscoveredServices.length ? hydratedDiscoveredServices : clients;
+      const selectedService = hydratedDiscoveredServices.find((service) => String(service.clientMasterId || service._id || service.id || '') === clientMasterId)
+        || (chooserLead ? { ...selectedClient, selectedLead: chooserLead } : selectedClient);
       const relatedServices = getRelatedClientServices(serviceSource, selectedService);
       const servicesToView = relatedServices.length ? relatedServices : [selectedClient];
       setViewServiceClients(servicesToView);
