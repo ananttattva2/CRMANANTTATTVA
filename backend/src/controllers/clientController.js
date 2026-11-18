@@ -1730,12 +1730,17 @@ function enrichClientMasterReviewServiceFromLead(item = {}, lead = {}) {
   if (!service) return item;
   return {
     ...item,
-    piboCategory: item.piboCategory || service.subApplicantType || service.piboCategory || '',
-    eprCategory: item.eprCategory || service.eprCategory || service.serviceCategory || '',
+    // The assigned Lead service is the canonical source for the chooser's
+    // identity fields. Older drafts can retain the previously selected
+    // applicant/sub-applicant values; preferring those stale values causes two
+    // different assigned services (for example Brand Owner and Importer) to be
+    // deduplicated into one card.
+    piboCategory: service.subApplicantType || service.piboCategory || item.piboCategory || '',
+    eprCategory: service.eprCategory || service.serviceCategory || item.eprCategory || '',
     servicesOffered: item.servicesOffered || service.servicesOffered || service.applicableService || service.serviceName || '',
-    plantUnit: item.plantUnit || service.plantUnit || '',
-    industryType: item.industryType || service.industryType || '',
-    applicantType: item.applicantType || service.applicantType || service.piboParent || ''
+    plantUnit: service.plantUnit || item.plantUnit || '',
+    industryType: service.industryType || item.industryType || '',
+    applicantType: service.applicantType || service.piboParent || service.piboCategoryParent || item.applicantType || ''
   };
 }
 

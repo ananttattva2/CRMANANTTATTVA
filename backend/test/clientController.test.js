@@ -195,3 +195,35 @@ test('review applicant service never overwrites an offering already saved on Cli
 
   assert.equal(result.servicesOffered, 'Saved Service');
 });
+
+test('review applicant chooser keeps assigned Brand Owner and Importer records separate when saved labels are stale', () => {
+  const lead = {
+    serviceSelections: [
+      {
+        assignedServiceId: 'brand-owner-service',
+        applicantType: 'PIBO',
+        subApplicantType: 'Brand Owner',
+        eprCategory: 'EPR - Plastic Waste',
+        plantUnit: 'Unit 1'
+      },
+      {
+        assignedServiceId: 'importer-service',
+        applicantType: 'PIBO',
+        subApplicantType: 'Importer',
+        eprCategory: 'EPR - Plastic Waste',
+        plantUnit: 'Unit 1'
+      }
+    ]
+  };
+  const staleRecords = [
+    { clientMasterId: 'brand-master', assignedServiceId: 'brand-owner-service', applicantType: 'PIBO', piboCategory: 'Importer', eprCategory: 'EPR - Plastic Waste', plantUnit: 'Unit 1' },
+    { clientMasterId: 'importer-master', assignedServiceId: 'importer-service', applicantType: 'PIBO', piboCategory: 'Importer', eprCategory: 'EPR - Plastic Waste', plantUnit: 'Unit 1' }
+  ];
+
+  const services = __test.uniqueClientMasterReviewServices(
+    staleRecords.map((record) => __test.enrichClientMasterReviewServiceFromLead(record, lead))
+  );
+
+  assert.equal(services.length, 2);
+  assert.deepEqual(services.map((service) => service.piboCategory).sort(), ['Brand Owner', 'Importer']);
+});
