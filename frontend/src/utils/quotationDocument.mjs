@@ -116,7 +116,7 @@ function quotationServicePeriodYears(item = {}) {
 }
 
 function quotationAnnualReturnRegistrationYear(item = {}) {
-  if (isEprCreditItem(item)) return '';
+  if (isEprCreditItem(item)) return quotationEprCreditYears(item).join(', ') || '-';
   if (String(item.registrationYear || '').trim()) return String(item.registrationYear).trim();
   const selectedYears = quotationAnnualReturnOrCreditYears(item);
   const displayedYears = selectedYears.length ? selectedYears : quotationServicePeriodYears(item);
@@ -149,13 +149,16 @@ function isRegistrationQuotationService(item = {}) {
 
 function quotationYearMappingHeader(items = []) {
   const consultancyItems = items.filter(isEprConsultancyItem);
+  const hasEprCreditItems = items.some(isEprCreditItem);
   if (consultancyItems.length) {
     const hasAnnualReturn = consultancyItems.some(isAnnualReturnQuotationService);
     const hasRegistration = consultancyItems.some(isRegistrationQuotationService);
+    if (hasEprCreditItems && hasAnnualReturn) return 'Annual Return EPR Year / Credit Years';
     if (hasAnnualReturn && !hasRegistration) return 'Annual Return Year';
     if (hasRegistration && !hasAnnualReturn) return 'Registration EPR Year';
     return 'EPR Year';
   }
+  if (hasEprCreditItems) return 'Annual Return EPR Credit Years';
   if (items.some((item) => String(item.registrationYear || '').trim())) return 'Registration EPR Year';
   return 'Annual Return EPR Year / Credit Year';
 }
@@ -321,7 +324,7 @@ function buildQuotationPrintHtml(quotation, options = {}) {
   const items = meaningfulQuotationItems(quotation.items);
   const combined = isCombinedQuotation(quotation);
   const combinedTotal = combinedQuotationTotal(quotation, items);
-  const hasReturnYearItems = items.some((item) => isEprConsultancyItem(item) || String(item.registrationYear || '').trim());
+  const hasReturnYearItems = items.some((item) => isEprConsultancyItem(item) || isEprCreditItem(item) || String(item.registrationYear || '').trim());
   const yearMappingHeader = quotationYearMappingHeader(items);
   const createdDate = quotation.createdAt ? new Date(quotation.createdAt).toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata' }).replace(/\//g, '-') : new Date().toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata' }).replace(/\//g, '-');
   const displayRows = combined ? combinedPricingRows(quotation, items) : items.map((item, index) => ({ item, index }));

@@ -234,14 +234,15 @@ test('Other Consultancy exposes a required Registration Year after Applicant Typ
   assert.match(model, /registrationYear: \{ type: String[\s\S]*2022-23[\s\S]*2029-30/);
 });
 
-test('EPR Credit period controls support dates, days, months, and annual validity', () => {
+test('EPR Credit quotation period is fixed to one day and retains a start date', () => {
   const page = (fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8') + '\n' + fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/quotationDocument.mjs'), 'utf8'));
-  assert.doesNotMatch(page, /disabled=\{financialYearNeedsEprCreditYears\}/);
-  assert.doesNotMatch(page, /financialYearNeedsEprCreditYears \? 'N\/A'/);
+  assert.match(page, /financialYearIsEprCredit \? '1' : financialYearDraft\.servicePeriod/);
+  assert.match(page, /readOnly=\{financialYearIsEprCredit\}/);
+  assert.match(page, /periodUnitLabel\(financialYearIsEprCredit \? 'days' : financialYearDraft\.periodUnit/);
+  assert.match(page, /const periodUnit = eprCredit \? 'days'/);
+  assert.match(page, /const servicePeriod = eprCredit \? 1/);
   assert.match(page, /financialYearNeedsEprCreditYears \? \['Service Start Date'\]/);
-  assert.match(page, /The EPR – Credit rates are valid for/);
-  assert.match(page, /servicePeriodValidityNote\(financialYearDraft\)/);
-  assert.match(page, /PERIOD_UNIT_OPTIONS = \[[\s\S]*value: 'days', label: 'Days'[\s\S]*value: 'months', label: 'Months'[\s\S]*value: 'annual', label: 'Years'/);
+  assert.match(page, /servicePeriodValidityNote\(\{ \.\.\.financialYearDraft, servicePeriod: 1, periodUnit: 'days' \}\)/);
   assert.match(page, /item\.businessCategory \? ` for \$\{item\.businessCategory\}`/);
   assert.doesNotMatch(page, /item\.serviceCategory \? ` for \$\{item\.serviceCategory\}`/);
 });
@@ -269,7 +270,7 @@ test('quotation UI shares applicant fallback logic and conditionally renders EPR
   assert.match(page, /financialYearNeedsEprCreditYears && <td[^>]*><QuoteYearMultiSelect/);
   assert.match(page, /Please select at least one Annual Return EPR Credit Year/);
   assert.match(page, /function isPwpEprCreditItem\(item = \{\}\)/);
-  assert.match(page, /isPwpEprCreditItem\(item\) \? <span[^>]*>Not required<\/span>/);
+  assert.match(page, /isPwpEprCreditItem\(item\) \? <span[^>]*>1 Day<\/span>/);
   assert.match(page, /String\(item\.basicAmount \?\? ''\)\.trim\(\) === '' \|\| Number\(item\.basicAmount\) < 0/);
   assert.match(page, /getQuotationApplicantType\(financialYearDraft\)/);
   assert.match(page, /quotationEprCreditYears\(item\)\.join\(', '\)/);
@@ -319,23 +320,26 @@ test('quotation mapping view and print hide the EPR service period column', () =
 test('quotation mapping view and download place Applicant Type beside Service Category', () => {
   const page = (fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8') + '\n' + fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/quotationDocument.mjs'), 'utf8'));
   assert.match(page, /<th>Service Category<\/th><th>Applicant Type<\/th>\$\{hasReturnYearItems/);
-  assert.match(page, /escapeHtml\(item\.eprCategory \|\| item\.serviceCategory \|\| '-'\)\}<\/td><td>\$\{escapeHtml\(getQuotationApplicantType\(item\)\)\}<\/td>/);
+  assert.match(page, /escapeHtml\(quotationDisplayValue\(item\.eprCategory \|\| item\.serviceCategory\)\)\}<\/td><td>\$\{escapeHtml\(getQuotationApplicantType\(item\)\)\}<\/td>/);
 });
 
-test('quotation year mapping shows selected or service-period EPR years, including PWP, while EPR Credit stays blank', () => {
+test('quotation year mapping displays selected EPR Credit years in the generated quotation', async () => {
   const page = (fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8') + '\n' + fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/quotationDocument.mjs'), 'utf8'));
-  assert.match(page, /function isAnnualReturnRegistrationApplicant\(item = \{\}\)/);
-  assert.match(page, /applicantType === 'producer' \|\| applicantType === 'importerofrawmaterial'/);
-  assert.match(page, /function isPwpQuotationApplicant\(item = \{\}\)/);
+  const shared = await import('../../frontend/src/utils/quotationDocument.mjs');
+  const item = {
+    businessCategory: 'EPR Credit',
+    serviceCategory: 'EPR - Plastic Waste',
+    servicesOffered: 'Annual Return',
+    annualReturnEprCreditYears: ['2025-26']
+  };
   assert.match(page, /function quotationAnnualReturnRegistrationYear\(item = \{\}\)/);
-  assert.match(page, /if \(isEprCreditItem\(item\)\) return ''/);
-  assert.match(page, /function quotationServicePeriodYears\(item = \{\}\)/);
-  assert.match(page, /const displayedYears = selectedYears\.length \? selectedYears : quotationServicePeriodYears\(item\)/);
-  assert.match(page, /if \(isPwpQuotationApplicant\(item\)\) return displayedYears\.join\(', '\) \|\| item\.financialYear \|\| '-'/);
-  assert.match(page, /if \(isEprConsultancyItem\(item\)\) \{\s*return displayedYears\.join\(', '\) \|\| item\.financialYear \|\| '-'/);
-  assert.match(page, /if \(!isAnnualReturnRegistrationApplicant\(item\)\) return '-'/);
-  assert.equal((page.match(/const hasReturnYearItems = items\.some\(\(item\) => isEprConsultancyItem\(item\) \|\| String\(item\.registrationYear \|\| ''\)\.trim\(\)\)/g) || []).length, 1);
-  assert.doesNotMatch(page, /hidePwpRegistrationYearColumn/);
+  assert.match(page, /if \(isEprCreditItem\(item\)\) return quotationEprCreditYears\(item\)\.join\(', '\) \|\| '-'/);
+  assert.match(page, /isEprConsultancyItem\(item\) \|\| isEprCreditItem\(item\) \|\| String\(item\.registrationYear \|\| ''\)\.trim\(\)/);
+  assert.equal(shared.quotationYearMappingHeader([item]), 'Annual Return EPR Credit Years');
+  assert.equal(shared.quotationAnnualReturnRegistrationYear(item), '2025-26');
+  const html = shared.buildQuotationPrintHtml({ items: [item] });
+  assert.match(html, /Annual Return EPR Credit Years/);
+  assert.match(html, /<td>2025-26<\/td>/);
 });
 
 test('quotation download stays admin-only and requires current approval', () => {
