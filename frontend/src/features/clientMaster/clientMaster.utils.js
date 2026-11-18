@@ -547,10 +547,53 @@ function getAssignedName(item, people = []) {
   return 'Not assigned';
 }
 
+function resolveDisplayedServiceId(item = {}) {
+  const data = readClientData(item);
+  const lead = item?.selectedLead && typeof item.selectedLead === 'object' ? item.selectedLead : data.selectedLeadSnapshot || {};
+  const services = Array.isArray(lead.serviceSelections) ? lead.serviceSelections : [];
+  const assignments = Array.isArray(lead.assignments) ? lead.assignments : [];
+  const storedId = String(item?.assignedServiceId || data.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId || '').trim();
+  if (!services.length) return storedId;
+  const normalize = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const saved = {
+    category: normalize(data.basic?.piboCategory || data.selectedLeadSnapshot?.subApplicantType || data.selectedLeadSnapshot?.piboCategory),
+    unit: normalize(data.basic?.plantUnit || data.selectedLeadSnapshot?.plantUnit),
+    epr: normalize(data.basic?.eprCategory || data.selectedLeadSnapshot?.eprCategory)
+  };
+  const profile = (service = {}) => ({
+    category: normalize(service.subApplicantType || service.piboCategory || service.applicantType),
+    unit: normalize(service.plantUnit),
+    epr: normalize(service.eprCategory || service.serviceCategory)
+  });
+  const compatible = (service) => {
+    const candidate = profile(service);
+    let compared = 0;
+    for (const key of ['category', 'unit', 'epr']) {
+      if (!saved[key] || !candidate[key]) continue;
+      compared += 1;
+      if (saved[key] !== candidate[key]) return false;
+    }
+    return compared > 0;
+  };
+  const storedService = services.find((service) => String(service.assignedServiceId || service.serviceAssignmentId || '') === storedId);
+  if (storedService && compatible(storedService)) return storedId;
+  const candidates = services.map((service, index) => ({ service, index })).filter(({ service }) => compatible(service));
+  if (!candidates.length) return storedId;
+  const score = ({ service, index }) => {
+    const serviceId = String(service.assignedServiceId || service.serviceAssignmentId || '').trim();
+    const assignment = assignments.find((row) => serviceId && String(row.assignedServiceId || row.serviceAssignmentId || '') === serviceId) || assignments[index] || {};
+    return (assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail ? 4 : 0)
+      + (assignment.closedAt || assignment.closedBy || assignment.closedByText || assignment.permanentClosedAt ? 2 : 0)
+      + (serviceId ? 1 : 0);
+  };
+  candidates.sort((left, right) => score(right) - score(left));
+  return String(candidates[0].service.assignedServiceId || candidates[0].service.serviceAssignmentId || storedId).trim();
+}
+
 function getAssignedStaffNames(item, people = []) {
   const data = readClientData(item);
   const lead = item?.selectedLead && typeof item.selectedLead === 'object' ? item.selectedLead : data.selectedLeadSnapshot || {};
-  const serviceId = String(item?.assignedServiceId || data.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId || '');
+  const serviceId = resolveDisplayedServiceId(item);
   const services = lead.serviceSelections || [];
   const allAssignments = [...(Array.isArray(item?.assignments) ? item.assignments : []), ...(Array.isArray(lead.assignments) ? lead.assignments : [])];
   let assignments = serviceId ? allAssignments.filter(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === serviceId) : allAssignments;

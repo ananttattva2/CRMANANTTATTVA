@@ -18,3 +18,20 @@ test('staff display matches legacy assignments by service position without borro
   assert.equal(getAssignedName(client, people), 'TUSHAR GAWAS');
   assert.deepEqual(getAssignedStaffNames({ assignedServiceId: 'missing', selectedLead: { serviceSelections: [{ assignedServiceId: 'a' }, { assignedServiceId: 'b' }], assignments: [{ assignedServiceId: 'a', assignedStaff: 's' }] } }, people), []);
 });
+test('Current SPOC corrects a stale PIBO service id from the saved PWP profile', () => {
+  const client = {
+    assignedServiceId: 'pibo',
+    data: { basic: { piboCategory: 'PWP', eprCategory: 'EPR - Plastic Waste', plantUnit: 'Unit 1' } },
+    selectedLead: {
+      serviceSelections: [
+        { assignedServiceId: 'pwp', applicantType: 'PWP', subApplicantType: 'PWP', eprCategory: 'EPR - Plastic Waste', plantUnit: 'Unit 1' },
+        { assignedServiceId: 'pibo', applicantType: 'PIBO', subApplicantType: 'Importer', eprCategory: 'EPR - Plastic Waste', plantUnit: 'Unit 1' }
+      ],
+      assignments: [
+        { assignedServiceId: 'pwp', assignedStaffText: 'SAURABH BHAT', closedAt: '2026-01-01' },
+        { assignedServiceId: 'pibo', assignedStaff: 't', assignedStaffText: 'SIDDHESH NIKAM', closedAt: '2026-01-01' }
+      ]
+    }
+  };
+  assert.equal(getAssignedName(client, people), 'SAURABH BHAT');
+});

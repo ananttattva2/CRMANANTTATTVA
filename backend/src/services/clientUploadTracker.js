@@ -9,6 +9,16 @@ const normalizeYear = value => {
 };
 const yearsFrom = value => (Array.isArray(value) ? value : [value]).flatMap(item => String(item || '').split(/[,;\n]/)).map(normalizeYear).filter(Boolean);
 const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const applicant = value => {
+  const key = normalize(value);
+  if ((key.includes('rawmaterial') || key.includes('simp')) && key.includes('import')) return 'importerrawmaterial';
+  if ((key.includes('smallmicro') || key.includes('simp')) && key.includes('produc')) return 'producersmallmicro';
+  if (key.includes('brandowner')) return 'brandowner';
+  if (key.includes('importer')) return 'importer';
+  if (key.includes('producer')) return 'producer';
+  if (key.includes('recycler')) return 'recycler';
+  return key;
+};
 const selectedServiceIdFor = client => {
   const data = client?.data || {};
   return String(client?.assignedServiceId || data.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId || '').trim();
@@ -77,8 +87,37 @@ function applicationDescriptor(client, selectedFinancialYear = '') {
   const data = client.data || {}, basic = data.basic || {}, lead = client.selectedLead || {};
   const selections = lead.serviceSelections || [];
   const selectedServiceId = selectedServiceIdFor(client);
-  const serviceIndex = selections.findIndex(row => selectedServiceId && String(row.assignedServiceId || row.serviceAssignmentId || '') === selectedServiceId);
+  let serviceIndex = selections.findIndex(row => selectedServiceId && String(row.assignedServiceId || row.serviceAssignmentId || '') === selectedServiceId);
+  const savedProfile = {
+    category: applicant(basic.piboCategory || basic.subApplicantType || data.selectedLeadSnapshot?.subApplicantType || data.selectedLeadSnapshot?.piboCategory),
+    unit: normalize(basic.plantUnit || data.selectedLeadSnapshot?.plantUnit),
+    epr: normalize(basic.eprCategory || data.selectedLeadSnapshot?.eprCategory)
+  };
+  const compatible = (candidate = {}) => {
+    const profile = { category: applicant(candidate.subApplicantType || candidate.piboCategory || candidate.applicantType), unit: normalize(candidate.plantUnit), epr: normalize(candidate.eprCategory) };
+    let compared = 0;
+    for (const field of ['category', 'unit', 'epr']) {
+      if (!savedProfile[field] || !profile[field]) continue;
+      compared += 1;
+      if (savedProfile[field] !== profile[field]) return false;
+    }
+    return compared > 0;
+  };
+  const topLevelServiceId = String(client?.assignedServiceId || '').trim();
+  if (serviceIndex < 0 || (topLevelServiceId && !compatible(selections[serviceIndex]))) {
+    const candidates = selections.map((service, index) => ({ service, index })).filter(({ service }) => compatible(service));
+    const score = ({ service, index }) => {
+      const serviceId = String(service.assignedServiceId || service.serviceAssignmentId || '');
+      const row = (lead.assignments || []).find(assignment => serviceId && String(assignment.assignedServiceId || assignment.serviceAssignmentId || '') === serviceId) || (lead.assignments || [])[index] || {};
+      return (row.assignedStaff || row.assignedStaffText || row.assignedStaffEmail ? 4 : 0)
+        + (row.closedAt || row.closedBy || row.closedByText || row.permanentClosedAt ? 2 : 0)
+        + (serviceId ? 1 : 0);
+    };
+    candidates.sort((left, right) => score(right) - score(left));
+    if (candidates.length) serviceIndex = candidates[0].index;
+  }
   const service = serviceIndex >= 0 ? selections[serviceIndex] : (selections.length === 1 ? selections[0] : {});
+  const resolvedAssignedServiceId = String(service.assignedServiceId || service.serviceAssignmentId || selectedServiceId || '');
   const category = [service.subApplicantType, service.piboCategory, basic.piboCategory, basic.subApplicantType, service.applicantType, basic.applicantType].find(value => typeof value === 'string' && value.trim()) || 'Not recorded';
   const key = category.toLowerCase().replace(/[^a-z0-9]/g, '');
   const canonical = key.includes('rawmaterial') && key.includes('import') || key.includes('simp') && key.includes('import') ? 'Importer of Raw Material'
@@ -90,7 +129,7 @@ function applicationDescriptor(client, selectedFinancialYear = '') {
   const normalized = primary.toLowerCase().replace(/[^a-z0-9]/g, '');
   const serviceType = /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalized) ? 'annual' : ['registration','newregistration'].includes(normalized) ? 'registration' : '';
   const assignments = lead.assignments || [];
-  const exactAssignment = assignments.find(row => selectedServiceId && String(row.assignedServiceId || row.serviceAssignmentId || '') === selectedServiceId);
+  const exactAssignment = assignments.find(row => resolvedAssignedServiceId && String(row.assignedServiceId || row.serviceAssignmentId || '') === resolvedAssignedServiceId);
   const indexedAssignment = serviceIndex >= 0 && assignments[serviceIndex]
     && !String(assignments[serviceIndex].assignedServiceId || assignments[serviceIndex].serviceAssignmentId || '')
     ? assignments[serviceIndex] : null;
@@ -113,7 +152,7 @@ function applicationDescriptor(client, selectedFinancialYear = '') {
   const cpcb = data.cpcb?.status || data.cpcb?.approvalStatus || data.cpcb?.applicationStatus || basic.cpcbStatus || data.importMeta?.cpcbStatus;
   const cpcbApproved = /approved|registered|processed|annualreturnapplicable/.test(normalize(cpcb));
   const annualQualified = cpcbApproved && currentAnnualPoRows.length > 0;
-  return { category: canonical, unit: String(service.plantUnit || basic.plantUnit || data.selectedLeadSnapshot?.plantUnit || '').trim(), serviceType, offered: primary, closed, annualWorkflowReady, annualReturnYears, annualQualified };
+  return { assignedServiceId: resolvedAssignedServiceId, category: canonical, unit: String(service.plantUnit || basic.plantUnit || data.selectedLeadSnapshot?.plantUnit || '').trim(), serviceType, offered: primary, closed, annualWorkflowReady, annualReturnYears, annualQualified };
 }
 function buildUploadTracker(clients, users, purchases, sales, options = {}) {
   const identities = new Map();
@@ -131,7 +170,11 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
     if (!clientId || seen.has(clientId)) continue;
     seen.add(clientId);
     const purchaseRecord = purchaseIndex.get(clientId), salesRecord = salesIndex.get(clientId);
-    const [permanent] = allocatedOwnerKeyGroups(client);
+    const descriptor = options.groupBy === 'application' ? applicationDescriptor(client, options.financialYear) : null;
+    const ownerClient = descriptor?.assignedServiceId && descriptor.assignedServiceId !== selectedServiceIdFor(client)
+      ? { ...client, assignedServiceId: descriptor.assignedServiceId, data: { ...(client.data || {}), assignedServiceId: descriptor.assignedServiceId } }
+      : client;
+    const [permanent] = allocatedOwnerKeyGroups(ownerClient);
     const workflowOwners = [
       purchaseRecord?.updatedBy, purchaseRecord?.submittedBy, purchaseRecord?.createdBy,
       salesRecord?.updatedBy, salesRecord?.submittedBy, salesRecord?.createdBy
@@ -148,7 +191,6 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
     detail.companyKey = assignedCompanyKey(client);
     detail.clientIds = [clientId];
     if (options.groupBy === 'application') {
-      const descriptor = applicationDescriptor(client, options.financialYear);
       Object.assign(detail, descriptor);
       detail.workflowRecorded = hasWorkflowProgress(purchaseIndex.get(clientId), options.financialYear) || hasWorkflowProgress(salesIndex.get(clientId), options.financialYear);
       detail.companyKey += ':' + descriptor.category.toLowerCase().replace(/[^a-z0-9]/g, '') + ':' + descriptor.unit.toLowerCase().replace(/[^a-z0-9]/g, '');

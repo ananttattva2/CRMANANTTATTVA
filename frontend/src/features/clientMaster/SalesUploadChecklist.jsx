@@ -35,7 +35,7 @@ export default function SalesUploadChecklist({ title = 'Sales Data Upload Checkl
   return <section className="upload-tracker" aria-label={title}>
     <header className="ut-heading">
       <div className="ut-heading-copy"><span className="ut-logo"><FileText size={28} /></span><div><h2>Client Data Upload Tracker</h2><p>{title.replace(' Upload Checklist', '')} · Track status, supporting documents and completion.</p></div></div>
-      <div className="ut-counters" aria-label="Tracker summary">{[[Clock3, pending, 'Pending', 'pending'], [Check, completed, 'Completed', 'complete'], [List, countedRows.length, 'Total', 'total']].map(([Icon, count, label, tone]) => <div className={`ut-counter ut-counter-${tone}`} key={label}><span><Icon size={20} /></span><div><strong>{count}</strong><small>{label}</small></div></div>)}</div>
+      <div className="ut-counters" aria-label="Tracker summary">{[[Clock3, pending, 'Pending Stages', 'pending'], [Check, completed, 'Completed Stages', 'complete'], [List, countedRows.length, 'Total Stages', 'total']].map(([Icon, count, label, tone]) => <div className={`ut-counter ut-counter-${tone}`} key={label}><span><Icon size={20} /></span><div><strong>{count}</strong><small>{label}</small></div></div>)}</div>
     </header>
 
     <div className="ut-table-scroll"><table className="ut-table"><caption className="sr-only">{title}</caption><colgroup><col style={{ width: '5%' }} /><col style={{ width: '19%' }} /><col style={{ width: '10%' }} /><col style={{ width: '16%' }} /><col style={{ width: '26%' }} /><col style={{ width: '15%' }} /><col style={{ width: '9%' }} /></colgroup>

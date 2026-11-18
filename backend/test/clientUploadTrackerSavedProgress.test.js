@@ -74,3 +74,27 @@ test('saved Purchase progress stays visible under its updater when the permanent
   assert.equal(group.clients.length, 1);
   assert.equal(group.clients[0].purchase[0], 'complete');
 });
+
+test('PWP progress follows the PWP permanent owner when the Client Master stores a stale PIBO service id', () => {
+  const pwpOwner = { _id: 'saurabh', name: 'SAURABH BHAT', role: 'operation' };
+  const stale = structuredClone(client);
+  stale.assignedServiceId = 'pibo-service';
+  stale.data.basic = { piboCategory: 'PWP', eprCategory: 'EPR - Plastic Waste', plantUnit: 'Unit 1' };
+  stale.selectedLead.serviceSelections = [
+    { assignedServiceId: 'pwp-service', applicantType: 'PWP', subApplicantType: 'PWP', eprCategory: 'EPR - Plastic Waste', servicesOffered: 'Annual Return Filling', plantUnit: 'Unit 1' },
+    { assignedServiceId: 'pibo-service', applicantType: 'PIBO', subApplicantType: 'Importer', eprCategory: 'EPR - Plastic Waste', servicesOffered: 'Annual Return Filling', plantUnit: 'Unit 1' }
+  ];
+  stale.selectedLead.assignments = [
+    { assignedServiceId: 'pwp-service', assignedStaff: 'saurabh', assignedTo: 'manager', closedAt: '2026-01-01', poStatus: 'received', poYearRows: [{ annualReturnYear: '2025-26', poNumber: 'PO-PWP' }] },
+    { assignedServiceId: 'pibo-service', assignedStaff: 'tushar', assignedTo: 'manager', closedAt: '2026-01-01', poStatus: 'received', poYearRows: [{ annualReturnYear: '2025-26', poNumber: 'PO-PIBO' }] }
+  ];
+  const purchase = { clientId: 'atul-brand', financialYear: '2025-26', checklist: [{ particular: 'Data Explained', yesNo: 'Yes' }] };
+
+  const result = buildUploadTracker([stale], [user, pwpOwner], [purchase], [], { groupBy: 'application', serviceType: 'annual', financialYear: '2025-26' });
+  const pwpGroup = result.find(row => row.userId === 'saurabh');
+
+  assert.equal(pwpGroup.clients.length, 1);
+  assert.equal(pwpGroup.clients[0].category, 'PWP');
+  assert.equal(pwpGroup.clients[0].purchase[0], 'complete');
+  assert.equal(result.find(row => row.userId === 'tushar')?.clients.length || 0, 0);
+});
