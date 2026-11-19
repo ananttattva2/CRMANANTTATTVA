@@ -177,12 +177,14 @@ export function buildOperationsProgressGroups(rows, users, getLegacyKeys, now = 
     const permanentStaffKeys = permanentStaffOwnerKeys(row.client)
     // Assigned counts follow Manager Assigned to Staff, never temporary or importer ownership.
     const owner = findOwner(permanentStaffKeys)
-    // A lead belongs to a SPOC only when an operations executive was
-    // explicitly assigned (assignedStaff). Leads closed by a manager without
-    // a staff hand-off, or whose PO was approved by admin and handed to a
-    // manager but never delegated to staff, are surfaced under Unassigned.
     const staffAssigned = hasPermanentStaffAssignment(row.client)
-    if (!staffAssigned) {
+    // A lead belongs to a SPOC when an operations executive was explicitly
+    // assigned (assignedStaff). Legacy closed leads without a staff hand-off
+    // remain owned by the operations user who closed them (closedBy fallback
+    // in permanentStaffOwnerKeys). Leads whose PO was approved by admin and
+    // handed to a manager but never delegated to staff — and closed leads
+    // with no identifiable operations owner — are surfaced under Unassigned.
+    if (!staffAssigned && !owner) {
       const closed = isLeadClosed(row.client)
       const managerAssigned = hasManagerAssignment(row.client)
       const adminApprovedPo = hasAdminApprovedPo(row.client)
