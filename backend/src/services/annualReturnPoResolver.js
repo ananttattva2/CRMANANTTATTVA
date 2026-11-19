@@ -155,10 +155,14 @@ function buildAnnualReturnContext(lead = {}, serviceScope = {}) {
   const hasApplicantMatch = Boolean(!hasExactServiceMatch && scopedApplicantType && rowsWithService.some((row) => row.applicantType === scopedApplicantType));
 
   rowsWithService.forEach(({ assignment, assignmentId, linkedService, applicantType }) => {
-    if (hasExactServiceMatch && assignmentId !== scopedServiceId) return;
-    if (hasApplicantMatch && applicantType !== scopedApplicantType) return;
     const assignmentServices = [...serviceValues(linkedService), ...serviceValues(assignment)];
     const assignmentIsAnnual = assignmentServices.some(isAnnualReturnService);
+    // Annual Return for the same applicant can be spread across several
+    // year-scoped assignments. An exact assignedServiceId match must not hide
+    // another same-applicant Annual Return assignment that carries the PO.
+    const sameApplicantAnnual = assignmentIsAnnual && (!scopedApplicantType || applicantType === scopedApplicantType);
+    if (hasExactServiceMatch && assignmentId !== scopedServiceId && !sameApplicantAnnual) return;
+    if (hasApplicantMatch && applicantType !== scopedApplicantType) return;
     const rows = Array.isArray(assignment.poYearRows) ? assignment.poYearRows : [];
     const hasAnnualRow = rows.some((row) => serviceValues(row).some(isAnnualReturnService));
     if (!assignmentIsAnnual && !hasAnnualRow) return;

@@ -173,6 +173,23 @@ test('falls back to applicant type when a stale service id points to a sibling a
   assert.equal(result.years[0].po.number, 'IMPORTER-PO');
 });
 
+test('same-applicant Annual Return PO on another year assignment is still visible', async () => {
+  const source = lead({
+    serviceSelections: [
+      { assignedServiceId: 'annual-2025', subApplicantType: 'Producer', servicesOffered: 'Annual Return Filling', firstAnnualReturnYearApplicable: '2025-26' },
+      { assignedServiceId: 'annual-2026', subApplicantType: 'Producer', servicesOffered: 'Annual Return Filling', firstAnnualReturnYearApplicable: '2026-27' }
+    ],
+    assignments: [
+      { assignedServiceId: 'annual-2025', poStatus: 'received', poYearRows: [annualPo({ poNumber: 'FY25-PO', annualReturnYear: '2025-26' })] },
+      { assignedServiceId: 'annual-2026', poStatus: 'received', poYearRows: [] }
+    ]
+  });
+  const scopedToSecondYear = { ...client, assignedServiceId: 'annual-2026', data: { ...client.data, assignedServiceId: 'annual-2026', basic: { ...client.data.basic, piboCategory: 'Producer' } } };
+  const result = await resolveAnnualReturnPO({ clientMaster: scopedToSecondYear, financialYears: ['2025-26'], LeadModel: modelFor(source) });
+  assert.equal(result.years[0].poStatus, 'received');
+  assert.equal(result.years[0].po.number, 'FY25-PO');
+});
+
 test('PO resolution does not mutate existing Lead, Client Master, or Annual Return data', async () => {
   const source = lead();
   source.assignments[1].poYearRows = [annualPo()];
