@@ -12,6 +12,7 @@ const { loadPurchaseOrders } = require('./purchaseOrderController');
 const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
 const { loadOverallRecords } = require('../services/overallDashboardData');
 const { loadDashboardAssignments, createDashboardCache, leadProjection } = require('../services/dashboardReadModel');
+const { allocatedOwnerKeyGroups } = require('../services/overallDashboardUsers');
 const cachedOverallRecords = createDashboardCache({ name: 'overall-records' });
 const cachedAssignmentReviews = createDashboardCache({ name: 'assignment-reviews' });
 const cachedMonthlyPurchaseOrders = createDashboardCache({ name: 'monthly-purchase-orders' });
@@ -334,9 +335,22 @@ exports.uploadTracker = async (req, res) => {
       // Portfolio counts need application status, not the full compliance
       // review/SLA histories used by the operations dashboard.
       if (req.query.portfolioOnly === 'true') {
+        // The portfolio must include leads with no operations owner (admin-approved PO
+        // assigned to a manager but not yet delegated to staff) so they surface under
+        // the Unassigned SPOC row. Data scope is enforced by the exclusion filters in
+        // loadDashboardAssignments, but we must still drop leads whose permanent owner
+        // is outside the requester's visible user set. A client with no permanent/legacy
+        // owner is treated as unassigned and remains visible to everyone.
+        const visibleIdentities = new Set();
+        users.forEach(user => [user._id, user.crmUserId, user.name, user.email].filter(Boolean).forEach(value => visibleIdentities.add(String(value).trim().toLowerCase())));
+        const portfolioClients = assignedClients.filter(client => {
+          const [permanentOwners] = allocatedOwnerKeyGroups(client);
+          if (!permanentOwners.length) return true; // unassigned -> visible to all
+          return permanentOwners.some(key => visibleIdentities.has(String(key).trim().toLowerCase()));
+        });
         res.set('Cache-Control', 'private, no-store');
         res.set('Server-Timing', `references;dur=${referencesAt - startedAt}, snapshot;dur=${snapshotAt - referencesAt}, assignments;dur=${Date.now() - startedAt}`);
-        return res.json({ ok: true, visibility: scope === null ? 'all' : scope.ids.length > 1 ? 'team' : 'own', users, assignments: visibleClients });
+        return res.json({ ok: true, visibility: scope === null ? 'all' : scope.ids.length > 1 ? 'team' : 'own', users, assignments: portfolioClients });
       }
       const realIds = visibleClients.filter(client => !client.assignmentOnly).map(client => client._id);
       const [reviews, approvals] = await cachedAssignmentReviews(JSON.stringify(realIds.map(String).sort()), () => Promise.all([
