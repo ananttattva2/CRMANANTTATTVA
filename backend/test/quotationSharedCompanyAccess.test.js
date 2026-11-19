@@ -32,3 +32,16 @@ test('normal user access includes own quotations and quotations linked to owned 
 test('unauthenticated scope cannot see quotations', async () => {
   assert.deepEqual(await controller._test.quotationAccessFilter(null), { _id: { $exists: false } });
 });
+
+test('quotation lead visibility matches generated, secondary, assigned, and shared lead access', () => {
+  const userId = '64b8f1c2a1e2f3d4c5b6a7e8';
+  const filter = controller._test.quotationLeadVisibilityFilter({
+    ids: [userId],
+    identities: [userId, 'sales@example.com']
+  });
+  const ownedFilter = filter.$or.find((condition) => condition.$or?.some((row) => row.createdBy));
+  assert.ok(ownedFilter.$or.some((row) => row.secondaryCreatedBy?.$in?.includes(userId)));
+  assert.ok(ownedFilter.$or.some((row) => row.generatedForUser?.$in?.includes(userId)));
+  assert.ok(ownedFilter.$or.some((row) => row.generatedForEmail?.$options === 'i'));
+  assert.ok(filter.$or.some((condition) => condition.$or?.some((row) => row['noOwner.active'] === true)));
+});

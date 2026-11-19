@@ -14,6 +14,7 @@ const Notification = require('../models/Notification');
 const User = require('../models/User');
 const { sendQuotationLifecycleEmail } = require('../services/quotationLifecycleEmails');
 const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
+const { noOwnerWorkspaceFilter } = require('../services/leadOwnershipAndEmailWorkflow');
 const { userHasAnyRole } = require('../utils/userRoles');
 const {
   BUILT_IN_SERVICE_CATEGORIES,
@@ -72,20 +73,29 @@ function isQuotationAdmin(user) {
   return ['admin', 'superadmin'].includes(cleanString(user?.role).toLowerCase());
 }
 
+function quotationLeadVisibilityFilter(scope) {
+  const ownedLeads = ownerFilter(scope, 'createdBy', 'assignedTo', [
+    'createdByCrmUserId', 'createdByName', 'createdByEmail', 'importedCreatedBy',
+    'generatedForName', 'generatedForEmail', 'assignedToText', 'assignedToEmail',
+    'assignedStaffText', 'assignedStaffEmail', 'assignments.assignedToText',
+    'assignments.assignedToEmail', 'assignments.assignedStaffText',
+    'assignments.assignedStaffEmail', 'serviceSelections.createdByCrmUserId',
+    'serviceSelections.createdByName', 'serviceSelections.createdByEmail'
+  ], [
+    'secondaryCreatedBy', 'generatedForUser', 'assignedStaff',
+    'assignments.assignedTo', 'assignments.assignedStaff'
+  ]);
+  if (scope === null) return ownedLeads;
+  if (!scope?.ids?.length && !scope?.identities?.length) return ownedLeads;
+  return { $or: [ownedLeads, noOwnerWorkspaceFilter()] };
+}
+
 async function quotationAccessFilter(user) {
   const scope = await getVisibleUserScope(user);
   if (scope === null) return {};
   if (!scope.ids.length && !scope.identities.length) return { _id: { $exists: false } };
-  const leads = await Lead.find(ownerFilter(scope, 'createdBy', 'assignedTo', [
-    'createdByCrmUserId', 'createdByEmail', 'createdByName', 'importedCreatedBy',
-    'generatedForName', 'generatedForEmail', 'assignedToText', 'assignedStaffText',
-    'assignedStaffEmail', 'assignments.assignedToText', 'assignments.assignedToEmail',
-    'assignments.assignedStaffText', 'assignments.assignedStaffEmail',
-    'serviceSelections.createdByCrmUserId', 'serviceSelections.createdByEmail',
-    'serviceSelections.createdByName'
-  ], [
-    'generatedForUser', 'assignedStaff', 'assignments.assignedTo', 'assignments.assignedStaff'
-  ])).select('_id leadCode sourceLeadId externalLeadId').lean();
+  const leads = await Lead.find(quotationLeadVisibilityFilter(scope))
+    .select('_id leadCode sourceLeadId externalLeadId').lean();
   const leadObjectIds = leads.map((lead) => lead._id);
   const leadIdentifiers = [...new Set(leads.flatMap((lead) => [
     String(lead._id), lead.leadCode, lead.sourceLeadId, lead.externalLeadId
@@ -179,12 +189,7 @@ async function refreshQuotationLeadDetails(data, existingQuotation = null, user 
   if (!filters.length) return data;
   const lead = await Lead.findOne(combineFilters(
     { $or: filters },
-    ownerFilter(await getVisibleUserScope(user), 'createdBy', 'assignedTo', [
-      'createdByCrmUserId', 'createdByEmail', 'createdByName', 'assignedToText',
-      'assignedStaffText', 'assignedStaffEmail', 'assignments.assignedToText',
-      'assignments.assignedToEmail', 'serviceSelections.createdByCrmUserId',
-      'serviceSelections.createdByEmail', 'serviceSelections.createdByName'
-    ], ['assignedStaff', 'assignments.assignedTo', 'assignments.assignedStaff'])
+    quotationLeadVisibilityFilter(await getVisibleUserScope(user))
   )).lean();
   if (!lead) {
     const error = new Error('Lead not found or not accessible.');
@@ -1490,6 +1495,7 @@ exports._test = {
   mergeCurrentLeadDetails,
   normalizeCompanyName,
   preserveTerminalApprovalStatus,
+  quotationLeadVisibilityFilter,
   quotationAccessFilter,
   validateQuotationItemDates
 };
