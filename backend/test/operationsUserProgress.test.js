@@ -208,6 +208,21 @@ test('legacy assignment names work when no service allocations exist', async () 
   assert.equal(groups.find((group) => group.id === 'sonal').total, 0);
 });
 
+test('closed leads without a permanent staff assignment surface under an Unassigned group', async () => {
+  const { buildOperationsProgressGroups } = await helpers;
+  const localUsers = [{ _id: 'sonal', name: 'Sonal More', role: 'operation' }];
+  const closedUnassigned = { id: 'closed-unassigned', hasPo: true, client: { assignedServiceId: 'svc', selectedLead: { status: 'closed', assignments: [{ assignedServiceId: 'svc', closedAt: '2026-01-01', closedBy: 'sales-user' }] } } };
+  const openUnassigned = { id: 'open-unassigned', hasPo: true, client: { assignedServiceId: 'svc', selectedLead: { status: 'open', assignments: [{ assignedServiceId: 'svc' }] } } };
+  const groups = buildOperationsProgressGroups([closedUnassigned, openUnassigned], localUsers, () => []);
+  const unassigned = groups.find((group) => group.id === 'unassigned');
+  assert.ok(unassigned, 'Unassigned group should be present for closed unassigned leads');
+  assert.equal(unassigned.total, 1);
+  assert.equal(unassigned.rows[0].id, 'closed-unassigned');
+  assert.equal(unassigned.poDone, 1);
+  assert.equal(groups.find((group) => group.id === 'sonal').total, 0);
+  assert.equal(groups.reduce((sum, group) => sum + group.total, 0), 1);
+});
+
 test('48/72/96 count actual overdue deadlines cumulatively at their boundaries', async () => {
   const { getOperationsSla } = await helpers;
   const due = Date.parse('2026-09-28T00:00:00Z');

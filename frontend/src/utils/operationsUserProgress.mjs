@@ -130,6 +130,7 @@ export function buildOperationsProgressGroups(rows, users, getLegacyKeys, now = 
   const staff = users.filter(isOperationsStaff)
   const groups = new Map(staff.map((user) => [key(user._id || user.id || user.userId || user.email),
     { id: key(user._id || user.id || user.userId || user.email), name: user.name || user.email, rows: [] }]))
+  const unassignedGroup = { id: 'unassigned', name: 'Unassigned', rows: [] }
   const findOwner = (ownerKeys = []) => {
     for (const ownerKey of ownerKeys) {
       const matched = staff.find((user) => [...identity(user), key(user.crmUserId)].some((token) => token && token === ownerKey))
@@ -137,17 +138,34 @@ export function buildOperationsProgressGroups(rows, users, getLegacyKeys, now = 
     }
     return null
   }
+  const isLeadClosed = (client = {}) => {
+    const lead = client.selectedLead || client.data?.selectedLeadSnapshot || {}
+    const assignments = Array.isArray(lead.assignments) ? lead.assignments : []
+    return assignments.some(assignment => assignment?.closedAt || assignment?.closedBy || assignment?.closedByText || assignment?.permanentClosedAt)
+      || Boolean(lead.closedAt || lead.closedBy || lead.closedByText)
+      || key(lead.status) === 'closed'
+  }
   rows.forEach((row) => {
     const permanentStaffKeys = permanentStaffOwnerKeys(row.client)
     // Assigned counts follow Manager Assigned to Staff, never temporary or importer ownership.
     const owner = findOwner(permanentStaffKeys)
-    if (!owner) return
+    if (!owner) {
+      // Closed leads without a permanent staff assignment are surfaced under
+      // the Unassigned group so they remain visible in SPOC summaries.
+      if (!isLeadClosed(row.client)) return
+      if (!unassignedGroup.rows.some((item) => String(item.id) === String(row.id))) {
+        unassignedGroup.rows.push({ ...row, sla: getOperationsSla(row.client?.operationsSla || row.approval || {}, now) })
+      }
+      return
+    }
     const group = groups.get(key(owner._id || owner.id || owner.userId || owner.email))
     if (group && !group.rows.some((item) => String(item.id) === String(row.id))) {
       group.rows.push({ ...row, sla: getOperationsSla(row.client?.operationsSla || row.approval || {}, now) })
     }
   })
-  for (const group of groups.values()) {
+  const allGroups = [...groups.values()]
+  if (unassignedGroup.rows.length) allGroups.push(unassignedGroup)
+  for (const group of allGroups) {
     const companies = new Map()
     for (const row of group.rows) {
       const companyKey = assignedCompanyKey({ ...row.client, _id: row.client?._id || row.id }, row.companyName)
@@ -156,7 +174,7 @@ export function buildOperationsProgressGroups(rows, users, getLegacyKeys, now = 
     }
     group.rows = [...companies.values()].map(mergeCompanyRows)
   }
-  return [...groups.values()].map((group) => ({ ...group, total: group.rows.length,
+  return allGroups.map((group) => ({ ...group, total: group.rows.length,
     complianceDone: group.rows.filter((row) => key(row.client?.operationsSla?.approvalStatus || row.client?.adminControls?.approvalStatus) === 'approved').length,
     poDone: group.rows.filter((row) => row.hasPo).length,
     milestones: Object.fromEntries([48, 72, 96].map((hours) => [hours, group.rows.filter((row) => row.sla[hours].breached).length]))

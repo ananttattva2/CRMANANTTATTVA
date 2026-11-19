@@ -52,7 +52,7 @@ function applicationAnnualYears(assignment, poRows) {
   if (!received) return [];
   const eligibleRows = poRows.filter(row => !list(row?.services).length || isAnnual(row.services));
   const saved = yearsFrom(...eligibleRows.map(row => row?.annualReturnYear));
-  return saved.sort((left, right) => Number(left.slice(0, 4)) - Number(right.slice(0, 4))).slice(0, 1);
+  return saved.sort((left, right) => Number(left.slice(0, 4)) - Number(right.slice(0, 4)));
 }
 
 function normalizedCompanyKey(lead, company) {
