@@ -76,23 +76,32 @@ test('EPR Credit targets persist on approved quotation items', async t => {
   assert.equal(quotation.items[2].eprCreditTargetMt, 5);
 });
 
-test('quotation email image attachments are optional and validated by file signature', () => {
-  const { quotationEmailImageAttachments } = controller._test;
+test('quotation email attachments accept images and PDFs and validate by file signature', () => {
+  const { quotationEmailAttachments } = controller._test;
   const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
-  assert.deepEqual(quotationEmailImageAttachments([]), []);
-  const [attachment] = quotationEmailImageAttachments([{
+  const pdf = Buffer.from('%PDF-1.4 test content');
+  assert.deepEqual(quotationEmailAttachments([]), []);
+  const [imageAttachment] = quotationEmailAttachments([{
     originalname: 'client-photo.png',
     mimetype: 'image/png',
     buffer: png
   }]);
-  assert.equal(attachment.filename, 'client-photo.png');
-  assert.equal(attachment.contentType, 'image/png');
-  assert.equal(attachment.content, png);
-  assert.throws(() => quotationEmailImageAttachments([{
+  assert.equal(imageAttachment.filename, 'client-photo.png');
+  assert.equal(imageAttachment.contentType, 'image/png');
+  assert.equal(imageAttachment.content, png);
+  const [pdfAttachment] = quotationEmailAttachments([{
+    originalname: 'terms.pdf',
+    mimetype: 'application/pdf',
+    buffer: pdf
+  }]);
+  assert.equal(pdfAttachment.filename, 'terms.pdf');
+  assert.equal(pdfAttachment.contentType, 'application/pdf');
+  assert.equal(pdfAttachment.content, pdf);
+  assert.throws(() => quotationEmailAttachments([{
     originalname: 'not-an-image.png',
     mimetype: 'image/png',
     buffer: Buffer.from('not an image')
-  }]), /valid JPEG, PNG, GIF, or WebP/i);
+  }]), /valid JPEG, PNG, GIF, WebP, or PDF/i);
 });
 
 test('approved quotation email includes the per kg and converted per MT EPR Credit table', async t => {

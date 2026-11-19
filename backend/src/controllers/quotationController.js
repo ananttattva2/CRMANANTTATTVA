@@ -212,23 +212,23 @@ function roundMoney(value) {
   return Number.isFinite(amount) ? Math.round((amount + Number.EPSILON) * 100) / 100 : 0;
 }
 
-function quotationEmailImageAttachments(files = []) {
+function quotationEmailAttachments(files = []) {
   const maxFiles = 5;
   const maxFileBytes = 5 * 1024 * 1024;
   const maxTotalBytes = 15 * 1024 * 1024;
   if (!Array.isArray(files) || files.length > maxFiles) {
-    throw Object.assign(new Error('Attach up to 5 images.'), { statusCode: 400 });
+    throw Object.assign(new Error('Attach up to 5 files.'), { statusCode: 400 });
   }
 
   let totalBytes = 0;
   return files.map((file, index) => {
     const buffer = file?.buffer;
     if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > maxFileBytes) {
-      throw Object.assign(new Error(`Image ${index + 1} must be a non-empty file no larger than 5 MB.`), { statusCode: 400 });
+      throw Object.assign(new Error(`File ${index + 1} must be a non-empty file no larger than 5 MB.`), { statusCode: 400 });
     }
     totalBytes += buffer.length;
     if (totalBytes > maxTotalBytes) {
-      throw Object.assign(new Error('The total size of attached images cannot exceed 15 MB.'), { statusCode: 400 });
+      throw Object.assign(new Error('The total size of attached files cannot exceed 15 MB.'), { statusCode: 400 });
     }
 
     let contentType;
@@ -245,13 +245,16 @@ function quotationEmailImageAttachments(files = []) {
     } else if (buffer.length >= 12 && buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP') {
       contentType = 'image/webp';
       extension = 'webp';
+    } else if (buffer.length >= 5 && buffer.subarray(0, 5).toString('ascii') === '%PDF-') {
+      contentType = 'application/pdf';
+      extension = 'pdf';
     } else {
-      throw Object.assign(new Error(`Image ${index + 1} must be a valid JPEG, PNG, GIF, or WebP file.`), { statusCode: 400 });
+      throw Object.assign(new Error(`File ${index + 1} must be a valid JPEG, PNG, GIF, WebP, or PDF file.`), { statusCode: 400 });
     }
 
-    const uploadedName = String(file.originalname || `image-${index + 1}`)
+    const uploadedName = String(file.originalname || `attachment-${index + 1}`)
       .split(/[\\/]/).pop().replace(/\.[^.]*$/, '');
-    const safeName = uploadedName.replace(/[^\w.-]+/g, '_').replace(/^[._-]+|[._-]+$/g, '').slice(0, 80) || `image-${index + 1}`;
+    const safeName = uploadedName.replace(/[^\w.-]+/g, '_').replace(/^[._-]+|[._-]+$/g, '').slice(0, 80) || `attachment-${index + 1}`;
     return { filename: `${safeName}.${extension}`, content: buffer, contentType };
   });
 }
@@ -1006,7 +1009,7 @@ exports.emailQuotation = async (req, res, next) => {
     if ((quotation.items || []).some(isEprCreditItem) && !hasCompleteEprCreditTargets(quotation.items || [])) {
       return res.status(400).json({ error: 'Save a Target for every EPR Credit item before sending the quotation.' });
     }
-    const imageAttachments = quotationEmailImageAttachments(req.files || []);
+    const imageAttachments = quotationEmailAttachments(req.files || []);
     // Always copy the authenticated sender, independently of client-entered recipients.
     const senderEmail = String(req.user.email || '').trim().toLowerCase();
     if (senderEmail && senderEmail !== email && !cc.includes(senderEmail)) cc.push(senderEmail);
@@ -1644,7 +1647,7 @@ exports._test = {
   isQuotationAdmin,
   mergeCurrentLeadDetails,
   normalizeEprCreditTargetUpdates,
-  quotationEmailImageAttachments,
+  quotationEmailAttachments,
   normalizeCompanyName,
   preserveTerminalApprovalStatus,
   quotationLeadVisibilityFilter,
