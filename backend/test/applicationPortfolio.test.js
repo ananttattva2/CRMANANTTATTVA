@@ -485,10 +485,10 @@ test('legacy single-service closed leads remain visible when their service is st
   }
 });
 
-test('legacy closed-by Operations users own missing permanent-staff applications for Sonal and Tushar', async () => {
+test('leads without a permanent staff assignment surface under Unassigned even when closed by an operations user', async () => {
   const { buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const operationsUsers = [{ _id: 'sonal', name: 'Sonal More', role: 'operation' }, { _id: 'tushar', name: 'Tushar Gawas', role: 'operation' }];
-  const makeLegacyClosed = (id, company, ownerId, ownerName) => {
+  const makeClosedWithoutStaff = (id, company, ownerId, ownerName) => {
     const row = client(id, '', 'Producer', 'Approved');
     row.workflowStatus = 'submitted';
     row.assignedServiceId = `${id}-service`;
@@ -500,13 +500,16 @@ test('legacy closed-by Operations users own missing permanent-staff applications
     return row;
   };
   const groups = buildApplicationPortfolio([
-    makeLegacyClosed('nano', '20 MICRONS NANO MINERALS LIMITED', 'sonal', 'Sonal More'),
-    makeLegacyClosed('thrishul', 'Thrishul Packaging Industries', 'tushar', 'Tushar Gawas')
+    makeClosedWithoutStaff('nano', '20 MICRONS NANO MINERALS LIMITED', 'sonal', 'Sonal More'),
+    makeClosedWithoutStaff('thrishul', 'Thrishul Packaging Industries', 'tushar', 'Tushar Gawas')
   ], operationsUsers);
-  assert.deepEqual(groups.map(group => [group.name, group.records.map(record => record.name)]), [
-    ['Sonal More', ['20 MICRONS NANO MINERALS LIMITED']],
-    ['Tushar Gawas', ['Thrishul Packaging Industries']]
-  ]);
+  const unassigned = groups.find(group => group.id === 'unassigned');
+  assert.ok(unassigned, 'Unassigned group should surface leads closed without staff assignment');
+  assert.equal(unassigned.records.length, 2);
+  assert.deepEqual(unassigned.records.map(record => record.name).sort(), ['20 MICRONS NANO MINERALS LIMITED', 'Thrishul Packaging Industries']);
+  // Operations users must not absorb leads merely by closing them.
+  assert.ok(!groups.find(group => group.id === 'sonal'), 'Sonal should not own a lead she closed without assigning staff');
+  assert.ok(!groups.find(group => group.id === 'tushar'), 'Tushar should not own a lead he closed without assigning staff');
 });
 
 test('Annual Return PO service objects qualify for all users and applicant types without creating New Registration', async () => {

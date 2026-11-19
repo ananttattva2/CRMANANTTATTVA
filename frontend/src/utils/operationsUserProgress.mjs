@@ -53,19 +53,6 @@ export function isOperationsStaff(user = {}) {
     || /\boperations?\b/.test(key(user.team?.name || user.team || user.department))
 }
 
-// A front-line operations executive, as opposed to a manager. Managers appear
-// in the operations staff list (so they can own explicitly assigned work) but
-// they must not absorb leads merely because they closed them without
-// delegating to staff — such leads surface under Unassigned instead.
-const isOperationsExecutive = (user = {}) => {
-  const active = user.isActive
-  if (active === false || active === 0 || ['false', '0', 'inactive'].includes(key(active))) return false
-  const roles = [user.role, ...(Array.isArray(user.roles) ? user.roles : [])].map(key)
-  if (roles.some((role) => /^manager$/.test(role))) return false
-  return roles.some((role) => /^(operation|operations|operations executive|operation executive)$/.test(role))
-    || /\boperations?\b/.test(key(user.team?.name || user.team || user.department))
-}
-
 export function allocationOwnerKeys(client = {}) {
   const allocations = client.serviceAllocations || client.data?.serviceAllocations || {}
   return [...new Set(Object.values(allocations).flatMap((entry) => {
@@ -94,18 +81,15 @@ export function resolveServiceAssignments(client = {}) {
 }
 
 export function permanentStaffOwnerKeys(client = {}) {
-  const { lead, assignments, allAssignments } = resolveServiceAssignments(client)
-  const permanent = [...new Set([
+  const { lead, assignments } = resolveServiceAssignments(client)
+  // Only an explicit operations executive assignment (assignedStaff) confers
+  // SPOC ownership. Closure metadata (closedBy) is an audit trail, not a staff
+  // ownership signal — a lead closed by anyone without a permanent staff
+  // hand-off belongs under Unassigned.
+  return [...new Set([
     ...assignments.flatMap((assignment) => [assignment?.assignedStaff, assignment?.assignedStaffText, assignment?.assignedStaffEmail]),
     client.assignedStaff, client.assignedStaffText, client.assignedStaffEmail,
     lead.assignedStaff, lead.assignedStaffText, lead.assignedStaffEmail
-  ].flatMap(identity))]
-  if (permanent.length) return permanent
-  return [...new Set([
-    ...assignments.filter(assignment => assignment?.closedAt || assignment?.closedBy || assignment?.closedByText || assignment?.permanentClosedAt)
-      .flatMap(assignment => [assignment?.closedBy, assignment?.closedByText, assignment?.closedByEmail]),
-    ...(allAssignments.length <= 1 && (lead.closedAt || lead.closedBy || lead.closedByText)
-      ? [lead.closedBy, lead.closedByText, lead.closedByEmail] : [])
   ].flatMap(identity))]
 }
 
@@ -187,20 +171,14 @@ export function buildOperationsProgressGroups(rows, users, getLegacyKeys, now = 
       || key(lead.status) === 'closed'
   }
   rows.forEach((row) => {
-    const permanentStaffKeys = permanentStaffOwnerKeys(row.client)
-    // Assigned counts follow Manager Assigned to Staff, never temporary or importer ownership.
-    const owner = findOwner(permanentStaffKeys)
+    // Only an explicit operations executive assignment (assignedStaff) confers
+    // SPOC ownership. Closure metadata (closedBy) is an audit trail, not a
+    // staff ownership signal — a lead closed by anyone without a permanent
+    // staff hand-off belongs under Unassigned. Leads whose PO was approved by admin
+    // and handed to a manager but never delegated to staff also surface under
+    // Unassigned so managers cannot absorb them.
     const staffAssigned = hasPermanentStaffAssignment(row.client)
-    // A lead belongs to a SPOC when an operations executive was explicitly
-    // assigned (assignedStaff). When no executive was assigned, the closedBy
-    // fallback only confers ownership to an actual operations executive — a
-    // manager who closed a lead without delegating it to staff did not take
-    // front-line ownership, so the lead surfaces under Unassigned. Leads whose
-    // PO was approved by admin and handed to a manager but never delegated to
-    // staff — and closed leads with no identifiable operations owner — are
-    // also surfaced under Unassigned.
-    const ownerIsExecutive = owner ? isOperationsExecutive(owner) : false
-    if (!staffAssigned && !ownerIsExecutive) {
+    if (!staffAssigned) {
       const closed = isLeadClosed(row.client)
       const managerAssigned = hasManagerAssignment(row.client)
       const adminApprovedPo = hasAdminApprovedPo(row.client)
@@ -210,6 +188,8 @@ export function buildOperationsProgressGroups(rows, users, getLegacyKeys, now = 
       }
       return
     }
+    const permanentStaffKeys = permanentStaffOwnerKeys(row.client)
+    const owner = findOwner(permanentStaffKeys)
     if (!owner) return
     const group = groups.get(key(owner._id || owner.id || owner.userId || owner.email))
     if (group && !group.rows.some((item) => String(item.id) === String(row.id))) {

@@ -48,16 +48,14 @@ function allocatedOwnerKeyGroups(client = {}) {
     return [entry.userId, entry.userIdString, entry.user, entry.assignedTo, entry.assigneeId,
       entry.assignedUserId, entry._id, entry.id, entry.value, entry.userName, entry.email].flatMap(identity);
   });
+  // Only an explicit operations executive assignment (assignedStaff) confers
+  // SPOC ownership. Closure metadata (closedBy) is an audit trail, not a staff
+  // ownership signal — a lead closed by anyone without a permanent staff
+  // hand-off belongs under Unassigned.
   const permanent = [...new Set([
     ...assignments.flatMap((assignment) => [assignment?.assignedStaff, assignment?.assignedStaffText, assignment?.assignedStaffEmail]),
     client.assignedStaff, client.assignedStaffText, client.assignedStaffEmail,
     lead.assignedStaff, lead.assignedStaffText, lead.assignedStaffEmail
-  ].flatMap(identity))];
-  const legacyClosedOwner = permanent.length ? [] : [...new Set([
-    ...assignments.filter((assignment) => assignment?.closedAt || assignment?.closedBy || assignment?.closedByText || assignment?.permanentClosedAt)
-      .flatMap((assignment) => [assignment?.closedBy, assignment?.closedByText, assignment?.closedByEmail]),
-    ...(allAssignments.length <= 1 && (lead.closedAt || lead.closedBy || lead.closedByText)
-      ? [lead.closedBy, lead.closedByText, lead.closedByEmail] : [])
   ].flatMap(identity))];
   const fallback = [...new Set([
     admin.assignedTo, admin.assignedUser, admin.user, admin.userId, admin.managerId,
@@ -66,7 +64,7 @@ function allocatedOwnerKeyGroups(client = {}) {
     ...[lead, ...assignments].flatMap((owner) => [owner?.assignedTo, owner?.assignedToText, owner?.assignedToEmail]),
     ...allocationValues
   ].flatMap(identity))];
-  return [permanent.length ? permanent : legacyClosedOwner, fallback];
+  return [permanent, fallback];
 }
 
 function allocatedFinancialYears(client = {}) {
