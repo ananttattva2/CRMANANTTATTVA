@@ -17,12 +17,15 @@ export function applicationSummaryRecords(group) {
     const priority = ['rejected', 'underReview', 'applied', 'notStarted', 'approved']
     const bucket = priority.find(status => statusServices.some(service => service.bucket === status))
     const labels = { rejected: 'Rejected', underReview: 'Under Review', applied: 'Applied', notStarted: 'Not Started', approved: 'Approved' }
-    const annual = summaryService === 'Annual Return Filling' && bucket === 'approved' && statusServices.some(service => service.annualEligiblePo)
     // Annual Return year placement follows the received PO's Annual Return year,
     // not the workflow hand-off state. A lead whose PO was approved by admin and
     // assigned to a manager (but not yet delegated to staff) must still appear
     // under its AR year so the Application Dashboard count matches the Summary
-    // Dashboard. annualWorkflowReady only drives the "AR Action Required" reason.
+    // Dashboard. Use the raw service type (not summaryService, which becomes
+    // 'Assignment Pending' when staff delegation is incomplete) so unassigned
+    // annual-return leads surface under their PO year instead of AR Action Required.
+    const isAnnualReturn = rawApplicationSummaryService(record) === 'Annual Return Filling'
+    const annual = isAnnualReturn && bucket === 'approved' && statusServices.some(service => service.annualEligiblePo)
     const recordedYears = annual ? [...new Set(statusServices.filter(service => service.closed && service.annual).flatMap(service => service.annualYears || []))]
       .sort((left, right) => financialYearStart(left) - financialYearStart(right)) : []
     const annualYears = recordedYears.length ? [recordedYears[0]] : []

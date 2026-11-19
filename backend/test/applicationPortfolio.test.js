@@ -322,7 +322,7 @@ test('status annual applicability and years use the same exclusive closed servic
 });
 
 
-test('Annual Filling aliases require manager-to-staff assignment; rejected PO does not remove allocated work', async () => {
+test('Annual Filling aliases surface under their PO year regardless of staff assignment; rejected PO does not remove allocated work', async () => {
   const {buildApplicationPortfolio, applicationSummaryRecords, canonicalOfferedServices, matchesApplicationService} = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   assert.deepEqual(canonicalOfferedServices(['Annual Filling','Annual Return Filling','Annual Return']),['Annual Return Filling']);
   for(const missing of ['assignedTo','assignedStaff',null]) {
@@ -330,7 +330,10 @@ test('Annual Filling aliases require manager-to-staff assignment; rejected PO do
     row.selectedLead.assignments[0].poApprovalStatus='REJECTED';row.selectedLead.assignments[0].poStatus='received';row.selectedLead.assignments[0].poYearRows=[{poFinancialYear:'2026-27',annualReturnYear:'2025-26'}];
     if(missing) row.selectedLead.assignments[0][missing]='';
     const result=applicationSummaryRecords(buildApplicationPortfolio([row],users)[0])[0];
-    assert.equal(result.annual,missing===null);
+    // Annual Return year placement follows the received PO's Annual Return year,
+    // not the workflow hand-off state. A lead without a permanent staff
+    // assignment still surfaces under its PO year instead of AR Action Required.
+    assert.equal(result.annual,true);
     assert.equal(matchesApplicationService(result,'Assignment Pending'),missing!==null);
   }
 });
