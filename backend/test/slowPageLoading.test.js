@@ -83,5 +83,5 @@ test('temporary lead review uses one lightweight snapshot request instead of ser
   assert.match(hook, /view: 'review', snapshot: 'true'/);
   assert.doesNotMatch(hook, /do \{/);
   assert.match(controller, /req\.query\.view === 'review' && req\.query\.snapshot === 'true'/);
-  assert.match(controller, /tempLeadCode clientName status createdAt createdBy createdByName createdByEmail followUpRemarks/);
+  assert.match(controller, /tempLeadCode clientName status(?: isActive)? createdAt createdBy createdByName createdByEmail followUpRemarks/);
 });
