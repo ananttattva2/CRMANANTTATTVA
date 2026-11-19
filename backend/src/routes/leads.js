@@ -61,6 +61,7 @@ router.post('/temporary/:id/convert', requireAuth, temporaryLeadCtrl.convert);
 router.post('/temporary/:id/follow-up', requireAuth, temporaryLeadCtrl.saveFollowUp);
 router.post('/temporary/:id/follow-up/close', requireAuth, temporaryLeadCtrl.closeFollowUp);
 router.patch('/temporary/:id/reassign', requireAuth, requireRoles(ADMIN_ROLES), temporaryLeadCtrl.reassign);
+router.patch('/temporary/:id/toggle-active', requireAuth, temporaryLeadCtrl.toggleActive);
 router.post('/duplicate-approvals', requireAuth, leadCtrl.requestDuplicateLeadApproval);
 router.patch('/duplicate-approvals/:id', requireAuth, leadCtrl.updateDuplicateLeadApproval);
 router.post('/service-accounts-records/bulk', requireAuth, requireRoles(ADMIN_ROLES), leadCtrl.bulkAssignServiceAccountsRecordIds);

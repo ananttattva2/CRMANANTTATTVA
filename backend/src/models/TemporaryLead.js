@@ -16,6 +16,7 @@ const TemporaryLeadSchema = new mongoose.Schema({
   phoneIdentity: { type: String, trim: true, index: true },
   sector: { type: String, trim: true, maxlength: 160 },
   status: { type: String, enum: ['DRAFT', 'CONVERTED'], default: 'DRAFT', index: true },
+  isActive: { type: Boolean, default: true, index: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   createdByName: { type: String, trim: true },
   createdByEmail: { type: String, trim: true, lowercase: true },

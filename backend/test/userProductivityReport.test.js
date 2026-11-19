@@ -83,7 +83,7 @@ test('report service uses grouped ticket aggregation instead of per-user queries
   assert.match(source, /SupportTicket\.aggregate\(\[/);
   assert.match(source, /\$group:\s*\{/);
   assert.match(source, /_id: '\$createdBy'/);
-  assert.match(source, /Lead\.find\(\{ \.\.\.ownerFilter, createdAt \}\)/);
+  assert.match(source, /Lead\.find\(\{ \.\.\.ownerFilter, createdAt[^)]*\}\)/);
 });
 
 test('productivity report limits heavy telemetry queries and falls back per dataset', () => {

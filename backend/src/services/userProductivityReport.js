@@ -236,7 +236,7 @@ async function getUserProductivityReport({ from, to, requester }) {
       reportQuery('sessions', require('./reportActivitySummary').readReportSessions(UserSession, { ...activityUserFilter, loginAt: createdAt })),
       reportQuery('activities', require('./reportActivitySummary').readReportActivities(AuditLog, { ...activityUserFilter, occurredAt: createdAt })),
       reportQuery('leads', require('./dashboardSnapshotCache').readDashboardCollection(Lead, { ...ownerFilter, createdAt }, Object.fromEntries('createdBy createdByCrmUserId createdByEmail createdByName importedCreatedBy generatedForUser generatedForName generatedForEmail status closedBy closedByText closedAt createdAt'.split(' ').map(field => [field, 1])))),
-      reportQuery('temporary-leads', TemporaryLead.find({ ...ownerFilter, createdAt }).select('createdBy createdByName createdByEmail').maxTimeMS(15000).lean()),
+      reportQuery('temporary-leads', TemporaryLead.find({ ...ownerFilter, createdAt, isActive: { $ne: false } }).select('createdBy createdByName createdByEmail').maxTimeMS(15000).lean()),
       reportQuery('clients', require('./misClientProjection').readMisClients(Client, { ...ownerFilter, createdAt })),
       reportQuery('tickets', SupportTicket.aggregate([
         { $match: { ...ownerFilter, createdAt } },

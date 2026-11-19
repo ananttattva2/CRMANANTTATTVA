@@ -115,6 +115,7 @@ exports.list = async (req, res) => {
   const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 10));
   const search = String(req.query.search || '').trim();
   const status = String(req.query.status || '').trim().toUpperCase();
+  const activeParam = String(req.query.active || '').trim().toLowerCase();
   const allocationOwner = String(req.query.allocationOwner || '').trim();
   const filter = {};
   if (search) filter.$or = [
@@ -128,27 +129,31 @@ exports.list = async (req, res) => {
   if (['DRAFT', 'CONVERTED'].includes(status)) filter.status = status;
   if (status === 'DRAFT') filter.pipelineClosedAt = null;
   if (status === 'CLOSED') filter.pipelineClosedAt = { $ne: null };
+  if (activeParam === 'active') filter.isActive = { $ne: false };
+  else if (activeParam === 'inactive') filter.isActive = false;
   if (allocationOwner === 'unassigned') filter.createdBy = null;
   else if (mongoose.Types.ObjectId.isValid(allocationOwner)) filter.createdBy = allocationOwner;
   const accessFilter = await temporaryLeadAccessFilter(req.user);
   const scopedFilter = combineFilters(filter, accessFilter);
   if (req.query.view === 'review' && req.query.snapshot === 'true') {
     const rows = await TemporaryLead.find(scopedFilter)
-      .select('tempLeadCode clientName status createdAt createdBy createdByName createdByEmail followUpRemarks')
+      .select('tempLeadCode clientName status isActive createdAt createdBy createdByName createdByEmail followUpRemarks')
       .populate('createdBy', 'name email')
       .sort({ createdAt: -1 })
       .maxTimeMS(15000)
       .lean();
     return res.json({ ok: true, temporaryLeads: rows, pagination: { page: 1, limit: rows.length, total: rows.length, pages: 1 } });
   }
-  const [rows, total, draftCount, convertedCount, closedCount] = await Promise.all([
+  const [rows, total, draftCount, convertedCount, closedCount, activeCount, inactiveCount] = await Promise.all([
     TemporaryLead.find(scopedFilter).populate('createdBy', 'name email').sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
     TemporaryLead.countDocuments(scopedFilter),
-    TemporaryLead.countDocuments(combineFilters({ status: 'DRAFT', pipelineClosedAt: null }, accessFilter)),
-    TemporaryLead.countDocuments(combineFilters({ status: 'CONVERTED' }, accessFilter)),
-    TemporaryLead.countDocuments(combineFilters({ pipelineClosedAt: { $ne: null } }, accessFilter))
+    TemporaryLead.countDocuments(combineFilters({ status: 'DRAFT', pipelineClosedAt: null, isActive: { $ne: false } }, accessFilter)),
+    TemporaryLead.countDocuments(combineFilters({ status: 'CONVERTED', isActive: { $ne: false } }, accessFilter)),
+    TemporaryLead.countDocuments(combineFilters({ pipelineClosedAt: { $ne: null }, isActive: { $ne: false } }, accessFilter)),
+    TemporaryLead.countDocuments(combineFilters({ isActive: { $ne: false } }, accessFilter)),
+    TemporaryLead.countDocuments(combineFilters({ isActive: false }, accessFilter))
   ]);
-  res.json({ ok: true, temporaryLeads: rows, pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) }, counts: { total: draftCount + convertedCount + closedCount, draft: draftCount, converted: convertedCount, closed: closedCount } });
+  res.json({ ok: true, temporaryLeads: rows, pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) }, counts: { total: activeCount + inactiveCount, draft: draftCount, converted: convertedCount, closed: closedCount, active: activeCount, inactive: inactiveCount } });
 };
 
 exports.reassign = async (req, res) => {
@@ -304,5 +309,17 @@ exports.update = async (req, res, next) => {
     const updated = await TemporaryLead.findOneAndUpdate({ _id: row._id, updatedAt: row.updatedAt, status: 'DRAFT', pipelineClosedAt: null }, { $set: data }, { new: true, runValidators: true });
     if (!updated) return res.status(409).json({ error: 'Cold lead changed while saving. Refresh and try again.' });
     res.json({ ok: true, temporaryLead: updated });
+  } catch (error) { next(error); }
+};
+
+exports.toggleActive = async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Invalid Cold Lead ID.' });
+    const isActive = req.body?.isActive === true || String(req.body?.isActive || '').toLowerCase() === 'true';
+    const row = await TemporaryLead.findOne(combineFilters({ _id: req.params.id }, await temporaryLeadAccessFilter(req.user)));
+    if (!row) return res.status(404).json({ error: 'Cold lead not found or not accessible.' });
+    if (row.isActive === isActive) return res.json({ ok: true, temporaryLead: row, message: `Cold lead is already ${isActive ? 'active' : 'inactive'}.` });
+    const updated = await TemporaryLead.findOneAndUpdate({ _id: row._id }, { $set: { isActive } }, { new: true, runValidators: true });
+    res.json({ ok: true, temporaryLead: updated, message: `Cold lead marked ${isActive ? 'active' : 'inactive'}.` });
   } catch (error) { next(error); }
 };

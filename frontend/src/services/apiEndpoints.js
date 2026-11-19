@@ -56,6 +56,7 @@ const API_ENDPOINTS = {
     ,reassignTemporaryLead: (id) => `/leads/temporary/${encodePathValue(id)}/reassign`
     ,temporaryLeadFollowUp: (id) => `/leads/temporary/${encodePathValue(id)}/follow-up`
     ,temporaryLeadFollowUpClose: (id) => `/leads/temporary/${encodePathValue(id)}/follow-up/close`
+    ,toggleTemporaryLeadActive: (id) => `/leads/temporary/${encodePathValue(id)}/toggle-active`
     ,purchaseOrderApprovalDecision: (id) => `/leads/purchase-order-approvals/${encodePathValue(id)}`
     ,purchaseOrderApprovalProof: (id) => `/leads/purchase-order-approvals/${encodePathValue(id)}/proof`
   },
