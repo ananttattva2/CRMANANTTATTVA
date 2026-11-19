@@ -53,6 +53,19 @@ export function isOperationsStaff(user = {}) {
     || /\boperations?\b/.test(key(user.team?.name || user.team || user.department))
 }
 
+// A front-line operations executive, as opposed to a manager. Managers appear
+// in the operations staff list (so they can own explicitly assigned work) but
+// they must not absorb leads merely because they closed them without
+// delegating to staff — such leads surface under Unassigned instead.
+const isOperationsExecutive = (user = {}) => {
+  const active = user.isActive
+  if (active === false || active === 0 || ['false', '0', 'inactive'].includes(key(active))) return false
+  const roles = [user.role, ...(Array.isArray(user.roles) ? user.roles : [])].map(key)
+  if (roles.some((role) => /^manager$/.test(role))) return false
+  return roles.some((role) => /^(operation|operations|operations executive|operation executive)$/.test(role))
+    || /\boperations?\b/.test(key(user.team?.name || user.team || user.department))
+}
+
 export function allocationOwnerKeys(client = {}) {
   const allocations = client.serviceAllocations || client.data?.serviceAllocations || {}
   return [...new Set(Object.values(allocations).flatMap((entry) => {
@@ -179,12 +192,15 @@ export function buildOperationsProgressGroups(rows, users, getLegacyKeys, now = 
     const owner = findOwner(permanentStaffKeys)
     const staffAssigned = hasPermanentStaffAssignment(row.client)
     // A lead belongs to a SPOC when an operations executive was explicitly
-    // assigned (assignedStaff). Legacy closed leads without a staff hand-off
-    // remain owned by the operations user who closed them (closedBy fallback
-    // in permanentStaffOwnerKeys). Leads whose PO was approved by admin and
-    // handed to a manager but never delegated to staff — and closed leads
-    // with no identifiable operations owner — are surfaced under Unassigned.
-    if (!staffAssigned && !owner) {
+    // assigned (assignedStaff). When no executive was assigned, the closedBy
+    // fallback only confers ownership to an actual operations executive — a
+    // manager who closed a lead without delegating it to staff did not take
+    // front-line ownership, so the lead surfaces under Unassigned. Leads whose
+    // PO was approved by admin and handed to a manager but never delegated to
+    // staff — and closed leads with no identifiable operations owner — are
+    // also surfaced under Unassigned.
+    const ownerIsExecutive = owner ? isOperationsExecutive(owner) : false
+    if (!staffAssigned && !ownerIsExecutive) {
       const closed = isLeadClosed(row.client)
       const managerAssigned = hasManagerAssignment(row.client)
       const adminApprovedPo = hasAdminApprovedPo(row.client)

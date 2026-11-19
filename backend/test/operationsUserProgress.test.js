@@ -237,6 +237,24 @@ test('admin-approved PO assigned to a manager but not to staff surfaces under Un
   assert.equal(groups.reduce((sum, group) => sum + group.total, 0), 1);
 });
 
+test('a manager who closes a lead without delegating to staff surfaces under Unassigned, while an operations executive keeps legacy ownership', async () => {
+  const { buildOperationsProgressGroups } = await helpers;
+  const localUsers = [
+    { _id: 'tushar', name: 'Tushar Gawas', role: 'manager' },
+    { _id: 'sonal', name: 'Sonal More', role: 'operation' }
+  ];
+  const managerClosed = { id: 'manager-closed', hasPo: true, client: { assignedServiceId: 'svc', selectedLead: { status: 'closed', assignments: [{ assignedServiceId: 'svc', closedAt: '2026-01-01', closedBy: 'tushar', closedByText: 'Tushar Gawas' }] } } };
+  const execClosed = { id: 'exec-closed', hasPo: true, client: { assignedServiceId: 'svc', selectedLead: { status: 'closed', assignments: [{ assignedServiceId: 'svc', closedAt: '2026-01-01', closedBy: 'sonal', closedByText: 'Sonal More' }] } } };
+  const groups = buildOperationsProgressGroups([managerClosed, execClosed], localUsers, () => []);
+  const unassigned = groups.find((group) => group.id === 'unassigned');
+  assert.ok(unassigned, 'Unassigned group should surface the manager-closed lead');
+  assert.equal(unassigned.total, 1);
+  assert.equal(unassigned.rows[0].id, 'manager-closed');
+  assert.equal(groups.find((group) => group.id === 'sonal').total, 1, 'operations executive keeps legacy closed-by ownership');
+  assert.equal(groups.find((group) => group.id === 'tushar').total, 0, 'manager does not absorb the lead via closedBy');
+  assert.equal(groups.reduce((sum, group) => sum + group.total, 0), 2);
+});
+
 test('48/72/96 count actual overdue deadlines cumulatively at their boundaries', async () => {
   const { getOperationsSla } = await helpers;
   const due = Date.parse('2026-09-28T00:00:00Z');
