@@ -110,7 +110,11 @@ export default function QuotationEmailDialog({ quotation, onClose }) {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
       setSent(true)
-    } catch (err) { setError(readApiError(err, 'Unable to email this quotation. Please retry.')) }
+    } catch (err) {
+      setError(err?.response?.status === 413
+        ? 'The upload gateway rejected this request. Keep each attachment under 5 MB and all attachments under 15 MB; if a small file still fails, ask an administrator to check the upload limit.'
+        : readApiError(err, 'Unable to email this quotation. Please retry.'))
+    }
     finally { setBusy(false) }
   }
   return <dialog ref={ref} aria-labelledby="quotation-email-title" onCancel={event => { event.preventDefault(); if (!busy) onClose() }} className="m-auto max-h-[90vh] w-[min(580px,calc(100vw-32px))] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl backdrop:bg-slate-950/60">

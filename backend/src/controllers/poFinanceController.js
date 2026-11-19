@@ -40,7 +40,28 @@ async function inTransaction(id, work) {
   } finally { await session.endSession(); }
 }
 function requireUnchanged(approval, assignment, service) {
-  if (approval.poReview?.sourceSignature !== sourceSignature(assignment, service)) fail(409, 'The PO details changed after Admin review. Resubmit it for Admin approval.');
+  if (approval.poReview?.sourceSignature !== sourceSignature(assignment, service)) fail(409, 'The PO details changed after Admin review. Reopen the latest PO details before approving.');
+}
+function clearRejectedPoClosure(lead, index) {
+  const assignment = lead?.assignments?.[index];
+  if (!assignment) return;
+  for (const key of ['closedBy', 'closedByText', 'closedByEmail', 'closedAt', 'closureFinalizedByManager']) {
+    assignment[key] = undefined;
+  }
+  const hasOtherClosure = (lead.assignments || []).some((row, rowIndex) => {
+    if (rowIndex === index) return false;
+    const status = String(row.poApprovalStatus || '').trim().toUpperCase();
+    if (['REJECTED', 'REVISION_REQUIRED'].includes(status)) {
+      return Boolean(row.permanentClosedAt || row.poStatus === 'permanently_closed');
+    }
+    return Boolean(row.closedBy || row.closedAt || row.closureRequestedBy
+      || row.poStatus === 'provisional' || row.poStatus === 'permanently_closed');
+  });
+  if (!hasOtherClosure) {
+    for (const key of ['closedBy', 'closedByText', 'closedByEmail', 'closedAt', 'closedOnBehalfOfUser', 'closedOnBehalfOfName', 'closedOnBehalfOfEmail']) {
+      lead[key] = undefined;
+    }
+  }
 }
 exports.initialApproval = async (req, res) => {
   try {
@@ -57,6 +78,7 @@ exports.initialApproval = async (req, res) => {
         if (!remarks || remarks.length > 2500) fail(400, 'Enter remarks between 1 and 2,500 characters.');
         approval.approvalStatus = status; approval.remarks = remarks; approval.actionBy = req.user._id; approval.actionAt = new Date();
         lead.assignments[index].poApprovalStatus = status;
+        clearRejectedPoClosure(lead, index);
         notification = { approval, lead, index, status, remarks, screenshotUrl: '' };
         return { ok: true, message: 'Admin initial decision saved.' };
       }
@@ -110,6 +132,8 @@ exports.act = async (req, res) => {
           assignment.closedBy = closer;
           assignment.closedByText = assignment.closureRequestedByText || approval.payload?.closureRequestedByText || '';
           assignment.closedAt = new Date(); assignment.closureFinalizedByManager = true;
+        } else if (status !== 'APPROVED') {
+          clearRejectedPoClosure(lead, index);
         }
         approval.payload = { ...(approval.payload || {}), decidedBy: req.user.name || req.user.email || '', poWorkflowReminders: {} };
         approval.markModified('payload');
@@ -140,3 +164,4 @@ exports.detail = async (req, res) => {
     return res.json({ ok: true, approval });
   } catch (error) { return report(res, error); }
 };
+exports._test = { clearRejectedPoClosure };

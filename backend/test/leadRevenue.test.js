@@ -36,6 +36,30 @@ test('any closure marker (assignment, service, lead-level, or requested) marks t
   assert.equal(hotClosed(poClosed), true);
   assert.equal(serviceRows({ createdBy: 'owner' }, 'cold')[0].key, 'cold-base');
 });
+test('rejected or revision-required POs do not count as closure evidence', () => {
+  for (const poApprovalStatus of ['REJECTED', 'REVISION_REQUIRED']) {
+    const lead = {
+      serviceSelections: [{ assignedServiceId: 's1' }],
+      assignments: [{
+        assignedServiceId: 's1',
+        poStatus: 'received',
+        poApprovalStatus,
+        poYearRows: [{ poNumber: 'PO-REJECTED' }],
+        closedBy: 'manager',
+        closedAt: new Date(),
+        closureRequestedBy: 'manager'
+      }]
+    };
+    assert.equal(hotClosed(lead), false, `${poApprovalStatus} PO must not keep the lead closed`);
+  }
+  const partiallyClosed = {
+    assignments: [
+      { poApprovalStatus: 'REJECTED', poStatus: 'received', poYearRows: [{ poNumber: 'PO-REJECTED' }] },
+      { poApprovalStatus: 'APPROVED', closedBy: 'manager' }
+    ]
+  };
+  assert.equal(hotClosed(partiallyClosed), true, 'another active service closure still closes the lead');
+});
 test('pipeline owner falls back to the saved on-behalf allocation before the original creator', () => {
  const {pipelineOwner}=require('../src/controllers/leadRevenueController').__test;
  assert.equal(pipelineOwner({createdOnBehalfOfUser:{name:'Current Assignee'},createdBy:{name:'Original Creator'}},'hot'),'Current Assignee');

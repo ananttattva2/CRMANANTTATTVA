@@ -20,6 +20,10 @@ function groupsFrom(entries) {
   return [...groups.values()];
 }
 function closureMarker(row = {}) {
+  const poApprovalStatus = String(row.poApprovalStatus || '').trim().toUpperCase();
+  if (['REJECTED', 'REVISION_REQUIRED'].includes(poApprovalStatus)) {
+    return Boolean(row.permanentClosedAt || row.poStatus === 'permanently_closed');
+  }
   return Boolean(
     row.closedAt || row.closedBy || row.closedByText ||
     row.closureRequestedBy || row.closureRequestedByText ||

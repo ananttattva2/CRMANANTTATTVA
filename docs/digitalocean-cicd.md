@@ -92,6 +92,10 @@ After verifying the fingerprint, put the `ssh-keyscan` output into the
    endpoint are checked, Nginx is validated, and both the public API and frontend
    must return a successful response.
 
+The deployment also manages `/etc/nginx/conf.d/crmananttattva-upload-limit.conf`
+with a 20 MB request limit so optional quotation email attachments can reach the
+backend's 15 MB aggregate upload limit.
+
 For frontend/config-only releases, the deployment also checks the local health
 endpoint before the normal retry loop. If the PM2 process is missing it is started;
 if it exists but is unhealthy it is restarted. This prevents Nginx 502 responses

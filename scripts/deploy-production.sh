@@ -241,6 +241,14 @@ if [[ ! "$PM2_PID" =~ ^[1-9][0-9]*$ ]]; then
   false
 fi
 
+# Keep the reverse-proxy request limit above the email endpoint's 15 MB
+# attachment cap, including multipart form overhead.
+NGINX_UPLOAD_LIMIT_TMP="$(mktemp)"
+printf '%s\n' '# Managed by CRM deployment: allow quotation email attachments.' 'client_max_body_size 20m;' > "$NGINX_UPLOAD_LIMIT_TMP"
+mkdir -p /etc/nginx/conf.d
+install -m 0644 "$NGINX_UPLOAD_LIMIT_TMP" /etc/nginx/conf.d/crmananttattva-upload-limit.conf
+rm -f -- "$NGINX_UPLOAD_LIMIT_TMP"
+
 nginx -t
 systemctl reload nginx
 curl --fail --silent --show-error --location --retry 5 --retry-delay 3 --retry-all-errors --max-time 20 "$PUBLIC_URL/api/health" >/dev/null

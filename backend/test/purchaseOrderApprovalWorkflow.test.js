@@ -3,8 +3,41 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { _test } = require('../src/controllers/leadController');
+const { _test: poFinanceTest } = require('../src/controllers/poFinanceController');
 
 const read = (relative) => fs.readFileSync(path.resolve(__dirname, relative), 'utf8');
+
+test('rejected PO clears its closure markers without reopening another closed service', () => {
+  const rejectedOnly = {
+    closedBy: 'manager',
+    closedAt: new Date(),
+    assignments: [{
+      poApprovalStatus: 'REJECTED',
+      poStatus: 'received',
+      closedBy: 'manager',
+      closedAt: new Date(),
+      closureRequestedBy: 'manager',
+      closureFinalizedByManager: true
+    }]
+  };
+  poFinanceTest.clearRejectedPoClosure(rejectedOnly, 0);
+  assert.equal(rejectedOnly.closedBy, undefined);
+  assert.equal(rejectedOnly.closedAt, undefined);
+  assert.equal(rejectedOnly.assignments[0].closedBy, undefined);
+  assert.equal(rejectedOnly.assignments[0].closureFinalizedByManager, undefined);
+  assert.equal(rejectedOnly.assignments[0].closureRequestedBy, 'manager');
+
+  const otherServiceClosed = {
+    closedBy: 'manager',
+    assignments: [
+      { poApprovalStatus: 'REJECTED', poStatus: 'received', closedBy: 'manager' },
+      { poApprovalStatus: 'APPROVED', closedBy: 'another-manager' }
+    ]
+  };
+  poFinanceTest.clearRejectedPoClosure(otherServiceClosed, 0);
+  assert.equal(otherServiceClosed.closedBy, 'manager');
+  assert.equal(otherServiceClosed.assignments[1].closedBy, 'another-manager');
+});
 
 test('closing one service does not revalidate unchanged legacy approved PO rows', () => {
   const legacyApproved = {
