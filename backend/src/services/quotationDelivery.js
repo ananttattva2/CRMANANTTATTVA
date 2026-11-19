@@ -10,9 +10,22 @@ function isApproved(quotation) {
   // The current status is authoritative: historical approval metadata survives revisions.
   return ['admin_approved', 'approved'].includes(String(quotation.status).toLowerCase());
 }
-function clientEmailContent(subject, body) {
+function formatInr(value) {
+  return `₹${new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value) || 0)}`;
+}
+function formatTarget(value) {
+  return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 6 }).format(Number(value) || 0);
+}
+async function eprCreditCalculationTable(quotation) {
+  const { quotationEprCreditCalculationRows } = await import('../../../frontend/src/utils/eprCreditCalculation.mjs');
+  const rows = quotationEprCreditCalculationRows(quotation);
+  if (!rows.length) return '';
+  return `<section style="margin-top:24px"><h3 style="margin:0 0 8px;color:#0f766e;font-size:17px">EPR Credit Calculation</h3><p style="margin:0 0 12px;font-size:12px;color:#475569">Basic Amount is converted from INR per gram to INR per kg (1 kg = 1,000 g). Target is in kg.</p><table role="presentation" style="width:100%;border-collapse:collapse;border:1px solid #cbd5e1;font-size:13px"><thead><tr style="background:#ecfdf5">${['Services Offered', 'Unit', 'Basic Amount (INR)', 'Target (kg)', 'Total Amount (INR)'].map((heading) => `<th style="border:1px solid #cbd5e1;padding:9px;text-align:left">${heading}</th>`).join('')}</tr></thead><tbody>${rows.map((row) => `<tr><td style="border:1px solid #cbd5e1;padding:9px">${escapeHtml(row.servicesOffered)}</td><td style="border:1px solid #cbd5e1;padding:9px">${escapeHtml(row.unit)}</td><td style="border:1px solid #cbd5e1;padding:9px">${formatInr(row.basicAmount)}</td><td style="border:1px solid #cbd5e1;padding:9px">${formatTarget(row.targetKg)}</td><td style="border:1px solid #cbd5e1;padding:9px;font-weight:700">${formatInr(row.totalAmount)}</td></tr>`).join('')}</tbody></table></section>`;
+}
+async function clientEmailContent(subject, body, quotation = {}) {
   const signature = buildCompanySignature();
-  return { subject, html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:15px;line-height:1.7"><div>${escapeHtml(body).replace(/\r?\n/g, '<br/>')}</div>${signature}</div>`, logo: getIntroductionLogoAttachment() };
+  const calculationTable = await eprCreditCalculationTable(quotation);
+  return { subject, html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:15px;line-height:1.7"><div>${escapeHtml(body).replace(/\r?\n/g, '<br/>')}</div>${calculationTable}${signature}</div>`, logo: getIntroductionLogoAttachment() };
 }
 async function quotationFilename(quotation) {
   return (await documentTemplate()).quotationFilename(quotation);
@@ -73,4 +86,4 @@ function createApprovedQuotationPdf(quotation, { allowUnapproved = false } = {})
   renderTail = job.catch(() => {});
   return job;
 }
-module.exports = { escapeHtml, isApproved, clientEmailContent, quotationFilename, createApprovedQuotationPdf };
+module.exports = { escapeHtml, isApproved, clientEmailContent, eprCreditCalculationTable, quotationFilename, createApprovedQuotationPdf };

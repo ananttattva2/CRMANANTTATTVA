@@ -212,6 +212,50 @@ function roundMoney(value) {
   return Number.isFinite(amount) ? Math.round((amount + Number.EPSILON) * 100) / 100 : 0;
 }
 
+function isEprCreditItem(item = {}) {
+  return String(item.businessCategory || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '') === 'eprcredit';
+}
+
+function normalizeEprCreditTargetUpdates(items = [], targets = []) {
+  const creditIndexes = items
+    .map((item, itemIndex) => isEprCreditItem(item) ? itemIndex : -1)
+    .filter((itemIndex) => itemIndex >= 0);
+  if (!creditIndexes.length) return { error: 'This quotation has no EPR Credit items.' };
+  if (!Array.isArray(targets)) return { error: 'EPR Credit targets must be provided as a list.' };
+
+  const expected = new Set(creditIndexes);
+  const normalized = new Map();
+  for (const row of targets) {
+    const itemIndex = Number(row?.itemIndex);
+    if (!Number.isInteger(itemIndex) || !expected.has(itemIndex) || normalized.has(itemIndex)) {
+      return { error: 'EPR Credit targets must match the quotation items.' };
+    }
+    const rawTarget = row?.targetKg;
+    if (rawTarget === null || rawTarget === undefined || (typeof rawTarget === 'string' && !rawTarget.trim())) {
+      normalized.set(itemIndex, null);
+      continue;
+    }
+    const targetKg = Number(rawTarget);
+    if (!Number.isFinite(targetKg) || targetKg < 0 || targetKg > 1e12) {
+      return { error: `Target for EPR Credit item ${itemIndex + 1} must be a non-negative number.` };
+    }
+    normalized.set(itemIndex, targetKg);
+  }
+  if (normalized.size !== expected.size) return { error: 'Provide a Target for every EPR Credit item.' };
+  return {
+    values: creditIndexes.map((itemIndex) => ({ itemIndex, targetKg: normalized.get(itemIndex) }))
+  };
+}
+
+function hasCompleteEprCreditTargets(items = []) {
+  return items
+    .filter(isEprCreditItem)
+    .every((item) => item.eprCreditTargetKg !== null
+      && item.eprCreditTargetKg !== undefined
+      && Number.isFinite(Number(item.eprCreditTargetKg))
+      && Number(item.eprCreditTargetKg) >= 0);
+}
+
 function financialYearFromDate(value) {
   const normalized = normalizeDateOnly(value);
   if (!normalized) return '';
@@ -279,6 +323,16 @@ function cleanItems(items, user = null, existingItems = [], systemStartDate = ''
       }
       const transitionPeriod = rawTransitionPeriod;
       const unitLabel = cleanString(item.unitLabel ?? existingItem.unitLabel).toUpperCase();
+      const rawCreditTarget = Object.prototype.hasOwnProperty.call(item || {}, 'eprCreditTargetKg')
+        ? item.eprCreditTargetKg
+        : existingItem.eprCreditTargetKg;
+      let eprCreditTargetKg;
+      if (rawCreditTarget !== null && rawCreditTarget !== undefined && rawCreditTarget !== '') {
+        eprCreditTargetKg = Number(rawCreditTarget);
+        if (!Number.isFinite(eprCreditTargetKg) || eprCreditTargetKg < 0 || eprCreditTargetKg > 1e12) {
+          throw new Error(`Quotation item ${index + 1}: EPR Credit Target must be a non-negative number.`);
+        }
+      }
       const rawEprCreditYears = Array.isArray(item.annualReturnEprCreditYears)
         ? item.annualReturnEprCreditYears
         : (Array.isArray(existingItem.annualReturnEprCreditYears) ? existingItem.annualReturnEprCreditYears : []);
@@ -348,7 +402,8 @@ function cleanItems(items, user = null, existingItems = [], systemStartDate = ''
         unit: '1',
         unitName: cleanString(item.unitName ?? existingItem.unitName).slice(0, 120),
         unitLabel: isEprCredit ? unitLabel : undefined,
-        basicAmount: roundMoney(item.basicAmount)
+        basicAmount: roundMoney(item.basicAmount),
+        eprCreditTargetKg: isEprCredit ? eprCreditTargetKg : undefined
       };
     })
     .filter((item) => isMeaningfulItem(item));
@@ -850,6 +905,28 @@ exports.downloadQuotation = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
+exports.updateEprCreditCalculations = async (req, res, next) => {
+  try {
+    const quotation = await Quotation.findOne(combineFilters(
+      { _id: req.params.id },
+      await quotationAccessFilter(req.user)
+    ));
+    if (!quotation) return res.status(404).json({ error: 'Quotation not found' });
+    if (!require('../services/quotationDelivery').isApproved(quotation)) {
+      return res.status(403).json({ error: 'Admin approval is required before saving EPR Credit calculations.' });
+    }
+
+    const result = normalizeEprCreditTargetUpdates(quotation.items || [], req.body?.targets);
+    if (result.error) return res.status(400).json({ error: result.error });
+    result.values.forEach(({ itemIndex, targetKg }) => {
+      quotation.items[itemIndex].eprCreditTargetKg = targetKg;
+    });
+    quotation.markModified('items');
+    await quotation.save();
+    return res.json({ ok: true, quotation });
+  } catch (error) { next(error); }
+};
+
 exports.emailQuotation = async (req, res, next) => {
   try {
     const { isApproved, clientEmailContent, createApprovedQuotationPdf, quotationFilename } = require('../services/quotationDelivery');
@@ -866,11 +943,14 @@ exports.emailQuotation = async (req, res, next) => {
     const quotation = await Quotation.findOne(combineFilters({ _id: req.params.id }, await quotationAccessFilter(req.user))).populate('createdBy', 'name email').populate('approvalDecision.actionBy', 'name email role').lean();
     if (!quotation) return res.status(404).json({ error: 'Quotation not found' });
     if (!isApproved(quotation)) return res.status(403).json({ error: 'Admin approval is required before emailing this quotation.' });
+    if ((quotation.items || []).some(isEprCreditItem) && !hasCompleteEprCreditTargets(quotation.items || [])) {
+      return res.status(400).json({ error: 'Save a Target for every EPR Credit item before sending the quotation.' });
+    }
     // Always copy the authenticated sender, independently of client-entered recipients.
     const senderEmail = String(req.user.email || '').trim().toLowerCase();
     if (senderEmail && senderEmail !== email && !cc.includes(senderEmail)) cc.push(senderEmail);
     const pdf = await createApprovedQuotationPdf(quotation);
-    const content = clientEmailContent(subject, body);
+    const content = await clientEmailContent(subject, body, quotation);
     await sendMail(email, subject, content.html, { branded: false, cc, attachments: [{ filename: await quotationFilename(quotation), content: pdf, contentType: 'application/pdf' }, content.logo] });
     await Quotation.updateOne({ _id: quotation._id }, { $push: { emailHistory: { to: email, cc, subject, sentBy: req.user._id, sentAt: new Date() } } });
     return res.json({ ok: true, message: 'Quotation email accepted for delivery with the PDF attachment.' });
@@ -1491,8 +1571,10 @@ exports._test = {
   cleanBody,
   cleanItems,
   combineFilters,
+  hasCompleteEprCreditTargets,
   isQuotationAdmin,
   mergeCurrentLeadDetails,
+  normalizeEprCreditTargetUpdates,
   normalizeCompanyName,
   preserveTerminalApprovalStatus,
   quotationLeadVisibilityFilter,
