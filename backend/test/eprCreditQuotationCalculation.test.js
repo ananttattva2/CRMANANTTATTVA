@@ -109,11 +109,10 @@ test('approved quotation email includes the per kg and converted per MT EPR Cred
   assert.match(sent[2], /EPR Credit Calculation/);
   assert.match(sent[2], /Services Offered/);
   assert.match(sent[2], /Rate\/kg/);
-  assert.match(sent[2], /Basic Amount \(INR\)/);
   assert.match(sent[2], /Target \(MT\)/);
   assert.match(sent[2], /Total Amount \(INR\)/);
   assert.match(sent[2], /₹4\.70/);
-  assert.match(sent[2], /₹4,700\.00/);
+  assert.doesNotMatch(sent[2], /Basic Amount|₹4,700\.00/);
   assert.match(sent[2], /10/);
   assert.match(sent[2], /₹47,000\.00/);
   assert.match(sent[2], /&lt;script&gt;Annual Return&lt;\/script&gt;/);
