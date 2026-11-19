@@ -167,7 +167,13 @@ function mergeManagerStaffAllocations(clients = [], leads = []) {
       const permanentOwner = assignment.assignedStaff || assignment.assignedStaffText || assignment.assignedStaffEmail;
       const legacyClosedOwner = (assignment.closedAt || assignment.closedBy || assignment.closedByText || assignment.permanentClosedAt)
         && (assignment.closedBy || assignment.closedByText || assignment.closedByEmail);
-      if (!permanentOwner && !legacyClosedOwner) return;
+      // A lead-service that reached the manager hand-off stage (admin-approved
+      // PO assigned to a manager) but was not yet delegated to staff must still
+      // appear in the portfolio so it can be surfaced under the Unassigned SPOC
+      // row. Without this, these pending delegations are invisible.
+      const adminApprovedPoAssignedToManager = ['APPROVED', 'FINANCE_PENDING'].includes(String(assignment.poApprovalStatus || '').toUpperCase())
+        && (assignment.assignedTo || assignment.assignedToText || assignment.assignedToEmail);
+      if (!permanentOwner && !legacyClosedOwner && !adminApprovedPoAssignedToManager) return;
       const serviceId = value(assignment.assignedServiceId || assignment.serviceAssignmentId || services[index]?.assignedServiceId || services[index]?.serviceAssignmentId || `assignment-${index}`);
       const key = `${value(lead._id)}:${serviceId}`;
       const alreadyLinked = linked.has(key);

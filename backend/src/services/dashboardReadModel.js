@@ -17,7 +17,7 @@ function compactPo(prefix) {
 }
 function assignmentProjection(prefix) {
   return {
-    ...compactFields(prefix, 'assignedServiceId serviceAssignmentId assignedTo assignedToText assignedToEmail assignedStaff assignedStaffText assignedStaffEmail closedAt closedBy closedByText closedByEmail permanentClosedAt servicesOffered poStatus'),
+    ...compactFields(prefix, 'assignedServiceId serviceAssignmentId assignedTo assignedToText assignedToEmail assignedStaff assignedStaffText assignedStaffEmail closedAt closedBy closedByText closedByEmail permanentClosedAt servicesOffered poStatus poApprovalStatus'),
     poYearRows: { $map: { input: { $ifNull: [`${prefix}.poYearRows`, []] }, as: 'po', in: compactPo('$$po') } },
     originalPoDetails: compactPo(`${prefix}.originalPoDetails`)
   };

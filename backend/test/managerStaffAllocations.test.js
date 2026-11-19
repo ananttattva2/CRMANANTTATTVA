@@ -205,3 +205,23 @@ test('Yes Registered counts New Registration without approving its Annual Return
  assert.equal(rows.find(row=>row.assignmentOnly && row.assignedServiceId==='registration').data.cpcb.status,'Registered');
  assert.equal(rows.find(row=>row._id==='annual-master').data.cpcb?.status,undefined);
 });
+
+test('admin-approved PO assigned to a manager but not to staff surfaces under Unassigned in the application portfolio', async () => {
+  const { buildApplicationPortfolio } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const users = [{ _id: 'sonal', name: 'Sonal More', role: 'operation' }, { _id: 'tushar', name: 'Tushar Gawas', role: 'manager' }];
+  const service = { assignedServiceId: 'annual', subApplicantType: 'Importer', plantUnit: 'Unit 1', eprCategory: 'EPR - Plastic Waste', servicesOffered: 'Annual Return Filling' };
+  // Lead: PO approved by admin, assigned to manager, but no staff delegation yet.
+  const lead = { _id: 'pending-delegation', company: 'Pending Delegation Pvt Ltd', serviceSelections: [service],
+    assignments: [{ assignedServiceId: 'annual', assignedTo: 'tushar', assignedToText: 'Tushar Gawas', poApprovalStatus: 'APPROVED', poStatus: 'received', poYearRows: [{ annualReturnYear: '2025-26', services: [{ name: 'Annual Return Filling' }] }] }] };
+  const merged = mergeManagerStaffAllocations([], [lead]);
+  const placeholder = merged.find(row => row.assignmentOnly);
+  assert.ok(placeholder, 'admin-approved manager-assigned lead must create a portfolio placeholder');
+  const groups = buildApplicationPortfolio(merged, users);
+  const unassigned = groups.find(group => group.id === 'unassigned');
+  assert.ok(unassigned, 'Unassigned group should surface the pending-delegation lead');
+  assert.equal(unassigned.records.length, 1);
+  assert.equal(unassigned.records[0].name, 'Pending Delegation Pvt Ltd');
+  // The manager must not absorb this lead; the manager group has no records and is filtered out.
+  assert.ok(!groups.find(group => group.id === 'tushar'), 'manager group should be absent (no records)');
+});
+
