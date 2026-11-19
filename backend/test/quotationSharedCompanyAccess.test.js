@@ -1,6 +1,7 @@
-const test = require('node:test');
 const assert = require('node:assert/strict');
+const test = require('node:test');
 const controller = require('../src/controllers/quotationController');
+const leadController = require('../src/controllers/leadController');
 const Lead = require('../src/models/Lead');
 
 test('admin and superadmin can see every quotation', async () => {
@@ -44,4 +45,52 @@ test('quotation lead visibility matches generated, secondary, assigned, and shar
   assert.ok(ownedFilter.$or.some((row) => row.generatedForUser?.$in?.includes(userId)));
   assert.ok(ownedFilter.$or.some((row) => row.generatedForEmail?.$options === 'i'));
   assert.ok(filter.$or.some((condition) => condition.$or?.some((row) => row['noOwner.active'] === true)));
+});
+
+test('reassigned quotation editors are authorized by created-on-behalf ownership like lead editors', async () => {
+  const userId = '64b8f1c2a1e2f3d4c5b6a7e8';
+  const user = { _id: userId, name: 'New Lead Editor', email: 'editor@example.com', role: 'sales' };
+  const scope = { ids: [userId], identities: [userId, user.name, user.email] };
+  const quotationFilter = controller._test.quotationLeadVisibilityFilter(scope);
+  const leadFilter = await leadController.leadAccessFilter(user, { includeShared: true });
+  const ownedQuotation = quotationFilter.$or.find((condition) => condition.$or?.some((row) => row.createdBy));
+  const ownedLead = leadFilter.$or.find((condition) => condition.$or?.some((row) => row.createdBy));
+
+  for (const owned of [ownedQuotation, ownedLead]) {
+    assert.ok(owned.$or.some((row) => row.createdOnBehalfOfUser?.$in?.includes(userId)));
+    assert.ok(owned.$or.some((row) => row.createdOnBehalfOfEmail?.$options === 'i'));
+    assert.ok(owned.$or.some((row) => row.secondaryCreatedByName?.$options === 'i'));
+  }
+});
+
+test('quotation save refresh can resolve a lead allocated to the current editor', async (t) => {
+  const userId = '64b8f1c2a1e2f3d4c5b6a7e8';
+  const lead = {
+    _id: '64b8f1c2a1e2f3d4c5b6a7f0',
+    leadCode: 'ATPL-LEAD-0305',
+    company: 'TECH WEAVE INTERNATIONAL PRIVATE LIMITED',
+    createdOnBehalfOfUser: userId
+  };
+  const originalFindOne = Lead.findOne;
+  let query;
+  t.after(() => { Lead.findOne = originalFindOne; });
+  Lead.findOne = (filter) => {
+    query = filter;
+    return { lean: async () => lead };
+  };
+
+  const result = await controller._test.refreshQuotationLeadDetails({
+    leadId: lead._id,
+    leadCode: lead.leadCode,
+    companyName: 'Old company name'
+  }, null, {
+    _id: userId,
+    name: 'New Lead Editor',
+    email: 'editor@example.com',
+    role: 'sales'
+  });
+
+  assert.match(JSON.stringify(query), new RegExp(`createdOnBehalfOfUser.*${userId}`));
+  assert.equal(result.companyName, lead.company);
+  assert.equal(result.leadDetails.companyName, lead.company);
 });

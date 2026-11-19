@@ -76,13 +76,15 @@ function isQuotationAdmin(user) {
 function quotationLeadVisibilityFilter(scope) {
   const ownedLeads = ownerFilter(scope, 'createdBy', 'assignedTo', [
     'createdByCrmUserId', 'createdByName', 'createdByEmail', 'importedCreatedBy',
-    'generatedForName', 'generatedForEmail', 'assignedToText', 'assignedToEmail',
+    'generatedForName', 'generatedForEmail', 'createdOnBehalfOfName', 'createdOnBehalfOfEmail',
+    'secondaryCreatedByCrmUserId', 'secondaryCreatedByName', 'secondaryCreatedByEmail',
+    'assignedToText', 'assignedToEmail',
     'assignedStaffText', 'assignedStaffEmail', 'assignments.assignedToText',
     'assignments.assignedToEmail', 'assignments.assignedStaffText',
     'assignments.assignedStaffEmail', 'serviceSelections.createdByCrmUserId',
     'serviceSelections.createdByName', 'serviceSelections.createdByEmail'
   ], [
-    'secondaryCreatedBy', 'generatedForUser', 'assignedStaff',
+    'secondaryCreatedBy', 'generatedForUser', 'createdOnBehalfOfUser', 'assignedStaff',
     'assignments.assignedTo', 'assignments.assignedStaff'
   ]);
   if (scope === null) return ownedLeads;
@@ -1652,6 +1654,7 @@ exports._test = {
   preserveTerminalApprovalStatus,
   quotationLeadVisibilityFilter,
   quotationAccessFilter,
+  refreshQuotationLeadDetails,
   validateQuotationItemDates
 };
 

@@ -26,7 +26,8 @@ test('Lead staff filter uses Sales MIS creator ownership with assignment fallbac
   assert.match(page, /item\.generatedForUser, item\.generatedForName, item\.generatedForEmail/);
   assert.match(page, /Array\.isArray\(item\.assignments\)/);
   assert.match(page, /Array\.isArray\(item\.serviceSelections\)/);
-  assert.match(page, /selectedStaffTokens\.some\(\(identity\) => leadStaffTokens\.includes\(identity\)\)/);
+  assert.match(page, /return \[\.\.\.new Set\(fallbackTokens\)\]/);
+  assert.match(page, /assignment\.assignedStaff, assignment\.assignedStaffText, assignment\.assignedStaffEmail/);
 });
 
 test('actual creator and generated-for owner can both quote lead services', () => {
@@ -40,7 +41,8 @@ test('actual creator and generated-for owner can both quote lead services', () =
   assert.match(leadPage, /viewLead\.generatedForUser\?\._id/);
   assert.match(leadPage, /if \(participantCanSeeAllServices\) return true/);
   assert.match(quotationController, /'generatedForName', 'generatedForEmail'/);
-  assert.match(quotationController, /'generatedForUser', 'assignedStaff'/);
+  assert.match(quotationController, /'generatedForUser'/);
+  assert.match(quotationController, /'assignedStaff'/);
 });
 
 test('allocated owner can edit the lead without ownership being overwritten', () => {

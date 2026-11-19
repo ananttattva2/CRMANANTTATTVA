@@ -205,6 +205,11 @@ async function leadAccessFilter(user, { includeShared = false } = {}) {
     'importedCreatedBy',
     'generatedForName',
     'generatedForEmail',
+    'createdOnBehalfOfName',
+    'createdOnBehalfOfEmail',
+    'secondaryCreatedByCrmUserId',
+    'secondaryCreatedByName',
+    'secondaryCreatedByEmail',
     'assignedToText',
     'assignedToEmail',
     'assignedStaffText',
@@ -219,6 +224,7 @@ async function leadAccessFilter(user, { includeShared = false } = {}) {
   ], [
     'secondaryCreatedBy',
     'generatedForUser',
+    'createdOnBehalfOfUser',
     'assignedStaff',
     'assignments.assignedTo',
     'assignments.assignedStaff'
