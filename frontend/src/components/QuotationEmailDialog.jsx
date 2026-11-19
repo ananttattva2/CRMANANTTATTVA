@@ -12,7 +12,7 @@ export default function QuotationEmailDialog({ quotation, onClose }) {
   const [body, setBody] = useState('Dear Sir/Madam,\n\nPlease find our approved quotation attached for your review. We look forward to hearing from you.')
   const [activeTab, setActiveTab] = useState('email')
   const [creditTargets, setCreditTargets] = useState(() => Object.fromEntries(
-    creditRows.map(row => [row.itemIndex, row.targetKg === '' ? '' : String(row.targetKg)])
+    creditRows.map(row => [row.itemIndex, row.targetMt === '' ? '' : String(row.targetMt)])
   ))
   const [busy, setBusy] = useState(false)
   const [savingCalculation, setSavingCalculation] = useState(false)
@@ -25,17 +25,17 @@ export default function QuotationEmailDialog({ quotation, onClose }) {
   function creditTargetPayload() {
     return creditRows.map(row => {
       const rawTarget = String(creditTargets[row.itemIndex] ?? '').trim()
-      return { itemIndex: row.itemIndex, targetKg: rawTarget ? Number(rawTarget) : null }
+      return { itemIndex: row.itemIndex, targetMt: rawTarget ? Number(rawTarget) : null }
     })
   }
 
   function validateCreditTargets(targets, { requireComplete = false } = {}) {
     for (const target of targets) {
-      if (target.targetKg === null) {
-        if (requireComplete) return 'Enter a Target in kg for every EPR Credit item before sending.'
+      if (target.targetMt === null) {
+        if (requireComplete) return 'Enter a Target in MT for every EPR Credit item before sending.'
         continue
       }
-      if (!Number.isFinite(target.targetKg) || target.targetKg < 0 || target.targetKg > 1e12) {
+      if (!Number.isFinite(target.targetMt) || target.targetMt < 0 || target.targetMt > 1e12) {
         return 'Targets must be non-negative numbers.'
       }
     }
@@ -93,10 +93,10 @@ export default function QuotationEmailDialog({ quotation, onClose }) {
         {hasCreditRows && <p className="text-xs font-bold text-teal-800">The saved EPR Credit calculation table will be added below your message in the email. The quotation PDF will remain unchanged.</p>}
       </>}
       {activeTab === 'credit' && <section role="tabpanel" aria-label="Credit Calculation" className="space-y-4">
-        <div className="rounded-xl border border-teal-100 bg-teal-50 p-3 text-sm font-bold text-teal-900">Quoted rates are treated as INR per gram and converted to INR per kg (×1,000). Enter each Target in kg.</div>
+        <div className="rounded-xl border border-teal-100 bg-teal-50 p-3 text-sm font-bold text-teal-900">Quoted rates are INR per kg. Basic Amount is converted to INR per MT (×1,000). Enter each Target in MT.</div>
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="w-full min-w-[700px] text-left text-sm">
-            <thead className="bg-slate-50 text-xs font-black uppercase text-slate-600"><tr>{['Services Offered', 'Unit', 'Basic Amount (INR)', 'Target (kg)', 'Total Amount (INR)'].map(heading => <th key={heading} className="border-b px-3 py-3">{heading}</th>)}</tr></thead>
+            <thead className="bg-slate-50 text-xs font-black uppercase text-slate-600"><tr>{['Services Offered', 'Unit', 'Rate/kg', 'Basic Amount (INR)', 'Target (MT)', 'Total Amount (INR)'].map(heading => <th key={heading} className="border-b px-3 py-3">{heading}</th>)}</tr></thead>
             <tbody className="divide-y divide-slate-100">
               {creditRows.map(row => {
                 const target = creditTargets[row.itemIndex] ?? ''
@@ -104,8 +104,9 @@ export default function QuotationEmailDialog({ quotation, onClose }) {
                 return <tr key={`${quotation._id}-${row.itemIndex}`}>
                   <td className="px-3 py-3 font-bold">{row.servicesOffered}</td>
                   <td className="px-3 py-3 font-black uppercase">{row.unit}</td>
-                  <td className="px-3 py-3 font-black">₹{Number(row.basicAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}<span className="block text-[10px] font-bold text-slate-500">converted per kg</span></td>
-                  <td className="px-3 py-3"><input aria-label={`Target in kg for ${row.servicesOffered}`} type="number" min="0" max="1000000000000" step="any" value={target} disabled={busy || savingCalculation} onChange={event => { setCreditTargets(current => ({ ...current, [row.itemIndex]: event.target.value })); setCalculationSaved(false); setCalculationError('') }} className="h-10 w-32 rounded-lg border border-slate-300 px-3 font-bold outline-none focus:border-teal-600 focus:ring-4 focus:ring-teal-100" placeholder="Enter kg" /></td>
+                  <td className="px-3 py-3 font-black">{row.ratePerKg.toLocaleString('en-IN', { maximumFractionDigits: 3 })}</td>
+                  <td className="px-3 py-3 font-black">₹{Number(row.basicAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}<span className="block text-[10px] font-bold text-slate-500">per MT</span></td>
+                  <td className="px-3 py-3"><input aria-label={`Target in MT for ${row.servicesOffered}`} type="number" min="0" max="1000000000000" step="any" value={target} disabled={busy || savingCalculation} onChange={event => { setCreditTargets(current => ({ ...current, [row.itemIndex]: event.target.value })); setCalculationSaved(false); setCalculationError('') }} className="h-10 w-32 rounded-lg border border-slate-300 px-3 font-bold outline-none focus:border-teal-600 focus:ring-4 focus:ring-teal-100" placeholder="Enter MT" /></td>
                   <td className="px-3 py-3 font-black text-teal-800">{total === null ? '-' : `₹${total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</td>
                 </tr>
               })}

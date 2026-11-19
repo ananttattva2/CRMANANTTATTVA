@@ -51,7 +51,8 @@ const QuoteItemSchema = new mongoose.Schema({
   unitName: { type: String, trim: true, maxlength: 120 },
   unitLabel: { type: String, trim: true },
   basicAmount: { type: Number, default: 0 },
-  eprCreditTargetKg: { type: Number, min: 0 }
+  eprCreditTargetKg: { type: Number, min: 0 },
+  eprCreditTargetMt: { type: Number, min: 0 }
 }, { _id: false });
 
 const CombinedPricingGroupSchema = new mongoose.Schema({

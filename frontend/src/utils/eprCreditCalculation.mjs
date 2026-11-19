@@ -8,15 +8,19 @@ export function isEprCreditQuoteItem(item = {}) {
 }
 
 export function eprCreditRatePerKg(item = {}) {
-  const quotedRatePerGram = Number(item.basicAmount);
-  return Number.isFinite(quotedRatePerGram) ? roundMoney(quotedRatePerGram * 1000) : 0;
+  const quotedRatePerKg = Number(item.basicAmount);
+  return Number.isFinite(quotedRatePerKg) ? roundMoney(quotedRatePerKg) : 0;
 }
 
-export function eprCreditTotalAmount(ratePerKg, targetKg) {
-  if (targetKg === '' || targetKg === null || targetKg === undefined) return null;
-  const target = Number(targetKg);
+export function eprCreditBasicAmountPerMt(ratePerKg) {
+  return roundMoney(Number(ratePerKg) * 1000);
+}
+
+export function eprCreditTotalAmount(basicAmountPerMt, targetMt) {
+  if (targetMt === '' || targetMt === null || targetMt === undefined) return null;
+  const target = Number(targetMt);
   if (!Number.isFinite(target)) return null;
-  return roundMoney(Number(ratePerKg) * target);
+  return roundMoney(Number(basicAmountPerMt) * target);
 }
 
 export function quotationEprCreditCalculationRows(quotation = {}) {
@@ -27,15 +31,20 @@ export function quotationEprCreditCalculationRows(quotation = {}) {
       const unitCount = String(item.unit || '1').trim() || '1';
       const unitName = String(item.unitLabel || item.unitName || '').trim().toUpperCase();
       const ratePerKg = eprCreditRatePerKg(item);
-      const targetKg = item.eprCreditTargetKg ?? '';
+      const basicAmountPerMt = eprCreditBasicAmountPerMt(ratePerKg);
+      const targetMt = item.eprCreditTargetMt !== null && item.eprCreditTargetMt !== undefined
+        ? item.eprCreditTargetMt
+        : item.eprCreditTargetKg !== null && item.eprCreditTargetKg !== undefined
+          ? Number(item.eprCreditTargetKg) / 1000
+          : '';
       return {
         itemIndex,
         servicesOffered: String(item.servicesOffered || item.applicableService || item.serviceCategory || '-').trim(),
         unit: [unitCount, unitName].filter(Boolean).join(' '),
-        quotedRatePerGram: Number(item.basicAmount) || 0,
-        basicAmount: ratePerKg,
-        targetKg,
-        totalAmount: eprCreditTotalAmount(ratePerKg, targetKg)
+        ratePerKg,
+        basicAmount: basicAmountPerMt,
+        targetMt,
+        totalAmount: eprCreditTotalAmount(basicAmountPerMt, targetMt)
       };
     });
 }

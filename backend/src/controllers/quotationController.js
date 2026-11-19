@@ -230,30 +230,34 @@ function normalizeEprCreditTargetUpdates(items = [], targets = []) {
     if (!Number.isInteger(itemIndex) || !expected.has(itemIndex) || normalized.has(itemIndex)) {
       return { error: 'EPR Credit targets must match the quotation items.' };
     }
-    const rawTarget = row?.targetKg;
+    const rawTarget = row?.targetMt;
     if (rawTarget === null || rawTarget === undefined || (typeof rawTarget === 'string' && !rawTarget.trim())) {
       normalized.set(itemIndex, null);
       continue;
     }
-    const targetKg = Number(rawTarget);
-    if (!Number.isFinite(targetKg) || targetKg < 0 || targetKg > 1e12) {
-      return { error: `Target for EPR Credit item ${itemIndex + 1} must be a non-negative number.` };
+    const targetMt = Number(rawTarget);
+    if (!Number.isFinite(targetMt) || targetMt < 0 || targetMt > 1e12) {
+      return { error: `Target (MT) for EPR Credit item ${itemIndex + 1} must be a non-negative number.` };
     }
-    normalized.set(itemIndex, targetKg);
+    normalized.set(itemIndex, targetMt);
   }
   if (normalized.size !== expected.size) return { error: 'Provide a Target for every EPR Credit item.' };
   return {
-    values: creditIndexes.map((itemIndex) => ({ itemIndex, targetKg: normalized.get(itemIndex) }))
+    values: creditIndexes.map((itemIndex) => ({ itemIndex, targetMt: normalized.get(itemIndex) }))
   };
 }
 
 function hasCompleteEprCreditTargets(items = []) {
   return items
     .filter(isEprCreditItem)
-    .every((item) => item.eprCreditTargetKg !== null
-      && item.eprCreditTargetKg !== undefined
-      && Number.isFinite(Number(item.eprCreditTargetKg))
-      && Number(item.eprCreditTargetKg) >= 0);
+    .every((item) => {
+      const target = item.eprCreditTargetMt ?? (
+        item.eprCreditTargetKg !== null && item.eprCreditTargetKg !== undefined
+          ? Number(item.eprCreditTargetKg) / 1000
+          : undefined
+      );
+      return target !== null && target !== undefined && Number.isFinite(Number(target)) && Number(target) >= 0;
+    });
 }
 
 function financialYearFromDate(value) {
@@ -323,14 +327,24 @@ function cleanItems(items, user = null, existingItems = [], systemStartDate = ''
       }
       const transitionPeriod = rawTransitionPeriod;
       const unitLabel = cleanString(item.unitLabel ?? existingItem.unitLabel).toUpperCase();
-      const rawCreditTarget = Object.prototype.hasOwnProperty.call(item || {}, 'eprCreditTargetKg')
+      const rawCreditTargetMt = Object.prototype.hasOwnProperty.call(item || {}, 'eprCreditTargetMt')
+        ? item.eprCreditTargetMt
+        : existingItem.eprCreditTargetMt;
+      const rawLegacyCreditTargetKg = Object.prototype.hasOwnProperty.call(item || {}, 'eprCreditTargetKg')
         ? item.eprCreditTargetKg
         : existingItem.eprCreditTargetKg;
+      let eprCreditTargetMt;
       let eprCreditTargetKg;
-      if (rawCreditTarget !== null && rawCreditTarget !== undefined && rawCreditTarget !== '') {
-        eprCreditTargetKg = Number(rawCreditTarget);
+      if (rawCreditTargetMt !== null && rawCreditTargetMt !== undefined && rawCreditTargetMt !== '') {
+        eprCreditTargetMt = Number(rawCreditTargetMt);
+        if (!Number.isFinite(eprCreditTargetMt) || eprCreditTargetMt < 0 || eprCreditTargetMt > 1e12) {
+          throw new Error(`Quotation item ${index + 1}: EPR Credit Target (MT) must be a non-negative number.`);
+        }
+      }
+      if (rawLegacyCreditTargetKg !== null && rawLegacyCreditTargetKg !== undefined && rawLegacyCreditTargetKg !== '') {
+        eprCreditTargetKg = Number(rawLegacyCreditTargetKg);
         if (!Number.isFinite(eprCreditTargetKg) || eprCreditTargetKg < 0 || eprCreditTargetKg > 1e12) {
-          throw new Error(`Quotation item ${index + 1}: EPR Credit Target must be a non-negative number.`);
+          throw new Error(`Quotation item ${index + 1}: Legacy EPR Credit Target (kg) must be a non-negative number.`);
         }
       }
       const rawEprCreditYears = Array.isArray(item.annualReturnEprCreditYears)
@@ -403,7 +417,8 @@ function cleanItems(items, user = null, existingItems = [], systemStartDate = ''
         unitName: cleanString(item.unitName ?? existingItem.unitName).slice(0, 120),
         unitLabel: isEprCredit ? unitLabel : undefined,
         basicAmount: roundMoney(item.basicAmount),
-        eprCreditTargetKg: isEprCredit ? eprCreditTargetKg : undefined
+        eprCreditTargetKg: isEprCredit ? eprCreditTargetKg : undefined,
+        eprCreditTargetMt: isEprCredit ? eprCreditTargetMt : undefined
       };
     })
     .filter((item) => isMeaningfulItem(item));
@@ -918,8 +933,9 @@ exports.updateEprCreditCalculations = async (req, res, next) => {
 
     const result = normalizeEprCreditTargetUpdates(quotation.items || [], req.body?.targets);
     if (result.error) return res.status(400).json({ error: result.error });
-    result.values.forEach(({ itemIndex, targetKg }) => {
-      quotation.items[itemIndex].eprCreditTargetKg = targetKg;
+    result.values.forEach(({ itemIndex, targetMt }) => {
+      quotation.items[itemIndex].eprCreditTargetMt = targetMt;
+      quotation.items[itemIndex].eprCreditTargetKg = undefined;
     });
     quotation.markModified('items');
     await quotation.save();
