@@ -223,6 +223,20 @@ test('closed leads without a permanent staff assignment surface under an Unassig
   assert.equal(groups.reduce((sum, group) => sum + group.total, 0), 1);
 });
 
+test('admin-approved PO assigned to a manager but not to staff surfaces under Unassigned', async () => {
+  const { buildOperationsProgressGroups } = await helpers;
+  const localUsers = [{ _id: 'sonal', name: 'Sonal More', role: 'operation' }];
+  const managerAssigned = { id: 'mgr-assigned', hasPo: true, client: { assignedServiceId: 'svc', selectedLead: { status: 'open', assignments: [{ assignedServiceId: 'svc', assignedTo: 'manager-id', assignedToText: 'Manager', poApprovalStatus: 'APPROVED' }] } } };
+  const pendingPo = { id: 'pending-po', hasPo: true, client: { assignedServiceId: 'svc', selectedLead: { status: 'open', assignments: [{ assignedServiceId: 'svc', assignedTo: 'manager-id', assignedToText: 'Manager', poApprovalStatus: 'PENDING' }] } } };
+  const noManager = { id: 'no-manager', hasPo: true, client: { assignedServiceId: 'svc', selectedLead: { status: 'open', assignments: [{ assignedServiceId: 'svc', poApprovalStatus: 'APPROVED' }] } } };
+  const groups = buildOperationsProgressGroups([managerAssigned, pendingPo, noManager], localUsers, () => []);
+  const unassigned = groups.find((group) => group.id === 'unassigned');
+  assert.ok(unassigned, 'Unassigned group should be present for admin-approved PO with manager assignment');
+  assert.equal(unassigned.total, 1);
+  assert.equal(unassigned.rows[0].id, 'mgr-assigned');
+  assert.equal(groups.reduce((sum, group) => sum + group.total, 0), 1);
+});
+
 test('48/72/96 count actual overdue deadlines cumulatively at their boundaries', async () => {
   const { getOperationsSla } = await helpers;
   const due = Date.parse('2026-09-28T00:00:00Z');

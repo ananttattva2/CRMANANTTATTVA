@@ -62,7 +62,7 @@ export function allocationOwnerKeys(client = {}) {
   }))]
 }
 
-export function permanentStaffOwnerKeys(client = {}) {
+export function resolveServiceAssignments(client = {}) {
   const data = client.data && typeof client.data === 'object' ? client.data : {}
   const lead = client.selectedLead && typeof client.selectedLead === 'object'
     ? client.selectedLead
@@ -77,6 +77,11 @@ export function permanentStaffOwnerKeys(client = {}) {
     if (serviceIndex >= 0 && allAssignments[serviceIndex] && !allAssignments[serviceIndex].assignedServiceId && !allAssignments[serviceIndex].serviceAssignmentId) assignments = [allAssignments[serviceIndex]]
     else if (owners.size === 1) assignments = legacy
   }
+  return { lead, assignments, allAssignments }
+}
+
+export function permanentStaffOwnerKeys(client = {}) {
+  const { lead, assignments, allAssignments } = resolveServiceAssignments(client)
   const permanent = [...new Set([
     ...assignments.flatMap((assignment) => [assignment?.assignedStaff, assignment?.assignedStaffText, assignment?.assignedStaffEmail]),
     client.assignedStaff, client.assignedStaffText, client.assignedStaffEmail,
@@ -89,6 +94,29 @@ export function permanentStaffOwnerKeys(client = {}) {
     ...(allAssignments.length <= 1 && (lead.closedAt || lead.closedBy || lead.closedByText)
       ? [lead.closedBy, lead.closedByText, lead.closedByEmail] : [])
   ].flatMap(identity))]
+}
+
+// A lead has a permanent operations staff owner only when an executive was
+// explicitly assigned (assignedStaff). Closure metadata (closedBy) is an
+// audit trail, not a staff ownership signal.
+export function hasPermanentStaffAssignment(client = {}) {
+  const { lead, assignments } = resolveServiceAssignments(client)
+  return assignments.some(assignment => assignment?.assignedStaff || assignment?.assignedStaffText || assignment?.assignedStaffEmail)
+    || Boolean(client.assignedStaff || client.assignedStaffText || client.assignedStaffEmail
+      || lead.assignedStaff || lead.assignedStaffText || lead.assignedStaffEmail)
+}
+
+// Admin-approved PO: approved by the admin/finance workflow.
+export function hasAdminApprovedPo(client = {}) {
+  const { assignments } = resolveServiceAssignments(client)
+  return assignments.some(assignment => ['APPROVED', 'FINANCE_PENDING'].includes(String(assignment?.poApprovalStatus || '').toUpperCase()))
+}
+
+// The lead-service was handed to a manager (assignedTo) who may not yet have
+// delegated it to an operations executive.
+export function hasManagerAssignment(client = {}) {
+  const { assignments } = resolveServiceAssignments(client)
+  return assignments.some(assignment => assignment?.assignedTo || assignment?.assignedToText || assignment?.assignedToEmail)
 }
 
 function date(value) {
@@ -149,15 +177,22 @@ export function buildOperationsProgressGroups(rows, users, getLegacyKeys, now = 
     const permanentStaffKeys = permanentStaffOwnerKeys(row.client)
     // Assigned counts follow Manager Assigned to Staff, never temporary or importer ownership.
     const owner = findOwner(permanentStaffKeys)
-    if (!owner) {
-      // Closed leads without a permanent staff assignment are surfaced under
-      // the Unassigned group so they remain visible in SPOC summaries.
-      if (!isLeadClosed(row.client)) return
+    // A lead belongs to a SPOC only when an operations executive was
+    // explicitly assigned (assignedStaff). Leads closed by a manager without
+    // a staff hand-off, or whose PO was approved by admin and handed to a
+    // manager but never delegated to staff, are surfaced under Unassigned.
+    const staffAssigned = hasPermanentStaffAssignment(row.client)
+    if (!staffAssigned) {
+      const closed = isLeadClosed(row.client)
+      const managerAssigned = hasManagerAssignment(row.client)
+      const adminApprovedPo = hasAdminApprovedPo(row.client)
+      if (!closed && !(adminApprovedPo && managerAssigned)) return
       if (!unassignedGroup.rows.some((item) => String(item.id) === String(row.id))) {
         unassignedGroup.rows.push({ ...row, sla: getOperationsSla(row.client?.operationsSla || row.approval || {}, now) })
       }
       return
     }
+    if (!owner) return
     const group = groups.get(key(owner._id || owner.id || owner.userId || owner.email))
     if (group && !group.rows.some((item) => String(item.id) === String(row.id))) {
       group.rows.push({ ...row, sla: getOperationsSla(row.client?.operationsSla || row.approval || {}, now) })
