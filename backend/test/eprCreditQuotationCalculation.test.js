@@ -76,8 +76,28 @@ test('EPR Credit targets persist on approved quotation items', async t => {
   assert.equal(quotation.items[2].eprCreditTargetMt, 5);
 });
 
+test('quotation email image attachments are optional and validated by file signature', () => {
+  const { quotationEmailImageAttachments } = controller._test;
+  const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
+  assert.deepEqual(quotationEmailImageAttachments([]), []);
+  const [attachment] = quotationEmailImageAttachments([{
+    originalname: 'client-photo.png',
+    mimetype: 'image/png',
+    buffer: png
+  }]);
+  assert.equal(attachment.filename, 'client-photo.png');
+  assert.equal(attachment.contentType, 'image/png');
+  assert.equal(attachment.content, png);
+  assert.throws(() => quotationEmailImageAttachments([{
+    originalname: 'not-an-image.png',
+    mimetype: 'image/png',
+    buffer: Buffer.from('not an image')
+  }]), /valid JPEG, PNG, GIF, or WebP/i);
+});
+
 test('approved quotation email includes the per kg and converted per MT EPR Credit table', async t => {
   let sent;
+  const imageBuffer = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
   const quotation = {
     _id: '507f1f77bcf86cd799439012',
     quotationNumber: 'AT-TEST-CREDIT',
@@ -102,7 +122,8 @@ test('approved quotation email includes the per kg and converted per MT EPR Cred
   await controller.emailQuotation({
     user: { _id: '507f1f77bcf86cd799439011', email: 'sender@example.test', role: 'admin' },
     params: { id: quotation._id },
-    body: { email: 'client@example.test', subject: 'Quotation', body: 'Please see the details.' }
+    body: { email: 'client@example.test', subject: 'Quotation', body: 'Please see the details.' },
+    files: [{ originalname: 'client-photo.png', mimetype: 'image/png', buffer: imageBuffer }]
   }, res, error => { throw error; });
 
   assert.equal(res.code, 200);
@@ -117,4 +138,8 @@ test('approved quotation email includes the per kg and converted per MT EPR Cred
   assert.match(sent[2], /₹47,000\.00/);
   assert.match(sent[2], /&lt;script&gt;Annual Return&lt;\/script&gt;/);
   assert.doesNotMatch(sent[2], /<script>/);
+  const sentImage = sent[3].attachments.find(attachment => attachment.filename === 'client-photo.png');
+  assert.ok(sentImage);
+  assert.equal(sentImage.contentType, 'image/png');
+  assert.equal(sentImage.content, imageBuffer);
 });

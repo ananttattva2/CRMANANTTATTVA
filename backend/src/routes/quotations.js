@@ -4,6 +4,31 @@ const router = express.Router();
 const quotationCtrl = require('../controllers/quotationController');
 const { requireAuth, requireRoles } = require('../middleware/auth');
 const { ADMIN_ROLES } = require('../constants/roles');
+const multer = require('multer');
+
+const quotationEmailImages = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 5, fields: 8, fieldSize: 10000 },
+  fileFilter(_req, file, callback) {
+    const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+    if (!allowedTypes.has(file.mimetype)) {
+      return callback(new Error('Only JPEG, PNG, GIF, and WebP images can be attached.'));
+    }
+    return callback(null, true);
+  }
+}).array('images', 5);
+
+function parseQuotationEmailImages(req, res, next) {
+  quotationEmailImages(req, res, error => {
+    if (!error) return next();
+    const message = error.code === 'LIMIT_FILE_SIZE'
+      ? 'Each attached image must be 5 MB or smaller.'
+      : error.code === 'LIMIT_FILE_COUNT' || error.code === 'LIMIT_UNEXPECTED_FILE'
+        ? 'Attach up to 5 supported images.'
+        : error.message || 'Unable to read attached images.';
+    return res.status(400).json({ error: message });
+  });
+}
 
 router.get('/', requireAuth, cacheRead, quotationCtrl.listQuotations);
 router.get('/service-categories', requireAuth, cacheRead, quotationCtrl.listServiceCategories);
@@ -19,7 +44,7 @@ router.post('/', requireAuth, quotationCtrl.createQuotation);
 router.get('/:id', requireAuth, cacheRead, quotationCtrl.getQuotation);
 router.get('/:id/pdf', requireAuth, requireRoles(ADMIN_ROLES), quotationCtrl.downloadQuotation);
 router.patch('/:id/credit-calculations', requireAuth, quotationCtrl.updateEprCreditCalculations);
-router.post('/:id/email', requireAuth, quotationCtrl.emailQuotation);
+router.post('/:id/email', requireAuth, parseQuotationEmailImages, quotationCtrl.emailQuotation);
 router.patch('/:id/management-approval', requireAuth, quotationCtrl.submitManagementApproval);
 router.patch('/:id/management-approval/finalize', requireAuth, requireRoles(['superadmin']), quotationCtrl.finalizeManagementApproval);
 router.patch('/:id/approval', requireAuth, requireRoles(ADMIN_ROLES), quotationCtrl.updateQuotationApproval);

@@ -2,6 +2,11 @@ import React, { useEffect, useRef, useState } from 'react'
 import api, { readApiError } from '../services/api'
 import { eprCreditTotalAmount, quotationEprCreditCalculationRows } from '../utils/eprCreditCalculation.mjs'
 
+const MAX_EMAIL_IMAGES = 5
+const MAX_EMAIL_IMAGE_SIZE = 5 * 1024 * 1024
+const MAX_EMAIL_IMAGE_TOTAL_SIZE = 15 * 1024 * 1024
+const EMAIL_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
+
 export default function QuotationEmailDialog({ quotation, onClose }) {
   const ref = useRef(null)
   const creditRows = quotationEprCreditCalculationRows(quotation)
@@ -19,8 +24,31 @@ export default function QuotationEmailDialog({ quotation, onClose }) {
   const [error, setError] = useState('')
   const [calculationError, setCalculationError] = useState('')
   const [calculationSaved, setCalculationSaved] = useState(false)
+  const [imageAttachments, setImageAttachments] = useState([])
+  const [attachmentError, setAttachmentError] = useState('')
   const [sent, setSent] = useState(false)
   useEffect(() => { ref.current.showModal() }, [])
+
+  function addImageAttachments(event) {
+    const selected = Array.from(event.currentTarget.files || [])
+    event.currentTarget.value = ''
+    if (!selected.length) return
+    const combined = [...imageAttachments, ...selected]
+    if (combined.length > MAX_EMAIL_IMAGES) {
+      setAttachmentError(`Attach up to ${MAX_EMAIL_IMAGES} images.`)
+      return
+    }
+    if (combined.some(file => !EMAIL_IMAGE_TYPES.has(file.type) || file.size <= 0 || file.size > MAX_EMAIL_IMAGE_SIZE)) {
+      setAttachmentError('Choose valid JPEG, PNG, GIF, or WebP images up to 5 MB each.')
+      return
+    }
+    if (combined.reduce((total, file) => total + file.size, 0) > MAX_EMAIL_IMAGE_TOTAL_SIZE) {
+      setAttachmentError('The total size of attached images cannot exceed 15 MB.')
+      return
+    }
+    setImageAttachments(combined)
+    setAttachmentError('')
+  }
 
   function creditTargetPayload() {
     return creditRows.map(row => {
@@ -72,14 +100,22 @@ export default function QuotationEmailDialog({ quotation, onClose }) {
     try {
       const targetsSaved = await saveCreditCalculation({ requireComplete: true })
       if (!targetsSaved) return
-      await api.post(`/quotations/${quotation._id}/email`, { email, cc, subject, body })
+      const formData = new FormData()
+      formData.append('email', email)
+      formData.append('cc', cc)
+      formData.append('subject', subject)
+      formData.append('body', body)
+      imageAttachments.forEach(file => formData.append('images', file))
+      await api.post(`/quotations/${quotation._id}/email`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
       setSent(true)
     } catch (err) { setError(readApiError(err, 'Unable to email this quotation. Please retry.')) }
     finally { setBusy(false) }
   }
   return <dialog ref={ref} aria-labelledby="quotation-email-title" onCancel={event => { event.preventDefault(); if (!busy) onClose() }} className="m-auto max-h-[90vh] w-[min(580px,calc(100vw-32px))] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl backdrop:bg-slate-950/60">
     <h2 id="quotation-email-title" className="text-xl font-black">Email quotation to client</h2>
-    {sent ? <div className="mt-5 space-y-5"><p role="status">Quotation email accepted for delivery to <strong>{email}</strong>, with the approved PDF attached.</p><button type="button" onClick={onClose} className="rounded-lg bg-emerald-700 px-5 py-3 font-bold text-white">Done</button></div> : <form onSubmit={send} className="mt-4 space-y-4">
+    {sent ? <div className="mt-5 space-y-5"><p role="status">Quotation email accepted for delivery to <strong>{email}</strong>, with the approved PDF{imageAttachments.length ? ' and selected images' : ''} attached.</p><button type="button" onClick={onClose} className="rounded-lg bg-emerald-700 px-5 py-3 font-bold text-white">Done</button></div> : <form onSubmit={send} className="mt-4 space-y-4">
       <p className="text-sm text-slate-500">The approved quotation PDF and AnantTattva email signature will be included automatically.</p>
       {hasCreditRows && <div role="tablist" aria-label="Quotation email sections" className="flex gap-2 rounded-[20px] bg-slate-100 p-1.5">
         <button type="button" role="tab" aria-selected={activeTab === 'email'} onClick={() => setActiveTab('email')} className={`flex-1 rounded-[14px] px-4 py-2.5 text-sm font-black transition ${activeTab === 'email' ? 'bg-gradient-to-r from-[#1a928b] to-[#0b7771] text-white shadow' : 'text-slate-600 hover:bg-white'}`}>Email</button>
@@ -90,6 +126,18 @@ export default function QuotationEmailDialog({ quotation, onClose }) {
         <label className="block text-sm font-bold">CC <span className="font-normal text-slate-500">(optional)</span><input type="text" inputMode="email" maxLength={3000} value={cc} onChange={event => setCc(event.target.value)} disabled={busy} placeholder="name@company.com, colleague@company.com" className="mt-2 block w-full rounded-lg border border-slate-300 p-3" /><span className="mt-1 block text-xs font-normal text-slate-500">Separate addresses with commas or semicolons. Up to 10 recipients.</span></label>
         <label className="block text-sm font-bold">Subject<input required maxLength={200} value={subject} onChange={event => setSubject(event.target.value)} disabled={busy} className="mt-2 block w-full rounded-lg border border-slate-300 p-3" /></label>
         <label className="block text-sm font-bold">Message<textarea required maxLength={10000} rows={6} value={body} onChange={event => setBody(event.target.value)} disabled={busy} className="mt-2 block w-full rounded-lg border border-slate-300 p-3" /></label>
+        <section aria-label="Optional image attachments" className="space-y-2 rounded-xl border border-slate-200 p-3">
+          <label htmlFor="quotation-email-images" className="block text-sm font-bold">Attach images <span className="font-normal text-slate-500">(optional, multiple)</span></label>
+          <input id="quotation-email-images" type="file" multiple accept="image/jpeg,image/png,image/gif,image/webp" onChange={addImageAttachments} disabled={busy} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-teal-50 file:px-3 file:py-2 file:font-bold file:text-teal-800" />
+          <p className="text-xs text-slate-500">Attach up to 5 JPEG, PNG, GIF, or WebP images (5 MB each; 15 MB total). Selected images will be sent with the quotation email.</p>
+          {imageAttachments.length > 0 && <ul className="space-y-1">
+            {imageAttachments.map((file, index) => <li key={`${file.name}-${file.size}-${index}`} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-xs">
+              <span className="min-w-0 truncate">{file.name} <span className="text-slate-500">({Math.max(1, Math.round(file.size / 1024))} KB)</span></span>
+              <button type="button" disabled={busy} onClick={() => { setImageAttachments(current => current.filter((_, fileIndex) => fileIndex !== index)); setAttachmentError('') }} className="shrink-0 font-bold text-red-700">Remove</button>
+            </li>)}
+          </ul>}
+          {attachmentError && <p role="alert" className="text-xs font-bold text-red-700">{attachmentError}</p>}
+        </section>
         {hasCreditRows && <p className="text-xs font-bold text-teal-800">The saved EPR Credit calculation table will be added below your message in the email. The quotation PDF will remain unchanged.</p>}
       </>}
       {activeTab === 'credit' && <section role="tabpanel" aria-label="Credit Calculation" className="space-y-4">

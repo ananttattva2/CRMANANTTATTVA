@@ -212,6 +212,50 @@ function roundMoney(value) {
   return Number.isFinite(amount) ? Math.round((amount + Number.EPSILON) * 100) / 100 : 0;
 }
 
+function quotationEmailImageAttachments(files = []) {
+  const maxFiles = 5;
+  const maxFileBytes = 5 * 1024 * 1024;
+  const maxTotalBytes = 15 * 1024 * 1024;
+  if (!Array.isArray(files) || files.length > maxFiles) {
+    throw Object.assign(new Error('Attach up to 5 images.'), { statusCode: 400 });
+  }
+
+  let totalBytes = 0;
+  return files.map((file, index) => {
+    const buffer = file?.buffer;
+    if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > maxFileBytes) {
+      throw Object.assign(new Error(`Image ${index + 1} must be a non-empty file no larger than 5 MB.`), { statusCode: 400 });
+    }
+    totalBytes += buffer.length;
+    if (totalBytes > maxTotalBytes) {
+      throw Object.assign(new Error('The total size of attached images cannot exceed 15 MB.'), { statusCode: 400 });
+    }
+
+    let contentType;
+    let extension;
+    if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+      contentType = 'image/png';
+      extension = 'png';
+    } else if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+      contentType = 'image/jpeg';
+      extension = 'jpg';
+    } else if (buffer.length >= 6 && ['GIF87a', 'GIF89a'].includes(buffer.subarray(0, 6).toString('ascii'))) {
+      contentType = 'image/gif';
+      extension = 'gif';
+    } else if (buffer.length >= 12 && buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP') {
+      contentType = 'image/webp';
+      extension = 'webp';
+    } else {
+      throw Object.assign(new Error(`Image ${index + 1} must be a valid JPEG, PNG, GIF, or WebP file.`), { statusCode: 400 });
+    }
+
+    const uploadedName = String(file.originalname || `image-${index + 1}`)
+      .split(/[\\/]/).pop().replace(/\.[^.]*$/, '');
+    const safeName = uploadedName.replace(/[^\w.-]+/g, '_').replace(/^[._-]+|[._-]+$/g, '').slice(0, 80) || `image-${index + 1}`;
+    return { filename: `${safeName}.${extension}`, content: buffer, contentType };
+  });
+}
+
 function isEprCreditItem(item = {}) {
   return String(item.businessCategory || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '') === 'eprcredit';
 }
@@ -962,12 +1006,21 @@ exports.emailQuotation = async (req, res, next) => {
     if ((quotation.items || []).some(isEprCreditItem) && !hasCompleteEprCreditTargets(quotation.items || [])) {
       return res.status(400).json({ error: 'Save a Target for every EPR Credit item before sending the quotation.' });
     }
+    const imageAttachments = quotationEmailImageAttachments(req.files || []);
     // Always copy the authenticated sender, independently of client-entered recipients.
     const senderEmail = String(req.user.email || '').trim().toLowerCase();
     if (senderEmail && senderEmail !== email && !cc.includes(senderEmail)) cc.push(senderEmail);
     const pdf = await createApprovedQuotationPdf(quotation);
     const content = await clientEmailContent(subject, body, quotation);
-    await sendMail(email, subject, content.html, { branded: false, cc, attachments: [{ filename: await quotationFilename(quotation), content: pdf, contentType: 'application/pdf' }, content.logo] });
+    await sendMail(email, subject, content.html, {
+      branded: false,
+      cc,
+      attachments: [
+        { filename: await quotationFilename(quotation), content: pdf, contentType: 'application/pdf' },
+        content.logo,
+        ...imageAttachments
+      ].filter(Boolean)
+    });
     await Quotation.updateOne({ _id: quotation._id }, { $push: { emailHistory: { to: email, cc, subject, sentBy: req.user._id, sentAt: new Date() } } });
     return res.json({ ok: true, message: 'Quotation email accepted for delivery with the PDF attachment.' });
   } catch (error) { next(error); }
@@ -1591,6 +1644,7 @@ exports._test = {
   isQuotationAdmin,
   mergeCurrentLeadDetails,
   normalizeEprCreditTargetUpdates,
+  quotationEmailImageAttachments,
   normalizeCompanyName,
   preserveTerminalApprovalStatus,
   quotationLeadVisibilityFilter,
