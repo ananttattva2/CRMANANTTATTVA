@@ -10,5 +10,6 @@ router.get('/annual-return-operations', requireAuth, requireRoles(ADMIN_ROLES), 
 router.get('/purchase-orders', requireAuth, cacheRead, controller.purchaseOrders);
 router.get('/upload-tracker', requireAuth, cacheRead, controller.uploadTracker);
 router.get('/purchase-sales', requireAuth, cacheRead, controller.purchaseSales);
+router.get('/pending-count', requireAuth, controller.pendingCount);
 
 module.exports = router;

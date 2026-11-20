@@ -385,3 +385,46 @@ exports.uploadTracker = async (req, res) => {
     res.status(500).json({ error: 'Unable to load client upload tracker.' });
   }
 };
+
+// Returns the scoped pending application count for the sidebar notification
+// badge. The count reflects the same Application Status Summary "Pending"
+// group (AR Action Required, Applied, Under Review, Not Started, Rejected)
+// and is scoped by the requester's role: own for operations users, team for
+// managers, all for admin/super admin.
+exports.pendingCount = async (req, res) => {
+  const startedAt = Date.now();
+  try {
+    const scope = await getVisibleUserScope(req.user);
+    const excluded = await getAssignmentDashboardLeadReferences();
+    const [snapshot, users] = await Promise.all([
+      loadDashboardAssignments({ Client, Lead }, dashboardClientExclusionFilter(excluded), dashboardLeadExclusionFilter(excluded)),
+      visibleUsers(scope, req.user)
+    ]);
+    const assignedClients = mergeManagerStaffAllocations(snapshot.clients.map(dashboardStatusClient), snapshot.leads);
+    // Scope to the same portfolio clients used by the Application Dashboard
+    // (visible-owned + unassigned), then compute the pending count using the
+    // shared frontend summary logic so the badge always matches the table.
+    const visibleIdentities = new Set();
+    users.forEach(user => [user._id, user.crmUserId, user.name, user.email].filter(Boolean).forEach(value => visibleIdentities.add(String(value).trim().toLowerCase())));
+    const portfolioClients = assignedClients.filter(client => {
+      const [permanentOwners] = allocatedOwnerKeyGroups(client);
+      if (!permanentOwners.length) return true;
+      return permanentOwners.some(key => visibleIdentities.has(String(key).trim().toLowerCase()));
+    });
+    const { buildApplicationPortfolio, applicationSummaryRecords, matchesStatusSummary, PENDING_STATUS_KEYS } = await require('../../frontend/src/utils/applicationPortfolio.mjs');
+    const groups = buildApplicationPortfolio(portfolioClients, users);
+    let pending = 0;
+    const pendingKeys = [...PENDING_STATUS_KEYS];
+    for (const group of groups) {
+      for (const record of applicationSummaryRecords(group)) {
+        if (pendingKeys.some(key => matchesStatusSummary(record, key))) pending += 1;
+      }
+    }
+    res.set('Cache-Control', 'private, no-store');
+    res.set('Server-Timing', `pending;dur=${Date.now() - startedAt}`);
+    return res.json({ ok: true, count: pending, visibility: scope === null ? 'all' : scope.ids.length > 1 ? 'team' : 'own' });
+  } catch (error) {
+    console.error('Pending count failed', { message: error.message });
+    res.status(500).json({ error: 'Unable to load pending count.', count: 0 });
+  }
+};

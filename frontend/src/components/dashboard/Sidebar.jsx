@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { BarChart3, BriefcaseBusiness, ChevronDown, ChevronsLeft, ClipboardList, FileText, Gauge, LifeBuoy, MessagesSquare, ShieldCheck, UserRound, Users, X } from 'lucide-react'
 import { adminRoles, hasAnyRole, navSections } from '../../constants/dashboard'
+import api from '../../services/api'
 import './Sidebar.css'
 
 const sectionIcons = [BarChart3, ClipboardList, UserRound, FileText, ShieldCheck, ClipboardList, MessagesSquare, Users, LifeBuoy]
@@ -14,11 +15,20 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
   const [openSection, setOpenSection] = useState(null)
   const [openGroups, setOpenGroups] = useState({})
   const [flyout, setFlyout] = useState(null)
+  const [pendingCount, setPendingCount] = useState(0)
   const sidebarRef = useRef(null)
   const flyoutRef = useRef(null)
   const triggerRef = useRef(null)
   const currentPath = `${location.pathname}${location.search}`
   const canChooseDashboard = hasAnyRole(currentUser, adminRoles)
+
+  useEffect(() => {
+    let cancelled = false
+    api.get('/dashboard-insights/pending-count').then(({ data }) => {
+      if (!cancelled && data?.ok) setPendingCount(Number(data.count) || 0)
+    }).catch(() => { if (!cancelled) setPendingCount(0) })
+    return () => { cancelled = true }
+  }, [currentUser?._id])
 
   useEffect(() => { setFlyout(null) }, [currentPath, collapsed])
   useEffect(() => {
@@ -73,11 +83,13 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
       const hasChildren = Boolean(item.children?.length)
       const expanded = Boolean(openGroups[key])
       const active = pathMatches(item.path) && (!item.dashboardMode || dashboardMode === item.dashboardMode)
+      const showBadge = item.pendingBadge && pendingCount > 0
       return <div key={key}>
         <button type="button" onClick={() => hasChildren ? setOpenGroups(value => ({ ...value, [key]: !value[key] })) : visit(item)}
           aria-expanded={hasChildren ? expanded : undefined} aria-controls={hasChildren ? sectionId(key) : undefined} aria-current={active ? 'page' : undefined}
-          className={`sidebar-menu-button flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold transition-colors ${active ? 'bg-[#f45b0b] text-white' : light ? 'text-slate-700 hover:bg-emerald-50' : 'text-emerald-50/90 hover:bg-white/10'}`}>
+          className={`sidebar-menu-button relative flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold transition-colors ${active ? 'bg-[#f45b0b] text-white' : light ? 'text-slate-700 hover:bg-emerald-50' : 'text-emerald-50/90 hover:bg-white/10'}`}>
           <Icon className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1">{item.label}</span>
+          {showBadge && <span className="ml-1 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-black leading-none text-white shadow-sm ring-2 ring-white/20" aria-label={`${pendingCount} pending applications`}>{pendingCount > 99 ? '99+' : pendingCount}</span>}
           {hasChildren && <ChevronDown className={`h-4 w-4 shrink-0 transition-transform motion-reduce:transition-none ${expanded ? 'rotate-180' : ''}`} />}
         </button>
         {hasChildren && expanded && <div id={sectionId(key)} className="sidebar-section-reveal ml-4 mt-1 space-y-1 border-l border-current/15 pl-2">{renderItems(item.children, light, key)}</div>}

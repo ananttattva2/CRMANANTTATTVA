@@ -85,6 +85,7 @@ const originalNavSections = [
               { label: 'Client Daily MIS', icon: ClipboardList, path: '/mis/client-daily', roles: [...adminRoles, 'manager', 'operation head', 'operations head'] }
             ]
           },
+          { label: 'Pending Applications', icon: Clock3, path: '/overall-dashboard', pendingBadge: true },
           { label: 'Pending Approval', icon: Clock3, path: '/pending-approval', complianceFamily: true },
           {
             label: 'Pending Leads',
@@ -161,7 +162,7 @@ const customerItems = originalNavSections[1].items[0].children;
 const pendingLeadsMenu = homeItems.find(item => item.label === 'Pending Leads');
 const pick = (items, labels) => labels.map(label => items.find(item => item.label === label)).filter(Boolean);
 export const navSections = [
-  { label: 'Dashboards & Reports', items: pick(homeItems, ['Dashboard']) },
+  { label: 'Dashboards & Reports', items: pick(homeItems, ['Dashboard', 'Pending Applications']) },
   { label: 'Lead Management', items: [...pick(customerItems, ['Hot Leads', 'Cold Leads', 'Lead Allocate']), { label: 'Revenue Pipeline', icon: TrendingUp, path: '/sales/lead-pipeline' }, { ...pendingLeadsMenu, children: pendingLeadsMenu.children.filter(item => item.path !== '/sales/lead-pipeline') }] },
   { label: 'Client Management', items: pick(customerItems, ['Client Master', 'Client Master Allocate', 'Client Data Uploads', 'CTO & CTE', 'Health Report Check']) },
   { label: 'Quotations & Billing', items: [{ label: 'Quotation List', icon: FileText, path: '/sales/quotations' }, ...pick(customerItems, ['Add Quotation', 'Proforma Invoice'])] },

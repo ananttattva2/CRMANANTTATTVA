@@ -4,11 +4,13 @@ export const PIBO_CATEGORIES = ['Producer', 'Brand Owner', 'PWP', 'Importer', 'P
 export const STATUS_COLUMNS = [
   ['total', 'Total'],
   ['annual:2025-26', '2025-26'], ['annual:2026-27', '2026-27'], ['annual:2027-28', '2027-28'], ['annual:unrecorded', 'Not Recorded'],
-  ['annualActionRequired', 'AR Action Required'],
   ['otherServicesApproved', 'Approved'],
+  ['annualActionRequired', 'AR Action Required'],
   ['applied', 'Applied'], ['underReview', 'Under Review'],
   ['notStarted', 'Not Started'], ['rejected', 'Rejected']
 ]
+// Pending application statuses that are grouped under the "Pending" header.
+export const PENDING_STATUS_KEYS = new Set(['annualActionRequired', 'applied', 'underReview', 'notStarted', 'rejected'])
 export function applicationSummaryRecords(group) {
   return group.records.map(record => {
     const summaryService = applicationSummaryService(record)
