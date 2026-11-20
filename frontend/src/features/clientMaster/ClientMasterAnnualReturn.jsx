@@ -53,7 +53,9 @@ export function getDocumentLinkName(url, index) {
 export function normalizeDocumentUrl(url) {
   const value = String(url || '').trim();
   if (!value) return '#';
-  if (/^https?:\/\//i.test(value)) return encodeURI(value);
+  // Signed file links already encode their object key. Re-encoding percent signs
+  // changes the key and invalidates the server's signature check.
+  if (/^https?:\/\//i.test(value) || value.startsWith('/api/assets/')) return value;
   return `https://ananttattva-s3-bucket.s3.ap-south-1.amazonaws.com/${encodeURIComponent(value)}`;
 }
 

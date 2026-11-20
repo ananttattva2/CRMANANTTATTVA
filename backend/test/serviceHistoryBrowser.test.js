@@ -9,7 +9,7 @@ test('service history loads registration, renewal and annual services without an
  createRoot(document.getElementById('root')).render(<History client={{_id:'producer-client'}} onContinue={row=>window.continued=row}/>);
  `},bundle:true,write:false,format:'iife',platform:'browser',define:{'import.meta.env':'{}'},loader:{'.css':'text'},plugins:[{name:'fixtures',setup(build){
  build.onResolve({filter:/services\/api$/},()=>({path:'api',namespace:'fixture'}));
- build.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:`export default {get:async(url)=>{window.requested=url;return {data:{services:['New Registration','Renewal','Annual Return Filling'].map((service,index)=>({service,applicantType:'Producer',assignedServiceId:'service-'+index,poYear:'2026-27',number:'PO-'+index,fileUrl:'https://example.test/po-'+index+'.pdf',annual:index===2,annualYear:index===2?'2025-26':''}))}}}};`}));
+ build.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:`export default {get:async(url)=>{window.requested=url;return {data:{services:['New Registration','Renewal','Annual Return Filling'].map((service,index)=>({service,applicantType:'Producer',assignedServiceId:'service-'+index,poYear:'2026-27',number:'PO-'+index,fileUrl:'https://example.test/api/assets/file?key=crm%2Fleads%2Fpurchase-orders%2Fpo-'+index+'.pdf&signature=abc123',annual:index===2,annualYear:index===2?'2025-26':''}))}}}};`}));
  }}]});
  const {default:puppeteer}=await import('puppeteer');
  const browser=await puppeteer.launch({headless:true,...(process.env.QUOTATION_CHROME_PATH?{executablePath:process.env.QUOTATION_CHROME_PATH}:{}),args:process.platform==='linux'?['--no-sandbox']:[]});
@@ -23,6 +23,6 @@ test('service history loads registration, renewal and annual services without an
   assert.deepEqual(services,['New Registration','Renewal','Annual Return Filling']);
   await page.click('tbody tr:nth-child(1) button');assert.equal(await page.evaluate(()=>window.continued.assignedServiceId),'service-0');
   await page.click('tbody tr:nth-child(3) button');assert.equal(await page.evaluate(()=>window.continued.annualYear),'2025-26');
-  assert.equal(await page.$eval('tbody a',a=>a.href),'https://example.test/po-0.pdf');assert.deepEqual(errors,[]);
+  assert.equal(await page.$eval('tbody a',a=>a.href),'https://example.test/api/assets/file?key=crm%2Fleads%2Fpurchase-orders%2Fpo-0.pdf&signature=abc123');assert.deepEqual(errors,[]);
  }finally{await browser.close();}
 });
