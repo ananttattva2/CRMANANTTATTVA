@@ -35,6 +35,7 @@ const salesMisRoutes = require('./routes/salesMis');
 const dashboardInsightsRoutes = require('./routes/dashboardInsights');
 const documentRoutes = require('./routes/documents');
 const { startPendingApprovalReminderScheduler } = require('./services/pendingApprovalNotifications');
+const { runApprovedQuotationPoReminders, startApprovedQuotationPoReminderScheduler } = require('./services/approvedQuotationPoReminders');
 const { runWeeklyPendingQuotationDigest } = require('./services/weeklyPendingQuotationDigest');
 const { runClientComplianceCorrectionReminders, startClientComplianceCorrectionReminderScheduler } = require('./services/clientComplianceCorrectionReminders');
 const { startClientOnboardingReminderScheduler, runClientOnboardingReminders } = require('./services/clientOnboardingReminders');
@@ -134,6 +135,7 @@ const connectAndStartServices = singleFlight(function () {
       startProvisionalLeadClosureScheduler();
       startTemporaryAssignmentReminderScheduler();
       startPurchaseOrderWorkflowReminderScheduler();
+      startApprovedQuotationPoReminderScheduler();
       schedulerStarted = true;
     }
   }).catch(error => console.error('CRM startup services failed', safeMongoError(error)));
@@ -180,6 +182,13 @@ app.get('/api/internal/client-onboarding-reminders', async (req, res) => {
   if (authorization !== `Bearer ${cronSecret}`) return res.status(401).json({ ok: false, error: 'Unauthorized cron request' });
   try { return res.json({ ok: true, ...(await runClientOnboardingReminders()) }); }
   catch (error) { return res.status(500).json({ ok: false, error: error.message || 'Reminder run failed' }); }
+});
+app.get('/api/internal/approved-quotation-po-reminders', async (req, res) => {
+  const secret = String(process.env.CRON_SECRET || '').trim();
+  if (!secret) return res.status(503).json({ ok: false, error: 'CRON_SECRET is not configured' });
+  if (String(req.get('authorization') || '').trim() !== `Bearer ${secret}`) return res.status(401).json({ ok: false, error: 'Unauthorized cron request' });
+  try { return res.json({ ok: true, ...(await runApprovedQuotationPoReminders({ dryRun: req.query.dryRun === 'true' })) }); }
+  catch (error) { console.error('Approved quotation PO reminders failed', { name: error.name, code: error.code });return res.status(500).json({ ok: false, error: 'Unable to run quotation PO reminders' }); }
 });
 app.get('/api/internal/weekly-pending-quotation-digest', async (req, res) => {
   const cronSecret = String(process.env.CRON_SECRET || '').trim();
