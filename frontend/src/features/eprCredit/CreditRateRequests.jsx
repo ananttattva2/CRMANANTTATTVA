@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { X, ShieldCheck, RefreshCw } from 'lucide-react';
 import api from '../../services/api';
+import { loadFullQuotation } from '../../utils/quotationDetail.mjs';
 import creditPricing from '../../../../shared/eprCreditPricing.cjs';
 const money = value => Number(value || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2 });
 const slab = item => item.creditRateBand === 'above100' ? 'Above 100 MT' : 'Up to 100 MT';
@@ -39,6 +40,39 @@ export function CreditRateRequestModal({ quotation, onClose, onSubmitted }) {
     <div className="space-y-4 overflow-auto p-6"><div className="flex items-center gap-3 rounded-xl bg-teal-50 p-4 text-sm text-teal-800"><ShieldCheck className="shrink-0" size={20} /><p>Enter the requested per-kg rate. Current amounts stay unchanged until <strong>{creditPricing.approverEmail}</strong> approves.</p></div>{error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm font-bold text-red-700">{error}</p>}<CreditRows rows={rows} amounts={amounts} setAmount={(index, amount) => setAmounts(current => ({ ...current, [index]: amount }))} /></div>
     <footer className="flex justify-end gap-3 border-t bg-slate-50 p-5"><button type="button" disabled={busy} onClick={onClose} className="rounded-xl border bg-white px-5 py-3 text-sm font-bold">Cancel</button><button disabled={busy || !rows.length} className="rounded-xl bg-violet-700 px-6 py-3 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-violet-800 disabled:opacity-50">{busy ? 'Submitting…' : 'Submit Credit Request'}</button></footer>
   </motion.form></motion.div></AnimatePresence>,document.body);
+}
+function CreditRequestLoading({ source, error, onClose, onRetry }) {
+  const closeRef = useRef(null);
+  useEffect(() => {
+    const previous = document.activeElement; const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden'; closeRef.current?.focus();
+    return () => { document.body.style.overflow = overflow; previous?.focus?.(); };
+  }, []);
+  return createPortal(<div className="fixed inset-0 z-[10020] grid place-items-center bg-slate-950/50 p-4 backdrop-blur-sm" onKeyDown={event => { if (event.key === 'Escape') onClose(); }}>
+    <section role="dialog" aria-modal="true" aria-labelledby="credit-loading-title" className="w-full max-w-lg overflow-hidden rounded-3xl border border-violet-100 bg-white shadow-2xl">
+      <header className="flex items-start justify-between gap-4 border-b bg-gradient-to-r from-violet-50 to-teal-50 p-6"><div><h2 id="credit-loading-title" className="text-lg font-bold text-slate-900">Request for Credit Change</h2><p className="mt-1 text-sm text-slate-500">{source.quotationNumber}</p></div><button ref={closeRef} aria-label="Close credit request" type="button" onClick={onClose} className="rounded-xl border bg-white p-2"><X size={20}/></button></header>
+      <div className="p-8">{error ? <div><p role="alert" className="text-sm text-red-700">{error}</p><button type="button" onClick={onRetry} className="mt-4 rounded-xl bg-violet-700 px-5 py-3 text-sm font-bold text-white">Retry</button></div> : <p role="status" className="flex items-center gap-3 text-sm font-bold text-violet-800"><RefreshCw size={20} className="animate-spin"/>Loading EPR Credit quotation items…</p>}</div>
+    </section>
+  </div>, document.body);
+}
+export function CreditRateRequestLoader({ source, onClose, onSubmitted }) {
+  const [state, setState] = useState({ quotation: null, error: '' });
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    setState({ quotation: null, error: '' });
+    const timer = setTimeout(() => { if (!active) return; active = false; controller.abort(); setState({ quotation: null, error: 'Quotation details took too long to load. Please retry.' }); }, 15000);
+    loadFullQuotation(source, id => api.get(`/quotations/${id}`, { signal: controller.signal })).then(quotation => {
+      if (!active) return;
+      clearTimeout(timer);setState({ quotation, error: '' });
+    }).catch(error => {
+      if (!active) return;
+      clearTimeout(timer);setState({ quotation: null, error: error.response?.data?.error || 'Unable to load EPR Credit quotation items. Please retry.' });
+    });
+    return () => { active = false; clearTimeout(timer);controller.abort(); };
+  }, [source, retry]);
+  return state.quotation ? <CreditRateRequestModal quotation={state.quotation} onClose={onClose} onSubmitted={onSubmitted}/> : <CreditRequestLoading source={source} error={state.error} onClose={onClose} onRetry={() => setRetry(value => value + 1)}/>;
 }
 export default function CreditRateApprovals({ onCountChange }) {
   const [rows, setRows] = useState([]); const [canDecide, setCanDecide] = useState(false);

@@ -1,6 +1,6 @@
 import CompanyQuotationHistory, { CreditRequestButton } from '../features/eprCredit/CompanyQuotationHistory';
 import creditPricing, { CreditTargetSelect } from '../features/eprCredit/CreditTargetSelect';
-import { CreditRateRequestModal } from '../features/eprCredit/CreditRateRequests';
+import { CreditRateRequestLoader } from '../features/eprCredit/CreditRateRequests';
 import { loadFullQuotation } from '../utils/quotationDetail.mjs';
 import {
   isMeaningfulQuotationItem,
@@ -1557,11 +1557,8 @@ export default function Quotations() {
     if (editingItemIndex === index) setItemDraft(index, 'creditRateBand', band);
   }
 
-  async function openCreditRequest(row) {
-    try {
-      const full = await loadFullQuotation(row, id => api.get(API_ENDPOINTS.quotations.detail(id)));
-      setCreditRequestQuote(full);
-    } catch (error) { setError(error?.response?.data?.error || 'Unable to load EPR Credit rows.'); }
+  function openCreditRequest(row) {
+    setCreditRequestQuote(row);
   }
 
   function startEditItem(index) {
@@ -2174,6 +2171,8 @@ export default function Quotations() {
       : <button type="button" onClick={() => openManagementApproval(row)} className="inline-flex items-center gap-1 rounded-lg border border-orange-300 bg-white px-3 py-2 text-xs font-black text-orange-600"><Users className="h-3.5 w-3.5" /> Admin Approval</button>;
   }
 
+  const creditRequestDialog = creditRequestQuote && <CreditRateRequestLoader source={creditRequestQuote} onClose={() => setCreditRequestQuote(null)} onSubmitted={() => { setCreditRequestQuote(null); setNotice('EPR Credit request submitted for Anand Padhya approval.'); loadPage({ silent: true }); }} />;
+
   if (viewMode === 'list') {
     return (
       <DashboardShell currentUser={currentUser} onOpenProfile={() => setProfileOpen(true)} onLogout={handleLogout}>
@@ -2317,6 +2316,7 @@ export default function Quotations() {
             />
           </section>
         </div>
+        {creditRequestDialog}
         {detailQuotation && (
           <QuotationDetailModal
             quotation={detailQuotation}
@@ -2415,7 +2415,7 @@ export default function Quotations() {
           <div className="flex flex-wrap gap-2"><input ref={bulkInputRef} type="file" accept=".xlsx,.xls" onChange={readBulkFile} className="hidden" /><button type="button" onClick={() => bulkInputRef.current?.click()} className="btn-lift inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 font-black text-white shadow-lg shadow-emerald-700/20"><UploadCloud className="h-4 w-4" /> Bulk Upload</button><button type="button" onClick={showQuotationList} className="btn-lift inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 font-black text-slate-700 shadow-sm"><Eye className="h-4 w-4" /> View Quotations</button></div>
         </div>
 
-        {creditRequestQuote && <CreditRateRequestModal quotation={creditRequestQuote} onClose={() => setCreditRequestQuote(null)} onSubmitted={() => { setCreditRequestQuote(null); setNotice('EPR Credit request submitted for Anand Padhya approval.'); loadPage({ silent: true }); }} />}
+        {creditRequestDialog}
         {bulkPreview && <div className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/45 p-4 backdrop-blur-sm"><div className="max-h-[88vh] w-full max-w-6xl overflow-hidden rounded-3xl border border-emerald-100 bg-white shadow-2xl"><header className="flex items-center justify-between border-b border-emerald-100 bg-gradient-to-r from-emerald-50 to-orange-50 p-5"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-emerald-700 text-white"><FileSpreadsheet /></span><div><h2 className="text-xl font-black text-slate-950">Quotation bulk preview</h2><p className="text-sm font-bold text-slate-500">{bulkPreview.fileName} · {bulkPreview.quotations.length} quotations scanned</p></div></div><button onClick={() => setBulkPreview(null)} className="grid h-10 w-10 place-items-center rounded-xl border bg-white"><X /></button></header><div className="max-h-[60vh] overflow-auto p-5"><div className="mb-4 grid grid-cols-3 gap-3"><div className="rounded-2xl bg-emerald-50 p-4"><small className="font-black uppercase text-emerald-700">Ready to import</small><strong className="block text-2xl text-slate-950">{bulkPreview.quotations.filter((row) => !row.__errors.length).length}</strong></div><div className="rounded-2xl bg-amber-50 p-4"><small className="font-black uppercase text-amber-700">Will be skipped</small><strong className="block text-2xl text-slate-950">{bulkPreview.quotations.filter((row) => row.__errors.length).length}</strong></div><div className="rounded-2xl bg-sky-50 p-4"><small className="font-black uppercase text-sky-700">Valid items</small><strong className="block text-2xl text-slate-950">{bulkPreview.quotations.filter((row) => !row.__errors.length).reduce((sum, row) => sum + row.items.length, 0)}</strong></div></div><table className="w-full min-w-[850px] overflow-hidden rounded-2xl text-left text-sm"><thead className="bg-slate-100 text-xs uppercase text-slate-500"><tr><th className="p-3">Quotation</th><th className="p-3">Company</th><th className="p-3">Date</th><th className="p-3">Items</th><th className="p-3">Amount</th><th className="p-3">Import status</th></tr></thead><tbody>{bulkPreview.quotations.slice(0, 200).map((row) => <tr key={`${row.quotationNumber}-${row.__sourceRows[0]}`} className={`border-b ${row.__errors.length ? 'bg-amber-50/50' : ''}`}><td className="p-3 font-black">{row.quotationNumber || 'Missing'}</td><td className="p-3 font-bold">{row.leadDetails.companyName || 'Missing'}</td><td className="p-3">{row.quotationDate || '-'}</td><td className="p-3">{row.items.length}</td><td className="p-3 font-black">₹{row.items.reduce((sum, item) => sum + ((Number(item.unit) || 1) * item.basicAmount), 0).toLocaleString('en-IN')}</td><td className="p-3">{row.__errors.length ? <span className="font-bold text-amber-700">Skipped · {row.__errors.join(', ')}</span> : <span className="inline-flex items-center gap-1 font-black text-emerald-700"><Check className="h-4 w-4" /> Ready</span>}</td></tr>)}</tbody></table></div><footer className="flex items-center justify-between gap-4 border-t bg-slate-50 p-5"><p className="text-sm font-bold text-slate-500">Incomplete quotations will be skipped automatically. Valid quotations will still be imported.</p><div className="flex shrink-0 gap-2"><button onClick={() => setBulkPreview(null)} className="rounded-xl border bg-white px-5 py-3 font-black text-slate-600">Cancel</button><button disabled={bulkImporting || !bulkPreview.quotations.some((row) => !row.__errors.length)} onClick={importBulkQuotations} className="rounded-xl bg-emerald-700 px-6 py-3 font-black text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-40">{bulkImporting ? 'Importing…' : `Import ${bulkPreview.quotations.filter((row) => !row.__errors.length).length} Ready Quotations`}</button></div></footer></div></div>}
 
         {(error || notice) && (
