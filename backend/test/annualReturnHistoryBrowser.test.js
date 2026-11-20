@@ -11,17 +11,17 @@ test('history renders closed POs, previews the document and continues directly t
       import {MemoryRouter, useLocation} from 'react-router-dom';
       import {AnnualReturnHistory} from './src/features/clientMaster/ClientMasterAnnualReturn.jsx';
       const client={_id:'6a842adf38a334ba9d8c4ff7',data:{basic:{clientLegalName:'Example Importer',piboCategory:'IMPORTER',servicesOffered:'Annual Return Filling'}}};
-      function Harness(){const [year,setYear]=useState('');const location=useLocation();return <><output id="route">{location.pathname}</output><AnnualReturnHistory client={client} years={['2023-24','2024-25','2025-26'].map(label=>({label}))} selectedYear={year} onSelectYear={setYear}/></>}
+      function Harness(){const [year,setYear]=useState('');const [empty,setEmpty]=useState(true);window.showAnnualYears=()=>setEmpty(false);window.hideAnnualYears=()=>setEmpty(true);const location=useLocation();return <><output id="route">{location.pathname}</output><AnnualReturnHistory client={client} years={empty ? [] : ['2023-24','2024-25','2025-26'].map(label=>({label}))} selectedYear={year} onSelectYear={setYear}/></>}
       createRoot(document.getElementById('root')).render(<MemoryRouter><Harness/></MemoryRouter>);
     ` }, bundle: true, write: false, format: 'iife', platform: 'browser', define: {'import.meta.env':'{}'}, loader: {'.css':'text'},
     plugins: [{name:'fixtures',setup(build){
       build.onResolve({filter:/services\/api$/},()=>({path:'api',namespace:'fixture'}));
       build.onResolve({filter:/PurchaseDataWorkspace$/},()=>({path:'workspace',namespace:'fixture'}));
-      build.onLoad({filter:/.*/,namespace:'fixture'},args=>({contents:args.path==='workspace' ? 'export default function Workspace(){return null;}' : `export default {get:async()=>({data:{years:[
+      build.onLoad({filter:/.*/,namespace:'fixture'},args=>({contents:args.path==='workspace' ? 'export default function Workspace(){return null;}' : `export default {get:async()=>{if(window.hangPo) return new Promise(()=>{});return ({data:{years:[
         {fy:'2023-24',poStatus:'pending'},
         {fy:'2024-25',poStatus:'received',po:{number:'OPEN-PO',isClosed:false}},
         {fy:'2025-26',poStatus:'received',po:{number:'CLOSED-PO',isClosed:true,poYear:'2026-27',service:'Annual Return Filling',fileUrl:'https://example.test/order.pdf'}}
-      ]}})};` }));
+      ]}});}};` }));
     }}]
   });
   const {default:puppeteer}=await import('puppeteer');
@@ -33,6 +33,16 @@ test('history renders closed POs, previews the document and continues directly t
     page.on('request',request=>request.respond({status:200,contentType:'text/html',body:'<div id="root"></div>'}));
     await page.goto('http://history.test');
     await page.addScriptTag({content:bundle.outputFiles[0].text});
+    await page.waitForFunction(()=>document.body.innerText.includes('No closed purchase orders found'));
+    assert.equal(await page.evaluate(()=>document.body.innerText.includes('Loading purchase orders...')),false);
+    await page.evaluate(()=>{const originalTimeout=window.setTimeout;window.setTimeout=(fn,delay,...args)=>originalTimeout(fn,delay===15000?50:delay,...args);window.hangPo=true;window.showAnnualYears();});
+    await page.waitForFunction(()=>document.body.innerText.includes('Purchase orders took too long'));
+    assert.equal(await page.evaluate(()=>document.body.innerText.includes('Loading purchase orders...')),false);
+    await page.evaluate(()=>{window.hangPo=false;[...document.querySelectorAll('button')].find(button=>button.textContent==='Retry').click();});
+    await page.waitForFunction(()=>document.body.innerText.includes('CLOSED-PO'));
+    await page.evaluate(()=>window.hideAnnualYears());
+    await page.waitForFunction(()=>document.body.innerText.includes('No closed purchase orders found'));
+    await page.evaluate(()=>window.showAnnualYears());
     await page.waitForFunction(()=>document.body.innerText.includes('CLOSED-PO'));
     assert.equal(await page.$$eval('tbody tr',rows=>rows.length),1);
     const content=await page.$eval('tbody',el=>el.innerText);

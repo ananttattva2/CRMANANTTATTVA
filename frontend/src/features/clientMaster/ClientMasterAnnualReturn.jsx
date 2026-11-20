@@ -790,18 +790,31 @@ export function AnnualReturnHistory({ client, quotations = [], proformaInvoices 
   }, [poModalOpen, poApprovalPreviewOpen, poDetails]);
 
   useEffect(() => {
-    if (selected || !years.length) return undefined;
+    if (selected) return undefined;
+    if (!years.length) {
+      setPoResolution({ loading: false, error: '', byYear: {}, sourceLead: null });
+      return undefined;
+    }
     const clientId = client?._id || client?.id;
     if (!clientId) {
       setPoResolution({ loading: false, error: '', byYear: Object.fromEntries(years.map((year) => [year.label, { fy: year.label, poRequired: false, poStatus: 'unlinked', po: null }])), sourceLead: null });
       return undefined;
     }
     let cancelled = false;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      if (cancelled) return;
+      cancelled = true;
+      controller.abort();
+      setPoResolution({ loading: false, error: 'Purchase orders took too long to load. Please retry.', byYear: {}, sourceLead: null });
+    }, 15000);
     setPoResolution((current) => ({ ...current, loading: true, error: '' }));
     api.get(API_ENDPOINTS.clients.annualReturnPoStatus(clientId), {
-      params: { years: years.map((year) => year.label).join(',') }
+      params: { years: years.map((year) => year.label).join(',') },
+      signal: controller.signal
     }).then((response) => {
       if (cancelled) return;
+      clearTimeout(timeout);
       const rows = Array.isArray(response.data?.years) ? response.data.years : [];
       setPoResolution({
         loading: false,
@@ -811,9 +824,10 @@ export function AnnualReturnHistory({ client, quotations = [], proformaInvoices 
       });
     }).catch((error) => {
       if (cancelled) return;
+      clearTimeout(timeout);
       setPoResolution({ loading: false, error: error?.response?.data?.error || 'Unable to check PO details.', byYear: {}, sourceLead: null });
     });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; clearTimeout(timeout); controller.abort(); };
   }, [client?._id, client?.id, selected, poRefreshToken, years.map((year) => year.label).join('|')]);
 
   function updatePoRows(nextRows) {
