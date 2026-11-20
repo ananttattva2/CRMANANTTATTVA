@@ -54,7 +54,7 @@ jobs:
         run: node --test backend/test/annualReturnPoResolver.test.js backend/test/annualReturnPoGateAndOtpPrivacy.test.js backend/test/annualReturnDataTabs.test.js backend/test/annualReturnPoAccess.test.js backend/test/annualReturnHistoryBrowser.test.js backend/test/serviceHistory.test.js backend/test/serviceHistoryBrowser.test.js backend/test/signedDocumentUrl.test.js
 
       - name: Test EPR Credit tariffs and restricted approvals
-        run: node --test backend/test/eprCreditRateApproval.test.js backend/test/eprCreditRateBrowser.test.js backend/test/eprCreditQuotationCalculation.test.js
+        run: node --test backend/test/eprCreditRateApproval.test.js backend/test/eprCreditRateBrowser.test.js backend/test/eprCreditQuotationCalculation.test.js backend/test/companyQuotationCreditBrowser.test.js
 
       - name: Build frontend
         env:
