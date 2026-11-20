@@ -1,3 +1,4 @@
+import ClientServiceHistory from '../features/clientMaster/ClientServiceHistory';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -4040,7 +4041,18 @@ function ClientViewModal({ client, serviceClients = [], onServiceChange, onEditS
 
                   {activeClientTab === 'documents' && <ClientDocumentLibrary documents={clientDocuments} />}
 
-                  {activeClientTab === 'annual' && (
+                  {activeClientTab === 'annual' && !isAnnualProcessingView && <ClientServiceHistory client={client} onContinue={async (row) => {
+                    const target = serviceClients.find(item => String(item.assignedServiceId || readClientData(item).assignedServiceId || readClientData(item).selectedLeadSnapshot?.assignedServiceId || '') === row.assignedServiceId) || client;
+                    if (row.annual && row.annualYear) {
+                      navigate(`/sales/client-data-processing/${encodeURIComponent(target._id || target.id)}/${encodeURIComponent(row.annualYear)}`);
+                    } else {
+                      await onServiceChange?.(target);
+                      setSelectedAnnualYear('');
+                      setActiveClientTab('basic');
+                    }
+                  }} />}
+
+                  {activeClientTab === 'annual' && isAnnualProcessingView && (
                     <AnnualReturnHistory
                       client={client}
                       quotations={clientQuotations.length ? clientQuotations : quotations}

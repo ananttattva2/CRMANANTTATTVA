@@ -19,7 +19,7 @@ const { userHasAnyRole } = require('../utils/userRoles');
 const { analyzeClientMasterData } = require('../services/userProductivityReport');
 const { normalizeClientMaster, resolveClientMasterData } = require('../services/clientMasterResolver');
 const { normalizeCompanyIdentity } = require('../services/crmRecordPersistence');
-const { normalizeFinancialYear, resolveAnnualReturnPO } = require('../services/annualReturnPoResolver');
+const { normalizeFinancialYear, resolveAnnualReturnPO, resolveServiceHistory } = require('../services/annualReturnPoResolver');
 const { syncStaffOnboardingCpcbStatus } = require('../services/staffOnboardingWorkflow');
 const { syncClientReviewReminderState } = require('../services/clientReviewReminderLifecycle');
 const { clientMasterSourceRecordFilter } = require('../services/clientMasterVisibility');
@@ -2012,6 +2012,15 @@ exports.updateCpcbOnboarding = async (req, res) => {
     now: changedAt
   });
   return res.status(creatingClient ? 201 : 200).json({ ok: true, client, identity: normalizeClientMaster(client), resolvedData: resolveClientMasterData(client, effectiveAssignedServiceId) });
+};
+
+exports.getServiceHistory = async (req, res) => {
+  const clientId = String(req.params.id || '').trim();
+  if (!mongoose.Types.ObjectId.isValid(clientId)) return res.status(400).json({ error: 'Invalid Client Master ID' });
+  const client = await Client.findOne(combineAccessFilters({ _id: clientId }, await clientAccessFilter(req.user)))
+    .select('selectedLead assignedServiceId data.assignedServiceId data.basic.piboCategory data.selectedLead data.sourceLeadId data.leadId data.selectedLeadSnapshot data.importMeta.leadNumber').lean();
+  if (!client) return res.status(404).json({ error: 'Client Master record not found' });
+  return res.json({ success: true, services: await resolveServiceHistory({ clientMaster: client }) });
 };
 
 exports.getAnnualReturnPoStatus = async (req, res) => {

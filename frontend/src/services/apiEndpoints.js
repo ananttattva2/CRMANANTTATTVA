@@ -82,6 +82,7 @@ const API_ENDPOINTS = {
     complianceReviewSection: (id, sectionKey) => `/clients/${encodePathValue(id)}/compliance-review/sections/${encodePathValue(sectionKey)}`,
     complianceReviewDecision: (id) => `/clients/${encodePathValue(id)}/compliance-review/decision`,
     annualReturn: (id) => `/clients/${encodePathValue(id)}/annual-return`
+    ,serviceHistory: (id) => `/clients/${encodePathValue(id)}/service-history`
     ,annualReturnPoStatus: (id) => `/clients/${encodePathValue(id)}/annual-return/po-status`
     ,purchaseData: (id) => `/clients/${encodePathValue(id)}/purchase-data`
     ,purchaseChecklist: (id) => `/clients/${encodePathValue(id)}/purchase-data/checklist`

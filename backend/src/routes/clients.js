@@ -44,6 +44,7 @@ router.post('/', requireAuth, clientCtrl.createClient);
 router.get('/:id', requireAuth, clientCtrl.getClient);
 router.get('/:id/sla', requireAuth, clientCtrl.getClientSla);
 router.put('/:id/sla', requireAuth, clientCtrl.updateClientSla);
+router.get('/:id/service-history', requireAuth, clientCtrl.getServiceHistory);
 router.get('/:id/annual-return/po-status', requireAuth, clientCtrl.getAnnualReturnPoStatus);
 router.post('/:clientId/purchase-proof/email', requireAuth, receiveEmailProof, purchaseProofCtrl.uploadEmailProof);
 router.get('/:id/purchase-data', requireAuth, purchaseCtrl.getPurchaseData);

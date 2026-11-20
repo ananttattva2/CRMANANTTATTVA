@@ -141,7 +141,7 @@ async function findSourceLead(clientMaster, LeadModel = Lead) {
   if (reference.objectId) query = LeadModel.findById(reference.objectId);
   else if (reference.leadCode) query = LeadModel.findOne({ leadCode: reference.leadCode });
   if (!query) return null;
-  if (typeof query.select === 'function') query = query.select('leadCode assignments serviceSelections firstAnnualReturnYearApplicable status closedAt closedBy');
+  if (typeof query.select === 'function') query = query.select('leadCode assignments serviceSelections firstAnnualReturnYearApplicable status closedAt closedBy closedByText subApplicantType piboCategory servicesOffered poYearRows originalPoDetails poNumber poFileUrl poFileName');
   return typeof query.lean === 'function' ? query.lean() : query;
 }
 
@@ -256,7 +256,46 @@ async function resolveAnnualReturnPO({ clientMaster, financialYears = [], LeadMo
   };
 }
 
+// Service History reads every closed offered service for the selected applicant,
+// independently of the completed-year restrictions used by Annual Return processing.
+async function resolveServiceHistory({ clientMaster, LeadModel = Lead } = {}) {
+  const lead = await findSourceLead(clientMaster, LeadModel);
+  if (!lead) return [];
+  const scope = readClientServiceScope(clientMaster);
+  const services = Array.isArray(lead.serviceSelections) && lead.serviceSelections.length ? lead.serviceSelections : [lead];
+  const assignments = Array.isArray(lead.assignments) && lead.assignments.length ? lead.assignments : [lead];
+  const rows = [];
+  const label = value => text(typeof value === 'object' ? value.name || value.label || value.servicesOffered || value.applicableService : value);
+  const names = source => [...new Set(serviceValues(source).flat().filter(Boolean).map(label).filter(Boolean))];
+  assignments.forEach((assignment, index) => {
+    const assignedServiceId = idText(assignment.assignedServiceId || assignment.serviceAssignmentId || assignment.id);
+    const service = services.find(item => assignedServiceId && idText(item.assignedServiceId || item.serviceAssignmentId || item.id) === assignedServiceId) || services[index] || {};
+    const applicant = normalizeApplicantType(service) || normalizeApplicantType(assignment);
+    if (scope.applicantType && applicant ? applicant !== scope.applicantType : assignedServiceId !== scope.assignedServiceId) return;
+    if (!isClosedAssignment(assignment, lead) && !isClosedAssignment(service, lead)) return;
+    const offered = names(service).length ? names(service) : names(assignment);
+    const poRows = Array.isArray(assignment.poYearRows) && assignment.poYearRows.length
+      ? assignment.poYearRows : [assignment.originalPoDetails || assignment];
+    poRows.forEach(poRow => {
+      if (!validPo(poRow)) return;
+      const rowServices = names(poRow);
+      const applicable = rowServices.length ? rowServices.filter(name => !offered.length || offered.some(value => normalizeServiceName(value) === normalizeServiceName(name))) : offered;
+      applicable.forEach(serviceName => {
+        const po = normalizePo(poRow, lead, serviceName, assignment);
+        rows.push({ assignedServiceId, applicantType: label(service.subApplicantType || service.piboCategory || assignment.subApplicantType || assignment.piboCategory || clientMaster.data?.basic?.piboCategory),
+          service: serviceName, annual: isAnnualReturnService(serviceName),
+          annualYear: normalizeFinancialYear(poRow.annualReturnYear || poRow.fy || poRow.fyYear || poRow.financialYear),
+          poYear: po.poYear, number: po.number, fileUrl: po.fileUrl, fileName: po.fileName });
+      });
+    });
+  });
+  const unique = new Map();
+  rows.forEach(row => unique.set([row.assignedServiceId, normalizeServiceName(row.service), row.annualYear, row.poYear, row.number, row.fileUrl].join('|'), row));
+  return [...unique.values()].sort((a, b) => (b.poYear || '').localeCompare(a.poYear || '') || a.service.localeCompare(b.service));
+}
+
 module.exports = {
+  resolveServiceHistory,
   normalizeFinancialYear,
   normalizeServiceName,
   normalizeApplicantType,
