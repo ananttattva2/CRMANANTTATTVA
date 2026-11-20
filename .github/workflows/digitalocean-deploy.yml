@@ -56,6 +56,9 @@ jobs:
       - name: Test EPR Credit tariffs and restricted approvals
         run: node --test backend/test/eprCreditRateApproval.test.js backend/test/eprCreditRateBrowser.test.js backend/test/eprCreditQuotationCalculation.test.js backend/test/companyQuotationCreditBrowser.test.js backend/test/quotationListCreditPopupBrowser.test.js backend/test/eprCreditFinalAmountBrowser.test.js
 
+      - name: Test Proforma Invoice bank details
+        run: node --test frontend/test/proformaPdf.test.cjs
+
       - name: Build frontend
         env:
           NODE_OPTIONS: --max-old-space-size=4096

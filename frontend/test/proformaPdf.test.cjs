@@ -29,3 +29,13 @@ test('proforma supports multiple rows, combined prices and long invoice continua
   const long = build({ ...sample, items: Array.from({ length: 35 }, () => sample.items[0]) });
   assert.ok(long.getNumberOfPages() > 1);
 });
+
+
+test('PI view and download use the approved bank block instead of stale saved bank fields', async () => {
+  const build = await renderer();
+  const pdf = build({ ...sample, invoiceDetails: { bankName: 'OLD_BANK_MARKER', accountName: 'OLD_ACCOUNT_MARKER', accountNumber: 'OLD_NUMBER_MARKER', ifsc: 'OLD_IFSC_MARKER', pan: 'OLD_PAN_MARKER' } });
+  const content = pdf.output();
+  for (const line of ['AnantTattva Private Limited', 'BANK NAME- IDFC FIRST BANK', 'ACCOUNT NO.- 10160512998', 'IFS CODE- IDFB0040111', 'TYPE OF A/C.- CURRENT', 'BRANCH MUMBAI-BORIVALI-WEST']) assert.ok(content.includes(line), line);
+  for (const marker of ['OLD_BANK_MARKER', 'OLD_ACCOUNT_MARKER', 'OLD_NUMBER_MARKER', 'OLD_IFSC_MARKER', 'OLD_PAN_MARKER', "Company's PAN:"]) assert.ok(!content.includes(marker), marker);
+  assert.equal(pdf.getNumberOfPages(), 1);
+});

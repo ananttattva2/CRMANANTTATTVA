@@ -1,4 +1,12 @@
 import { jsPDF } from 'jspdf'
+export const proformaBankDetails = [
+  'AnantTattva Private Limited',
+  'BANK NAME- IDFC FIRST BANK',
+  'ACCOUNT NO.- 10160512998',
+  'IFS CODE- IDFB0040111',
+  'TYPE OF A/C.- CURRENT',
+  'BRANCH MUMBAI-BORIVALI-WEST'
+].join('\n')
 export const invoiceFields = [
  ['deliveryNote','Delivery Note'], ['paymentTerms','Mode / Terms of Payment','50% ADVANCE'], ['reference','Reference No. & Date'], ['otherReferences','Other References','AS PER PO'], ['buyerOrder','BuyerÃ¢â‚¬â„¢s Order No.'], ['buyerOrderDate','BuyerÃ¢â‚¬â„¢s Order Date'], ['dispatchDocument','Dispatch Doc No.'], ['deliveryDate','Delivery Note Date'], ['dispatchedThrough','Dispatched Through'], ['destination','Destination'], ['deliveryTerms','Terms of Delivery'], ['consignee','Consignee (Ship To) Name'], ['consigneeAddress','Consignee Address'], ['consigneeGst','Consignee GSTIN / UIN'], ['consigneeState','Consignee State & Code'], ['buyerStateCode','Buyer State Code'], ['hsn','HSN / SAC','998311'], ['bankName','Bank Name'], ['accountName','Account Name','Ananttattva Private Limited'], ['accountNumber','Account Number'], ['ifsc','IFSC Code'], ['pan','Company PAN'], ['declaration','Declaration','We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.']
 ]
@@ -159,8 +167,7 @@ export function buildInvoicePdf(row) {
   text('Tax Amount (in words):', 29, 687, { size: 7 })
   fitted('INR ' + currencyWords(tax), 117, 678, 445, 14, 'bold', 8)
   text('Remarks:', 29, 696, { size: 7 })
-  const bank = [details.bankName && 'Bank Name: ' + details.bankName, details.accountName && 'Account Name: ' + details.accountName, details.accountNumber && 'Account No.: ' + details.accountNumber, details.ifsc && 'IFSC Code: ' + details.ifsc, details.pan && "Company's PAN: " + details.pan].filter(Boolean).join('\n')
-  fitted(bank, 29, 698, 330, 51, 'normal', 8)
+  fitted(proformaBankDetails, 29, 698, 330, 51, 'normal', 8)
   text('Declaration', 29, 756, { size: 7 })
   fitted(details.declaration, 29, 759, 268, 25, 'normal', 7)
   box(298, 750, 271, 37)
