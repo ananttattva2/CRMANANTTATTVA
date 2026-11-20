@@ -8,6 +8,13 @@ import './Sidebar.css'
 
 const sectionIcons = [BarChart3, ClipboardList, UserRound, FileText, ShieldCheck, ClipboardList, MessagesSquare, Users, LifeBuoy]
 const sectionId = label => `nav-section-${label.replace(/[^a-z0-9]/gi, '-')}`
+const PENDING_STATUS_LABELS = {
+  annualActionRequired: 'AR Action Required',
+  applied: 'Applied',
+  underReview: 'Under Review',
+  notStarted: 'Not Started',
+  rejected: 'Rejected'
+}
 
 export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onClose, dashboardMode = 'operations', onDashboardModeChange }) {
   const location = useLocation()
@@ -16,6 +23,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
   const [openGroups, setOpenGroups] = useState({})
   const [flyout, setFlyout] = useState(null)
   const [pendingCount, setPendingCount] = useState(0)
+  const [pendingBreakdown, setPendingBreakdown] = useState({})
   const sidebarRef = useRef(null)
   const flyoutRef = useRef(null)
   const triggerRef = useRef(null)
@@ -25,8 +33,11 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
   useEffect(() => {
     let cancelled = false
     api.get('/dashboard-insights/pending-count').then(({ data }) => {
-      if (!cancelled && data?.ok) setPendingCount(Number(data.count) || 0)
-    }).catch(() => { if (!cancelled) setPendingCount(0) })
+      if (!cancelled && data?.ok) {
+        setPendingCount(Number(data.count) || 0)
+        setPendingBreakdown(data.breakdown || {})
+      }
+    }).catch(() => { if (!cancelled) { setPendingCount(0); setPendingBreakdown({}) } })
     return () => { cancelled = true }
   }, [currentUser?._id])
 
@@ -84,12 +95,13 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
       const expanded = Boolean(openGroups[key])
       const active = pathMatches(item.path) && (!item.dashboardMode || dashboardMode === item.dashboardMode)
       const showBadge = item.pendingBadge && pendingCount > 0
+      const breakdownEntries = showBadge ? Object.entries(PENDING_STATUS_LABELS).map(([key, label]) => ({ key, label, count: Number(pendingBreakdown[key]) || 0 })) : []
       return <div key={key}>
         <button type="button" onClick={() => hasChildren ? setOpenGroups(value => ({ ...value, [key]: !value[key] })) : visit(item)}
           aria-expanded={hasChildren ? expanded : undefined} aria-controls={hasChildren ? sectionId(key) : undefined} aria-current={active ? 'page' : undefined}
           className={`sidebar-menu-button relative flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold transition-colors ${active ? 'bg-[#f45b0b] text-white' : light ? 'text-slate-700 hover:bg-emerald-50' : 'text-emerald-50/90 hover:bg-white/10'}`}>
           <Icon className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1">{item.label}</span>
-          {showBadge && <span className="ml-1 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-black leading-none text-white shadow-sm ring-2 ring-white/20" aria-label={`${pendingCount} pending applications`}>{pendingCount > 99 ? '99+' : pendingCount}</span>}
+          {showBadge && <span className="group/badge relative ml-1 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-black leading-none text-white shadow-sm ring-2 ring-white/20" aria-label={`${pendingCount} pending applications`}>{pendingCount > 99 ? '99+' : pendingCount}<span role="tooltip" className="pointer-events-none absolute right-0 top-full z-[60] mt-2 w-56 translate-y-1 rounded-xl border border-emerald-100 bg-white p-3 text-left shadow-2xl shadow-slate-900/20 opacity-0 transition-all duration-150 group-hover/badge:translate-y-0 group-hover/badge:opacity-100"><span className="mb-2 block text-[10px] font-black uppercase tracking-wider text-emerald-700">Pending Breakdown</span><ul className="space-y-1">{breakdownEntries.map(({ label, count }) => <li key={label} className="flex items-center justify-between text-xs font-bold text-slate-700"><span>{label}</span><span className={`rounded-full px-2 py-0.5 ${count > 0 ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-400'}`}>{count}</span></li>)}</ul><span className="mt-2 block border-t border-slate-100 pt-2 text-right text-[11px] font-black text-emerald-700">Total: {pendingCount}</span></span></span>}
           {hasChildren && <ChevronDown className={`h-4 w-4 shrink-0 transition-transform motion-reduce:transition-none ${expanded ? 'rotate-180' : ''}`} />}
         </button>
         {hasChildren && expanded && <div id={sectionId(key)} className="sidebar-section-reveal ml-4 mt-1 space-y-1 border-l border-current/15 pl-2">{renderItems(item.children, light, key)}</div>}

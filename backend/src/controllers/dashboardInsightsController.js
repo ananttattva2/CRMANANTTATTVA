@@ -415,14 +415,21 @@ exports.pendingCount = async (req, res) => {
     const groups = buildApplicationPortfolio(portfolioClients, users);
     let pending = 0;
     const pendingKeys = [...PENDING_STATUS_KEYS];
+    const breakdown = Object.fromEntries(pendingKeys.map(key => [key, 0]));
     for (const group of groups) {
       for (const record of applicationSummaryRecords(group)) {
-        if (pendingKeys.some(key => matchesStatusSummary(record, key))) pending += 1;
+        for (const key of pendingKeys) {
+          if (matchesStatusSummary(record, key)) {
+            breakdown[key] += 1;
+            pending += 1;
+            break;
+          }
+        }
       }
     }
     res.set('Cache-Control', 'private, no-store');
     res.set('Server-Timing', `pending;dur=${Date.now() - startedAt}`);
-    return res.json({ ok: true, count: pending, visibility: scope === null ? 'all' : scope.ids.length > 1 ? 'team' : 'own' });
+    return res.json({ ok: true, count: pending, breakdown, visibility: scope === null ? 'all' : scope.ids.length > 1 ? 'team' : 'own' });
   } catch (error) {
     console.error('Pending count failed', { message: error.message });
     res.status(500).json({ error: 'Unable to load pending count.', count: 0 });
