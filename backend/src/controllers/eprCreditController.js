@@ -17,6 +17,27 @@ function changesFor(quotation, requested) {
     return { itemIndex: index, basis: pricing.basis(item), item: typeof item.toObject === 'function' ? item.toObject() : { ...item }, currentAmount: Number(item.basicAmount) || 0, requestedAmount: amount };
   }).filter(change => change.requestedAmount !== change.currentAmount);
 }
+function finalAmountsFor(request, body = {}) {
+  if (body.finalAmounts != null && !Array.isArray(body.finalAmounts)) throw new Error('Final amounts must be a list of credit rows.');
+  if ((body.finalAmounts || []).length > request.changes.length) throw new Error('Too many Final Amount rows.');
+  const provided = new Map();
+  const seen = new Set();
+  for (const entry of body.finalAmounts || []) {
+    if (!Number.isInteger(entry?.itemIndex) || seen.has(entry.itemIndex) || !request.changes.some(change => change.itemIndex === entry.itemIndex)) throw new Error('Select valid, unique credit rows for Final Amount.');
+    seen.add(entry.itemIndex);
+    const raw = entry.amount;
+    if (raw === '' || raw == null || (typeof raw === 'string' && !raw.trim())) continue;
+    if (!['string', 'number'].includes(typeof raw) || !Number.isFinite(Number(raw)) || Number(raw) < 0 || Number(raw) > 1e9) throw new Error('Enter a valid non-negative Final Amount for every completed row.');
+    provided.set(entry.itemIndex, Math.round(Number(raw) * 100) / 100);
+  }
+  const missing = request.changes.filter(change => !provided.has(change.itemIndex));
+  if (missing.length && body.useRequestedAmounts !== true) {
+    const error = new Error('Final Amount is missing. Confirm whether to proceed with Requested Amount for the blank rows.');
+    error.requiresRequestedAmountConfirmation = true;
+    throw error;
+  }
+  return request.changes.map(change => ({ itemIndex: change.itemIndex, amount: provided.has(change.itemIndex) ? provided.get(change.itemIndex) : change.requestedAmount, source: provided.has(change.itemIndex) ? 'approver' : 'requested' }));
+}
 module.exports = ({ quotationAccessFilter }) => ({
   listCreditRateRequests: async (req, res) => {
     const scope = canDecide(req.user) ? {} : await quotationAccessFilter(req.user);
@@ -51,10 +72,16 @@ module.exports = ({ quotationAccessFilter }) => ({
     const items = quotation.items.map(item => item.toObject ? item.toObject() : { ...item });
     if (decision === 'APPROVED') {
       if (quotation.pricingMode === 'combined' || request.changes.some(change => !items[change.itemIndex] || !pricing.isCredit(items[change.itemIndex]) || pricing.basis(items[change.itemIndex]) !== change.basis || Number(items[change.itemIndex].basicAmount) !== change.currentAmount)) return fail(res, 409, 'Quotation items changed after this request. Reject it and request the current rates again.');
+      let finalAmounts;
+      try { finalAmounts = finalAmountsFor(request, req.body); } catch (error) { return res.status(400).json({ error: error.message, requiresRequestedAmountConfirmation: Boolean(error.requiresRequestedAmountConfirmation) }); }
+      request.changes = request.changes.map(change => ({ ...change }));
       request.changes.forEach(change => {
         const item = items[change.itemIndex];
-        item.basicAmount = change.requestedAmount;
-        item.creditRateApproval = { requestId: request.id, basis: change.basis, rate: change.requestedAmount, approvedBy: req.user.email, approvedAt: new Date() };
+        const final = finalAmounts.find(value => value.itemIndex === change.itemIndex);
+        change.finalAmount = final.amount;
+        change.finalAmountSource = final.source;
+        item.basicAmount = final.amount;
+        item.creditRateApproval = { requestId: request.id, basis: change.basis, rate: final.amount, approvedBy: req.user.email, approvedAt: new Date() };
       });
     }
     Object.assign(request, { status: decision, decidedAt: new Date(), decidedBy: req.user.email });
@@ -68,4 +95,4 @@ module.exports = ({ quotationAccessFilter }) => ({
     res.json({ request, quotation: saved });
   }
 });
-module.exports._test = { canDecide, changesFor };
+module.exports._test = { canDecide, changesFor, finalAmountsFor };
