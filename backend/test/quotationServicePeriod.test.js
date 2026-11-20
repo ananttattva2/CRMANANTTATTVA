@@ -74,10 +74,10 @@ test('quotation API sanitization rejects invalid units and non-integer periods',
 
 test('EPR Credit quotations require KG or MT UOM and normalize it', () => {
   assert.throws(
-    () => quotationController._test.cleanBody({ items: [{ businessCategory: 'EPR Credit', serviceCategory: 'EPR - Execution', servicePeriod: 1, periodUnit: 'annual', serviceStartDate: '2026-08-07' }] }),
+    () => quotationController._test.cleanBody({ items: [{ businessCategory: 'EPR Credit', servicesOffered: 'Category 2 – Recycling', serviceCategory: 'EPR - Execution', servicePeriod: 1, periodUnit: 'annual', serviceStartDate: '2026-08-07' }] }),
     /UOM must be KG or MT/
   );
-  const body = quotationController._test.cleanBody({ items: [{ businessCategory: 'EPR Credit', unitLabel: 'kg', annualReturnEprCreditYears: ['2024-25'], serviceCategory: 'EPR - Execution', servicePeriod: 1, periodUnit: 'annual', serviceStartDate: '2026-08-07' }] });
+  const body = quotationController._test.cleanBody({ items: [{ businessCategory: 'EPR Credit', servicesOffered: 'Category 2 – Recycling', unitLabel: 'kg', annualReturnEprCreditYears: ['2024-25'], serviceCategory: 'EPR - Execution', servicePeriod: 1, periodUnit: 'annual', serviceStartDate: '2026-08-07' }] });
   assert.equal(body.items[0].unit, '1');
   assert.equal(body.items[0].unitLabel, 'KG');
   assert.equal(body.items[0].servicePeriod, 1);
@@ -88,7 +88,7 @@ test('EPR Credit quotations require KG or MT UOM and normalize it', () => {
 
 test('EPR Credit accepts the dashed business label and supports day-based validity', () => {
   const body = quotationController._test.cleanBody({ items: [{
-    businessCategory: 'EPR - Credit', unitLabel: 'MT', annualReturnEprCreditYears: ['2025-26'],
+    businessCategory: 'EPR - Credit', servicesOffered: 'Category 2 – Recycling', unitLabel: 'MT', annualReturnEprCreditYears: ['2025-26'],
     serviceCategory: 'EPR - Execution', servicePeriod: 25, periodUnit: 'days', transitionPeriod: 'No',
     serviceStartDate: '2026-08-07', serviceEndDate: '2026-09-01'
   }] });
@@ -108,7 +108,7 @@ test('EPR Credit calculates validity dates for days, months, and years', () => {
   ];
   for (const [periodUnit, servicePeriod, expectedEndDate] of cases) {
     const body = quotationController._test.cleanBody({ items: [{
-      businessCategory: 'EPR Credit', unitLabel: 'KG', annualReturnEprCreditYears: ['2025-26'],
+      businessCategory: 'EPR Credit', servicesOffered: 'Category 2 – Recycling', unitLabel: 'KG', annualReturnEprCreditYears: ['2025-26'],
       serviceCategory: 'EPR - Execution', servicePeriod, periodUnit, serviceStartDate: '2026-08-07'
     }] });
     assert.equal(body.items[0].periodUnit, periodUnit);
@@ -154,27 +154,27 @@ test('Other Consultancy requires a supported registration year and clears it for
 
 test('EPR Credit years are required, validated, persisted, and cleared for consultancy items', () => {
   assert.throws(
-    () => quotationController._test.cleanBody({ items: [{ businessCategory: 'EPR Credit', unitLabel: 'MT', serviceCategory: 'EPR - Execution', servicePeriod: 1, periodUnit: 'annual', serviceStartDate: '2026-08-07' }] }),
+    () => quotationController._test.cleanBody({ items: [{ businessCategory: 'EPR Credit', servicesOffered: 'Category 2 – Recycling', unitLabel: 'MT', serviceCategory: 'EPR - Execution', servicePeriod: 1, periodUnit: 'annual', serviceStartDate: '2026-08-07' }] }),
     /select at least one Annual Return EPR Credit Year/
   );
   assert.throws(
-    () => quotationController._test.cleanBody({ items: [{ businessCategory: 'EPR Credit', unitLabel: 'MT', annualReturnEprCreditYears: ['2030-31'], serviceCategory: 'EPR - Execution', servicePeriod: 1, periodUnit: 'annual', serviceStartDate: '2026-08-07' }] }),
+    () => quotationController._test.cleanBody({ items: [{ businessCategory: 'EPR Credit', servicesOffered: 'Category 2 – Recycling', unitLabel: 'MT', annualReturnEprCreditYears: ['2030-31'], serviceCategory: 'EPR - Execution', servicePeriod: 1, periodUnit: 'annual', serviceStartDate: '2026-08-07' }] }),
     /unsupported financial year/
   );
-  const credit = quotationController._test.cleanBody({ items: [{ businessCategory: 'EPR Credit', unitLabel: 'MT', annualReturnEprCreditYears: ['2025-26', '2024-25', '2025-26'], applicantType: 'Recycler', serviceCategory: 'EPR - Used Oil', servicePeriod: 1, periodUnit: 'annual', serviceStartDate: '2026-08-07' }] });
+  const credit = quotationController._test.cleanBody({ items: [{ businessCategory: 'EPR Credit', servicesOffered: 'Category 2 – Recycling', unitLabel: 'MT', annualReturnEprCreditYears: ['2025-26', '2024-25', '2025-26'], applicantType: 'Recycler', serviceCategory: 'EPR - Used Oil', servicePeriod: 1, periodUnit: 'annual', serviceStartDate: '2026-08-07' }] });
   assert.deepEqual(credit.items[0].annualReturnEprCreditYears, ['2025-26', '2024-25']);
   assert.equal(credit.items[0].applicantType, 'Recycler');
   const consultancy = quotationController._test.cleanBody({ items: [{ businessCategory: 'EPR Consultancy', annualReturnEprCreditYears: ['2024-25'], serviceCategory: 'EPR - Execution', servicePeriod: 1, periodUnit: 'annual', serviceStartDate: '2026-08-07' }] });
   assert.deepEqual(consultancy.items[0].annualReturnEprCreditYears, []);
 });
 
-test('PWP EPR Credit allows zero amount without dates or annual-return year mappings', () => {
+test('PWP EPR Credit uses locked tariff without dates or annual-return year mappings', () => {
   const body = quotationController._test.cleanBody({
     pricingMode: 'individual',
-    items: [{ businessCategory: 'EPR Credit', applicantType: 'PWP', piboCategory: 'PWP', unitLabel: 'KG', basicAmount: 0, serviceCategory: 'EPR - Plastic Waste' }]
+    items: [{ businessCategory: 'EPR Credit', servicesOffered: 'Category 2 – Recycling', applicantType: 'PWP', piboCategory: 'PWP', unitLabel: 'KG', basicAmount: 0, serviceCategory: 'EPR - Plastic Waste' }]
   });
   assert.equal(body.items.length, 1);
-  assert.equal(body.items[0].basicAmount, 0);
+  assert.equal(body.items[0].basicAmount, 2.4);
   assert.equal(body.items[0].serviceStartDate, '');
   assert.equal(body.items[0].serviceEndDate, '');
   assert.deepEqual(body.items[0].annualReturnYears, []);
@@ -327,7 +327,7 @@ test('quotation year mapping displays selected EPR Credit years in the generated
   const page = (fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/Quotations.jsx'), 'utf8') + '\n' + fs.readFileSync(path.resolve(__dirname, '../../frontend/src/utils/quotationDocument.mjs'), 'utf8'));
   const shared = await import('../../frontend/src/utils/quotationDocument.mjs');
   const item = {
-    businessCategory: 'EPR Credit',
+    businessCategory: 'EPR Credit', servicesOffered: 'Category 2 – Recycling',
     serviceCategory: 'EPR - Plastic Waste',
     servicesOffered: 'Annual Return',
     annualReturnEprCreditYears: ['2025-26']

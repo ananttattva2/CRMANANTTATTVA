@@ -51,6 +51,8 @@ const QuoteItemSchema = new mongoose.Schema({
   unitName: { type: String, trim: true, maxlength: 120 },
   unitLabel: { type: String, trim: true },
   basicAmount: { type: Number, default: 0 },
+  creditRateBand: { type: String, enum: ['below100', 'above100'] },
+  creditRateApproval: { type: mongoose.Schema.Types.Mixed },
   eprCreditTargetKg: { type: Number, min: 0 },
   eprCreditTargetMt: { type: Number, min: 0 }
 }, { _id: false });
@@ -93,6 +95,7 @@ const QuotationSchema = new mongoose.Schema({
   preparedByName: { type: String, trim: true, maxlength: 120 },
   leadGeneratedBy: { type: String, trim: true },
   assignedUserName: { type: String, trim: true },
+  creditRateRequests: { type: [mongoose.Schema.Types.Mixed], default: [] },
   revisionHistory: { type: Array, default: [] },
   emailHistory: { type: [{ to: String, cc: [String], subject: String, sentBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, sentAt: Date }], default: [] },
   managementApproval: { type: mongoose.Schema.Types.Mixed, default: {} },

@@ -41,6 +41,9 @@ router.post('/dropdown-options', requireAuth, requireRoles(ADMIN_ROLES), quotati
 router.patch('/pending-approvals/approve-all', requireAuth, requireRoles(ADMIN_ROLES), quotationCtrl.approveAllPendingQuotations);
 router.post('/bulk', requireAuth, quotationCtrl.bulkCreateQuotations);
 router.post('/', requireAuth, quotationCtrl.createQuotation);
+router.get('/credit-rate-requests', requireAuth, quotationCtrl.listCreditRateRequests);
+router.post('/:id/credit-rate-requests', requireAuth, quotationCtrl.requestCreditRateChange);
+router.patch('/:id/credit-rate-requests/:requestId/decision', requireAuth, quotationCtrl.decideCreditRateChange);
 router.get('/:id', requireAuth, cacheRead, quotationCtrl.getQuotation);
 router.get('/:id/pdf', requireAuth, requireRoles(ADMIN_ROLES), quotationCtrl.downloadQuotation);
 router.patch('/:id/credit-calculations', requireAuth, quotationCtrl.updateEprCreditCalculations);

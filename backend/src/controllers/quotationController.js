@@ -1,3 +1,4 @@
+const creditPricing = require('../../../shared/eprCreditPricing.cjs');
 const { quotationValidityError } = require('../utils/quotationValidity');
 const { directQuotationApproval } = require('../services/directQuotationApproval');
 const Quotation = require('../models/Quotation');
@@ -434,7 +435,7 @@ function cleanItems(items, user = null, existingItems = [], systemStartDate = ''
       } else {
         serviceEndDate = serviceEndDateFrom(serviceStartDate, servicePeriod, periodUnit);
       }
-      return {
+      const normalized = {
         id: cleanString(item.id),
         assignedServiceId: cleanString(item.assignedServiceId) || cleanString(existingItem.assignedServiceId),
         sourceServiceIndex: Number.isInteger(Number(item.sourceServiceIndex)) && Number(item.sourceServiceIndex) >= 0
@@ -467,8 +468,18 @@ function cleanItems(items, user = null, existingItems = [], systemStartDate = ''
         unitLabel: isEprCredit ? unitLabel : undefined,
         basicAmount: roundMoney(item.basicAmount),
         eprCreditTargetKg: isEprCredit ? eprCreditTargetKg : undefined,
-        eprCreditTargetMt: isEprCredit ? eprCreditTargetMt : undefined
+        eprCreditTargetMt: isEprCredit ? eprCreditTargetMt : undefined,
+        creditRateBand: isEprCredit ? (item.creditRateBand || existingItem.creditRateBand || 'below100') : undefined
       };
+      if (isEprCredit) {
+        if (!['below100', 'above100'].includes(normalized.creditRateBand)) throw new Error(`Quotation item ${index + 1}: select a valid Expected Target slab.`);
+        const approved = existingItem.creditRateApproval;
+        normalized.creditRateApproval = approved?.basis === creditPricing.basis(normalized) ? approved : undefined;
+        const lockedRate = creditPricing.rate(normalized, normalized.creditRateApproval);
+        if (lockedRate === null) throw new Error(`Quotation item ${index + 1}: no EPR Credit tariff is configured for this service.`);
+        normalized.basicAmount = lockedRate;
+      }
+      return normalized;
     })
     .filter((item) => isMeaningfulItem(item));
 }
@@ -568,6 +579,7 @@ function cleanBody(body, user = null, existingItems = []) {
   // conditions to be printed on the quotation.
   const terms = paymentTerm ? [paymentTerm] : [];
   const pricingMode = body.pricingMode === 'combined' ? 'combined' : 'individual';
+  if (pricingMode === 'combined' && items.some(creditPricing.isCredit)) throw new Error('EPR Credit quotations require individual pricing with locked credit rates.');
   const individualTotal = roundMoney(items.reduce((sum, item) => sum + ((Number(item.unit) || 0) * (Number(item.basicAmount) || 0)), 0));
   const combinedPricingGroups = pricingMode === 'combined'
     ? cleanCombinedPricingGroups(body.combinedPricingGroups, items, body.combinedBasicAmount)
@@ -593,8 +605,8 @@ function cleanBody(body, user = null, existingItems = []) {
     terms,
     paymentTerm,
     scopeOfWork: cleanTerms(body.scopeOfWork),
-    subtotal: roundMoney(body.subtotal || calculatedTotal),
-    grandTotal: roundMoney(body.grandTotal || calculatedTotal),
+    subtotal: roundMoney(items.some(creditPricing.isCredit) ? calculatedTotal : (body.subtotal || calculatedTotal)),
+    grandTotal: roundMoney(items.some(creditPricing.isCredit) ? calculatedTotal : (body.grandTotal || calculatedTotal)),
     status: ['draft', 'submitted', 'sent', 'admin_approved', 'approved', 'rejected'].includes(body.status) ? body.status : 'draft'
   };
 }
@@ -928,7 +940,7 @@ exports.listQuotations = async (req, res) => {
     testLeadReferences ? dashboardQuotationExclusionFilter(testLeadReferences) : {}
   );
   const listView = ['directory', 'mis'].includes(req.query.view);
-  const listFields = 'quotationNumber leadId leadRef clientRef leadCode businessLeadCode companyName leadDetails.companyName leadDetails.contactPerson quotationDate validUntil serviceState pricingMode combinedBasicAmount grandTotal status source createdByName preparedByName leadGeneratedBy assignedUserName managementApproval.status managementApproval.approverId managementApproval.approverName createdBy createdAt updatedAt items.assignedServiceId items.sourceServiceIndex items.unit items.basicAmount';
+  const listFields = 'quotationNumber leadId leadRef clientRef leadCode businessLeadCode companyName leadDetails.companyName leadDetails.contactPerson quotationDate validUntil serviceState pricingMode combinedBasicAmount grandTotal status source createdByName preparedByName leadGeneratedBy assignedUserName managementApproval.status managementApproval.approverId managementApproval.approverName createdBy createdAt updatedAt items.assignedServiceId items.sourceServiceIndex items.unit items.basicAmount items.businessCategory';
   const query = Quotation.find(scopedFilter)
     .select(listView ? listFields : req.query.view === 'lead-review'
       ? 'quotationNumber leadId leadRef leadCode businessLeadCode companyName leadDetails.companyName pricingMode combinedBasicAmount grandTotal items.unit items.basicAmount createdAt updatedAt'
@@ -1696,3 +1708,5 @@ exports.createDropdownOption = async (req, res) => {
     throw error;
   }
 };
+
+Object.assign(exports, require('./eprCreditController')({ quotationAccessFilter }));

@@ -1,3 +1,4 @@
+import CreditRateApprovals from '../features/eprCredit/CreditRateRequests';
 import { exportWithReason } from '../utils/dataExport.mjs'
 import useCrmRefresh from '../hooks/useCrmRefresh';
 import { canApprovePo, canReviewPoDecision } from '../utils/poDecision.mjs';
@@ -749,6 +750,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
   const [notice, setNotice] = useState('');
   const [debugInfo, setDebugInfo] = useState(null);
   const [deactivationCount, setDeactivationCount] = useState(0);
+  const [creditCount, setCreditCount] = useState(0);
   const [activeTab, setActiveTab] = useState('clients');
   const [clientPage, setClientPage] = useState(1);
   const [quotePage, setQuotePage] = useState(1);
@@ -909,6 +911,13 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
     return () => { mounted = false; };
   }, []);
 
+  useEffect(() => {
+    if (companyOnly) return;
+    let active = true;
+    api.get('/quotations/credit-rate-requests').then(({ data }) => { if (active) setCreditCount((data.requests || []).filter(row => row.status === 'PENDING').length); }).catch(() => {});
+    return () => { active = false; };
+  }, [companyOnly, currentUser?._id]);
+
   function handleTabChange(tabId) {
     if (tabId && typeof tabId === 'string') {
       setActiveTab(tabId);
@@ -930,13 +939,14 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
       setStatusFilter('PENDING');
       return;
     }
+    if (tab === 'epr-credit') { setActiveTab(tab); return; }
     if (isServiceParticipantView) {
       setActiveTab(canViewClients ? 'clients' : 'services');
       setTypeFilter(canViewClients ? 'clients' : 'services');
       setStatusFilter('all');
       return;
     }
-    if (tab === 'clients' || tab === 'quotations' || tab === 'duplicates' || tab === 'royalty' || tab === 'services' || tab === 'po') setActiveTab(tab);
+    if (tab === 'epr-credit' || tab === 'clients' || tab === 'quotations' || tab === 'duplicates' || tab === 'royalty' || tab === 'services' || tab === 'po') setActiveTab(tab);
     else setActiveTab('quotations');
   }, [isComplianceApprovalView, isServiceParticipantView, canViewClients, location.search, normalizedRole]);
 
@@ -1622,7 +1632,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
           </div>}
 
           <section className="pending-approval-panel">
-            {activeTab !== 'deactivation' && <div className={`pending-filter-bar ${activeTab === 'po' ? 'pending-po-filter-bar' : ''}`}>
+            {activeTab !== 'deactivation' && activeTab !== 'epr-credit' && <div className={`pending-filter-bar ${activeTab === 'po' ? 'pending-po-filter-bar' : ''}`}>
               <label className="pending-search-field">
                 <Search className="h-4 w-4" />
                 <input
@@ -1676,7 +1686,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                 Refresh
               </button>
             </div>}
-            {activeTab !== 'deactivation' && activeTab !== 'po' && !isComplianceApprovalView && (
+            {activeTab !== 'deactivation' && activeTab !== 'epr-credit' && activeTab !== 'po' && !isComplianceApprovalView && (
               <div className="pending-status-quick-filters" aria-label="Quick approval status filters">
                 <span>Quick filter</span>
                 <button type="button" className={statusFilter === 'APPROVED' ? 'is-active' : ''} onClick={() => { setActiveTab('quotations'); setTypeFilter('quotations'); setStatusFilter('APPROVED'); }}>
@@ -1686,13 +1696,13 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
             )}
             <div className="pending-tabs-wrap">
               <ApprovalTabs
-                tabs={approvalTabs}
+                tabs={companyOnly ? approvalTabs : (approvalTabs.some(tab => tab.id === 'quotations') ? approvalTabs.flatMap(tab => tab.id === 'quotations' ? [tab, { id: 'epr-credit', icon: FileText, label: 'EPR Credit', count: creditCount }] : [tab]) : [...approvalTabs, { id: 'epr-credit', icon: FileText, label: 'EPR Credit', count: creditCount }])}
                 activeTab={activeTab}
                 onTabChange={handleTabChange}
               />
             </div>
 
-            {activeTab === 'deactivation' ? <DeactivationApprovals onCountChange={setDeactivationCount} /> : activeTab === 'po' ? (
+            {activeTab === 'epr-credit' ? <CreditRateApprovals onCountChange={setCreditCount} /> : activeTab === 'deactivation' ? <DeactivationApprovals onCountChange={setDeactivationCount} /> : activeTab === 'po' ? (
               <>
                 <ApprovalTable title="Purchase Order Approvals" className="pending-po-table" columns={['Company / Lead', 'Service', 'PO Amount', 'PO Proof', 'Basic Amount (INR)', 'Submitted By', { label: 'PO Uploaded', sortable: true, direction: poDateSort, onSort: () => { setPoDateSort((value) => value === 'desc' ? 'asc' : 'desc'); setPoPage(1); } }, 'Status', 'Actions']} emptyText={poLoading ? 'Loading purchase order approvals...' : 'No Purchase Orders are waiting for approval.'} page={poPage} totalPages={poTotalPages} showing={visiblePoApprovals.length} total={filteredPoApprovals.length} onPrev={() => setPoPage((value) => Math.max(1, value - 1))} onNext={() => setPoPage((value) => Math.min(poTotalPages, value + 1))} actions={<div className="pending-po-status-tabs" aria-label="PO approval status"><button type="button" className={statusFilter === 'PENDING' ? 'is-active' : ''} onClick={() => { setStatusFilter('PENDING'); setPoPage(1); }}>Pending</button><button type="button" className={statusFilter === 'APPROVED' ? 'is-active' : ''} onClick={() => { setStatusFilter('APPROVED'); setPoPage(1); }}>Approved</button><button type="button" className={statusFilter === 'REJECTED' ? 'is-active' : ''} onClick={() => { setStatusFilter('REJECTED'); setPoPage(1); }}>Rejected</button><button type="button" className={statusFilter === 'all' ? 'is-active' : ''} onClick={() => { setStatusFilter('all'); setPoPage(1); }}>All</button></div>}>
                 {visiblePoApprovals.map((row) => {
