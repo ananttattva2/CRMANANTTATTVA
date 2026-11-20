@@ -513,7 +513,6 @@ function hasAnyAnnualUserRole(user = {}, allowedRoles = []) {
 }
 
 export const annualProcessingTabLabels = {
-  basic: 'Basic Info',
   data: 'Data',
   cpcbLetter: 'CPCB Letter'
 };
@@ -596,7 +595,7 @@ export function AnnualReturnHistory({ client, quotations = [], proformaInvoices 
   const navigate = useNavigate();
   const data = readClientData(client);
   const firstAnnualReturnYear = getFirstAnnualReturnYear(client, data);
-  const [activeProcessingTab, setActiveProcessingTab] = useState('basic');
+  const [activeProcessingTab, setActiveProcessingTab] = useState('data');
   const [activeDataSubTab, setActiveDataSubTab] = useState('compliance');
   const [activePillSection, setActivePillSection] = useState('');
   const [annualTransitioning, setAnnualTransitioning] = useState(false);
@@ -742,6 +741,7 @@ export function AnnualReturnHistory({ client, quotations = [], proformaInvoices 
       nextDraft = dbDraft && typeof dbDraft === 'object' ? dbDraft : {};
     }
     setAnnualDraft(nextDraft);
+    setActiveProcessingTab('data');
     setActiveDataSubTab('compliance');
     const completedTabs = getAnnualCompletedTabs(nextDraft);
     const restoredMessage = formatCompletedTabsMessage(completedTabs);
@@ -861,7 +861,7 @@ export function AnnualReturnHistory({ client, quotations = [], proformaInvoices 
       await Promise.all(targetYears.map((annualYear, index) => api.put(API_ENDPOINTS.clients.annualReturn(clientId), {
         annualYear,
         notifyPoApproval: mode === 'no' && index === 0,
-        activeTab: 'basic',
+        activeTab: 'data',
         activeSection: 'Purchase Order Confirmation',
         status: 'draft',
         draft: {
@@ -1344,7 +1344,6 @@ export function AnnualReturnHistory({ client, quotations = [], proformaInvoices 
   }
 
   const processingTabs = [
-    { id: 'basic', label: 'Basic Info', icon: Building2 },
     { id: 'data', label: 'Data', icon: Database },
     { id: 'cpcbLetter', label: 'CPCB Letter', icon: ShieldCheck }
   ];
@@ -1801,7 +1800,7 @@ export function AnnualReturnHistory({ client, quotations = [], proformaInvoices 
       }
     ]
   };
-  const activeSections = sectionsByTab[activeProcessingTab] || sectionsByTab.basic;
+  const activeSections = sectionsByTab[activeProcessingTab] || sectionsByTab.data;
   const activeSection = activeSections.find((section) => section.title === activePillSection) || activeSections[0];
   const activeSectionIndex = activeSections.findIndex((section) => section.title === activeSection?.title);
   const hasNextSection = activeSectionIndex > -1 && activeSectionIndex < activeSections.length - 1;
@@ -1951,93 +1950,36 @@ export function AnnualReturnHistory({ client, quotations = [], proformaInvoices 
   }
 
   const hubPoStates = years.map((year) => poStateForYear(year.label));
-  const pendingPoState = hubPoStates.find((state) => state.poStatus === 'pending');
-  const receivedPoState = hubPoStates.find((state) => state.poStatus === 'received');
 
   return (
     <div className="mt-5 space-y-5">
-      {!selected && (
-        <div className="flex flex-col gap-3 rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <button type="button" onClick={() => navigate('/sales/client-master')} className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 text-[#30737B] hover:bg-teal-50"><ArrowLeft className="h-5 w-5" /></button>
-            <div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#30737B]">Annual Return</p><h2 className="text-xl font-black text-slate-950">{clientName}</h2></div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {!poResolution.loading && (pendingPoState || receivedPoState) && <button type="button" onClick={() => {
-              if (pendingPoState) {
-                setPoDraft(poWorkflow.confirmed ? poWorkflow : {});
-                setPoValidationError('');
-                setPoModalOpen(true);
-              } else setPoDetails(receivedPoState);
-            }} className="btn-lift inline-flex items-center gap-2 rounded-xl bg-[#30737B] px-5 py-3 text-sm font-black text-white">{pendingPoState ? <Plus className="h-4 w-4" /> : <FileText className="h-4 w-4" />} {pendingPoState ? 'Add PO' : 'PO Details'}</button>}
-          </div>
-        </div>
-      )}
       {annualToast && (
         <div className="fixed right-5 top-16 z-[160] w-[min(430px,calc(100vw-40px))]">
           <ToastMessage type={annualToast.type} actionLabel="Close" onAction={() => setAnnualToast(null)}>{annualToast.message}</ToastMessage>
         </div>
       )}
-      {!selected && <section className="annual-return-hub">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.2em] text-[#30737B]">EPR Years</p>
-            <h4 className="mt-1 text-xl font-black text-slate-950">Annual return hubs</h4>
-          </div>
-          <p className="max-w-xl text-sm font-bold text-slate-500">Only completed financial years from the first applicable annual return year are available.</p>
+      {!selected && <section className="overflow-hidden rounded-xl border border-teal-100 bg-white">
+        <div className="border-b border-teal-100 bg-teal-50/60 p-5">
+          <p className="text-sm font-bold text-slate-700">Closed purchase orders for the selected applicant and service</p>
         </div>
-
-        {years.length ? (
-          <div className="annual-year-grid mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {years.map((year, index) => {
-              const active = selected?.label === year.label;
-              const locked = isAnnualYearLocked(year.label);
-              const poState = poStateForYear(year.label);
-              const statusMeta = {
-                received: { label: 'PO Received', badge: 'border-emerald-200 bg-emerald-50 text-emerald-700', card: 'border-emerald-200 bg-gradient-to-br from-white to-emerald-50/70' },
-                pending: { label: 'PO Pending', badge: 'border-amber-200 bg-amber-50 text-amber-700', card: 'border-amber-200 bg-gradient-to-br from-white to-amber-50/70' },
-                not_required: { label: 'PO Not Required', badge: 'border-slate-200 bg-slate-100 text-slate-600', card: 'border-slate-200 bg-white' },
-                unlinked: { label: 'Source Lead Not Linked', badge: 'border-slate-200 bg-slate-100 text-slate-600', card: 'border-slate-200 bg-white' },
-                conflict: { label: 'PO Conflict', badge: 'border-orange-200 bg-orange-50 text-orange-700', card: 'border-orange-200 bg-gradient-to-br from-white to-orange-50/70' },
-                loading: { label: 'Checking PO details...', badge: 'border-teal-100 bg-teal-50 text-teal-700', card: 'border-teal-100 bg-white' },
-                error: { label: 'PO check unavailable', badge: 'border-red-200 bg-red-50 text-red-700', card: 'border-red-200 bg-white' }
-              }[poState.poStatus];
-              return (
-                <article
-                  key={year.label}
-                  className={`relative overflow-hidden rounded-2xl border p-5 shadow-[0_12px_28px_rgba(15,23,42,0.07)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.10)] ${statusMeta.card} ${active ? 'ring-2 ring-teal-500' : ''}`}
-                  style={{ '--delay': `${index * 90}ms` }}
-                >
-                  <div className="flex items-start justify-between gap-3"><span className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">EPR Year</span><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusMeta.badge}`}>{statusMeta.label}</span></div>
-                  <strong className="mt-3 block text-3xl font-black leading-none text-slate-950">{year.label}</strong>
-                  <span className="mt-2 block text-xs font-bold text-slate-400">{year.period}</span>
-                  <div className="mt-4 min-h-16 rounded-xl border border-white/80 bg-white/75 p-3">
-                    {poState.poStatus === 'received' && <><span className="text-[10px] font-black uppercase tracking-widest text-slate-400">PO Number</span><strong className="mt-1 block break-words text-sm font-black text-slate-800">{poState.po?.number || 'Document received'}</strong>{poState.po?.fileName && <span className="mt-1 block truncate text-xs font-semibold text-slate-500" title={poState.po.fileName}>{poState.po.fileName}</span>}</>}
-                    {poState.poStatus === 'pending' && <p className="text-xs font-bold leading-5 text-amber-700">PO details are required before starting this Annual Return.</p>}
-                    {poState.poStatus === 'not_required' && <p className="text-xs font-bold leading-5 text-red-600">Purchase Order is required before this Annual Return can be opened.</p>}
-                    {poState.poStatus === 'unlinked' && <p className="text-xs font-bold leading-5 text-slate-500">The Client Master has no valid source Lead relationship.</p>}
-                    {poState.poStatus === 'conflict' && <p className="text-xs font-bold leading-5 text-orange-700">Multiple PO records found. Please review PO details.</p>}
-                    {poState.poStatus === 'loading' && <div className="space-y-2"><span className="block h-3 w-32 animate-pulse rounded bg-teal-100" /><span className="block h-3 w-48 animate-pulse rounded bg-slate-100" /></div>}
-                    {poState.poStatus === 'error' && <p className="text-xs font-bold leading-5 text-red-600">{poState.message}</p>}
-                  </div>
-                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-                    {poState.poStatus === 'received' && poState.po?.fileUrl ? <a href={normalizeDocumentUrl(poState.po.fileUrl)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-black text-emerald-700"><Eye className="h-3.5 w-3.5" /> View PO</a> : <span />}
-                    {poState.poStatus === 'error' && <button type="button" onClick={() => setPoRefreshToken((value) => value + 1)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600">Retry</button>}
-                    {poState.poStatus === 'pending' && <button type="button" onClick={() => { setPoDraft(poWorkflow.confirmed ? poWorkflow : {}); setPoValidationError(''); setPoModalOpen(true); }} className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-black text-white">Add PO</button>}
-                    {poState.poStatus === 'conflict' && <button type="button" onClick={() => setPoDetails(poState)} className="rounded-lg bg-orange-600 px-3 py-2 text-xs font-black text-white">Review Details</button>}
-                    {poState.poStatus === 'received' && <button type="button" disabled={locked} onClick={() => openAnnualYear(year)} className="rounded-lg bg-[#30737B] px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-45">Open Annual Return</button>}
-                    {poState.poStatus === 'not_required' && <button type="button" disabled className="cursor-not-allowed rounded-lg bg-red-600 px-3 py-2 text-xs font-black text-white opacity-90" title="Purchase Order is required">Open Annual Return</button>}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        ) : (
-          <EmptyTab
-            title="No completed annual return year"
-            message="Select a first annual return year up to the latest completed financial year."
-          />
-        )}
+        {poResolution.loading ? <p className="p-8 text-center text-sm text-slate-500" role="status">Loading purchase orders...</p>
+          : poResolution.error ? <div className="p-6 text-sm text-red-600" role="alert">{poResolution.error}<button type="button" onClick={() => setPoRefreshToken((value) => value + 1)} className="ml-4 rounded-lg border px-3 py-2">Retry</button></div>
+          : <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-left text-sm">
+            <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500"><tr>
+              {['Sub Applicant Type', 'Services Offered', 'PO Year', 'PO Number', 'View PO', 'Action'].map((label) => <th key={label} scope="col" className="px-5 py-4">{label}</th>)}
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {hubPoStates.filter((state) => state.poStatus === 'received' && state.po?.isClosed).map((state) => <tr key={state.fy} className="hover:bg-teal-50/40">
+                <td className="px-5 py-5 font-semibold text-slate-800">{data.basic?.piboCategory || 'Not recorded'}</td>
+                <td className="px-5 py-5 text-slate-700">{state.po?.service || data.basic?.servicesOffered || 'Annual Return Filling'}</td>
+                <td className="whitespace-nowrap px-5 py-5">{state.po?.poYear || state.fy}</td>
+                <td className="px-5 py-5 font-semibold">{state.po?.number || 'Not recorded'}</td>
+                <td className="px-5 py-5">{state.po?.fileUrl ? <a href={normalizeDocumentUrl(state.po.fileUrl)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-teal-200 px-3 py-2 font-bold text-[#30737B]"><Eye className="h-4 w-4" />View PO</a> : <button type="button" onClick={() => setPoDetails(state)} className="whitespace-nowrap rounded-lg border border-teal-200 px-3 py-2 font-bold text-[#30737B]">View Details</button>}</td>
+                <td className="px-5 py-5"><button type="button" onClick={() => openAnnualYear({ label: state.fy })} className="whitespace-nowrap rounded-lg bg-[#30737B] px-4 py-2.5 font-bold text-white hover:bg-teal-800">Continue to Service</button></td>
+              </tr>)}
+              {!hubPoStates.some((state) => state.poStatus === 'received' && state.po?.isClosed) && <tr><td colSpan={6} className="px-5 py-12 text-center text-slate-500">No closed purchase orders found for this applicant and service.</td></tr>}
+            </tbody>
+          </table></div>}
       </section>}
 
       {poDetails && !selected && createPortal((

@@ -227,8 +227,24 @@ test('PO status API remains authenticated and UI uses loading state instead of t
   const routes = fs.readFileSync(path.resolve(__dirname, '../src/routes/clients.js'), 'utf8');
   const ui = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/ClientMasterAnnualReturn.jsx'), 'utf8');
   assert.match(routes, /annual-return\/po-status', requireAuth, clientCtrl\.getAnnualReturnPoStatus/);
-  assert.match(ui, /Checking PO details\.\.\./);
+  assert.match(ui, /Loading purchase orders\.\.\./);
   assert.match(ui, /annualReturnPoStatus/);
   assert.doesNotMatch(ui, /Frozen — PO details pending/);
   assert.match(ui, /target="_blank" rel="noopener noreferrer"/);
+});
+
+
+test('history identifies closure per applicant assignment and preserves PO year separately', async () => {
+  const source = lead();
+  source.assignments[1].poYearRows = [annualPo({ fy: '2026-27', annualReturnYear: '2025-26' })];
+  let result = await resolveAnnualReturnPO({ clientMaster: client, financialYears: ['2025-26'], LeadModel: modelFor(source) });
+  assert.equal(result.years[0].po.isClosed, false);
+  source.assignments[0].closedAt = '2026-01-01';
+  result = await resolveAnnualReturnPO({ clientMaster: client, financialYears: ['2025-26'], LeadModel: modelFor(source) });
+  assert.equal(result.years[0].po.isClosed, false, 'sibling service closure must not expose this PO');
+  source.assignments[1].closedAt = '2026-01-02';
+  result = await resolveAnnualReturnPO({ clientMaster: client, financialYears: ['2025-26'], LeadModel: modelFor(source) });
+  assert.equal(result.years[0].po.isClosed, true);
+  assert.equal(result.years[0].po.poYear, '2026-27');
+  assert.equal(result.years[0].fy, '2025-26');
 });

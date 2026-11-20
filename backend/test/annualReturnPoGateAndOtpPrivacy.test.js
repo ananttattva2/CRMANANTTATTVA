@@ -3,11 +3,13 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-test('Annual Return hubs open only for PO received years', () => {
+test('Annual Return history lists only closed received purchase orders', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/ClientMasterAnnualReturn.jsx'), 'utf8');
   assert.match(source, /poState\.poStatus !== 'received'/);
-  assert.match(source, /poState\.poStatus === 'received'.*Open Annual Return/);
-  assert.match(source, /poState\.poStatus === 'not_required'.*bg-red-600.*Open Annual Return/);
+  assert.match(source, /state\.poStatus === 'received' && state\.po\?\.isClosed/);
+  assert.match(source, /Continue to Service/);
+  assert.match(source, /Sub Applicant Type/);
+  assert.doesNotMatch(source, /Annual return hubs/);
 });
 
 test('OTP identity is hidden from the directory table and shown after eye view', () => {

@@ -3777,12 +3777,12 @@ function ClientViewModal({ client, serviceClients = [], onServiceChange, onEditS
     { id: 'documents', label: `Documents (${clientDocuments.length})`, icon: FileCheck2, title: 'Uploaded Documents' },
     { id: 'company', label: 'Company History', icon: Building2, title: 'Company History', message: 'No company history entries yet.' },
     { id: 'quotation', label: 'Quotation History', icon: FileText, title: 'Quotation History', message: 'No quotations mapped yet.' },
-    { id: 'annual', label: 'Annual Return History', icon: RefreshCw, title: 'Annual Return History', message: 'No annual return timeline yet.' },
+    { id: 'annual', label: 'Service', icon: RefreshCw, title: 'Service History', message: 'No closed purchase orders yet.' },
     { id: 'ticket', label: 'Ticket', icon: FolderCheck, title: 'Ticket', message: 'No tickets raised yet.' }
   ];
   const activeTabMeta = detailTabs.find((tab) => tab.id === activeClientTab) || detailTabs[0];
   const isAnnualProcessingView = activeClientTab === 'annual' && annualYears.some((year) => year.label === selectedAnnualYear);
-  const isAnnualStandaloneView = activeClientTab === 'annual' && initialTab === 'annual';
+  const isAnnualStandaloneView = isAnnualProcessingView;
   const isLifecycleView = activeClientTab === 'ticket';
   const calendarClientKey = String(client._id || client.id || getClientUniqueId(client) || clientName);
   const [interactionTab, setInteractionTab] = useState('follow-up');
@@ -3850,11 +3850,7 @@ function ClientViewModal({ client, serviceClients = [], onServiceChange, onEditS
   }
 
   function openClientSection(id) {
-    if (id === 'annual') {
-      const clientKey = client?._id || client?.id || data.importMeta?.uniqueId || getClientUniqueId(client);
-      navigate(`/sales/client-annual-returns/${encodeURIComponent(clientKey)}`);
-      return;
-    }
+    if (id === 'annual') setSelectedAnnualYear('');
     setActiveClientTab(id);
   }
 

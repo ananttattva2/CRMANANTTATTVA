@@ -44,8 +44,16 @@ function validPo(row = {}) {
   return Boolean(text(row.poNumber) || text(row.poFileUrl || row.fileUrl || row.file?.secureUrl || row.file?.url));
 }
 
-function normalizePo(row = {}, lead = {}, service = 'Annual Return') {
+function isClosedAssignment(assignment = {}, lead = {}) {
+  return Boolean(assignment.closedAt || assignment.closedBy || assignment.closedByText || assignment.permanentClosedAt
+    || (lead.serviceSelections?.length === 1 && (lead.closedAt || lead.closedBy))
+    || (Math.max(lead.serviceSelections?.length || 0, lead.assignments?.length || 0) <= 1 && text(lead.status).toLowerCase() === 'closed'));
+}
+
+function normalizePo(row = {}, lead = {}, service = 'Annual Return', assignment = {}) {
   return {
+    isClosed: isClosedAssignment(assignment, lead),
+    poYear: normalizeFinancialYear(row.poFinancialYear || row.fy || row.fyYear || row.financialYear),
     number: text(row.poNumber) || null,
     fileUrl: text(row.poFileUrl || row.fileUrl || row.file?.secureUrl || row.file?.url) || null,
     fileName: text(row.poFileName || row.fileName || row.file?.originalName || row.file?.name) || null,
@@ -62,7 +70,11 @@ function dedupePoCandidates(candidates = []) {
     const po = candidate.po;
     const key = [candidate.financialYear, text(po.number).toLowerCase().replace(/\s+/g, ''), text(po.fileUrl).toLowerCase()].join('|');
     const existing = unique.get(key);
-    if (!existing || (!existing.explicitService && candidate.explicitService)) unique.set(key, candidate);
+    if (!existing || (!existing.explicitService && candidate.explicitService)) {
+      unique.set(key, existing?.po?.isClosed ? { ...candidate, po: { ...candidate.po, isClosed: true } } : candidate);
+    } else if (candidate.po.isClosed) {
+      existing.po = { ...existing.po, isClosed: true };
+    }
   });
   return [...unique.values()];
 }
@@ -81,6 +93,8 @@ function buildLegacyAnnualReturnCandidates(clientMaster = {}, lead = {}) {
         financialYear,
         explicitService: isAnnualReturnService(row.service),
         po: {
+          isClosed: (lead.assignments || []).some((assignment) => idText(assignment.assignedServiceId) === readClientServiceScope(clientMaster).assignedServiceId && isClosedAssignment(assignment, lead)),
+          poYear: normalizeFinancialYear(row.poFinancialYear || row.fy || row.fyYear || row.financialYear),
           number: text(row.poNumber) || null,
           fileUrl: text(row.poFileUrl || row.fileUrl || row.file?.secureUrl || row.file?.url) || null,
           fileName: text(row.poFileName || row.fileName || row.file?.originalName || row.file?.name) || null,
@@ -127,7 +141,7 @@ async function findSourceLead(clientMaster, LeadModel = Lead) {
   if (reference.objectId) query = LeadModel.findById(reference.objectId);
   else if (reference.leadCode) query = LeadModel.findOne({ leadCode: reference.leadCode });
   if (!query) return null;
-  if (typeof query.select === 'function') query = query.select('leadCode assignments serviceSelections firstAnnualReturnYearApplicable');
+  if (typeof query.select === 'function') query = query.select('leadCode assignments serviceSelections firstAnnualReturnYearApplicable status closedAt closedBy');
   return typeof query.lean === 'function' ? query.lean() : query;
 }
 
@@ -180,7 +194,7 @@ function buildAnnualReturnContext(lead = {}, serviceScope = {}) {
       const service = rowServices.find(isAnnualReturnService)
         || assignmentServices.find(isAnnualReturnService)
         || 'Annual Return';
-      candidates.push({ financialYear, explicitService, po: normalizePo(row, lead, service) });
+      candidates.push({ financialYear, explicitService, po: normalizePo(row, lead, service, assignment) });
     });
   });
 

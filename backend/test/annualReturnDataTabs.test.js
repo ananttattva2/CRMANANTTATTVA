@@ -5,12 +5,14 @@ const path = require('node:path');
 
 const source = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/ClientMasterAnnualReturn.jsx'), 'utf8');
 
-test('Annual Return hides Financials from the visible three-step processing flow', () => {
+test('Annual Return hides Financials from the visible processing flow', () => {
   const labelsBlock = source.match(/export const annualProcessingTabLabels = \{([\s\S]*?)\n\};/)?.[1] || '';
   const processingTabsBlock = source.match(/const processingTabs = \[([\s\S]*?)\n  \];/)?.[1] || '';
   assert.doesNotMatch(labelsBlock, /financials\s*:/);
   assert.doesNotMatch(processingTabsBlock, /id:\s*'financials'/);
-  assert.match(processingTabsBlock, /id:\s*'basic'/);
+  assert.doesNotMatch(processingTabsBlock, /id:\s*'basic'/);
+  assert.doesNotMatch(labelsBlock, /basic\s*:/);
+  assert.match(source, /useState\('data'\)/);
   assert.match(processingTabsBlock, /id:\s*'data'/);
   assert.match(processingTabsBlock, /id:\s*'cpcbLetter'/);
 });
