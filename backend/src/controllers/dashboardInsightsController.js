@@ -411,13 +411,13 @@ exports.pendingCount = async (req, res) => {
       if (!permanentOwners.length) return true;
       return permanentOwners.some(key => visibleIdentities.has(String(key).trim().toLowerCase()));
     });
-    const { buildApplicationPortfolio, applicationSummaryRecords, matchesStatusSummary, PENDING_STATUS_KEYS } = await require('../../frontend/src/utils/applicationPortfolio.mjs');
+    const { buildApplicationPortfolio, applicationServiceSummaryRecords, matchesStatusSummary, PENDING_STATUS_KEYS } = await require('../../../frontend/src/utils/applicationPortfolio.mjs');
     const groups = buildApplicationPortfolio(portfolioClients, users);
     let pending = 0;
     const pendingKeys = [...PENDING_STATUS_KEYS];
     const breakdown = Object.fromEntries(pendingKeys.map(key => [key, 0]));
     for (const group of groups) {
-      for (const record of applicationSummaryRecords(group)) {
+      for (const record of applicationServiceSummaryRecords(group)) {
         for (const key of pendingKeys) {
           if (matchesStatusSummary(record, key)) {
             breakdown[key] += 1;
