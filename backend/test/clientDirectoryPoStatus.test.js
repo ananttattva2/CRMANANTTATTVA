@@ -141,5 +141,6 @@ test('received PO does not imply closure; old positional and single-service clos
   assert.equal(clientPoServices(client)[0].received, true);
   client.selectedLead.assignments[0] = { closedByText: 'User' };
   assert.deepEqual(clientPoServices(client).map(s => s.closed), [true, false, false]);
-  assert.equal(companyPoClosed({ selectedLead: { closedByText: 'User', serviceSelections: [{}] } }), true);
+  assert.equal(companyPoClosed({ selectedLead: { closedByText: 'User', serviceSelections: [{}] } }), false);
+  assert.equal(companyPoClosed({ selectedLead: { closedByText: 'User', poStatus: 'received', serviceSelections: [{}] } }), true);
 });

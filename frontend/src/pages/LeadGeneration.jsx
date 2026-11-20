@@ -1,3 +1,5 @@
+import closureRules from '../../../shared/leadPoClosure.cjs';
+import LeadClosureStatus from '../components/LeadClosureStatus';
 import { exportWithReason } from '../utils/dataExport.mjs'
 import LeadRevenuePanel, { saveLeadRevenue } from '../components/leads/LeadRevenuePanel';
 import useCrmRefresh from '../hooks/useCrmRefresh'
@@ -4027,13 +4029,11 @@ function LeadDirectoryView({ leads, pagination, summary, staff, currentUser, loa
   function leadClosureDetails(item = {}) {
     const assignments = Array.isArray(item.assignments) ? item.assignments : [];
     const poRows = assignments.flatMap((row) => Array.isArray(row?.poYearRows) ? row.poYearRows : []);
-    const hasPo = poRows.some((row) => String(row?.poNumber || '').trim() || String(row?.poFileUrl || row?.poProofUrl || '').trim());
     const closedAssignment = assignments.find((row) => row?.closedBy || row?.closedByText || row?.closedAt);
     const closedBy = item.closedBy?.name || item.closedByText || closedAssignment?.closedBy?.name || closedAssignment?.closedByText || '';
     const closedOnBehalfOf = item.closedOnBehalfOfName || assignments.find((row) => row?.closedOnBehalfOfName)?.closedOnBehalfOfName || '';
-    const hasApprovedClosure = Boolean(item.closedBy || item.closedByText || closedAssignment?.closedBy || closedAssignment?.closedByText || closedAssignment?.closedAt);
     return {
-      status: hasPo && hasApprovedClosure ? 'Closed' : 'Still Not Closed',
+      status: (() => { const summary = closureRules.serviceClosureSummary(item); return `${summary.closedCount} Closed · ${summary.openCount} Still Not Closed`; })(),
       pipelineStatus: item.status || '',
       closedBy,
       closedOnBehalfOf,
@@ -4047,7 +4047,7 @@ function LeadDirectoryView({ leads, pagination, summary, staff, currentUser, loa
       search: query.trim(), status: statusFilter, staff: staffFilter, metric: metricFilter, workspace: workspaceTab
     }).catch(() => filteredLeads);
     const rows = exportLeads.flatMap(leadServiceExportRecords).map((item) => {
-      const closure = leadClosureDetails(item);
+      const closure = leadClosureDetails({ ...item, serviceSelections: [item] });
       return ({
       'Lead ID': displayLeadId(item),
       'Excel Lead ID': item.sourceLeadId || '',
@@ -4194,7 +4194,7 @@ function LeadDirectoryView({ leads, pagination, summary, staff, currentUser, loa
                     <td className="px-4 py-4 font-medium uppercase text-indigo-700"><span className="cell-clamp">{item.createdOnBehalfOfName || item.generatedForUser?.name || item.generatedForName || item.createdBy?.name || item.createdByName || '-'}</span></td>
                     <td className="px-4 py-4 font-medium uppercase text-slate-600"><span className="cell-clamp">{item.closedBy?.name || item.closedByText || item.assignments?.find((row) => row.closedBy || row.closedByText)?.closedByText || '-'}</span></td>
                     <td className="px-4 py-4 font-medium uppercase text-violet-700"><span className="cell-clamp">{item.closedOnBehalfOfName || item.assignments?.find((row) => row.closedOnBehalfOfName)?.closedOnBehalfOfName || '-'}</span></td>
-                    <td className="px-4 py-4"><span className={`lead-status-badge ${leadClosureDetails(item).status === 'Closed' ? 'text-emerald-700' : 'text-amber-700'}`}>{leadClosureDetails(item).status}</span></td>
+                    <td className="px-4 py-4"><LeadClosureStatus lead={item}/></td>
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-2">
                         <button type="button" onClick={() => onView(item)} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50" title="View"><Eye className="h-4 w-4" /></button>

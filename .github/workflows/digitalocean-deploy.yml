@@ -59,6 +59,9 @@ jobs:
       - name: Test Proforma Invoice bank details
         run: node --test frontend/test/proformaPdf.test.cjs
 
+      - name: Test closed PO directory and service counts
+        run: node --test backend/test/leadPoClosureSummary.test.js backend/test/leadClosureStatusBrowser.test.js
+
       - name: Build frontend
         env:
           NODE_OPTIONS: --max-old-space-size=4096

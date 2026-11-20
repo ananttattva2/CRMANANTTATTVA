@@ -1,3 +1,4 @@
+import closureRules from '../../../../shared/leadPoClosure.cjs'
 const text = value => String(value?._id || value || '').trim()
 const rows = value => Array.isArray(value) ? value : []
 const serviceId = value => text(value?.assignedServiceId || value?.serviceAssignmentId || value?.assignmentId)
@@ -117,7 +118,7 @@ export function clientPoServices(client = {}) {
 }
 export function companyPoClosed(client = {}) {
   const lead = client.selectedLead && typeof client.selectedLead === 'object' ? client.selectedLead : client.data?.selectedLeadSnapshot || {}
-  return clientPoServices(client).some(service => service.closed) || rows(lead.assignments).some(closed)
+  return closureRules.serviceClosureSummary(lead).closedCount > 0
 }
 
 export function clientPoExportEntries(clients = []) {

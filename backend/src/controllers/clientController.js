@@ -1169,11 +1169,14 @@ exports.listClients = async (req, res) => {
   const testLeadReferences = req.query.dashboard === 'true'
     ? await getAdminCreatedLeadReferences()
     : null;
-  const baseFilter = combineAccessFilters(
+  let baseFilter = combineAccessFilters(
     clientMasterSourceRecordFilter(),
     accessFilter,
     testLeadReferences ? dashboardClientExclusionFilter(testLeadReferences) : {}
   );
+  if (req.query.directory === 'true') {
+    baseFilter = combineAccessFilters(baseFilter, await require('../services/clientClosedPoDirectory').closedPoClientFilter());
+  }
   const paginated = req.query.page !== undefined || req.query.limit !== undefined || req.query.paginated === 'true';
 
   // Other CRM screens still consume the legacy full response. Client Master
@@ -1360,7 +1363,7 @@ exports.listClients = async (req, res) => {
   const clientRead = () => Client.find(filter).select(projection)
       .populate({
         path: 'selectedLead',
-        select: 'leadCode company status eprCategory applicantType subApplicantType piboParent firstAnnualReturnYearApplicable serviceSelections assignedTo assignedToText assignedStaff assignedStaffText assignedStaffEmail assignments createdBy createdByName createdByEmail createdByCrmUserId importedCreatedBy generatedForUser generatedForName generatedForEmail createdOnBehalfOfUser createdOnBehalfOfName createdOnBehalfOfEmail',
+        select: 'leadCode company status closedAt closedBy closedByText permanentClosedAt poStatus poApprovalStatus poYearRows.poNumber originalPoDetails.poNumber eprCategory applicantType subApplicantType piboParent firstAnnualReturnYearApplicable serviceSelections assignedTo assignedToText assignedStaff assignedStaffText assignedStaffEmail assignments createdBy createdByName createdByEmail createdByCrmUserId importedCreatedBy generatedForUser generatedForName generatedForEmail createdOnBehalfOfUser createdOnBehalfOfName createdOnBehalfOfEmail',
         populate: ['createdBy', 'generatedForUser', 'createdOnBehalfOfUser'].map(path => ({ path, select: 'name email' }))
       })
       .populate('createdBy', 'name email role avatarUrl')

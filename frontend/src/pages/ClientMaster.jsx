@@ -1816,7 +1816,7 @@ export default function ClientMaster() {
     setError('');
     try {
       const meRequest = api.get(API_ENDPOINTS.auth.me);
-      const clientsRequest = api.get(API_ENDPOINTS.clients.list, { params: { paginated: true, page: 1, limit: 10 } });
+      const clientsRequest = api.get(API_ENDPOINTS.clients.list, { params: { paginated: true, directory: true, page: 1, limit: 10 } });
       const [meResult, crmClientsResult] = await Promise.allSettled([meRequest, clientsRequest]);
       if (meResult.status === 'rejected') throw meResult.reason;
       const meResponse = meResult.value;
@@ -1886,7 +1886,7 @@ export default function ClientMaster() {
     setError('');
     try {
       const response = await api.get(API_ENDPOINTS.clients.list, {
-        params: { paginated: true, ...params }
+        params: { paginated: true, directory: true, ...params }
       });
       if (requestId !== directoryRequestRef.current) return;
       const rows = enrichClientsFromLeads(getClientMasterRows(response.data?.clients || [], []), []);
@@ -1904,10 +1904,10 @@ export default function ClientMaster() {
   }, []);
 
   const loadAllClientsForExport = useCallback(async (params = {}) => {
-    const first = await api.get(API_ENDPOINTS.clients.list, { params: { paginated: true, export: true, ...params, page: 1, limit: 100 } });
+    const first = await api.get(API_ENDPOINTS.clients.list, { params: { paginated: true, directory: true, export: true, ...params, page: 1, limit: 100 } });
     const pages = Number(first.data?.pagination?.totalPages || 1);
     const remaining = pages > 1
-      ? await Promise.all(Array.from({ length: pages - 1 }, (_, index) => api.get(API_ENDPOINTS.clients.list, { params: { paginated: true, export: true, ...params, page: index + 2, limit: 100 } })))
+      ? await Promise.all(Array.from({ length: pages - 1 }, (_, index) => api.get(API_ENDPOINTS.clients.list, { params: { paginated: true, directory: true, export: true, ...params, page: index + 2, limit: 100 } })))
       : [];
     return [first, ...remaining].flatMap((response) => response.data?.clients || []);
   }, []);
