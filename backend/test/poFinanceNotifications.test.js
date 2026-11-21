@@ -95,7 +95,7 @@ test('PO referral and payment notifications reach the owner and secondary-role a
       assignments: [{ assignedStaff: 'anand-id', assignedStaffEmail: 'anand@example.test', poYearRows: [{ poNumber: 'PO-1', poAmount: 1000 }] }]
     },
     index: 0, status: 'PAYMENT', remarks: '', paymentReceived: true,
-    paymentStatus: { status: 'ADVANCE_RECEIVED', amount: 250, confirmed: false }, poAmount: 1000
+    paymentStatus: { status: 'ADVANCE_RECEIVED', amount: 250, confirmed: false, name: 'Finance User', at: '2026-11-21T10:00:00Z' }, poAmount: 1000
   });
   assert.equal(payment.sent, 3);
   assert.deepEqual(new Set(sent.map((mail) => mail.to)), new Set([
@@ -104,6 +104,7 @@ test('PO referral and payment notifications reach the owner and secondary-role a
   assert.ok(adminRoleQueries.length > 0, 'payment notifications query role aliases such as "Super Admin"');
   assert.ok(sent.every((mail) => /payment received/i.test(mail.subject)));
   assert.ok(sent.every((mail) => mail.html.includes('Amount received')));
+  assert.ok(sent.every((mail) => mail.html.includes('Recorded by') && mail.html.includes('Finance User') && mail.html.includes('Updated at')));
   assert.ok(sent.every((mail) => mail.html.includes('Payment status')));
   assert.ok(sent.every((mail) => mail.html.includes('Review payment in Finance Approval')));
   assert.ok(sent.every((mail) => mail.html.includes('/finance-approval')));

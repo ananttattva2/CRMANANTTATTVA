@@ -122,6 +122,37 @@ exports.list = async (req, res) => {
   return res.json({ ok: true, proformaInvoices: rows });
 };
 
+async function visibleEmailInvoice(req) {
+  const scope = await getVisibleUserScope(req.user);
+  const invoice = await ProformaInvoice.findOne({ _id: req.params.id, ...(scope === null ? {} : { createdBy: { $in: scope.ids } }) }).populate('createdBy', 'name email').lean();
+  if (!invoice) throw Object.assign(new Error('Invoice not found or not accessible.'), { status: 404 });
+  if (invoice.status === 'cancelled') throw Object.assign(new Error('Cancelled invoices cannot be emailed.'), { status: 400 });
+  return invoice;
+}
+exports.emailOptions = async (req, res, next) => {
+  try {
+    const invoice = await visibleEmailInvoice(req);
+    const mandatoryCc = await require('../services/proformaEmail').requiredCopies(invoice, req.user);
+    return res.json({ ok: true, mandatoryCc, to: invoice.leadDetails?.email || '', subject: `Proforma Invoice ${invoice.proformaNumber} | ${invoice.companyName}`, body: `Dear ${invoice.leadDetails?.contactPerson || 'Sir/Madam'},\n\nPlease find attached Proforma Invoice ${invoice.proformaNumber} for ${invoice.companyName}.\n\nKindly review the invoice and arrange payment as per the agreed terms. Please contact us if you need any clarification.\n\nThank you,\n${req.user.name || 'Team Ananttattva'}` });
+  } catch (error) { next(error); }
+};
+exports.sendEmail = async (req, res, next) => {
+  try {
+    const delivery = require('../services/proformaEmail');
+    const { to, cc: enteredCc, subject, message } = delivery.validateMessage(req.body);
+    const invoice = await visibleEmailInvoice(req);
+    const cc = [...new Set([...enteredCc, ...await delivery.requiredCopies(invoice, req.user)])].filter(email => !to.includes(email));
+    const pdf = await delivery.invoicePdf(invoice);
+    const content = await require('../services/quotationDelivery').clientEmailContent(subject, message);
+    const result = await require('../utils/mailer').sendMail(to, subject, content.html, {
+      branded: false, cc, attachments: [{ filename: `${invoice.proformaNumber.replace(/[^a-z0-9-]/gi, '-')}.pdf`, content: pdf, contentType: 'application/pdf' }, content.logo].filter(Boolean)
+    });
+    if (result?.summary?.rejected?.length) throw Object.assign(new Error('The email provider rejected one or more recipients. Please verify their addresses before retrying.'), { status: 502 });
+    await ProformaInvoice.updateOne({ _id: invoice._id }, { $push: { emailHistory: { to, cc, subject, sentBy: req.user._id, sentAt: new Date() } } });
+    return res.json({ ok: true, message: 'Invoice email accepted for delivery with PDF attachment.', to, cc });
+  } catch (error) { next(error); }
+};
+
 exports.create = async (req, res) => {
   const payload = cleanPayload(req.body);
   if (!payload.companyName) return res.status(400).json({ error: 'Company Name is required.' });

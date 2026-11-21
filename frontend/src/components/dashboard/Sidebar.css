@@ -1,3 +1,12 @@
 .sidebar-section-reveal{animation:sidebar-section-reveal 180ms ease-out both}
 @keyframes sidebar-section-reveal{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
 @media(prefers-reduced-motion:reduce){.sidebar-section-reveal{animation:none}}
+.sidebar-section-trigger{position:relative;display:flex;align-items:center;gap:10px;min-height:48px;width:100%;padding:8px 10px;border:1px solid transparent;border-radius:12px;color:#e8fff5;font-size:12px;font-weight:700;line-height:1.45;transition:background-color .18s,border-color .18s}
+.sidebar-section-trigger:hover,.sidebar-section-trigger.is-expanded{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.1)}
+.sidebar-section-trigger.is-active{background:#fff;color:#116c51;box-shadow:0 3px 12px #064e3b1a}
+.sidebar-section-trigger:focus-visible{outline:2px solid #a7f3d0;outline-offset:2px}
+.sidebar-section-icon{display:grid;place-items:center;width:30px;height:30px;flex-shrink:0;border-radius:9px;background:#ffffff12}
+.is-active .sidebar-section-icon{background:#ecfdf5}
+.sidebar-section-trigger.is-collapsed{justify-content:center;padding:8px 4px}
+.sidebar-pending-count{display:grid;place-items:center;min-width:22px;height:22px;border-radius:8px;background:#f45b0b;color:#fff;font-size:10px;font-weight:800}
+.is-collapsed .sidebar-pending-count{position:absolute;top:0;right:-2px;min-width:17px;height:17px;font-size:9px}

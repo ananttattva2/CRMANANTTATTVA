@@ -161,7 +161,7 @@ const homeItems = originalNavSections[0].items[0].children;
 const customerItems = originalNavSections[1].items[0].children;
 const pendingLeadsMenu = homeItems.find(item => item.label === 'Pending Leads');
 const pick = (items, labels) => labels.map(label => items.find(item => item.label === label)).filter(Boolean);
-export const navSections = [
+const workflowNavSections = [
   { label: 'Dashboards & Reports', items: pick(homeItems, ['Dashboard']) },
   { label: 'Pending Applications', items: pick(homeItems, ['Pending Applications']) },
   { label: 'Legal', items: [{ label: 'Legal', icon: FileText, path: '/legal' }] },
@@ -174,3 +174,10 @@ export const navSections = [
   { label: 'Administration', items: pick(homeItems, ['User Management']) },
   { label: 'Help & Support', items: pick(originalNavSections[3].items, ['Tickets', 'Help Yourself', 'Dummey']) }
 ];
+
+// Follow the customer journey, then reporting and administrative tools.
+export const navSections = [
+  'Dashboards & Reports', 'Lead Management', 'Quotations & Billing', 'Approvals',
+  'Client Management', 'Pending Applications', 'Compliance', 'Legal',
+  'Communication & Planning', 'Administration', 'Help & Support'
+].map(label => workflowNavSections.find(section => section.label === label));

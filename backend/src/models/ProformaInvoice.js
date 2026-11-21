@@ -63,6 +63,7 @@ const ProformaInvoiceSchema = new mongoose.Schema({
   gstAmount: { type: Number, default: 0 },
   grandTotal: { type: Number, default: 0 },
   status: { type: String, enum: ['draft', 'issued', 'cancelled'], default: 'issued', index: true },
+  emailHistory: [{ to: [String], cc: [String], subject: String, sentBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, sentAt: Date }],
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
 

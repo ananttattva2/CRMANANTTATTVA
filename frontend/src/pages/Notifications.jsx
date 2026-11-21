@@ -4,6 +4,7 @@ import gsap from 'gsap';
 import DashboardShell from '../components/dashboard/DashboardShell';
 import ProfileModal from '../components/dashboard/ProfileModal';
 import ToastMessage from '../components/ToastMessage';
+import PaymentStatusCell from '../components/PaymentStatusCell';
 import api, { storeSessionUser } from '../services/api';
 import { API_ENDPOINTS } from '../services/apiEndpoints';
 import { uploadMedia } from '../services/mediaUpload';
@@ -616,6 +617,7 @@ export default function Notifications({ mode = 'notifications' }) {
               </div>
               <em className={`notification-tag notification-tag-${tagClass(selected.tag)}`}>{selected.tag}</em>
               <p>{selected.description}</p>
+              {selected.metadata?.type === 'payment_status' && <section className="mt-4 space-y-3 rounded-2xl border border-emerald-100 bg-slate-50 p-4"><div className="flex items-center justify-between gap-4"><span className="text-sm font-bold text-slate-600">PO amount</span><strong>{Number(selected.metadata.poAmount || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</strong></div><PaymentStatusCell payment={selected.metadata.paymentStatus} canUpdate={false} /><a href="/finance-approval" className="inline-flex rounded-xl bg-emerald-700 px-4 py-2 text-sm font-bold text-white">Open Finance Approval</a></section>}
               {selected.attachmentName && (
                 <>
                   <div className="notifications-detail-file">

@@ -53,6 +53,10 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
 
   useEffect(() => { setFlyout(null) }, [currentPath, collapsed])
   useEffect(() => {
+    const currentSection = navSections.find(section => section.items.some(containsRoute))
+    if (currentSection && !isDirectItemSection(currentSection)) setOpenSection(currentSection.label)
+  }, [currentPath])
+  useEffect(() => {
     if (!flyout) return undefined
     flyoutRef.current?.querySelector('div.space-y-1 button')?.focus()
     function dismiss(event) {
@@ -143,22 +147,23 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
       <button type="button" onClick={onToggleCollapsed} className={`hidden h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-[#116c51] transition hover:bg-[#0f6048] lg:inline-flex ${collapsed ? 'rotate-180' : ''}`} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}><ChevronsLeft className="h-4 w-4" /></button>
       <button type="button" onClick={onClose} className="ml-auto rounded-xl p-2 hover:bg-white/10 lg:hidden" aria-label="Close sidebar"><X className="h-5 w-5" /></button>
     </div>
-    <nav aria-label="Main navigation" className={`sidebar-scrollbar flex-1 overflow-y-auto pb-5 pt-5 ${collapsed ? 'space-y-2 px-2' : 'space-y-5 px-4'}`} onScroll={() => setFlyout(null)}>
+    <nav aria-label="Main navigation" className={`sidebar-scrollbar flex-1 overflow-y-auto pb-5 pt-4 ${collapsed ? 'space-y-2 px-2' : 'space-y-1.5 px-3'}`} onScroll={() => setFlyout(null)}>
       {visibleSections.map(section => {
         const Icon = section.icon
         const expanded = collapsed ? flyout?.label === section.label : openSection === section.label
         const active = section.items.some(containsRoute)
         if (isDirectItemSection(section)) {
-          return <div key={section.label}>{renderItems(sectionItems(section), false, section.label)}</div>
+          const item = section.items[0]
+          return <button key={section.label} type="button" onClick={() => visit(item)} title={collapsed ? item.label : undefined} aria-label={item.label} aria-current={active ? 'page' : undefined} className={`sidebar-section-trigger ${active ? 'is-active' : ''} ${collapsed ? 'is-collapsed' : ''}`}><span className="sidebar-section-icon"><Icon className="h-[18px] w-[18px]" /></span>{!collapsed && <span className="min-w-0 flex-1 text-left">{item.label}</span>}{item.pendingBadge && pendingCount > 0 && <span className="sidebar-pending-count" aria-label={`${pendingCount} pending applications`}>{pendingCount > 99 ? '99+' : pendingCount}</span>}</button>
         }
         return <div key={section.label}>
           <button type="button" onClick={event => toggleSection(section, event)} aria-label={section.label} aria-expanded={Boolean(expanded)} aria-controls={sectionId(section.label)} title={collapsed ? section.label : undefined}
             className={collapsed
               ? `flex min-h-12 w-full items-center justify-center rounded-2xl transition-colors ${expanded ? 'bg-white/20' : active ? 'bg-white/10' : 'hover:bg-white/10'} focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-200`
-              : 'flex w-full items-center justify-between gap-2 border-b border-white/15 px-1 pb-2 text-left text-[11px] font-black uppercase tracking-[0.16em] text-emerald-100/80 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-200'}>
-            {collapsed ? <Icon className="h-5 w-5" /> : <><span>{section.label}</span><ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-200 motion-reduce:transition-none ${expanded ? '' : '-rotate-90'}`} /></>}
+              : `sidebar-section-trigger ${active ? 'is-active' : ''} ${expanded ? 'is-expanded' : ''}`}>
+            {collapsed ? <Icon className="h-5 w-5" /> : <><span className="sidebar-section-icon"><Icon className="h-[18px] w-[18px]" /></span><span className="min-w-0 flex-1 text-left">{section.label}</span><ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-200 motion-reduce:transition-none ${expanded ? '' : '-rotate-90'}`} /></>}
           </button>
-          {!collapsed && expanded && <div id={sectionId(section.label)} className="sidebar-section-reveal mt-3 space-y-1">{renderItems(sectionItems(section), false, section.label)}</div>}
+          {!collapsed && expanded && <div id={sectionId(section.label)} className="sidebar-section-reveal mb-2 ml-4 mt-1 space-y-1 border-l border-white/20 pl-2">{renderItems(sectionItems(section), false, section.label)}</div>}
         </div>
       })}
     </nav>

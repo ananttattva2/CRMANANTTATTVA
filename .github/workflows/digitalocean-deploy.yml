@@ -62,6 +62,9 @@ jobs:
       - name: Test requested Proforma correction
         run: node --test backend/test/proformaRequestedCorrection.test.js
 
+      - name: Test invoice email and payment notifications
+        run: node --test backend/test/proformaEmail.test.js backend/test/paymentStatusNotification.test.js backend/test/invoiceEmailUiBrowser.test.js backend/test/sidebarCollapsedBrowser.test.js backend/test/sidebarFlyoutVisibility.test.js
+
       - name: Test closed PO directory and service counts
         run: node --test backend/test/leadPoClosureSummary.test.js backend/test/leadClosureStatusBrowser.test.js
 

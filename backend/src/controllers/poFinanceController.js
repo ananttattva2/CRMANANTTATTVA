@@ -317,7 +317,17 @@ exports.paymentStatus = async (req, res) => {
     const emailNotification = notification
       ? await deliverDecisionNotification({ ...notification, paymentReceived: true })
       : null;
-    return res.json(emailNotification ? { ...result, emailNotification } : result);
+    let crmNotification = null;
+    if (notification) {
+      try {
+        await require('../services/paymentStatusNotification').notifyPaymentStatus(notification, req.user);
+        crmNotification = { ok: true };
+      } catch (error) {
+        console.error('Payment CRM notification failed', { name: error.name, code: error.code });
+        crmNotification = { ok: false };
+      }
+    }
+    return res.json({ ...result, ...(emailNotification ? { emailNotification } : {}), crmNotification });
   } catch (error) { return report(res, error); }
 };
 exports.list = async (req, res) => {

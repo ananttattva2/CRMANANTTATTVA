@@ -2483,9 +2483,11 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
     <tr><td style="padding:12px 14px;border-bottom:1px solid #ccfbf1;color:#475569;font-size:13px">PO amount</td><td align="right" style="padding:12px 14px;border-bottom:1px solid #ccfbf1;color:#0f172a;font-size:14px;font-weight:700">${totalPoAmount}</td></tr>
     <tr><td style="padding:12px 14px;color:#475569;font-size:13px">Amount received</td><td align="right" style="padding:12px 14px;color:#0f766e;font-size:16px;font-weight:800">${receivedAmount}</td></tr>
     ${paymentStatus?.confirmed ? '<tr><td colspan="2" style="padding:0 14px 12px;color:#0f766e;font-size:12px">Amount confirmed against the PO total.</td></tr>' : ''}
+    <tr><td style="padding:12px 14px;border-top:1px solid #ccfbf1;color:#475569;font-size:13px">Recorded by</td><td align="right" style="padding:12px 14px;border-top:1px solid #ccfbf1;font-size:13px;font-weight:700">${escapeHtml(paymentStatus?.name || 'Finance team')}</td></tr>
+    <tr><td style="padding:12px 14px;color:#475569;font-size:13px">Updated at</td><td align="right" style="padding:12px 14px;font-size:13px">${paymentStatus?.at ? escapeHtml(new Date(paymentStatus.at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })) + ' IST' : 'Not recorded'}</td></tr>
   </table>` : '';
   const emailMessage = paymentReceived
-    ? `Finance recorded an ${paymentStatus?.status === 'COMPLETE_RECEIVED' ? 'complete' : 'advance'} payment for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong>. Review the summary below and open the CRM record for full details.`
+    ? `Finance recorded ${paymentStatus?.status === 'COMPLETE_RECEIVED' ? 'a complete' : 'an advance'} payment for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong>. Review the summary below and open the CRM record for full details.`
     : specialApproval
     ? `Finance requested Special Approval for the Purchase Order for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong>. Review the finance remarks and submit the required payment date in the CRM.`
     : leadClosure
