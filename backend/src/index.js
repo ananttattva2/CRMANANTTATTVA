@@ -1,6 +1,7 @@
 const { startLeadOwnershipAndEmailScheduler } = require('./services/leadOwnershipAndEmailWorkflow');
 const { runConsentExpiryReminders, startConsentExpiryReminderScheduler } = require('./services/consentExpiryReminders');
 require('./config/loadEnv')();
+const { startLegalSlaReminderScheduler } = require('./services/legalSlaReminders');
 const { safeMongoError } = require('./config/mongoConfig');
 const { singleFlight } = require('./config/databaseReadiness');
 const express = require('express');
@@ -136,6 +137,7 @@ const connectAndStartServices = singleFlight(function () {
       startTemporaryAssignmentReminderScheduler();
       startPurchaseOrderWorkflowReminderScheduler();
       startApprovedQuotationPoReminderScheduler();
+      startLegalSlaReminderScheduler();
       schedulerStarted = true;
     }
   }).catch(error => console.error('CRM startup services failed', safeMongoError(error)));

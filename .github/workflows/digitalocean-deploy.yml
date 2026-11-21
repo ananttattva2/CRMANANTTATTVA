@@ -65,6 +65,9 @@ jobs:
       - name: Test weekly approved quotation PO reminders
         run: node --test backend/test/approvedQuotationPoReminders.test.js
 
+      - name: Test Legal SLA register and weekly reminders
+        run: node --test backend/test/legalSla.test.js backend/test/legalSlaBrowser.test.js
+
       - name: Build frontend
         env:
           NODE_OPTIONS: --max-old-space-size=4096

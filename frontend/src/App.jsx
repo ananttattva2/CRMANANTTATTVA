@@ -39,6 +39,7 @@ const ActivityLogs = lazy(() => import('./pages/ActivityLogs'))
 const SalesManagementDashboard = lazy(() => import('./pages/SalesManagementDashboard'))
 const ClientDailyMIS = lazy(() => import('./pages/ClientDailyMIS'))
 const Dummey = lazy(() => import('./pages/Dummey'))
+const Legal = lazy(() => import('./pages/Legal'))
 const OverallDashboard = lazy(() => import('./pages/OverallDashboard'))
 const AnnualReturnOperationsDashboard = lazy(() => import('./pages/AnnualReturnOperationsDashboard'))
 const PurchaseOrderDashboard = lazy(() => import('./pages/PurchaseOrderDashboard'))
@@ -147,6 +148,7 @@ function App(){
         <Route path="/mis/client-daily" element={<ProtectedRoute allowedRoles={['admin', 'superadmin', 'manager', 'operation head', 'operations head']}><ClientDailyMIS /></ProtectedRoute>} />
         <Route path="/mis/sales-management" element={<Navigate to="/mis" replace />} />
         <Route path="/dashboard/activity-logs" element={<ProtectedRoute allowedRoles={['admin', 'superadmin']}><ActivityLogs/></ProtectedRoute>} />
+        <Route path="/legal" element={<ProtectedRoute><Legal/></ProtectedRoute>} />
         <Route path="/overall-dashboard" element={<ProtectedRoute><OverallDashboard/></ProtectedRoute>} />
         <Route path="/summary-dashboard" element={<ProtectedRoute allowedRoles={['admin', 'superadmin']}><LeadPipeline/></ProtectedRoute>} />
         <Route path="/summary-dashboard/operations" element={<ProtectedRoute allowedRoles={['admin', 'superadmin']}><AnnualReturnOperationsDashboard/></ProtectedRoute>} />

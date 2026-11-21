@@ -164,6 +164,7 @@ const pick = (items, labels) => labels.map(label => items.find(item => item.labe
 export const navSections = [
   { label: 'Dashboards & Reports', items: pick(homeItems, ['Dashboard']) },
   { label: 'Pending Applications', items: pick(homeItems, ['Pending Applications']) },
+  { label: 'Legal', items: [{ label: 'Legal', icon: FileText, path: '/legal' }] },
   { label: 'Lead Management', items: [...pick(customerItems, ['Hot Leads', 'Cold Leads', 'Lead Allocate']), { label: 'Revenue Pipeline', icon: TrendingUp, path: '/sales/lead-pipeline' }, { ...pendingLeadsMenu, children: pendingLeadsMenu.children.filter(item => item.path !== '/sales/lead-pipeline') }] },
   { label: 'Client Management', items: pick(customerItems, ['Client Master', 'Client Master Allocate', 'Client Data Uploads', 'CTO & CTE', 'Health Report Check']) },
   { label: 'Quotations & Billing', items: [{ label: 'Quotation List', icon: FileText, path: '/sales/quotations' }, ...pick(customerItems, ['Add Quotation', 'Proforma Invoice'])] },
