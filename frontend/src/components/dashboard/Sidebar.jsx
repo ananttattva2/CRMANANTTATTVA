@@ -6,7 +6,6 @@ import { adminRoles, hasAnyRole, navSections } from '../../constants/dashboard'
 import api from '../../services/api'
 import './Sidebar.css'
 
-const sectionIcons = [BarChart3, ClipboardList, UserRound, FileText, ShieldCheck, ClipboardList, MessagesSquare, Users, LifeBuoy]
 const sectionId = label => `nav-section-${label.replace(/[^a-z0-9]/gi, '-')}`
 const PENDING_STATUS_LABELS = {
   annualActionRequired: 'AR Action Required',
@@ -117,7 +116,10 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
       label: section.label, left: bounds.right + 12, top: Math.max(12, Math.min(bounds.top, window.innerHeight - 440))
     })
   }
-  const visibleSections = navSections.map((section, index) => ({ ...section, icon: sectionIcons[index] })).filter(section => section.items.some(canShowItem))
+  const visibleSections = navSections.map(section => ({
+    ...section,
+    icon: section.icon || section.items.find(item => item.icon)?.icon || BriefcaseBusiness
+  })).filter(section => section.items.some(canShowItem))
   const selectedSection = visibleSections.find(section => section.label === flyout?.label)
 
   // A section with a single childless item renders directly as a top-level
