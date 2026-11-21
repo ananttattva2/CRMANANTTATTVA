@@ -9,7 +9,7 @@ async function assertLeadPoEditable(leadId, before, next) {
     const original = before.assignments?.[index];
     const candidate = next.assignments ? next.assignments[index] : original;
     if (!candidate || String(candidate.assignedServiceId || '') !== String(original?.assignedServiceId || '') || sourceSignature(original, before.serviceSelections?.[index]) !== sourceSignature(candidate, next.serviceSelections ? next.serviceSelections[index] : before.serviceSelections?.[index])) {
-      fail(409, review.poReview.stage === 'MANAGEMENT_PENDING' ? 'This PO is frozen while waiting for Super Admin Management Go Ahead.' : 'This PO is under Finance review. Use the Finance approval workflow to request a revision.');
+      fail(409, ['LEAD_OWNER_PENDING', 'LEAD_CLOSURE_PENDING'].includes(review.poReview.stage) ? 'This PO is frozen while waiting for Lead Closure Approval.' : 'This PO is under Finance review. Use the Finance approval workflow to request a revision.');
     }
   }
 }

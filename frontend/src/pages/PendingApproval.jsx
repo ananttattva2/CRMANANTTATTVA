@@ -737,6 +737,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
   const [poApprovals, setPoApprovals] = useState([]);
   const [poLoading, setPoLoading] = useState(true);
   const [poDecision, setPoDecision] = useState(null);
+  const [leadClosureDecision, setLeadClosureDecision] = useState(null);
   const [poDetailView, setPoDetailView] = useState(null);
   const [poQuotationPreview, setPoQuotationPreview] = useState(null);
   const [quotationDecision, setQuotationDecision] = useState(null);
@@ -817,6 +818,10 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
     const direction = poDateSort === 'asc' ? 1 : -1;
     return poApprovals.filter(filterRow).sort((a, b) => direction * (poSubmittedTimestamp(a) - poSubmittedTimestamp(b)));
   }, [poApprovals, searchTerm, statusFilter, piboFilter, userFilter, typeFilter, poDateSort]);
+  const filteredLeadClosureApprovals = useMemo(() => {
+    const direction = poDateSort === 'asc' ? 1 : -1;
+    return poApprovals.filter((row) => row.poReview?.stage === 'LEAD_CLOSURE_PENDING').sort((a, b) => direction * (poSubmittedTimestamp(a) - poSubmittedTimestamp(b)));
+  }, [poApprovals, poDateSort]);
   const approvedTodayCount = useMemo(() => (
     allApprovalRows.filter((row) => getApprovalStatus(row) === 'APPROVED').length
   ), [allApprovalRows]);
@@ -871,7 +876,10 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
   const approvalTabs = useMemo(() => {
     if (companyOnly) return [{ id: 'clients', icon: Clock3, label: 'Pending Clients', count: filteredClients.length }];
     if (!isComplianceApprovalView && !isServiceParticipantView) {
-      const adminTabs = [{ id: 'po', icon: FileCheck2, label: 'PO Approvals', count: filteredPoApprovals.length }];
+      const adminTabs = [
+        { id: 'po', icon: FileCheck2, label: 'PO Approvals', count: filteredPoApprovals.length },
+        { id: 'lead-closure', icon: FileCheck2, label: 'Lead Closure Approval', count: filteredLeadClosureApprovals.length }
+      ];
       if (canViewClients) adminTabs.push({ id: 'clients', icon: Users, label: 'Clients', count: filteredClients.length });
       adminTabs.push(
         { id: 'quotations', icon: FileText, label: 'Quotations', count: filteredQuotations.length },
@@ -903,7 +911,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
       list.push({ id: 'duplicates', icon: Users, label: 'Special Approvals', count: filteredDuplicateLeads.length });
     }
     return list;
-  }, [companyOnly, deactivationCount, canViewClients, canApproveTemporary, isComplianceApprovalView, isServiceParticipantView, filteredClients.length, filteredTemporary.length, filteredPoApprovals.length, filteredQuotations.length, filteredRoyalty.length, filteredServices.length, filteredDuplicateLeads.length]);
+  }, [companyOnly, deactivationCount, canViewClients, canApproveTemporary, isComplianceApprovalView, isServiceParticipantView, filteredClients.length, filteredTemporary.length, filteredPoApprovals.length, filteredLeadClosureApprovals.length, filteredQuotations.length, filteredRoyalty.length, filteredServices.length, filteredDuplicateLeads.length]);
 
   useEffect(() => {
     let mounted = true;
@@ -946,7 +954,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
       setStatusFilter('all');
       return;
     }
-    if (tab === 'epr-credit' || tab === 'clients' || tab === 'quotations' || tab === 'duplicates' || tab === 'royalty' || tab === 'services' || tab === 'po') setActiveTab(tab);
+    if (tab === 'epr-credit' || tab === 'clients' || tab === 'quotations' || tab === 'duplicates' || tab === 'royalty' || tab === 'services' || tab === 'po' || tab === 'lead-closure') setActiveTab(tab);
     else setActiveTab('quotations');
   }, [isComplianceApprovalView, isServiceParticipantView, canViewClients, location.search, normalizedRole]);
 
@@ -1307,6 +1315,39 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
       await loadPage({ force: true, silent: true });
     } catch (err) {
       setError(readError(err, 'Unable to save the Purchase Order decision.'));
+      await loadPage({ force: true, silent: true });
+    } finally {
+      setSavingId('');
+    }
+  }
+
+  async function openLeadClosureApproval(row) {
+    const id = String(row._id || row.id || '');
+    setLeadClosureDecision({ row, remarks: '', loadingDetails: true, loadError: '' });
+    try {
+      const response = await api.get(API_ENDPOINTS.leads.purchaseOrderApprovalDecision(id), { timeout: 15000 });
+      const fresh = response.data?.approval;
+      if (!fresh || String(fresh._id || fresh.id) !== id) throw new Error('Submitted PO details could not be loaded.');
+      setLeadClosureDecision((current) => current && String(current.row._id || current.row.id) === id ? { ...current, row: fresh, loadingDetails: false } : current);
+    } catch (failure) {
+      setLeadClosureDecision((current) => current && String(current.row._id || current.row.id) === id ? { ...current, loadingDetails: false, loadError: failure.response?.data?.error || failure.message || 'Unable to load PO details. Please retry.' } : current);
+    }
+  }
+
+  async function submitLeadClosureApproval(event) {
+    event.preventDefault();
+    const remarks = String(leadClosureDecision?.remarks || '').trim();
+    if (!leadClosureDecision?.row || !remarks || leadClosureDecision.loadingDetails || leadClosureDecision.loadError) return;
+    const id = leadClosureDecision.row._id || leadClosureDecision.row.id;
+    setSavingId(`lead-closure-${id}`);
+    setError('');
+    try {
+      const response = await api.post(`/leads/finance-approvals/${id}/lead-closure-approve`, { remarks, version: leadClosureDecision.row.poReview?.version });
+      setNotice(response.data?.message || 'Lead Closure Approval saved.');
+      setLeadClosureDecision(null);
+      await loadPage({ force: true, silent: true });
+    } catch (err) {
+      setError(readError(err, 'Unable to save Lead Closure Approval.'));
       await loadPage({ force: true, silent: true });
     } finally {
       setSavingId('');
@@ -1701,6 +1742,33 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                 onTabChange={handleTabChange}
               />
             </div>
+
+            {activeTab === 'lead-closure' && (
+              <div className="pending-po-table-wrapper">
+                <ApprovalTable title="Lead Closure Approval" columns={['Company / Lead', 'Service', 'PO Amount', 'Submitted By', 'Finance Remarks', 'Payment Data', 'Status', 'Actions']} emptyText="No POs are waiting for Lead Closure Approval." page={1} totalPages={1} showing={filteredLeadClosureApprovals.length} total={filteredLeadClosureApprovals.length} onPrev={() => {}} onNext={() => {}}>
+                  {filteredLeadClosureApprovals.map((row) => {
+                    const id = row._id || row.id;
+                    const pos = normalizePoRows(row);
+                    return (
+                      <tr key={id} className={approvalRowClassName(row, false)}>
+                        <td><strong>{row.clientName}</strong>{row.uniqueId && <><br /><small>{row.uniqueId}</small></>}</td>
+                        <td>{row.payload?.service?.servicesOffered || row.payload?.service?.eprCategory || '—'}</td>
+                        <td>{pos.length ? money(Number(pos.reduce((sum, po) => sum + Number(po.poAmount || 0), 0))) : '—'}</td>
+                        <td>{row.payload?.poSubmittedByName || row.createdByName || '—'}</td>
+                        <td>{row.poReview?.financeReferral?.remarks ? <span className="block max-w-xs whitespace-pre-wrap text-xs text-slate-600">{row.poReview.financeReferral.remarks}</span> : '—'}</td>
+                        <td>{row.poReview?.leadOwnerRequest?.paymentData ? <span className="block max-w-xs whitespace-pre-wrap text-xs text-slate-600">{row.poReview.leadOwnerRequest.paymentData}</span> : '—'}</td>
+                        <td><span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-xs font-bold text-amber-800">Awaiting Lead Closure Approval</span></td>
+                        <td>
+                          <div className="pending-row-actions">
+                            <button type="button" className="btn-approve" disabled={Boolean(savingId) || !canApprove} onClick={() => openLeadClosureApproval(row)}>Approve</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </ApprovalTable>
+              </div>
+            )}
 
             {activeTab === 'epr-credit' ? <CreditRateApprovals onCountChange={setCreditCount} /> : activeTab === 'deactivation' ? <DeactivationApprovals onCountChange={setDeactivationCount} /> : activeTab === 'po' ? (
               <>
@@ -2103,6 +2171,8 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
       })()}
       {removePoRow && <div className="pending-decision-backdrop"><div role="dialog" aria-modal="true" aria-labelledby="delete-po-client-title" className="pending-decision-modal is-rejected"><div className="pending-decision-icon"><Trash2 className="h-7 w-7" /></div><h2 id="delete-po-client-title">Remove PO approval?</h2><p className="pending-decision-help">Are you sure you want to remove the PO approval for <strong>{removePoRow.clientName || 'this client'}</strong>?</p><p className="pending-decision-help">Only this approval row will be removed from this list. The lead, client and saved PO details will remain unchanged.</p><div className="pending-decision-actions"><button type="button" autoFocus disabled={Boolean(savingId)} onClick={() => setRemovePoRow(null)}>Cancel</button><button type="button" disabled={Boolean(savingId)} onClick={removePoApproval}>{savingId ? 'Removing…' : 'Yes, remove approval'}</button></div></div></div>}
       {poDecision && <div className="pending-decision-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingId) setPoDecision(null); }}><form onSubmit={submitPoDecision} role="dialog" aria-modal="true" aria-label="Review submitted Purchase Order" className={`pending-decision-modal pending-po-review-modal ${poDecision.status === 'APPROVED' ? 'is-approved' : 'is-rejected'}`}><div className="pending-decision-icon">{poDecision.status === 'APPROVED' ? <CheckCircle2 className="h-7 w-7" /> : <XCircle className="h-7 w-7" />}</div><button type="button" disabled={Boolean(savingId)} onClick={() => setPoDecision(null)} className="pending-decision-close" aria-label="Close PO decision"><X className="h-5 w-5" /></button><p className="pending-decision-eyebrow">Purchase Order Approval</p><h2>{poDecision.status === 'APPROVED' ? 'Initial Admin Approval' : poDecision.status === 'REJECTED' ? 'Reject Purchase Order' : 'Request quotation and PO revision'}</h2><strong className="pending-decision-client">{poDecision.row.clientName}</strong>{poDecision.loadingDetails ? <p role="status" className="pending-po-review-loading">Loading latest submitted PO details…</p> : poDecision.loadError ? <div role="alert" className="pending-po-review-error">{poDecision.loadError}<button type="button" onClick={() => openPoDecision(poDecision.row, poDecision.status)}>Retry</button></div> : <SubmittedPoReview approval={poDecision.row} onViewQuotation={openPoQuotation} />}<p className="pending-decision-help">Admin approval sends this PO to Finance review. Final approval is completed by Finance after Super Admin gives Management Go Ahead. Add clear remarks and submit.</p><label className="pending-decision-field"><span>Decision remarks <b>*</b></span><textarea autoFocus required rows={6} value={poDecision.remarks} onChange={(event) => setPoDecision((current) => ({ ...current, remarks: event.target.value }))} placeholder="Clearly explain this PO decision..." /></label><div className="pending-decision-actions"><button type="button" disabled={Boolean(savingId)} onClick={() => setPoDecision(null)}>Cancel</button><button type="submit" disabled={Boolean(savingId) || poDecision.loadingDetails || Boolean(poDecision.loadError) || !poDecision.remarks.trim()}>{savingId ? <RefreshCw className="h-4 w-4 animate-spin" /> : poDecision.status === 'APPROVED' ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}Submit {poDecision.status === 'APPROVED' ? 'Approval' : poDecision.status === 'REJECTED' ? 'Rejection' : 'Revision'}</button></div></form></div>}
+
+      {leadClosureDecision && <div className="pending-decision-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingId) setLeadClosureDecision(null); }}><form onSubmit={submitLeadClosureApproval} role="dialog" aria-modal="true" aria-label="Lead Closure Approval" className="pending-decision-modal pending-po-review-modal is-approved"><div className="pending-decision-icon"><CheckCircle2 className="h-7 w-7" /></div><button type="button" disabled={Boolean(savingId)} onClick={() => setLeadClosureDecision(null)} className="pending-decision-close" aria-label="Close Lead Closure Approval"><X className="h-5 w-5" /></button><p className="pending-decision-eyebrow">Lead Closure Approval</p><h2>Approve Lead Closure</h2><strong className="pending-decision-client">{leadClosureDecision.row.clientName}</strong>{leadClosureDecision.loadingDetails ? <p role="status" className="pending-po-review-loading">Loading latest submitted PO details…</p> : leadClosureDecision.loadError ? <div role="alert" className="pending-po-review-error">{leadClosureDecision.loadError}<button type="button" onClick={() => openLeadClosureApproval(leadClosureDecision.row)}>Retry</button></div> : <><SubmittedPoReview approval={leadClosureDecision.row} onViewQuotation={openPoQuotation} />{leadClosureDecision.row.poReview?.financeReferral && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-amber-800">Finance remarks</p><p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{leadClosureDecision.row.poReview.financeReferral.remarks}</p><small className="mt-1 block text-amber-700">{leadClosureDecision.row.poReview.financeReferral.name} · {formatDisplayDateTime(leadClosureDecision.row.poReview.financeReferral.at, '')}</small></div>}{leadClosureDecision.row.poReview?.leadOwnerRequest && <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-blue-800">Lead owner request</p>{leadClosureDecision.row.poReview.leadOwnerRequest.paymentData && <p className="mt-1 text-sm text-slate-700"><strong>Payment data: </strong>{leadClosureDecision.row.poReview.leadOwnerRequest.paymentData}</p>}{leadClosureDecision.row.poReview.leadOwnerRequest.remarks && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700"><strong>Remarks: </strong>{leadClosureDecision.row.poReview.leadOwnerRequest.remarks}</p>}<small className="mt-1 block text-blue-700">{leadClosureDecision.row.poReview.leadOwnerRequest.name} · {formatDisplayDateTime(leadClosureDecision.row.poReview.leadOwnerRequest.at, '')}</small></div>}</>}<p className="pending-decision-help">Approving Lead Closure returns this PO to Finance for the final decision. Lead owner and Finance will be notified.</p><label className="pending-decision-field"><span>Approval remarks <b>*</b></span><textarea autoFocus required rows={5} value={leadClosureDecision.remarks} onChange={(event) => setLeadClosureDecision((current) => ({ ...current, remarks: event.target.value }))} placeholder="Add your approval remarks..." /></label><div className="pending-decision-actions"><button type="button" disabled={Boolean(savingId)} onClick={() => setLeadClosureDecision(null)}>Cancel</button><button type="submit" disabled={Boolean(savingId) || leadClosureDecision.loadingDetails || Boolean(leadClosureDecision.loadError) || !leadClosureDecision.remarks.trim()}>{savingId ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Approve Lead Closure</button></div></form></div>}
 
       {poDetailView && <div className="pending-decision-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setPoDetailView(null); }}><div role="dialog" aria-modal="true" aria-label="Purchase Order decision details" className={`pending-decision-modal pending-po-review-modal ${String(poDetailView.row?.approvalStatus || '').toUpperCase() === 'APPROVED' ? 'is-approved' : 'is-rejected'}`}><div className="pending-decision-icon">{String(poDetailView.row?.approvalStatus || '').toUpperCase() === 'APPROVED' ? <CheckCircle2 className="h-7 w-7" /> : <Eye className="h-7 w-7" />}</div><button type="button" onClick={() => setPoDetailView(null)} className="pending-decision-close" aria-label="Close PO details"><X className="h-5 w-5" /></button><p className="pending-decision-eyebrow">Purchase Order Details</p><h2>{String(poDetailView.row?.approvalStatus || '').replaceAll('_', ' ')}</h2><strong className="pending-decision-client">{poDetailView.row?.clientName || '-'}</strong>{poDetailView.loading ? <p role="status" className="pending-po-review-loading">Loading latest submitted PO details…</p> : poDetailView.error ? <div role="alert" className="pending-po-review-error">{poDetailView.error}<button type="button" onClick={() => openPoDetails(poDetailView.row)}>Retry</button></div> : <><SubmittedPoReview approval={poDetailView.row} onViewQuotation={openPoQuotation} /><div className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3"><div><small className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Decision status</small><div className="mt-2">{statusBadge(poDetailView.row?.approvalStatus)}</div></div><div><small className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Decision date</small><strong className="mt-2 block text-sm text-slate-800">{formatDisplayDateTime(poDetailView.row?.actionAt, 'Not recorded')}</strong></div><div className="sm:col-span-3"><small className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Decision remarks</small><p className="mt-2 whitespace-pre-wrap text-sm font-semibold text-slate-700">{poDetailView.row?.remarks || 'No decision remarks recorded.'}</p></div></div></>}<div className="pending-decision-actions"><button type="button" onClick={() => setPoDetailView(null)}>Close</button></div></div></div>}
 

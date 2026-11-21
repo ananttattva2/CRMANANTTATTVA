@@ -1004,7 +1004,7 @@ async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, subm
     console.info('[POProof:approval:snapshot]', { poDebugId, leadCode: lead.leadCode || '', assignmentIndex: index, sourceClientId, rows: poRowsSnapshot.map((po, rowIndex) => ({ rowIndex, poNumber: po.poNumber || '', poAmount: po.poAmount ?? null, hasPoFileUrl: Boolean(po.poFileUrl), poFileName: po.poFileName || '' })) });
     const previousReview = await PendingApproval.findOne({ type: 'purchase_order', source: 'crm', sourceClientId }).select('poReview').lean();
     const savedApproval = await PendingApproval.findOneAndUpdate(
-      { type: 'purchase_order', source: 'crm', sourceClientId, 'poReview.stage': { $nin: ['FINANCE_READY', 'MANAGEMENT_PENDING', 'FINANCE_RELEASED'] } },
+      { type: 'purchase_order', source: 'crm', sourceClientId, 'poReview.stage': { $nin: ['FINANCE_READY', 'LEAD_OWNER_PENDING', 'LEAD_CLOSURE_PENDING', 'FINANCE_RELEASED'] } },
       { ...(previousReview?.poReview ? { $push: { poReviewHistory: previousReview.poReview } } : {}), $setOnInsert: { type: 'purchase_order', source: 'crm', sourceClientId }, $set: {
         poReview: null,
         uniqueId: lead.leadCode || String(lead._id), clientName: lead.company || 'Lead', approvalStatus: directlyApproved ? 'APPROVED' : 'PENDING',
@@ -2329,14 +2329,21 @@ exports.permanentlyCloseProvisionalLead = async (req, res) => {
   }
 };
 
-async function notifyPurchaseOrderDecision({ approval, lead, index, status, remarks, screenshotUrl }) {
+async function notifyPurchaseOrderDecision({ approval, lead, index, status, remarks, screenshotUrl, leadClosure = false }) {
+  const assignment = lead?.assignments?.[index] || {};
+  const leadOwnerId = assignment.assignedStaff || lead.assignedStaff || approval.payload?.leadCreatorId || '';
+  const financeUsers = leadClosure
+    ? await User.find({ role: { $in: ['accounts', 'finance'] }, isActive: { $ne: false } }).select('email').lean()
+    : [];
   const responsibleUsers = await User.find({ $or: [
     { role: { $in: ADMIN_ROLES }, isActive: { $ne: false } },
     ...(approval.payload?.poSubmittedById ? [{ _id: approval.payload.poSubmittedById }] : []),
-    ...(approval.createdByName ? [{ name: approval.createdByName }] : [])
+    ...(approval.createdByName ? [{ name: approval.createdByName }] : []),
+    ...(leadClosure && leadOwnerId ? [{ _id: leadOwnerId }] : [])
   ] }).select('email').lean();
   const recipients = [...new Set([
     ...responsibleUsers.map((user) => user.email),
+    ...financeUsers.map((user) => user.email),
     approval.payload?.poSubmittedByEmail,
     approval.payload?.leadCreatorEmail,
     ...(approval.payload?.quotationCreatorEmails || [])
@@ -2345,10 +2352,15 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
   const decisionRows = Array.isArray(approval.payload?.poYearRows) && approval.payload.poYearRows.length
     ? approval.payload.poYearRows
     : (lead.assignments[index].poYearRows || []);
+  const emailTitle = leadClosure ? 'Lead Closure Approval granted' : status === 'APPROVED' ? 'Purchase Order approved successfully' : status === 'REJECTED' ? 'Purchase Order rejected' : 'Purchase Order revision required';
+  const emailEyebrow = leadClosure ? 'Lead closure approval' : `Purchase order ${verb}`;
+  const emailMessage = leadClosure
+    ? `Lead Closure Approval for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong> was <strong>approved</strong>. Finance can now record the final decision.`
+    : `The Purchase Order for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong> was <strong>${escapeHtml(verb)}</strong>.`;
   const html = buildPurchaseOrderEmail({
-    eyebrow: `Purchase order ${verb}`,
-    title: status === 'APPROVED' ? 'Purchase Order approved successfully' : status === 'REJECTED' ? 'Purchase Order rejected' : 'Purchase Order revision required',
-    message: `The Purchase Order for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong> was <strong>${escapeHtml(verb)}</strong>.`,
+    eyebrow: emailEyebrow,
+    title: emailTitle,
+    message: emailMessage,
     clientName: lead.company || lead.leadCode,
     leadCode: lead.leadCode,
     rows: decisionRows,

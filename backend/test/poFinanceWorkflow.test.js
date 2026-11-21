@@ -1,21 +1,24 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');
 const {transition,sourceSignature,termsSnapshot}=require('../src/services/poApprovalWorkflow');
 const actor=role=>({_id:'507f1f77bcf86cd799439011',name:role,role});
-test('PO requires Admin → Finance referral/freeze → Super Admin Go Ahead → Finance final decision',()=>{
+test('PO requires Admin → Finance referral → Lead Owner request → Lead Closure Approval → Finance final decision',()=>{
  const initial=transition(null,'ADMIN_APPROVE',actor('admin'),'Initial review');assert.equal(initial.stage,'FINANCE_READY');assert.equal(initial.frozen,false);
  const direct=transition(initial,'FINANCE_APPROVE',actor('accounts'),'Finance approved directly',1);assert.equal(direct.stage,'FINALIZED');assert.equal(direct.frozen,false);assert.equal(direct.financeFinal.remarks,'Finance approved directly');
  const secondaryFinance=transition(initial,'FINANCE_APPROVE',{...actor('admin'),roles:['admin','finance']},'Secondary Finance role approved',1);assert.equal(secondaryFinance.stage,'FINALIZED');
  assert.throws(()=>transition(initial,'FINANCE_APPROVE',actor('admin'),'Approve',1),error=>error.status===403);
  assert.throws(()=>transition(initial,'FINANCE_FINAL',actor('accounts'),'Final',1),error=>error.status===409);
  assert.throws(()=>transition(initial,'FINANCE_REFER',actor('admin'),'Refer',1),error=>error.status===403);
- const referred=transition(initial,'FINANCE_REFER',actor('accounts'),'Finance remarks',1);assert.equal(referred.stage,'MANAGEMENT_PENDING');assert.equal(referred.frozen,true);
- for(const role of ['admin','manager','accounts','sales'])assert.throws(()=>transition(referred,'MANAGEMENT_GO_AHEAD',actor(role),'Go Ahead',2),error=>error.status===403);
+ const referred=transition(initial,'FINANCE_REFER',actor('accounts'),'Finance remarks',1);assert.equal(referred.stage,'LEAD_OWNER_PENDING');assert.equal(referred.frozen,true);
+ assert.throws(()=>transition(referred,'LEAD_OWNER_REQUEST',actor('sales'),'No payment data',2),error=>error.status===400);
  assert.throws(()=>transition(referred,'FINANCE_FINAL',actor('accounts'),'Approve',2),error=>error.status===409);
- const released=transition(referred,'MANAGEMENT_GO_AHEAD',actor('superadmin'),'Reviewed Finance remarks',2);assert.equal(released.frozen,false);assert.equal(released.stage,'FINANCE_RELEASED');assert.equal(released.financeReferral.remarks,'Finance remarks');
- assert.throws(()=>transition(released,'FINANCE_FINAL',actor('admin'),'Approve',3),error=>error.status===403);
- assert.throws(()=>transition(released,'FINANCE_FINAL',actor('accounts'),'Approve',2),error=>error.status===409);
- const final=transition(released,'FINANCE_FINAL',actor('accounts'),'Final approval',3);assert.equal(final.stage,'FINALIZED');assert.equal(final.history.length,4);
- assert.throws(()=>transition(final,'FINANCE_FINAL',actor('accounts'),'Replay',3),error=>error.status===409);
+ const leadRequest=transition(referred,'LEAD_OWNER_REQUEST',actor('sales'),'Lead owner remarks',2,new Date(),'50% advance received');assert.equal(leadRequest.stage,'LEAD_CLOSURE_PENDING');assert.equal(leadRequest.frozen,true);assert.equal(leadRequest.leadOwnerRequest.paymentData,'50% advance received');
+ for(const role of ['manager','accounts','sales'])assert.throws(()=>transition(leadRequest,'LEAD_CLOSURE_APPROVE',actor(role),'Approve',3),error=>error.status===403);
+ assert.throws(()=>transition(leadRequest,'FINANCE_FINAL',actor('accounts'),'Approve',3),error=>error.status===409);
+ const released=transition(leadRequest,'LEAD_CLOSURE_APPROVE',actor('superadmin'),'Reviewed Finance remarks',3);assert.equal(released.frozen,false);assert.equal(released.stage,'FINANCE_RELEASED');assert.equal(released.financeReferral.remarks,'Finance remarks');
+ assert.throws(()=>transition(released,'FINANCE_FINAL',actor('admin'),'Approve',4),error=>error.status===403);
+ assert.throws(()=>transition(released,'FINANCE_FINAL',actor('accounts'),'Approve',3),error=>error.status===409);
+ const final=transition(released,'FINANCE_FINAL',actor('accounts'),'Final approval',4);assert.equal(final.stage,'FINALIZED');assert.equal(final.history.length,5);
+ assert.throws(()=>transition(final,'FINANCE_FINAL',actor('accounts'),'Replay',4),error=>error.status===409);
  assert.throws(()=>transition(initial,'FINANCE_REFER',actor('accounts'),' ',1),error=>error.status===400);
 });
 test('review signature detects PO, proof, terms and service changes and ignores object key order',()=>{

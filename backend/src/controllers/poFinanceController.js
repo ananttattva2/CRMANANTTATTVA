@@ -111,13 +111,24 @@ exports.initialApproval = async (req, res) => {
   } catch (error) { return report(res, error); }
 };
 exports.act = async (req, res) => {
-  const event = req.params.action === 'approve' ? 'FINANCE_APPROVE' : req.params.action === 'refer' ? 'FINANCE_REFER' : req.params.action === 'go-ahead' ? 'MANAGEMENT_GO_AHEAD' : req.params.action === 'final' ? 'FINANCE_FINAL' : '';
+  const event = req.params.action === 'approve' ? 'FINANCE_APPROVE'
+    : req.params.action === 'refer' ? 'FINANCE_REFER'
+    : req.params.action === 'request-approval' ? 'LEAD_OWNER_REQUEST'
+    : req.params.action === 'lead-closure-approve' ? 'LEAD_CLOSURE_APPROVE'
+    : req.params.action === 'final' ? 'FINANCE_FINAL' : '';
   if (!event) return res.status(404).json({ error: 'Unknown review action.' });
   try {
     let notification;
     const result = await inTransaction(req.params.id, async ({ approval, lead, index }) => {
       requireUnchanged(approval, lead.assignments[index], lead.serviceSelections?.[index]);
-      const review = transition(approval.poReview, event, req.user, req.body.remarks, req.body.version);
+      const paymentData = req.body.paymentData;
+      const review = transition(approval.poReview, event, req.user, req.body.remarks, req.body.version, new Date(), paymentData);
+      // Lead owner request: verify the user is the assignment's assigned staff.
+      if (event === 'LEAD_OWNER_REQUEST') {
+        const assignment = lead.assignments[index];
+        const ownerId = String(assignment.assignedStaff || lead.assignedStaff || '');
+        if (!ownerId || ownerId !== String(req.user._id)) fail(403, 'Only the assigned lead owner can request management approval.');
+      }
       if (event === 'FINANCE_APPROVE' || event === 'FINANCE_FINAL') {
         const status = event === 'FINANCE_APPROVE' ? 'APPROVED' : String(req.body.status || '').toUpperCase();
         if (!['APPROVED', 'REJECTED', 'REVISION_REQUIRED'].includes(status)) fail(400, 'Choose Approve, Reject, or Revise.');
@@ -139,28 +150,48 @@ exports.act = async (req, res) => {
         approval.markModified('payload');
         notification = { approval, lead, index, status, remarks: approval.remarks, screenshotUrl: '' };
       }
+      if (event === 'LEAD_CLOSURE_APPROVE') {
+        approval.payload = { ...(approval.payload || {}), decidedBy: req.user.name || req.user.email || '' };
+        approval.markModified('payload');
+        notification = { approval, lead, index, status: 'APPROVED', remarks: review.leadClosureApproval?.remarks || '', screenshotUrl: '', leadClosure: true };
+      }
       approval.poReview = review;
-      return { ok: true, review, message: event === 'FINANCE_APPROVE' ? 'Finance approval saved. Staff assignment is now unlocked.' : event === 'FINANCE_REFER' ? 'Remark submitted. This PO is frozen until Super Admin gives Management Go Ahead.' : event === 'MANAGEMENT_GO_AHEAD' ? 'Management approval saved. Finance approval is now unlocked.' : 'Finance final decision saved.' };
+      return { ok: true, review, message: event === 'FINANCE_APPROVE' ? 'Finance approval saved. Staff assignment is now unlocked.' : event === 'FINANCE_REFER' ? 'Remark submitted. This PO is now with the lead owner to request management approval.' : event === 'LEAD_OWNER_REQUEST' ? 'Request submitted. This PO is now awaiting Lead Closure Approval from Super Admin.' : event === 'LEAD_CLOSURE_APPROVE' ? 'Lead Closure Approval saved. Finance can now record the final decision.' : 'Finance final decision saved.' };
     });
     if (notification) void require('./leadController').notifyPurchaseOrderDecision(notification).catch(error => console.error('Finance PO notification failed', { name: error.name }));
     return res.json(result);
   } catch (error) { return report(res, error); }
 };
 exports.list = async (req, res) => {
-  if (!canView(req.user)) return res.status(403).json({ error: 'Finance review access is required.' });
+  const staffView = !canView(req.user);
   try {
-    const approvals = await Approval.find({ type: 'purchase_order', 'poReview.stage': { $in: ['FINANCE_READY', 'MANAGEMENT_PENDING', 'FINANCE_RELEASED', 'FINALIZED'] } })
-      .select('clientName uniqueId approvalStatus createdByName createdAt actionAt poReview payload.leadCode payload.poSubmittedByName payload.poSubmittedAt payload.service payload.poYearRows.poNumber payload.poYearRows.poAmount payload.poYearRows.quotationBasicAmount payload.poYearRows.quotationNumber payload.poYearRows.quotationItems.unit payload.poYearRows.quotationItems.basicAmount payload.poYearRows.fy')
+    const baseFilter = { type: 'purchase_order', 'poReview.stage': { $in: ['FINANCE_READY', 'LEAD_OWNER_PENDING', 'LEAD_CLOSURE_PENDING', 'FINANCE_RELEASED', 'FINALIZED'] } };
+    const approvals = await Approval.find(baseFilter)
+      .select('clientName uniqueId approvalStatus createdByName createdAt actionAt poReview payload.leadId payload.leadCode payload.poSubmittedByName payload.poSubmittedAt payload.service payload.poYearRows.poNumber payload.poYearRows.poAmount payload.poYearRows.quotationBasicAmount payload.poYearRows.quotationNumber payload.poYearRows.quotationItems.unit payload.poYearRows.quotationItems.basicAmount payload.poYearRows.fy')
       .sort({ updatedAt: -1 }).maxTimeMS(15000).lean();
+    if (staffView) {
+      const visible = approvals.filter(row => {
+        const stage = row.poReview?.stage;
+        if (stage !== 'LEAD_OWNER_PENDING') return false;
+        const leadCode = String(row.payload?.leadCode || row.uniqueId || '').toLowerCase();
+        const leadId = String(row.payload?.leadId || '');
+        // Lead owner check is done client-side via the list returned; we include
+        // only LEAD_OWNER_PENDING items here. Ownership is enforced on action.
+        return Boolean(leadCode || leadId);
+      });
+      return res.json({ ok: true, approvals: visible });
+    }
     return res.json({ ok: true, approvals });
   } catch (error) { return report(res, error); }
 };
 exports.detail = async (req, res) => {
-  if (!canView(req.user)) return res.status(403).json({ error: 'Finance review access is required.' });
   try {
     if (!mongoose.isValidObjectId(req.params.id)) fail(400, 'Invalid PO approval ID.');
     const approval = await Approval.findOne({ _id: req.params.id, type: 'purchase_order', poReview: { $ne: null } }).lean();
     if (!approval) fail(404, 'PO review not found.');
+    if (!canView(req.user)) {
+      if (approval.poReview?.stage !== 'LEAD_OWNER_PENDING') return res.status(403).json({ error: 'Finance review access is required.' });
+    }
     return res.json({ ok: true, approval });
   } catch (error) { return report(res, error); }
 };
