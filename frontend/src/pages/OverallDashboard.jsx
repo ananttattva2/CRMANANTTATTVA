@@ -48,7 +48,7 @@ export default function OverallDashboard() {
   const [error, setError] = useState('')
   const [popup, setPopup] = useState(null)
   const [matrixYear, setMatrixYear] = useState('')
-  const view = 'status'
+  const [view, setView] = useState('status')
   const [refreshToken, setRefreshToken] = useState(0)
   const selectedView = ['status', 'services', 'spoc', 'upload', 'po'].includes(view) ? view : 'status'
   const matrixView = ['overall', 'users'].includes(selectedView)
@@ -117,7 +117,7 @@ export default function OverallDashboard() {
     {exportProgress && <p role="status" className="px-1 text-sm text-teal-700">{exportProgress}</p>}
     {exportError && <p role="alert" className="rounded-2xl border border-rose-100 bg-rose-50 p-4 text-sm text-rose-700">{exportError}</p>}
     {error && <div role="alert" className="rounded-2xl border border-rose-100 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>}
-    <div role="tablist" aria-label="Dashboard view" className="inline-flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2">{[['status', 'Application Status Summary']].map(([key, label]) => <button key={key} id={`dashboard-tab-${key}`} type="button" role="tab" aria-selected={selectedView === key} aria-controls={['spoc', 'status', 'services'].includes(key) ? `portfolio-${key}` : key === 'upload' ? 'upload-tracker-panel' : key === 'po' ? 'po-monthly-panel' : 'overall-year-matrix'} className={`rounded-xl px-5 py-3 text-sm font-bold transition ${selectedView === key ? 'bg-teal-700 text-white shadow-sm' : 'text-slate-600 hover:bg-teal-50'}`}>{key === 'spoc' && <Users size={16} className="mr-2 inline" />}{['status', 'services'].includes(key) && <ListChecks size={16} className="mr-2 inline" />}{label}</button>)}</div>
+    <div role="tablist" aria-label="Dashboard view" className="inline-flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2">{[['status', 'Application Status Summary'], ['services', 'Application Service Summary'], ['spoc', 'By SPOC & PIBo'], ['upload', 'Purchase & Sales Dashboard'], ['po', 'PO Dashboard']].map(([key, label]) => <button key={key} id={`dashboard-tab-${key}`} type="button" role="tab" aria-selected={selectedView === key} aria-controls={['spoc', 'status', 'services'].includes(key) ? `portfolio-${key}` : key === 'upload' ? 'upload-tracker-panel' : 'po-monthly-panel'} onClick={() => setView(key)} className={`rounded-xl px-5 py-3 text-sm font-bold transition ${selectedView === key ? 'bg-teal-700 text-white shadow-sm' : 'text-slate-600 hover:bg-teal-50'}`}>{key === 'spoc' && <Users size={16} className="mr-2 inline" />}{['status', 'services'].includes(key) && <ListChecks size={16} className="mr-2 inline" />}{label}</button>)}</div>
     {matrixView && <div className="flex flex-wrap items-center justify-between gap-3 px-1"><div><h2 className="text-xl font-black text-slate-900">Applicant / Sub-applicant service matrix</h2><p className="mt-2 text-xs text-slate-500">Select a financial year below. Only services with closed POs appear. Expand an applicant type for client details.</p></div><span className="rounded-full border border-teal-100 bg-teal-50 px-4 py-2 text-xs font-bold text-teal-700">From 2025-26 · {sections.length} financial years</span></div>}
     {matrixView && loading && !data && <div aria-label="Loading yearly matrices" className="h-64 animate-pulse rounded-3xl bg-slate-200/70" />}
     {matrixView && activeSection && <FinancialYearTimeline sections={sections} selectedYear={activeSection.year} onSelect={setMatrixYear} reducedMotion={reducedMotion} />}
