@@ -85,7 +85,7 @@ const originalNavSections = [
               { label: 'Client Daily MIS', icon: ClipboardList, path: '/mis/client-daily', roles: [...adminRoles, 'manager', 'operation head', 'operations head'] }
             ]
           },
-          { label: 'Pending Applications', icon: Clock3, path: '/overall-dashboard', pendingBadge: true },
+          { label: 'Pending Applications', icon: Clock3, path: '/overall-dashboard?view=pending-applications', pendingBadge: true },
           { label: 'Pending Approval', icon: Clock3, path: '/pending-approval', complianceFamily: true },
           {
             label: 'Pending Leads',

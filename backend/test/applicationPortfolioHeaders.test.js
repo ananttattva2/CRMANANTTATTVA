@@ -37,7 +37,7 @@ test('Annual Return status summary restores grouped headers and approved-year co
     stdin: {
       resolveDir: frontendRoot,
       loader: 'jsx',
-      contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import ApplicationPortfolio from './src/components/dashboard/ApplicationPortfolio'; createRoot(document.getElementById('root')).render(<ApplicationPortfolio mode="status"/>);`
+      contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import ApplicationPortfolio from './src/components/dashboard/ApplicationPortfolio'; createRoot(document.getElementById('root')).render(<><div id="dashboard"><ApplicationPortfolio mode="status"/></div><div id="pending"><ApplicationPortfolio mode="status" pendingOnly/></div></>);`
     },
     bundle: true,
     write: false,
@@ -62,18 +62,25 @@ test('Annual Return status summary restores grouped headers and approved-year co
     await page.setViewport({ width: 1536, height: 768 });
     await page.setContent('<html><body><div id="root"></div></body></html>');
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
-    await page.waitForFunction(() => document.querySelector('.portfolio-matrix tfoot'));
+    await page.waitForFunction(() => document.querySelector('#dashboard .portfolio-matrix tfoot') && document.querySelector('#pending .portfolio-matrix tfoot'));
 
-    const headers = await page.$$eval('.portfolio-matrix thead tr', rows => rows.map(row => [...row.children].map(cell => cell.textContent.trim())));
+    const headers = await page.$$eval('#dashboard .portfolio-matrix thead tr', rows => rows.map(row => [...row.children].map(cell => cell.textContent.trim())));
     assert.deepEqual(headers, [
       ['AnantTattva SPOC', 'Total', 'Annual Return Applicable', 'Approved', 'Pending'],
       ['2025-26', '2026-27', '2027-28', 'Not Recorded', 'Approved', 'AR Action Required', 'Applied', 'Under Review', 'Not Started', 'Rejected']
     ]);
-    const counts = await page.$$eval('.portfolio-matrix tfoot td button', buttons => buttons.map(button => button.textContent.trim()));
+    const counts = await page.$$eval('#dashboard .portfolio-matrix tfoot td button', buttons => buttons.map(button => button.textContent.trim()));
     assert.deepEqual(counts, [
       '1', '1', '0', '0', '0', '0', '0', '0', '0', '0', '0'
     ]);
-    assert.equal(await page.$eval('.portfolio-matrix tbody .portfolio-person strong', node => node.textContent), 'Sonal');
+    assert.equal(await page.$eval('#dashboard .portfolio-matrix tbody .portfolio-person strong', node => node.textContent), 'Sonal');
+
+    const pendingHeaders = await page.$$eval('#pending .portfolio-matrix thead tr', rows => rows.map(row => [...row.children].map(cell => cell.textContent.trim())));
+    assert.deepEqual(pendingHeaders, [
+      ['AnantTattva SPOC', 'AR Action Required', 'Applied', 'Under Review', 'Not Started', 'Rejected']
+    ]);
+    const pendingCounts = await page.$$eval('#pending .portfolio-matrix tfoot td button', buttons => buttons.map(button => button.textContent.trim()));
+    assert.deepEqual(pendingCounts, ['0', '0', '0', '0', '0']);
   } finally {
     await browser.close();
   }

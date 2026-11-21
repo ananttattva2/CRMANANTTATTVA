@@ -10,7 +10,7 @@ test('Overall Dashboard restores all view tabs and switches to their panels', as
     useCrmRefresh: 'export default function useCrmRefresh() {}',
     api: 'export default { get: async () => ({ data: {} }) }',
     DashboardShell: 'import React from "react"; export default function Shell({ children }) { return <div>{children}</div> }',
-    ApplicationPortfolio: 'import React from "react"; export default function Portfolio({ mode }) { return <div id={`portfolio-${mode}`}>{mode}</div> }',
+    ApplicationPortfolio: 'import React from "react"; export default function Portfolio({ mode, pendingOnly }) { return <div id={`portfolio-${mode}`} data-pending-only={String(pendingOnly)}>{mode}</div> }',
     POMonthlyDashboard: 'import React from "react"; export default function PO() { return <div id="po-monthly-panel">PO Dashboard panel</div> }',
     ClientUploadTracker: 'import React from "react"; export default function Upload() { return <div id="upload-tracker-panel">Purchase and Sales panel</div> }',
     PdfExportChoice: 'import React from "react"; export default function PdfChoice() { return null }',
@@ -24,7 +24,7 @@ test('Overall Dashboard restores all view tabs and switches to their panels', as
     stdin: {
       resolveDir: frontendRoot,
       loader: 'jsx',
-      contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import OverallDashboard from './src/pages/OverallDashboard'; createRoot(document.getElementById('root')).render(<OverallDashboard/>);`
+      contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {MemoryRouter} from 'react-router-dom'; import OverallDashboard from './src/pages/OverallDashboard'; const mount=(id,entry)=>createRoot(document.getElementById(id)).render(<MemoryRouter initialEntries={[entry]}><OverallDashboard/></MemoryRouter>); mount('root','/overall-dashboard'); mount('pending-root','/overall-dashboard?view=pending-applications');`
     },
     bundle: true,
     write: false,
@@ -42,10 +42,13 @@ test('Overall Dashboard restores all view tabs and switches to their panels', as
   const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
   try {
     const page = await browser.newPage();
-    await page.setContent('<html><body><div id="root"></div></body></html>');
+    await page.setContent('<html><body><div id="root"></div><div id="pending-root"></div></body></html>');
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     await page.waitForSelector('#dashboard-tab-status');
-    assert.deepEqual(await page.$$eval('[role="tablist"][aria-label="Dashboard view"] [role="tab"]', tabs => tabs.map(tab => tab.textContent.trim())), [
+    await page.waitForFunction(() => document.querySelector('#root #portfolio-status')?.getAttribute('data-pending-only') === 'false' && document.querySelector('#pending-root #portfolio-status')?.getAttribute('data-pending-only') === 'true');
+    assert.equal(await page.$eval('#root h1', heading => heading.textContent), 'Application Dashboard');
+    assert.equal(await page.$eval('#pending-root h1', heading => heading.textContent), 'Pending Applications');
+    assert.deepEqual(await page.$$eval('#root [role="tablist"][aria-label="Dashboard view"] [role="tab"]', tabs => tabs.map(tab => tab.textContent.trim())), [
       'Application Status Summary',
       'Application Service Summary',
       'By SPOC & PIBo',
@@ -54,8 +57,8 @@ test('Overall Dashboard restores all view tabs and switches to their panels', as
     ]);
 
     for (const [tab, panel] of [['services', '#portfolio-services'], ['spoc', '#portfolio-spoc'], ['upload', '#upload-tracker-panel'], ['po', '#po-monthly-panel'], ['status', '#portfolio-status']]) {
-      await page.click(`#dashboard-tab-${tab}`);
-      await page.waitForFunction((selectedTab, selectedPanel) => document.querySelector(`#${selectedTab}`).getAttribute('aria-selected') === 'true' && document.querySelector(selectedPanel), {}, `dashboard-tab-${tab}`, panel);
+      await page.click(`#root #dashboard-tab-${tab}`);
+      await page.waitForFunction((selectedTab, selectedPanel) => document.querySelector(`#root #${selectedTab}`).getAttribute('aria-selected') === 'true' && document.querySelector(`#root ${selectedPanel}`), {}, `dashboard-tab-${tab}`, panel);
     }
   } finally {
     await browser.close();
