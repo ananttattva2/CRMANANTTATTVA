@@ -16,6 +16,7 @@ test('PO referral and payment notifications reach the owner and secondary-role a
   const controllerPath = require.resolve('../src/controllers/leadController');
   const sent = [];
   const owner = { email: 'owner@example.test' };
+  const primaryOwner = { email: 'gaurav@example.test' };
   const superAdmin = { email: 'superadmin@example.test' };
   const admin = { email: 'admin@example.test' };
   const submitter = { email: 'submitter@example.test' };
@@ -23,6 +24,7 @@ test('PO referral and payment notifications reach the owner and secondary-role a
 
   User.find = (filter) => {
     const clauses = filter.$or || [];
+    if (clauses.some((clause) => clause._id === 'gaurav-id' || clause.email === 'gaurav@example.test' || clause.name === 'Gaurav Chandra')) return queryResult([primaryOwner]);
     if (clauses.some((clause) => ['owner-id', 'owner-crm'].includes(clause.crmUserId) || ['owner-id', 'Owner User'].includes(clause.name))) return queryResult([owner]);
     if (clauses.some((clause) => clause.roles?.$in?.includes('accounts'))) return queryResult([]);
     if (clauses.some((clause) => {
@@ -64,21 +66,40 @@ test('PO referral and payment notifications reach the owner and secondary-role a
   const referral = await notifyPurchaseOrderDecision({
     approval, lead, index: 0, status: 'REFERRED', remarks: 'Please confirm payment terms.', specialApproval: true
   });
-  assert.equal(referral.sent, 4);
-  assert.deepEqual(new Set(sent.map((mail) => mail.to)), new Set([
-    'owner@example.test', 'superadmin@example.test', 'admin@example.test', 'submitter@example.test'
-  ]));
+  assert.equal(referral.recipients, 1);
+  assert.equal(referral.sent, 1);
+  assert.deepEqual(sent.map((mail) => mail.to), ['owner@example.test']);
   assert.ok(sent.every((mail) => mail.subject.includes('PO Special Approval requested')));
   assert.ok(sent.every((mail) => mail.html.includes('Please confirm payment terms.')));
 
   sent.length = 0;
+  await notifyPurchaseOrderDecision({
+    approval, lead: {
+      ...lead,
+      generatedForUser: 'gaurav-id',
+      generatedForName: 'Gaurav Chandra',
+      generatedForEmail: 'gaurav@example.test',
+      assignments: [{ assignedStaff: 'anand-id', assignedStaffEmail: 'anand@example.test', poYearRows: [{ poNumber: 'PO-1', poAmount: 1000 }] }]
+    },
+    index: 0, status: 'REFERRED', remarks: 'Owner should receive this.', specialApproval: true
+  });
+  assert.deepEqual(sent.map((mail) => mail.to), ['gaurav@example.test']);
+
+  sent.length = 0;
   const payment = await notifyPurchaseOrderDecision({
-    approval, lead, index: 0, status: 'PAYMENT', remarks: '', paymentReceived: true,
+    approval, lead: {
+      ...lead,
+      generatedForUser: 'gaurav-id',
+      generatedForName: 'Gaurav Chandra',
+      generatedForEmail: 'gaurav@example.test',
+      assignments: [{ assignedStaff: 'anand-id', assignedStaffEmail: 'anand@example.test', poYearRows: [{ poNumber: 'PO-1', poAmount: 1000 }] }]
+    },
+    index: 0, status: 'PAYMENT', remarks: '', paymentReceived: true,
     paymentStatus: { status: 'ADVANCE_RECEIVED', amount: 250, confirmed: false }, poAmount: 1000
   });
   assert.equal(payment.sent, 3);
   assert.deepEqual(new Set(sent.map((mail) => mail.to)), new Set([
-    'owner@example.test', 'superadmin@example.test', 'admin@example.test'
+    'gaurav@example.test', 'superadmin@example.test', 'admin@example.test'
   ]));
   assert.ok(adminRoleQueries.length > 0, 'payment notifications query role aliases such as "Super Admin"');
   assert.ok(sent.every((mail) => /payment received/i.test(mail.subject)));
@@ -176,6 +197,18 @@ test('lead owner request rows and details are restricted to the assigned owner',
   assert.equal(financeTest.isAssignedLeadOwner(approval, {
     assignments: [{ assignedStaff: 'owner-1' }]
   }, 'owner-2'), false);
+  const leadWithPrimaryOwner = {
+    generatedForUser: 'gaurav-id',
+    generatedForName: 'Gaurav Chandra',
+    generatedForEmail: 'gaurav@example.test',
+    assignments: [{ assignedStaff: 'anand-id', assignedStaffEmail: 'anand@example.test' }]
+  };
+  assert.equal(financeTest.isAssignedLeadOwner(approval, leadWithPrimaryOwner, {
+    _id: 'gaurav-id', name: 'Gaurav Chandra', email: 'gaurav@example.test'
+  }), true);
+  assert.equal(financeTest.isAssignedLeadOwner(approval, leadWithPrimaryOwner, {
+    _id: 'anand-id', name: 'Anand Padhya', email: 'anand@example.test'
+  }), false);
   assert.equal(financeTest.isAssignedLeadOwner({ payload: { assignedServiceId: 'service-2' } }, {
     assignments: [{ assignedServiceId: 'service-1', assignedStaff: 'owner-1' }, { assignedServiceId: 'service-2', assignedStaff: 'owner-2' }]
   }, 'owner-2'), true);

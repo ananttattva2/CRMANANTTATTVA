@@ -2356,6 +2356,17 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
     ? selectionMatches[0]
     : selectionMatches.length > 1 ? {} : lead?.serviceSelections?.[resolvedIndex] || {};
   const allowLeadOwnerFallback = Math.max(lead?.assignments?.length || 0, lead?.serviceSelections?.length || 0) <= 1;
+  const hasGeneratedForOwner = [
+    lead?.generatedForUser, lead?.generatedForCrmUserId, lead?.generatedForName, lead?.generatedForEmail
+  ].some(Boolean);
+  const leadOwner = hasGeneratedForOwner
+    ? lead.generatedForUser || lead.generatedForCrmUserId || lead.generatedForEmail || lead.generatedForName
+    : lead?.createdBy || lead?.createdByCrmUserId || lead?.createdByEmail || lead?.createdByName || '';
+  const leadOwnerEmailValue = lead?.generatedForEmail || lead?.generatedForUser?.email
+    || (!hasGeneratedForOwner ? lead?.createdByEmail || lead?.createdBy?.email : '');
+  const leadOwnerNameValue = lead?.generatedForName || lead?.generatedForUser?.name
+    || (!hasGeneratedForOwner ? lead?.createdByName || lead?.createdBy?.name : '');
+  const leadOwnerCrmId = lead?.generatedForCrmUserId || (!hasGeneratedForOwner ? lead?.createdByCrmUserId : '');
   const hasAssignedOwner = [
     assignment.assignedStaff, assignment.assignedStaffCrmUserId, assignment.assignedStaffText, assignment.assignedStaffEmail,
     serviceSnapshot.assignedStaff, serviceSnapshot.assignedStaffCrmUserId, serviceSnapshot.assignedStaffText, serviceSnapshot.assignedStaffEmail,
@@ -2365,7 +2376,7 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
   const closureOwner = !hasAssignedOwner
     ? assignment.closedOnBehalfOfUser || lead?.closedOnBehalfOfUser || ''
     : '';
-  const owner = assignment.assignedStaff || assignment.assignedStaffCrmUserId
+  const owner = leadOwner || assignment.assignedStaff || assignment.assignedStaffCrmUserId
     || serviceSnapshot.assignedStaff || serviceSnapshot.assignedStaffCrmUserId
     || serviceSelection.assignedStaff || serviceSelection.assignedStaffCrmUserId
     || (allowLeadOwnerFallback ? lead?.assignedStaffCrmUserId || lead?.assignedStaff : '')
@@ -2373,18 +2384,24 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
   const ownerId = owner && typeof owner === 'object' && typeof owner.toHexString === 'function'
     ? owner
     : owner?._id || (typeof owner?.id === 'string' ? owner.id : '') || (mongoose.isValidObjectId(owner) ? owner : '');
-  const ownerEmail = assignment.assignedStaffEmail || serviceSnapshot.assignedStaffEmail || serviceSelection.assignedStaffEmail
-    || (!hasAssignedOwner ? assignment.closedOnBehalfOfEmail || lead?.closedOnBehalfOfEmail : '')
-    || (allowLeadOwnerFallback ? lead?.assignedStaffEmail : '') || owner?.email
-    || (typeof owner === 'string' && owner.includes('@') ? owner : '');
-  const ownerName = assignment.assignedStaffText || serviceSnapshot.assignedStaffText || serviceSelection.assignedStaffText
-    || (!hasAssignedOwner ? assignment.closedOnBehalfOfName || lead?.closedOnBehalfOfName : '')
-    || (allowLeadOwnerFallback ? lead?.assignedStaffText : '') || owner?.name
-    || (owner && !ownerId && !ownerEmail ? String(owner) : '');
-  const ownerCrmId = assignment.assignedStaffCrmUserId || serviceSnapshot.assignedStaffCrmUserId
-    || serviceSelection.assignedStaffCrmUserId || (!hasAssignedOwner ? closureOwner : '')
-    || (allowLeadOwnerFallback ? lead?.assignedStaffCrmUserId : '')
-    || owner?.crmUserId || (owner && !ownerId ? String(owner) : '');
+  const ownerEmail = hasGeneratedForOwner
+    ? leadOwnerEmailValue || owner?.email || (typeof owner === 'string' && owner.includes('@') ? owner : '')
+    : assignment.assignedStaffEmail || serviceSnapshot.assignedStaffEmail || serviceSelection.assignedStaffEmail
+      || (!hasAssignedOwner ? assignment.closedOnBehalfOfEmail || lead?.closedOnBehalfOfEmail : '')
+      || (allowLeadOwnerFallback ? lead?.assignedStaffEmail : '') || owner?.email
+      || (typeof owner === 'string' && owner.includes('@') ? owner : '');
+  const ownerName = hasGeneratedForOwner
+    ? leadOwnerNameValue || owner?.name || (owner && !ownerId && !ownerEmail ? String(owner) : '')
+    : assignment.assignedStaffText || serviceSnapshot.assignedStaffText || serviceSelection.assignedStaffText
+      || (!hasAssignedOwner ? assignment.closedOnBehalfOfName || lead?.closedOnBehalfOfName : '')
+      || (allowLeadOwnerFallback ? lead?.assignedStaffText : '') || owner?.name
+      || (owner && !ownerId && !ownerEmail ? String(owner) : '');
+  const ownerCrmId = hasGeneratedForOwner
+    ? leadOwnerCrmId || owner?.crmUserId || (owner && !ownerId ? String(owner) : '')
+    : assignment.assignedStaffCrmUserId || serviceSnapshot.assignedStaffCrmUserId
+      || serviceSelection.assignedStaffCrmUserId || (!hasAssignedOwner ? closureOwner : '')
+      || (allowLeadOwnerFallback ? lead?.assignedStaffCrmUserId : '')
+      || owner?.crmUserId || (owner && !ownerId ? String(owner) : '');
   const ownerConditions = [
     ...(ownerId ? [{ _id: ownerId }] : []),
     ...(ownerEmail ? [{ email: String(ownerEmail).trim().toLowerCase() }] : []),
@@ -2396,13 +2413,13 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
     : [];
   const leadOwnerEmail = String(ownerEmail || '').trim().toLowerCase();
   const adminRolePatterns = [/^admin$/i, /^super[\s_-]*admin$/i];
-  const adminUsers = !ownerOnly && (specialApproval || paymentReceived)
+  const adminUsers = !ownerOnly && paymentReceived
     ? await User.find({ $or: [{ role: { $in: adminRolePatterns } }, { roles: { $in: adminRolePatterns } }], isActive: { $ne: false } }).select('email').lean()
     : [];
   const financeUsers = !ownerOnly && leadClosure
     ? await User.find({ $or: [{ role: { $in: ['accounts', 'finance'] } }, { roles: { $in: ['accounts', 'finance'] } }], isActive: { $ne: false } }).select('email').lean()
     : [];
-  const responsibleUsers = ownerOnly ? [] : await User.find({ $or: [
+  const responsibleUsers = ownerOnly || specialApproval ? [] : await User.find({ $or: [
     { role: { $in: ADMIN_ROLES }, isActive: { $ne: false } },
     { roles: { $in: ADMIN_ROLES }, isActive: { $ne: false } },
     ...(approval.payload?.poSubmittedById ? [{ _id: approval.payload.poSubmittedById }] : []),
@@ -2410,15 +2427,13 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
     ...(leadClosure && ownerId ? [{ _id: ownerId }] : [])
   ] }).select('email').lean();
   const recipients = [...new Set([
-    ...(ownerOnly
+    ...(ownerOnly || specialApproval
       ? [...leadOwnerUsers.map((user) => user.email), leadOwnerEmail]
       : paymentReceived
       ? [...leadOwnerUsers.map((user) => user.email), leadOwnerEmail, ...adminUsers.map((user) => user.email)]
-      : specialApproval
-        ? [...leadOwnerUsers.map((user) => user.email), leadOwnerEmail, ...adminUsers.map((user) => user.email), ...responsibleUsers.map((user) => user.email)]
-        : responsibleUsers.map((user) => user.email)),
+      : responsibleUsers.map((user) => user.email)),
     ...financeUsers.map((user) => user.email),
-    ...(!paymentReceived && !ownerOnly ? [
+    ...(!paymentReceived && !ownerOnly && !specialApproval ? [
       approval.payload?.poSubmittedByEmail,
       approval.payload?.leadCreatorEmail,
       ...(approval.payload?.quotationCreatorEmails || [])

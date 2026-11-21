@@ -19,6 +19,15 @@ function isAssignedStaff(assignment, lead, user, service = {}) {
     ? [user._id, user.id, user.crmUserId, user.email, user.name]
     : [user];
   const userKeys = new Set(userValues.map(identity).filter(Boolean));
+  const hasGeneratedForOwner = [
+    lead?.generatedForUser, lead?.generatedForCrmUserId, lead?.generatedForName, lead?.generatedForEmail
+  ].some(Boolean);
+  const leadOwnerValues = hasGeneratedForOwner
+    ? [lead.generatedForUser, lead.generatedForCrmUserId, lead.generatedForName, lead.generatedForEmail]
+    : [lead?.createdBy, lead?.createdByCrmUserId, lead?.createdByName, lead?.createdByEmail];
+  if (leadOwnerValues.some(Boolean)) {
+    return leadOwnerValues.some(value => userKeys.has(identity(value)));
+  }
   const allowLeadOwnerFallback = Math.max(lead?.assignments?.length || 0, lead?.serviceSelections?.length || 0) <= 1;
   const assignedOwnerValues = [
     assignment?.assignedStaff, assignment?.assignedStaffCrmUserId,
@@ -89,7 +98,7 @@ async function filterAssignedLeadOwnerApprovals(approvals, user) {
   const leadIds = [...new Set(pending.map(row => String(row.payload?.leadId || '')).filter(mongoose.isValidObjectId))];
   if (!leadIds.length) return [];
   const leads = await Lead.find({ _id: { $in: leadIds } })
-    .select('_id assignedStaff assignedStaffText assignedStaffEmail assignedStaffCrmUserId closedOnBehalfOfUser closedOnBehalfOfName closedOnBehalfOfEmail serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId serviceSelections.assignedStaff serviceSelections.assignedStaffText serviceSelections.assignedStaffEmail serviceSelections.assignedStaffCrmUserId assignments.assignedServiceId assignments.serviceAssignmentId assignments.assignedStaff assignments.assignedStaffText assignments.assignedStaffEmail assignments.assignedStaffCrmUserId assignments.closedOnBehalfOfUser assignments.closedOnBehalfOfName assignments.closedOnBehalfOfEmail')
+    .select('_id generatedForUser generatedForCrmUserId generatedForName generatedForEmail createdBy createdByCrmUserId createdByName createdByEmail assignedStaff assignedStaffText assignedStaffEmail assignedStaffCrmUserId closedOnBehalfOfUser closedOnBehalfOfName closedOnBehalfOfEmail serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId serviceSelections.assignedStaff serviceSelections.assignedStaffText serviceSelections.assignedStaffEmail serviceSelections.assignedStaffCrmUserId assignments.assignedServiceId assignments.serviceAssignmentId assignments.assignedStaff assignments.assignedStaffText assignments.assignedStaffEmail assignments.assignedStaffCrmUserId assignments.closedOnBehalfOfUser assignments.closedOnBehalfOfName assignments.closedOnBehalfOfEmail')
     .lean();
   const leadsById = new Map(leads.map(lead => [String(lead._id), lead]));
   return pending.filter(approval => isAssignedLeadOwner(
@@ -239,6 +248,7 @@ exports.act = async (req, res) => {
         const assignment = lead.assignments[index];
         const service = ownerService(approval, lead, index);
         const hasOwner = [
+          lead.generatedForUser, lead.generatedForName, lead.generatedForEmail, lead.createdBy, lead.createdByName, lead.createdByEmail,
           assignment?.assignedStaff, assignment?.assignedStaffCrmUserId, assignment?.assignedStaffText, assignment?.assignedStaffEmail,
           assignment?.closedOnBehalfOfUser, assignment?.closedOnBehalfOfName, assignment?.closedOnBehalfOfEmail,
           service.assignedStaff, service.assignedStaffCrmUserId, service.assignedStaffText, service.assignedStaffEmail,
@@ -347,13 +357,14 @@ exports.resendOwnerNotification = async (req, res) => {
     }).select('clientName uniqueId poReview payload').lean();
     if (!approval) fail(404, 'Pending lead owner PO request not found.');
     const lead = await Lead.findById(approval.payload?.leadId)
-      .select('company leadCode assignedStaff assignedStaffText assignedStaffEmail assignedStaffCrmUserId closedOnBehalfOfUser closedOnBehalfOfName closedOnBehalfOfEmail serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId serviceSelections.assignedStaff serviceSelections.assignedStaffText serviceSelections.assignedStaffEmail serviceSelections.assignedStaffCrmUserId assignments.assignedServiceId assignments.serviceAssignmentId assignments.assignedStaff assignments.assignedStaffText assignments.assignedStaffEmail assignments.assignedStaffCrmUserId assignments.closedOnBehalfOfUser assignments.closedOnBehalfOfName assignments.closedOnBehalfOfEmail assignments.poYearRows')
+      .select('company leadCode generatedForUser generatedForCrmUserId generatedForName generatedForEmail createdBy createdByCrmUserId createdByName createdByEmail assignedStaff assignedStaffText assignedStaffEmail assignedStaffCrmUserId closedOnBehalfOfUser closedOnBehalfOfName closedOnBehalfOfEmail serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId serviceSelections.assignedStaff serviceSelections.assignedStaffText serviceSelections.assignedStaffEmail serviceSelections.assignedStaffCrmUserId assignments.assignedServiceId assignments.serviceAssignmentId assignments.assignedStaff assignments.assignedStaffText assignments.assignedStaffEmail assignments.assignedStaffCrmUserId assignments.closedOnBehalfOfUser assignments.closedOnBehalfOfName assignments.closedOnBehalfOfEmail assignments.poYearRows')
       .lean();
     if (!lead) fail(404, 'The source lead for this PO request was not found.');
 
     const index = resolveAssignmentIndex(approval, lead);
     const service = ownerService(approval, lead, index);
     const snapshotOwner = [
+      lead.generatedForUser, lead.generatedForName, lead.generatedForEmail, lead.createdBy, lead.createdByName, lead.createdByEmail,
       service.assignedStaff, service.assignedStaffCrmUserId,
       service.assignedStaffText, service.assignedStaffEmail,
       lead.closedOnBehalfOfUser, lead.closedOnBehalfOfName, lead.closedOnBehalfOfEmail,
