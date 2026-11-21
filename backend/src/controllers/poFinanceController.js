@@ -14,12 +14,15 @@ function identity(value) {
   }
   return String(value || '').trim().toLowerCase();
 }
-function isAssignedStaff(assignment, lead, user) {
+function isAssignedStaff(assignment, lead, user, service = {}) {
   const userValues = typeof user === 'object' && user !== null
     ? [user._id, user.id, user.crmUserId, user.email, user.name]
     : [user];
   const userKeys = new Set(userValues.map(identity).filter(Boolean));
-  const primary = assignment?.assignedStaff || lead?.assignedStaff;
+  const allowLeadOwnerFallback = Math.max(lead?.assignments?.length || 0, lead?.serviceSelections?.length || 0) <= 1;
+  const primary = assignment?.assignedStaff || assignment?.assignedStaffCrmUserId
+    || service?.assignedStaff || service?.assignedStaffCrmUserId
+    || (allowLeadOwnerFallback ? lead?.assignedStaffCrmUserId || lead?.assignedStaff : '');
   if (primary) {
     const primaryId = primary && typeof primary === 'object' && typeof primary.toHexString !== 'function'
       ? primary._id || (typeof primary.id === 'string' ? primary.id : '') || primary
@@ -28,32 +31,71 @@ function isAssignedStaff(assignment, lead, user) {
     if (userKeys.has(identity(primary))) return true;
   }
   return [
-    assignment?.assignedStaffText, assignment?.assignedStaffEmail,
-    lead?.assignedStaffText, lead?.assignedStaffEmail
+    assignment?.assignedStaffText, assignment?.assignedStaffEmail, assignment?.assignedStaffCrmUserId,
+    service?.assignedStaffText, service?.assignedStaffEmail, service?.assignedStaffCrmUserId,
+    ...(allowLeadOwnerFallback ? [lead?.assignedStaffText, lead?.assignedStaffEmail, lead?.assignedStaffCrmUserId] : [])
   ].some(value => userKeys.has(identity(value)));
+}
+function ownerService(approval, lead, index) {
+  const serviceId = String(approval?.payload?.assignedServiceId || '');
+  const selections = lead?.serviceSelections || [];
+  const matches = serviceId
+    ? selections.filter(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === serviceId)
+    : [];
+  const saved = matches.length === 1 ? matches[0] : matches.length > 1 ? {} : selections[index] || {};
+  const snapshot = approval?.payload?.service || {};
+  return {
+    assignedStaff: snapshot.assignedStaff || saved.assignedStaff,
+    assignedStaffCrmUserId: snapshot.assignedStaffCrmUserId || saved.assignedStaffCrmUserId,
+    assignedStaffText: snapshot.assignedStaffText || saved.assignedStaffText,
+    assignedStaffEmail: snapshot.assignedStaffEmail || saved.assignedStaffEmail
+  };
+}
+function resolveAssignmentIndex(approval, lead) {
+  const serviceId = String(approval?.payload?.assignedServiceId || '');
+  const assignments = lead?.assignments || [];
+  if (serviceId) {
+    const matches = assignments
+      .map((row, index) => String(row.assignedServiceId || row.serviceAssignmentId || '') === serviceId ? index : -1)
+      .filter(index => index >= 0);
+    if (matches.length > 1) return -1;
+    if (matches.length === 1) return matches[0];
+  }
+  const rawIndex = approval?.payload?.assignmentIndex;
+  const index = rawIndex !== null && rawIndex !== undefined && rawIndex !== '' ? Number(rawIndex) : NaN;
+  if (Number.isInteger(index) && index >= 0) {
+    const indexedServiceId = String(assignments[index]?.assignedServiceId || assignments[index]?.serviceAssignmentId || '');
+    if (!serviceId || !indexedServiceId || indexedServiceId === serviceId) return index;
+  }
+  if (serviceId) {
+    const selections = lead?.serviceSelections || [];
+    const matches = selections
+      .map((row, selectionIndex) => String(row.assignedServiceId || row.serviceAssignmentId || '') === serviceId ? selectionIndex : -1)
+      .filter(selectionIndex => selectionIndex >= 0);
+    if (matches.length === 1) return matches[0];
+  }
+  return -1;
 }
 function isAssignedLeadOwner(approval, lead, user) {
   if (!approval || !lead || !user) return false;
-  const assignments = lead.assignments || [];
-  const serviceId = String(approval.payload?.assignedServiceId || '');
-  let assignment;
-  if (serviceId) {
-    const matches = assignments.filter(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === serviceId);
-    if (matches.length !== 1) return false;
-    assignment = matches[0];
-  } else {
-    const index = Number(approval.payload?.assignmentIndex);
-    if (!Number.isInteger(index) || !assignments[index]) return false;
-    assignment = assignments[index];
+  const index = resolveAssignmentIndex(approval, lead);
+  const service = ownerService(approval, lead, index);
+  if (index < 0) {
+    const hasServiceOwner = [
+      service.assignedStaff, service.assignedStaffCrmUserId,
+      service.assignedStaffText, service.assignedStaffEmail
+    ].some(Boolean);
+    return hasServiceOwner && isAssignedStaff({}, null, user, service);
   }
-  return isAssignedStaff(assignment, lead, user);
+  const assignment = lead.assignments?.[index] || {};
+  return isAssignedStaff(assignment, lead, user, service);
 }
 async function filterAssignedLeadOwnerApprovals(approvals, user) {
   const pending = approvals.filter(row => row.poReview?.stage === 'LEAD_OWNER_PENDING');
   const leadIds = [...new Set(pending.map(row => String(row.payload?.leadId || '')).filter(mongoose.isValidObjectId))];
   if (!leadIds.length) return [];
   const leads = await Lead.find({ _id: { $in: leadIds } })
-    .select('_id assignedStaff assignedStaffText assignedStaffEmail assignments.assignedServiceId assignments.serviceAssignmentId assignments.assignedStaff assignments.assignedStaffText assignments.assignedStaffEmail')
+    .select('_id assignedStaff assignedStaffText assignedStaffEmail assignedStaffCrmUserId serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId serviceSelections.assignedStaff serviceSelections.assignedStaffText serviceSelections.assignedStaffEmail serviceSelections.assignedStaffCrmUserId assignments.assignedServiceId assignments.serviceAssignmentId assignments.assignedStaff assignments.assignedStaffText assignments.assignedStaffEmail assignments.assignedStaffCrmUserId')
     .lean();
   const leadsById = new Map(leads.map(lead => [String(lead._id), lead]));
   return pending.filter(approval => isAssignedLeadOwner(
@@ -196,7 +238,18 @@ exports.act = async (req, res) => {
       // Lead owner request: verify the user is the assignment's assigned staff.
       if (event === 'LEAD_OWNER_REQUEST') {
         const assignment = lead.assignments[index];
-        if (!isAssignedStaff(assignment, lead, req.user)) fail(403, 'Only the assigned lead owner can request management approval.');
+        const service = ownerService(approval, lead, index);
+        if (!isAssignedStaff(assignment, lead, req.user, service)) fail(403, 'Only the assigned lead owner can request management approval.');
+      }
+      if (event === 'FINANCE_REFER') {
+        const assignment = lead.assignments[index];
+        const service = ownerService(approval, lead, index);
+        const hasOwner = [
+          assignment?.assignedStaff, assignment?.assignedStaffCrmUserId, assignment?.assignedStaffText, assignment?.assignedStaffEmail,
+          service.assignedStaff, service.assignedStaffCrmUserId, service.assignedStaffText, service.assignedStaffEmail,
+          lead.assignedStaff, lead.assignedStaffCrmUserId, lead.assignedStaffText, lead.assignedStaffEmail
+        ].some(value => Boolean(String(value?._id || value || '').trim()));
+        if (!hasOwner) fail(409, 'Assign a lead owner to this service before referring the PO.');
       }
       if (event === 'FINANCE_APPROVE' || event === 'FINANCE_FINAL') {
         const status = event === 'FINANCE_APPROVE' ? 'APPROVED' : String(req.body.status || '').toUpperCase();
@@ -298,17 +351,17 @@ exports.resendOwnerNotification = async (req, res) => {
     }).select('clientName uniqueId poReview payload').lean();
     if (!approval) fail(404, 'Pending lead owner PO request not found.');
     const lead = await Lead.findById(approval.payload?.leadId)
-      .select('company leadCode assignedStaff assignedStaffText assignedStaffEmail assignments.assignedServiceId assignments.serviceAssignmentId assignments.assignedStaff assignments.assignedStaffText assignments.assignedStaffEmail assignments.poYearRows')
+      .select('company leadCode assignedStaff assignedStaffText assignedStaffEmail assignedStaffCrmUserId serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId serviceSelections.assignedStaff serviceSelections.assignedStaffText serviceSelections.assignedStaffEmail serviceSelections.assignedStaffCrmUserId assignments.assignedServiceId assignments.serviceAssignmentId assignments.assignedStaff assignments.assignedStaffText assignments.assignedStaffEmail assignments.assignedStaffCrmUserId assignments.poYearRows')
       .lean();
     if (!lead) fail(404, 'The source lead for this PO request was not found.');
 
-    const serviceId = String(approval.payload?.assignedServiceId || '');
-    const matches = serviceId
-      ? (lead.assignments || []).map((row, index) => String(row.assignedServiceId || row.serviceAssignmentId || '') === serviceId ? index : -1).filter(index => index >= 0)
-      : [];
-    if (serviceId && matches.length !== 1) fail(409, 'The PO service assignment changed. Refresh and contact Admin.');
-    const index = serviceId ? matches[0] : Number(approval.payload?.assignmentIndex);
-    if (!Number.isInteger(index) || !lead.assignments?.[index]) fail(409, 'The PO owner assignment is unavailable.');
+    const index = resolveAssignmentIndex(approval, lead);
+    const service = ownerService(approval, lead, index);
+    const snapshotOwner = [
+      service.assignedStaff, service.assignedStaffCrmUserId,
+      service.assignedStaffText, service.assignedStaffEmail
+    ].some(Boolean);
+    if (index < 0 && !snapshotOwner) fail(409, 'The PO owner assignment is unavailable.');
 
     const emailNotification = await deliverDecisionNotification({
       approval,
@@ -320,7 +373,8 @@ exports.resendOwnerNotification = async (req, res) => {
       specialApproval: true,
       ownerOnly: true
     });
+    if (!emailNotification?.recipients) fail(409, 'No lead-owner recipient was found. Assign an active staff user with an email to this service, then retry.');
     return res.json({ ok: true, message: 'Lead owner email retry completed.', emailNotification });
   } catch (error) { return report(res, error); }
 };
-exports._test = { clearRejectedPoClosure, isAssignedLeadOwner, isAssignedStaff, filterAssignedLeadOwnerApprovals };
+exports._test = { clearRejectedPoClosure, isAssignedLeadOwner, isAssignedStaff, filterAssignedLeadOwnerApprovals, resolveAssignmentIndex, ownerService };

@@ -23,7 +23,7 @@ test('PO referral and payment notifications reach the owner and secondary-role a
 
   User.find = (filter) => {
     const clauses = filter.$or || [];
-    if (clauses.some((clause) => clause.crmUserId === 'owner-id' || clause.name === 'owner-id')) return queryResult([owner]);
+    if (clauses.some((clause) => ['owner-id', 'owner-crm'].includes(clause.crmUserId) || ['owner-id', 'Owner User'].includes(clause.name))) return queryResult([owner]);
     if (clauses.some((clause) => clause.roles?.$in?.includes('accounts'))) return queryResult([]);
     if (clauses.some((clause) => {
       const patterns = [...(clause.role?.$in || []), ...(clause.roles?.$in || [])];
@@ -108,6 +108,32 @@ test('PO referral and payment notifications reach the owner and secondary-role a
   assert.equal(retry.sent, 1);
   assert.deepEqual(sent.map((mail) => mail.to), ['owner@example.test']);
   assert.ok(sent[0].subject.includes('PO Special Approval requested'));
+
+  sent.length = 0;
+  const legacyRetry = await notifyPurchaseOrderDecision({
+    approval: { ...approval, payload: { ...approval.payload, service: { assignedStaffCrmUserId: 'owner-crm' } } },
+    lead: { ...lead, assignments: [{ poYearRows: [{ poNumber: 'PO-1', poAmount: 1000 }] }] },
+    index: 0, status: 'REFERRED', remarks: '', specialApproval: true, ownerOnly: true
+  });
+  assert.equal(legacyRetry.recipients, 1);
+  assert.deepEqual(sent.map((mail) => mail.to), ['owner@example.test']);
+
+  sent.length = 0;
+  const serviceMatchedRetry = await notifyPurchaseOrderDecision({
+    approval: { ...approval, payload: { ...approval.payload, assignedServiceId: 'service-a' } },
+    lead: {
+      ...lead,
+      assignedStaffEmail: 'wrong-lead-owner@example.test',
+      assignments: [{ assignedServiceId: 'service-a' }, { assignedServiceId: 'service-b' }],
+      serviceSelections: [
+        { assignedServiceId: 'service-b', assignedStaffCrmUserId: 'wrong-crm' },
+        { assignedServiceId: 'service-a', assignedStaffCrmUserId: 'owner-crm' }
+      ]
+    },
+    index: 0, status: 'REFERRED', remarks: '', specialApproval: true, ownerOnly: true
+  });
+  assert.equal(serviceMatchedRetry.recipients, 1);
+  assert.deepEqual(sent.map((mail) => mail.to), ['owner@example.test']);
 });
 
 test('Finance Approval is visible to authenticated users and sidebar refreshes authenticated roles', () => {
@@ -139,4 +165,22 @@ test('lead owner request rows and details are restricted to the assigned owner',
   assert.equal(financeTest.isAssignedLeadOwner({ payload: { assignmentIndex: 0 } }, {
     assignments: [{ assignedStaffText: 'Ritual Owner', assignedStaffEmail: 'ritual@example.test' }]
   }, { _id: 'owner-3', name: 'Ritual Owner', email: 'ritual@example.test' }), true);
+  assert.equal(financeTest.isAssignedLeadOwner({ payload: { assignmentIndex: 0, service: { assignedStaffCrmUserId: 'owner-crm' } } }, {
+    assignments: [{}]
+  }, { _id: 'owner-3', crmUserId: 'owner-crm' }), true);
+  assert.equal(financeTest.isAssignedLeadOwner({ payload: { assignedServiceId: 'service-a' } }, {
+    assignments: [],
+    serviceSelections: [
+      { assignedServiceId: 'service-b', assignedStaffCrmUserId: 'other-crm' },
+      { assignedServiceId: 'service-a', assignedStaffCrmUserId: 'owner-crm' }
+    ]
+  }, { _id: 'owner-3', crmUserId: 'owner-crm' }), true);
+  assert.equal(financeTest.isAssignedLeadOwner({ payload: { assignedServiceId: 'service-a' } }, {
+    assignments: [{ assignedServiceId: 'service-a' }, { assignedServiceId: 'service-b' }],
+    assignedStaffEmail: 'lead-wide@example.test',
+    serviceSelections: [
+      { assignedServiceId: 'service-b', assignedStaffCrmUserId: 'other-crm' },
+      { assignedServiceId: 'service-a', assignedStaffCrmUserId: 'owner-crm' }
+    ]
+  }, { _id: 'owner-4', email: 'lead-wide@example.test' }), false);
 });

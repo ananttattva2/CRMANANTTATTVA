@@ -51,6 +51,14 @@ export default function FinanceApproval() {
   }).filter(row => (!stage || row.poReview?.stage === stage) && `${row.clientName} ${row.uniqueId} ${row.payload?.poSubmittedByName || ''}`.toLowerCase().includes(query.trim().toLowerCase())), [rows, tab, query, stage]);
   const pages = Math.max(1, Math.ceil(filtered.length / 10)), safePage = Math.min(page, pages), visible = filtered.slice((safePage - 1) * 10, safePage * 10);
   function openAction(row, action, status = '') { setRemarks(''); setPaymentData(''); setModal({ row, action, status }); }
+  function showEmailNotification(data) {
+    const message = emailNotice(data.message, data.emailNotification);
+    const deliveryFailed = data.emailNotification && (
+      data.emailNotification.error || !data.emailNotification.recipients || data.emailNotification.failed
+    );
+    setNotice(deliveryFailed ? '' : message);
+    setError(deliveryFailed ? message : '');
+  }
   async function openDetail(row) {
     const ticket = ++detailRequest.current;
     setModal({ row, action: 'detail', loading: true });
@@ -67,7 +75,7 @@ export default function FinanceApproval() {
       const payload = { remarks: remarks.trim(), status: modal.status, version: modal.row.poReview.version };
       if (modal.action === 'request-approval') payload.paymentData = paymentData.trim();
       const { data } = await api.post(`/leads/finance-approvals/${modal.row._id}/${modal.action}`, payload);
-      setNotice(emailNotice(data.message, data.emailNotification)); setModal(null); await load();
+      setModal(null); await load(); showEmailNotification(data);
     } catch (failure) { setModal(current => ({ ...current, error: readApiError(failure) })); }
     finally { setSaving(false); }
   }
@@ -76,7 +84,7 @@ export default function FinanceApproval() {
     setResendingId(row._id); setNotice(''); setError('');
     try {
       const { data } = await api.post(`/leads/finance-approvals/${row._id}/resend-owner-notification`);
-      setNotice(emailNotice(data.message, data.emailNotification));
+      showEmailNotification(data);
     } catch (failure) {
       setError(readApiError(failure, 'Unable to resend the lead owner email.'));
     } finally { setResendingId(''); }
@@ -100,7 +108,7 @@ export default function FinanceApproval() {
       };
       if (!paymentModal.confirmAmount) payload.amount = Number(paymentModal.amount);
       const { data } = await api.post(`/leads/finance-approvals/${paymentModal.row._id}/payment-status`, payload);
-      setNotice(emailNotice(data.message, data.emailNotification)); setPaymentModal(null); await load();
+      setPaymentModal(null); await load(); showEmailNotification(data);
     } catch (failure) {
       setPaymentModal(current => ({ ...current, saving: false, error: readApiError(failure, 'Unable to record payment status.') }));
     }

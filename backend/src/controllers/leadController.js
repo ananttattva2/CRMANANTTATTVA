@@ -2335,16 +2335,43 @@ exports.permanentlyCloseProvisionalLead = async (req, res) => {
 };
 
 async function notifyPurchaseOrderDecision({ approval, lead, index, status, remarks, screenshotUrl, leadClosure = false, specialApproval = false, ownerOnly = false, paymentReceived = false, paymentStatus, poAmount }) {
-  const assignment = lead?.assignments?.[index] || {};
-  const owner = assignment.assignedStaff || lead?.assignedStaff || '';
+  const serviceId = String(approval.payload?.assignedServiceId || '');
+  const assignmentMatches = serviceId
+    ? (lead?.assignments || []).filter(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === serviceId)
+    : [];
+  const requestedIndex = Number.isInteger(index) ? index : -1;
+  const indexedAssignment = lead?.assignments?.[requestedIndex];
+  const indexedServiceId = String(indexedAssignment?.assignedServiceId || indexedAssignment?.serviceAssignmentId || '');
+  const resolvedIndex = assignmentMatches.length === 1
+    ? lead.assignments.indexOf(assignmentMatches[0])
+    : assignmentMatches.length > 1
+      ? -1
+      : serviceId && indexedServiceId && indexedServiceId !== serviceId ? -1 : requestedIndex;
+  const assignment = lead?.assignments?.[resolvedIndex] || {};
+  const serviceSnapshot = approval.payload?.service || {};
+  const selectionMatches = serviceId
+    ? (lead?.serviceSelections || []).filter(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === serviceId)
+    : [];
+  const serviceSelection = selectionMatches.length === 1
+    ? selectionMatches[0]
+    : selectionMatches.length > 1 ? {} : lead?.serviceSelections?.[resolvedIndex] || {};
+  const allowLeadOwnerFallback = Math.max(lead?.assignments?.length || 0, lead?.serviceSelections?.length || 0) <= 1;
+  const owner = assignment.assignedStaff || assignment.assignedStaffCrmUserId
+    || serviceSnapshot.assignedStaff || serviceSnapshot.assignedStaffCrmUserId
+    || serviceSelection.assignedStaff || serviceSelection.assignedStaffCrmUserId
+    || (allowLeadOwnerFallback ? lead?.assignedStaffCrmUserId || lead?.assignedStaff : '') || '';
   const ownerId = owner && typeof owner === 'object' && typeof owner.toHexString === 'function'
     ? owner
     : owner?._id || (typeof owner?.id === 'string' ? owner.id : '') || (mongoose.isValidObjectId(owner) ? owner : '');
-  const ownerEmail = assignment.assignedStaffEmail || lead?.assignedStaffEmail || owner?.email
+  const ownerEmail = assignment.assignedStaffEmail || serviceSnapshot.assignedStaffEmail || serviceSelection.assignedStaffEmail
+    || (allowLeadOwnerFallback ? lead?.assignedStaffEmail : '') || owner?.email
     || (typeof owner === 'string' && owner.includes('@') ? owner : '');
-  const ownerName = assignment.assignedStaffText || lead?.assignedStaffText || owner?.name
+  const ownerName = assignment.assignedStaffText || serviceSnapshot.assignedStaffText || serviceSelection.assignedStaffText
+    || (allowLeadOwnerFallback ? lead?.assignedStaffText : '') || owner?.name
     || (owner && !ownerId && !ownerEmail ? String(owner) : '');
-  const ownerCrmId = owner?.crmUserId || (owner && !ownerId ? String(owner) : '');
+  const ownerCrmId = assignment.assignedStaffCrmUserId || serviceSnapshot.assignedStaffCrmUserId
+    || serviceSelection.assignedStaffCrmUserId || (allowLeadOwnerFallback ? lead?.assignedStaffCrmUserId : '')
+    || owner?.crmUserId || (owner && !ownerId ? String(owner) : '');
   const ownerConditions = [
     ...(ownerId ? [{ _id: ownerId }] : []),
     ...(ownerEmail ? [{ email: String(ownerEmail).trim().toLowerCase() }] : []),
@@ -2387,7 +2414,7 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
   const verb = status === 'APPROVED' ? 'approved' : status === 'REJECTED' ? 'rejected' : 'marked for revision';
   const decisionRows = Array.isArray(approval.payload?.poYearRows) && approval.payload.poYearRows.length
     ? approval.payload.poYearRows
-    : (lead.assignments[index].poYearRows || []);
+    : (lead.assignments?.[resolvedIndex]?.poYearRows || []);
   const paymentLabel = paymentStatus?.status === 'COMPLETE_RECEIVED' ? 'Complete payment received' : 'Advance payment received';
   const emailTitle = paymentReceived ? paymentLabel : specialApproval ? 'PO Special Approval requested' : leadClosure ? 'Lead Closure Approval granted' : status === 'APPROVED' ? 'Purchase Order approved successfully' : status === 'REJECTED' ? 'Purchase Order rejected' : 'Purchase Order revision required';
   const emailEyebrow = paymentReceived ? 'Payment update' : specialApproval ? 'PO Special Approval' : leadClosure ? 'Lead closure approval' : `Purchase order ${verb}`;
