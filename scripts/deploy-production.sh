@@ -202,6 +202,7 @@ fi
 
 # Idempotent correction requested for the saved Shri Sagar Proforma Invoice.
 node backend/src/scripts/repairRequestedProforma.js
+node backend/src/scripts/repairMysticalPoAmount.js
 
 BACKUP_DIST="$APP_DIR/frontend/.dist-previous-$(date +%s)"
 if [[ -d "$APP_DIR/frontend/dist" ]]; then
