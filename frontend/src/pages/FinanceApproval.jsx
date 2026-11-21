@@ -30,7 +30,7 @@ export default function FinanceApproval() {
     finally { if (ticket === request.current) setLoading(false); }
   }
   useEffect(() => { void load(); void api.get('/auth/me').then(response => setUser(response.data.user)).catch(() => {}); return () => { request.current++; detailRequest.current++; }; }, []);
-  useEffect(() => { if (leadOwnerView && tab !== 'request') setTab('request'); }, [leadOwnerView, tab]);
+  useEffect(() => { if (leadOwnerView) { if (tab !== 'request') setTab('request'); } else if (tab === 'request') { setTab('finance'); } }, [leadOwnerView, tab]);
   useCrmRefresh(load);
   useEffect(() => { if (modal && dialog.current && !dialog.current.open) dialog.current.showModal(); }, [modal]);
   useEffect(() => { if (paymentModal && paymentDialog.current && !paymentDialog.current.open) paymentDialog.current.showModal(); }, [paymentModal]);
@@ -39,7 +39,7 @@ export default function FinanceApproval() {
     const st = row.poReview?.stage;
     if (tab === 'management') return st === 'LEAD_CLOSURE_PENDING';
     if (tab === 'request') return st === 'LEAD_OWNER_PENDING';
-    return st !== 'LEAD_OWNER_PENDING' && st !== 'LEAD_CLOSURE_PENDING';
+    return true;
   }).filter(row => (!stage || row.poReview?.stage === stage) && `${row.clientName} ${row.uniqueId} ${row.payload?.poSubmittedByName || ''}`.toLowerCase().includes(query.trim().toLowerCase())), [rows, tab, query, stage]);
   const pages = Math.max(1, Math.ceil(filtered.length / 10)), safePage = Math.min(page, pages), visible = filtered.slice((safePage - 1) * 10, safePage * 10);
   function openAction(row, action, status = '') { setRemarks(''); setPaymentData(''); setModal({ row, action, status }); }
