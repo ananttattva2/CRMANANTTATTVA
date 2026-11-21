@@ -20,12 +20,15 @@ test('pending approval reads active rows separately from bounded decision histor
   assert.match(controllerSource, /type: 'quotation',[\s\S]*?\.limit\(500\)/);
   assert.match(controllerSource, /approvalStatus: \{ \$in: \['PENDING', 'PARTIALLY_APPROVED', 'REVISION_REQUIRED'\] \}/);
   assert.match(controllerSource, /approvalStatus: \{ \$in: \['APPROVED', 'REJECTED'\] \}/);
-  assert.match(controllerSource, /\.limit\(100\)/);
+  assert.match(controllerSource, /readIndex\(\{ type: \{ \$in: \['client', 'quotation'\] \}[\s\S]*?, 100\)/);
 });
 
-test('stored approvals and live quotation reconciliation run in parallel', () => {
-  assert.match(controllerSource, /const storedApprovalsPromise = readStoredPendingApprovals\(\)/);
-  assert.match(controllerSource, /const \[storedFallback, liveQuotations\] = await Promise\.all/);
+test('stored approvals and live client and quotation reconciliation run in parallel', () => {
+  assert.match(controllerSource, /const storedApprovalsPromise = readStoredPendingApprovals\(listOnly\)/);
+  assert.match(controllerSource, /const liveClientsPromise = isClientReviewer/);
+  assert.match(controllerSource, /clientClosedPoDirectory'\)\.closedPoClientFilter\(\)/);
+  assert.match(controllerSource, /const \[storedFallback, liveClients, liveQuotations\] = await Promise\.all/);
+  assert.match(controllerSource, /responseClients = mergePendingClients\(indexedLiveRows, liveClientRows\)/);
 });
 
 test('pending quotation rows expose and display their created or updated timestamp', () => {

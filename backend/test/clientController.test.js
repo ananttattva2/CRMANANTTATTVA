@@ -148,6 +148,26 @@ test('review applicant list merges the same service across financial years and k
   assert.equal(services[0].approvalStatus, 'PENDING');
 });
 
+test('pending approval reconciliation keeps every live Client Master row', () => {
+  const liveRows = Array.from({ length: 247 }, (_, index) => ({
+    id: `client-${index + 1}`,
+    clientName: `Client ${index + 1}`,
+    approvalStatus: 'PENDING'
+  }));
+  const indexedRows = liveRows.slice(0, 184).map((row, index) => ({
+    ...row,
+    approvalRecordId: `approval-${index + 1}`,
+    approvalStatus: index < 133 ? 'PARTIALLY_APPROVED' : 'APPROVED'
+  }));
+
+  const reconciled = __test.mergePendingClients(indexedRows, liveRows);
+
+  assert.equal(reconciled.length, 247);
+  assert.equal(reconciled[0].approvalStatus, 'PARTIALLY_APPROVED');
+  assert.equal(reconciled[0].approvalRecordId, 'approval-1');
+  assert.equal(reconciled.at(-1).id, 'client-247');
+});
+
 test('review applicant list keeps identical services separate when plant units differ', () => {
   const common = {
     selectedLead: 'lead-67',

@@ -2061,6 +2061,20 @@ exports.listPendingApprovals = async (req, res) => {
   // small and keeps the approval page responsive.
   const listOnly = req.query.listOnly === 'true';
   const storedApprovalsPromise = readStoredPendingApprovals(listOnly);
+  const liveClientsPromise = isClientReviewer
+    ? Promise.all([
+        clientAccessFilter(req.user),
+        require('../services/clientClosedPoDirectory').closedPoClientFilter()
+      ]).then(([accessFilter, directoryFilter]) => Client.find(combineAccessFilters(
+        clientMasterSourceRecordFilter(),
+        accessFilter,
+        directoryFilter
+      ))
+        .select('_id selectedLead assignedServiceId workflowStatus adminControls.approvalStatus data.basic.clientLegalName data.basic.tradeName data.basic.piboCategory data.basic.eprCategory data.importMeta.uniqueId data.importMeta.createdBy data.importMeta.createdByEmail createdBy createdAt')
+        .populate('createdBy', 'name email')
+        .sort({ createdAt: -1 })
+        .lean())
+    : Promise.resolve([]);
   const liveQuotationsPromise = isAdministrativeReviewer
     ? Quotation.find({
         status: { $in: ['draft', 'submitted', 'sent', 'admin_approved'] },
@@ -2081,7 +2095,7 @@ exports.listPendingApprovals = async (req, res) => {
           return [];
         })
     : Promise.resolve([]);
-  const [storedFallback, liveQuotations] = await Promise.all([storedApprovalsPromise, liveQuotationsPromise]);
+  const [storedFallback, liveClients, liveQuotations] = await Promise.all([storedApprovalsPromise, liveClientsPromise, liveQuotationsPromise]);
   const liveQuotationRows = liveQuotations.map((quotation) => mapQuotationPendingApprovalRow(
     quotation,
     Array.isArray(quotation.revisionHistory) && quotation.revisionHistory.length ? 'UPDATE' : 'CREATE'
@@ -2093,7 +2107,22 @@ exports.listPendingApprovals = async (req, res) => {
   const missingQuotationRows = liveQuotationRows.filter((row) => !storedQuotationIds.has(String(row.quotationId || row.id || '')));
   const responseQuotations = [...missingQuotationRows, ...storedFallback.pendingQuotations];
   if (missingQuotationRows.length) backgroundSyncPendingApprovals([], missingQuotationRows);
-  let responseClients = storedFallback.pendingClients;
+  let responseClients;
+  if (isClientReviewer) {
+    const liveClientRows = liveClients.map((client) => mapClientPendingApprovalRow(
+      client,
+      client.createdBy?.name
+        || client.createdBy?.email
+        || client.data?.importMeta?.createdBy
+        || client.data?.importMeta?.createdByEmail
+        || 'CRM User'
+    ));
+    const liveClientIds = new Set(liveClientRows.map((row) => String(row.id || '')));
+    const indexedLiveRows = storedFallback.pendingClients.filter((row) => liveClientIds.has(String(row.id || row.sourceClientId || '')));
+    responseClients = mergePendingClients(indexedLiveRows, liveClientRows);
+  } else {
+    responseClients = storedFallback.pendingClients;
+  }
   if (!isClientReviewer && responseClients.length) {
     const sourceClientIds = responseClients
       .map((row) => String(row.id || row.sourceClientId || '').trim())
@@ -2138,6 +2167,8 @@ exports.listPendingApprovals = async (req, res) => {
       source: missingQuotationRows.length ? 'indexed-with-live-reconciliation' : 'indexed-pending-approvals',
       ms: Date.now() - startedAt,
       storedClients: storedFallback.pendingClients.length,
+      liveClients: liveClients.length,
+      recoveredClients: Math.max(0, responseClients.length - storedFallback.pendingClients.length),
       storedQuotations: storedFallback.pendingQuotations.length,
       recoveredQuotations: missingQuotationRows.length
     }
@@ -3640,5 +3671,6 @@ exports.__test = {
   clientMasterReviewServiceIdentity,
   enrichClientMasterReviewServiceFromLead,
   uniqueClientMasterReviewServices,
+  mergePendingClients,
   pendingClientWorkflowReady
 };
