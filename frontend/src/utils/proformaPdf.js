@@ -9,6 +9,11 @@ export const proformaBankDetails = [
   'BRANCH MUMBAI-BORIVALI-WEST'
 ].join('\n')
 const CONSULTANCY_BUSINESS_CATEGORIES = new Set(['eprconsultancy', 'eprwastewater', 'otherconsultancy'])
+function actualPoNumber(row = {}) {
+  const quotationNumber = String(row.quotationNumber || '').trim().toUpperCase()
+  const values = [row.poNumber, ...(Array.isArray(row.poYearRows) ? row.poYearRows.map((po) => po?.poNumber || po?.poNo) : [])]
+  return values.map((value) => String(value || '').trim()).find((value) => value && value.toUpperCase() !== quotationNumber) || '-'
+}
 export const invoiceFields = [
  ['deliveryNote','Delivery Note'], ['paymentTerms','Mode / Terms of Payment','50% ADVANCE'], ['reference','Reference No. & Date'], ['otherReferences','Other References','AS PER PO'], ['buyerOrder','BuyerÃ¢â‚¬â„¢s Order No.'], ['buyerOrderDate','BuyerÃ¢â‚¬â„¢s Order Date'], ['dispatchDocument','Dispatch Doc No.'], ['deliveryDate','Delivery Note Date'], ['dispatchedThrough','Dispatched Through'], ['destination','Destination'], ['deliveryTerms','Terms of Delivery'], ['consignee','Consignee (Ship To) Name'], ['consigneeAddress','Consignee Address'], ['consigneeGst','Consignee GSTIN / UIN'], ['consigneeState','Consignee State & Code'], ['buyerStateCode','Buyer State Code'], ['hsn','HSN / SAC','998311'], ['bankName','Bank Name'], ['accountName','Account Name','Ananttattva Private Limited'], ['accountNumber','Account Number'], ['ifsc','IFSC Code'], ['pan','Company PAN'], ['declaration','Declaration','We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.']
 ]
@@ -69,7 +74,7 @@ export function buildInvoicePdf(row) {
     party('Buyer (Bill To)', lead.companyName || row.companyName, buyerAddress, lead.gstNumber, buyerState, 209, 87)
     const pairs = [
       ['Invoice No.', row.proformaNumber, 'Dated', date(row.invoiceDate)],
-      ['PO Number', row.poNumber || row.poYearRows?.find((po) => po.poNumber)?.poNumber || details.reference, 'Mode/Terms of Payment', paymentLabel]
+      ['PO Number', actualPoNumber(row), 'Mode/Terms of Payment', paymentLabel]
     ]
     pairs.forEach(([a, b, c, d], index) => {
       cell(a, b, split, 26 + index * 23, 113, 23)

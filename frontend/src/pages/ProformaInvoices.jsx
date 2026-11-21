@@ -1,5 +1,5 @@
 import { exportWithReason } from '../utils/dataExport.mjs'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ChevronDown, Download, Eye, FileCheck2, Plus, RefreshCw, Save, Search, Trash2, X } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { buildInvoicePdf } from '../utils/proformaPdf'
@@ -12,6 +12,14 @@ import { formatDisplayDate } from '../utils/dateFormat'
 const blankLead = { referredBy: '', salutation: '', contactPerson: '', designation: '', mobileNo1: '', mobileNo2: '', companyName: '', addressLine1: '', addressLine2: '', addressLine3: '', state: '', city: '', pinCode: '', gstNumber: '' }
 const blankItem = { serviceCategory: '', servicesForYear: '', eprCategory: '', piboParent: '', piboCategory: '', unit: '1', basicAmount: '', financialYear: '', validityPeriod: '', annualReturnYears: [], servicesOffered: '', applicableService: '', serviceStartDate: '', serviceEndDate: '', periodUnit: 'annual', transitionPeriod: 'No' }
 const blankForm = { paymentPercentage: 100, paymentStage: 'advance', invoiceDetails: {}, quotationId: '', quotationNumber: '', poNumber: '', leadId: '', leadCode: '', leadDetails: { ...blankLead }, invoiceDate: new Date().toISOString().slice(0, 10), validUntil: '', pricingMode: '', combinedBasicAmount: '', items: [{ ...blankItem }], poYearCount: 0, poYearRows: [], terms: [''], scopeOfWork: [''], status: 'issued' }
+const firstDistinctPoNumber = (rows = [], quotationNumber = '') => {
+  const quotationKey = String(quotationNumber || '').trim().toUpperCase()
+  const row = rows.find((candidate) => {
+    const poNumber = String(candidate?.poNumber || candidate?.poNo || '').trim()
+    return poNumber && poNumber.toUpperCase() !== quotationKey
+  })
+  return String(row?.poNumber || row?.poNo || '').trim()
+}
 const leadFields = [['referredBy', 'Referred By'], ['salutation', 'Salutation'], ['contactPerson', 'Contact Person'], ['designation', 'Designation'], ['mobileNo1', 'Mobile No. 1'], ['mobileNo2', 'Mobile No. 2'], ['companyName', 'Company Name'], ['addressLine1', 'Address Line 1'], ['addressLine2', 'Address Line 2'], ['addressLine3', 'Address Line 3'], ['state', 'State'], ['city', 'City'], ['pinCode', 'Pincode'], ['gstNumber', 'GST Number']]
 
 function amount(items = []) { return items.reduce((sum, item) => sum + ((Number(item.unit) || 1) * (Number(item.basicAmount) || 0)), 0) }
@@ -110,6 +118,7 @@ export default function ProformaInvoices() {
   const [notice, setNotice] = useState('')
   const [detailRow, setDetailRow] = useState(null)
   const [downloadError, setDownloadError] = useState('')
+  const poLookupRequest = useRef(0)
   const total = useMemo(() => form.pricingMode === 'combined' ? (Number(form.combinedBasicAmount) || 0) : amount(form.items), [form.combinedBasicAmount, form.items, form.pricingMode])
   const selectedQuote = useMemo(() => form.quotationId ? (quotations.find((q) => String(q._id || q.id) === String(form.quotationId)) || null) : null, [form.quotationId, quotations])
   const quoteItems = selectedQuote?.items || []
@@ -179,14 +188,16 @@ export default function ProformaInvoices() {
   }, [loading, location.pathname, location.state, navigate, quotations, rows])
 
   async function selectQuotation(id) {
+    const requestId = ++poLookupRequest.current
     const quote = quotations.find((row) => String(row._id || row.id) === String(id))
     if (!quote) { setForm({ ...blankForm, leadDetails: { ...blankLead }, items: [{ ...blankItem }], terms: [''] }); return }
     let eligible, poRows
     try { const response = await api.get(`${API_ENDPOINTS.proformaInvoices.list}/eligible-quotation/${id}`); eligible = response.data.items || []; poRows = response.data.poYearRows || [] }
-    catch (err) { setError(readApiError(err, 'Unable to load PO-closed services.')); return }
+    catch (err) { if (requestId === poLookupRequest.current) setError(readApiError(err, 'Unable to load PO-closed services.')); return }
+    if (requestId !== poLookupRequest.current) return
     setForm({
       ...blankForm,
-      quotationId: quote._id || quote.id, quotationNumber: quote.quotationNumber || '', poNumber: poRows[0]?.poNumber || '',
+      quotationId: quote._id || quote.id, quotationNumber: quote.quotationNumber || '', poNumber: firstDistinctPoNumber(poRows, quote.quotationNumber),
       leadId: quote.leadId || '', leadCode: quote.leadCode || '', leadDetails: { ...blankLead, ...(quote.leadDetails || {}) },
       invoiceDate: new Date().toISOString().slice(0, 10), validUntil: quote.validUntil || '',
       pricingMode: quote.pricingMode || 'individual', combinedBasicAmount: quote.pricingMode === 'combined' && eligible.length === quote.items?.length ? (quote.combinedBasicAmount || quote.grandTotal || '') : '',
@@ -204,20 +215,54 @@ export default function ProformaInvoices() {
     if (!quoteItem) return
     setForm((c) => ({ ...c, items: [...c.items, { ...blankItem, ...quoteItem }] }))
   }
-  function edit(row) { setEditingId(row._id); setForm({ ...blankForm, ...row, pricingMode: row.pricingMode || 'individual', combinedBasicAmount: row.combinedBasicAmount ?? '', invoiceDate: String(row.invoiceDate || '').slice(0, 10), leadDetails: { ...blankLead, ...(row.leadDetails || {}) }, items: row.items?.length ? row.items.map((item) => ({ ...blankItem, ...item, basicAmount: item.basicAmount ?? '' })) : [{ ...blankItem }], terms: row.terms?.length ? row.terms : [''], scopeOfWork: row.scopeOfWork?.length ? row.scopeOfWork : [''] }); window.scrollTo({ top: 0, behavior: 'smooth' }) }
+  function edit(row) {
+    const requestId = ++poLookupRequest.current
+    setEditingId(row._id)
+    setForm({
+      ...blankForm, ...row,
+      poNumber: row.quotationId ? '' : firstDistinctPoNumber([{ poNumber: row.poNumber }, ...(row.poYearRows || [])], row.quotationNumber),
+      poYearRows: row.quotationId ? [] : row.poYearRows || [],
+      poYearCount: row.quotationId ? 0 : row.poYearCount || 0,
+      pricingMode: row.pricingMode || 'individual',
+      combinedBasicAmount: row.combinedBasicAmount ?? '',
+      invoiceDate: String(row.invoiceDate || '').slice(0, 10),
+      leadDetails: { ...blankLead, ...(row.leadDetails || {}) },
+      items: row.items?.length ? row.items.map((item) => ({ ...blankItem, ...item, basicAmount: item.basicAmount ?? '' })) : [{ ...blankItem }],
+      terms: row.terms?.length ? row.terms : [''],
+      scopeOfWork: row.scopeOfWork?.length ? row.scopeOfWork : ['']
+    })
+    setError('')
+    if (row.quotationId) {
+      api.get(`${API_ENDPOINTS.proformaInvoices.list}/eligible-quotation/${row.quotationId}`)
+        .then((response) => {
+          if (requestId !== poLookupRequest.current) return
+          const poYearRows = response.data.poYearRows || []
+          setForm((current) => ({
+            ...current,
+            poYearRows,
+            poYearCount: poYearRows.length,
+            poNumber: firstDistinctPoNumber(poYearRows, row.quotationNumber)
+          }))
+        })
+        .catch((err) => {
+          if (requestId === poLookupRequest.current) setError(readApiError(err, 'Unable to refresh the lead PO number.'))
+        })
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
   async function save() {
     if (!form.quotationNumber.trim() || !form.leadDetails.companyName.trim()) { setError('Quotation Number and Company Name are required.'); return }
     if (!(Number(form.paymentPercentage) > 0 && Number(form.paymentPercentage) <= 100)) { setError('Select a payment percentage greater than 0 and up to 100.'); return }
     if (!form.pricingMode) { setError('Select Combined Price or Individual Price.'); return }
     if (!form.items.length || form.items.some((item) => !item.serviceCategory)) { setError('Every item requires Service Category.'); return }
-    if (!(form.poNumber || form.poYearRows?.[0]?.poNumber)) { setError('No received PO was found for the selected services.'); return }
+    if (!form.poNumber) { setError('No distinct received PO number was found for the selected quotation.'); return }
     if (form.pricingMode === 'combined' && !(Number(form.combinedBasicAmount) > 0)) { setError('Enter a valid Combined Basic Amount.'); return }
     if (form.pricingMode === 'individual' && form.items.some((item) => !(Number(item.basicAmount) > 0))) { setError('Every item requires a valid Basic Amount.'); return }
     setSaving(true); setError(''); setNotice('')
     try {
       const taxable = Math.round(total * Number(form.paymentPercentage)) / 100
       const tax = Math.round(taxable * 18) / 100
-      const payload = { ...form, poNumber: form.poNumber || form.poYearRows?.[0]?.poNumber || '', poYearRows: (form.poYearRows || []).slice(0, Math.max(0, Number(form.poYearCount) || 0)), items: form.items.map((item) => ({ ...item, basicAmount: item.basicAmount || 0 })), companyName: form.leadDetails.companyName, subtotal: taxable, gstRate: 18, gstAmount: tax, grandTotal: taxable + tax }
+      const payload = { ...form, poNumber: form.poNumber, poYearRows: (form.poYearRows || []).slice(0, Math.max(0, Number(form.poYearCount) || 0)), items: form.items.map((item) => ({ ...item, basicAmount: item.basicAmount || 0 })), companyName: form.leadDetails.companyName, subtotal: taxable, gstRate: 18, gstAmount: tax, grandTotal: taxable + tax }
       const response = editingId ? await api.put(API_ENDPOINTS.proformaInvoices.detail(editingId), payload) : await api.post(API_ENDPOINTS.proformaInvoices.create, payload)
       setNotice(`${response.data.proformaInvoice?.proformaNumber || 'Proforma Invoice'} saved successfully.`)
       setForm({ ...blankForm, leadDetails: { ...blankLead }, items: [{ ...blankItem }], terms: [''] }); setEditingId(''); await load()
@@ -242,7 +287,7 @@ export default function ProformaInvoices() {
     {(error || notice || downloadError) && <div className={`mt-5 rounded-2xl border px-5 py-4 font-bold ${error || downloadError ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>{error || notice || downloadError}</div>}
 
     <section className="mt-6 overflow-hidden rounded-3xl border border-emerald-100 bg-white shadow-[0_20px_60px_rgba(15,93,70,.09)]"><div className="border-b bg-gradient-to-r from-emerald-50 to-orange-50 p-5"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-emerald-700 text-white"><FileCheck2 /></span><div><h2 className="text-xl font-black">{editingId ? 'Edit Proforma Invoice' : 'Create Proforma Invoice'}</h2><p className="text-sm font-semibold text-slate-500">Select a quotation to load its PO and services.</p></div></div></div>
-      <div className="p-5"><div className="mt-2 grid gap-4 lg:grid-cols-4"><label className="lg:col-span-2"><span className="mb-2 block text-sm font-black">Select Quotation</span><QuotationPicker value={form.quotationId || ''} quotations={quotations} onChange={selectQuotation} /></label><label className="lg:col-span-2"><span className="mb-2 block text-sm font-black">Quotation Number *</span><input value={form.quotationNumber} readOnly={Boolean(form.quotationId)} onChange={(e) => setForm((c) => ({ ...c, quotationNumber: e.target.value }))} className="h-14 w-full rounded-2xl border px-4 font-black read-only:bg-slate-100" placeholder="AT/26-27/001" /></label><label className="lg:col-span-2"><span className="mb-2 block text-sm font-black">PO Number</span><input readOnly value={form.poNumber || form.poYearRows?.[0]?.poNumber || ''} placeholder="Auto-fetched from the received PO" className="h-12 w-full rounded-xl border bg-slate-50 px-4 font-bold" /></label><label><span className="mb-2 block text-sm font-black">Invoice Date</span><input type="date" value={form.invoiceDate} onChange={(e) => setForm((c) => ({ ...c, invoiceDate: e.target.value }))} className="h-12 w-full rounded-xl border px-4 font-bold" /></label><label><span className="mb-2 block text-sm font-black">Valid Until</span><input type="date" value={form.validUntil} onChange={(e) => setForm((c) => ({ ...c, validUntil: e.target.value }))} className="h-12 w-full rounded-xl border px-4 font-bold" /></label></div>
+      <div className="p-5"><div className="mt-2 grid gap-4 lg:grid-cols-4"><label className="lg:col-span-2"><span className="mb-2 block text-sm font-black">Select Quotation</span><QuotationPicker value={form.quotationId || ''} quotations={quotations} onChange={selectQuotation} /></label><label className="lg:col-span-2"><span className="mb-2 block text-sm font-black">Quotation Number *</span><input value={form.quotationNumber} readOnly={Boolean(form.quotationId)} onChange={(e) => setForm((c) => ({ ...c, quotationNumber: e.target.value }))} className="h-14 w-full rounded-2xl border px-4 font-black read-only:bg-slate-100" placeholder="AT/26-27/001" /></label><label className="lg:col-span-2"><span className="mb-2 block text-sm font-black">PO Number</span><input readOnly value={form.poNumber} placeholder="Auto-fetched from the received PO" className="h-12 w-full rounded-xl border bg-slate-50 px-4 font-bold" /></label><label><span className="mb-2 block text-sm font-black">Invoice Date</span><input type="date" value={form.invoiceDate} onChange={(e) => setForm((c) => ({ ...c, invoiceDate: e.target.value }))} className="h-12 w-full rounded-xl border px-4 font-bold" /></label><label><span className="mb-2 block text-sm font-black">Valid Until</span><input type="date" value={form.validUntil} onChange={(e) => setForm((c) => ({ ...c, validUntil: e.target.value }))} className="h-12 w-full rounded-xl border px-4 font-bold" /></label></div>
       <h3 className="mb-3 mt-7 text-lg font-black">Client & Quotation Details</h3><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{leadFields.map(([key, label]) => <label key={key}><span className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500">{label}</span><input value={form.leadDetails[key] || ''} onChange={(e) => setLead(key, e.target.value)} className="h-11 w-full rounded-xl border border-slate-200 px-3 font-bold outline-none focus:border-emerald-400" placeholder={`Enter ${label.toLowerCase()}`} /></label>)}</div>
 
       <div className="mb-3 mt-7 flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-lg font-black">Invoice Items</h3><p className="text-xs font-bold text-slate-500">{form.pricingMode ? `${form.pricingMode === 'combined' ? 'Combined' : 'Individual'} pricing selected` : 'Choose pricing type first.'}</p></div>{form.pricingMode && <div className="flex flex-wrap items-center gap-2">{form.quotationId && <select value="" onChange={(e) => { if (e.target.value) { addQuoteItem(Number(e.target.value)); e.target.value = '' } }} className="h-10 rounded-xl border border-emerald-200 bg-white px-3 text-sm font-bold text-emerald-700"><option value="">+ Add from Quotation</option>{quoteItems.map((item, idx) => <option key={idx} value={idx}>{item.serviceCategory || `Item ${idx + 1}`}{item.piboCategory ? ` · ${item.piboCategory}` : ''}</option>)}</select>}<button type="button" onClick={addBlankItem} className="inline-flex h-10 items-center gap-1 rounded-xl bg-emerald-700 px-3 text-sm font-black text-white hover:bg-emerald-600"><Plus className="h-4 w-4" /> Add Item</button></div>}</div>
@@ -252,7 +297,7 @@ export default function ProformaInvoices() {
       <div className="mt-6 grid gap-5 lg:grid-cols-2"><label><span className="mb-2 block text-sm font-black">Terms & Conditions</span><textarea value={form.terms.join('\n')} onChange={(e) => setForm((c) => ({ ...c, terms: e.target.value.split(/\r?\n/) }))} rows={6} className="w-full rounded-2xl border p-4 font-semibold outline-none" placeholder="One term per line" /></label><label><span className="mb-2 block text-sm font-black">Scope of Work</span><textarea value={(form.scopeOfWork || []).join('\n')} onChange={(e) => setForm((c) => ({ ...c, scopeOfWork: e.target.value.split(/\r?\n/) }))} rows={6} className="w-full rounded-2xl border p-4 font-semibold outline-none" placeholder="One scope item per line" /></label></div><div className="mt-5 ml-auto max-w-sm rounded-2xl bg-gradient-to-br from-emerald-800 to-teal-700 p-5 text-white"><span className="text-xs font-black uppercase tracking-wider text-emerald-200">Grand Total</span><strong className="mt-2 block text-3xl">{money(Math.round(total * Number(form.paymentPercentage || 0)) / 100 * 1.18)}</strong><p className="mt-2 text-sm text-emerald-100">Calculated automatically from quantity × basic amount.</p><button disabled={saving} onClick={save} className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-orange-500 font-black shadow-lg transition hover:bg-orange-400 disabled:opacity-50"><Save className="h-5 w-5" /> {saving ? 'Saving…' : editingId ? 'Update Invoice' : 'Save Proforma Invoice'}</button></div></div>
     </section>
 
-    <section className="mt-7 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"><header className="flex items-center justify-between border-b p-5"><div><h2 className="text-xl font-black">Saved Proforma Invoices</h2><p className="text-sm font-semibold text-slate-500">{rows.length} records stored in CRM database</p></div></header><div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-sm"><thead className="bg-slate-100 text-xs uppercase text-slate-500"><tr>{['Proforma No.', 'Quotation No.', 'PO Number', 'Company', 'Date', 'Amount', 'Status', 'Actions'].map((h) => <th key={h} className="p-4">{h}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={row._id} className="border-b transition hover:bg-emerald-50/30"><td className="p-4 font-black text-emerald-700">{row.proformaNumber}</td><td className="p-4 font-bold">{row.quotationNumber}</td><td className="p-4 font-bold">{row.poNumber}</td><td className="p-4 font-black">{row.companyName}</td><td className="p-4">{String(row.invoiceDate || '').slice(0, 10)}</td><td className="p-4 font-black">{money(row.grandTotal)}</td><td className="p-4"><span className="rounded-full bg-emerald-50 px-3 py-1 font-black text-emerald-700">{row.status}</span></td><td className="p-4"><div className="flex gap-2"><button title="View details" onClick={() => { setDownloadError(''); setDetailRow(row) }} className="grid h-9 w-9 place-items-center rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50"><Eye className="h-4 w-4" /></button><button title="Download PDF" onClick={() => downloadProforma(row)} className="grid h-9 w-9 place-items-center rounded-lg border border-sky-200 text-sky-700 hover:bg-sky-50"><Download className="h-4 w-4" /></button>{remainingPercentage(row) > 0 && row.status !== 'cancelled' && <button onClick={() => { edit({ ...row, paymentPercentage: remainingPercentage(row), paymentStage: 'later', invoiceDate: new Date().toISOString().slice(0, 10) }); setEditingId(''); setNotice('Balance payment loaded. Verify the remaining percentage before saving a new invoice.'); }} className="rounded-lg border border-emerald-200 px-3 py-2 font-black text-emerald-700">Create Balance Invoice</button>}<button onClick={() => edit(row)} className="rounded-lg border border-orange-200 px-3 py-2 font-black text-orange-600 hover:bg-orange-50">Edit</button></div></td></tr>)}{!rows.length && <tr><td colSpan="8" className="p-12 text-center font-bold text-slate-400">{loading ? 'Loading…' : 'No Proforma Invoices created yet.'}</td></tr>}</tbody></table></div></section>
+    <section className="mt-7 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"><header className="flex items-center justify-between border-b p-5"><div><h2 className="text-xl font-black">Saved Proforma Invoices</h2><p className="text-sm font-semibold text-slate-500">{rows.length} records stored in CRM database</p></div></header><div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-sm"><thead className="bg-slate-100 text-xs uppercase text-slate-500"><tr>{['Proforma No.', 'Quotation No.', 'PO Number', 'Company', 'Date', 'Amount', 'Status', 'Actions'].map((h) => <th key={h} className="p-4">{h}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={row._id} className="border-b transition hover:bg-emerald-50/30"><td className="p-4 font-black text-emerald-700">{row.proformaNumber}</td><td className="p-4 font-bold">{row.quotationNumber}</td><td className="p-4 font-bold">{firstDistinctPoNumber([{ poNumber: row.poNumber }, ...(row.poYearRows || [])], row.quotationNumber) || '-'}</td><td className="p-4 font-black">{row.companyName}</td><td className="p-4">{String(row.invoiceDate || '').slice(0, 10)}</td><td className="p-4 font-black">{money(row.grandTotal)}</td><td className="p-4"><span className="rounded-full bg-emerald-50 px-3 py-1 font-black text-emerald-700">{row.status}</span></td><td className="p-4"><div className="flex gap-2"><button title="View details" onClick={() => { setDownloadError(''); setDetailRow(row) }} className="grid h-9 w-9 place-items-center rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50"><Eye className="h-4 w-4" /></button><button title="Download PDF" onClick={() => downloadProforma(row)} className="grid h-9 w-9 place-items-center rounded-lg border border-sky-200 text-sky-700 hover:bg-sky-50"><Download className="h-4 w-4" /></button>{remainingPercentage(row) > 0 && row.status !== 'cancelled' && <button onClick={() => { edit({ ...row, paymentPercentage: remainingPercentage(row), paymentStage: 'later', invoiceDate: new Date().toISOString().slice(0, 10) }); setEditingId(''); setNotice('Balance payment loaded. Verify the remaining percentage before saving a new invoice.'); }} className="rounded-lg border border-emerald-200 px-3 py-2 font-black text-emerald-700">Create Balance Invoice</button>}<button onClick={() => edit(row)} className="rounded-lg border border-orange-200 px-3 py-2 font-black text-orange-600 hover:bg-orange-50">Edit</button></div></td></tr>)}{!rows.length && <tr><td colSpan="8" className="p-12 text-center font-bold text-slate-400">{loading ? 'Loading…' : 'No Proforma Invoices created yet.'}</td></tr>}</tbody></table></div></section>
     {detailRow && <ProformaDetail row={detailRow} onClose={() => { setDetailRow(null); setDownloadError('') }} onEdit={(row) => { setDetailRow(null); edit(row) }} onDownload={downloadProforma} downloadError={downloadError} />}
   </div></div></DashboardShell>
 }

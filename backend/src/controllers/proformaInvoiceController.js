@@ -1,7 +1,7 @@
 const ProformaInvoice = require('../models/ProformaInvoice');
 const { resolvePoProof } = require('../services/poProofResolver');
 const Lead = require('../models/Lead');
-const { eligibleItems } = require('../services/proformaEligibility');
+const { eligibleItems, assignmentForService, poRowsForQuotation } = require('../services/proformaEligibility');
 const Quotation = require('../models/Quotation');
 const { resolveCrmRelationships } = require('../services/crmRelationships');
 const { getVisibleUserScope } = require('../utils/visibilityScope');
@@ -25,12 +25,42 @@ async function nextProformaNumber() {
   const now = new Date();
   const start = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
   const fy = `${String(start).slice(-2)}-${String(start + 1).slice(-2)}`;
-  const latest = await ProformaInvoice.findOne({ proformaNumber: new RegExp(`^PI/${fy}/\\d+$`, 'i') })
-    .sort({ createdAt: -1 }).select('proformaNumber').lean();
-  const sequence = Math.max(203, (Number.parseInt(String(latest?.proformaNumber || '').split('/').pop(), 10) || 0) + 1);
+  const [latest] = await ProformaInvoice.aggregate([
+    { $match: { proformaNumber: new RegExp(`^PI/${fy}/\\d+$`, 'i') } },
+    {
+      $project: {
+        sequence: {
+          $convert: {
+            input: { $arrayElemAt: [{ $split: ['$proformaNumber', '/'] }, 2] },
+            to: 'int',
+            onError: 0,
+            onNull: 0
+          }
+        }
+      }
+    },
+    { $sort: { sequence: -1 } },
+    { $limit: 1 }
+  ]);
+  const sequence = Math.max(203, (Number(latest?.sequence) || 0) + 1);
   return `PI/${fy}/${String(sequence).padStart(3, '0')}`;
 }
-
+function authoritativePoRows(rows = [], quotationNumber = '') {
+  const quotationKey = text(quotationNumber).toUpperCase();
+  return rows.filter(row => text(row?.poNumber || row?.poNo)
+    && (!quotationKey || text(row?.poNumber || row?.poNo).toUpperCase() !== quotationKey)).map(row => ({
+    ...row,
+    poNumber: text(row.poNumber || row.poNo)
+  }));
+}
+function applyAuthoritativePoRows(payload, rows, quotationNumber) {
+  const poYearRows = authoritativePoRows(rows, quotationNumber);
+  if (!poYearRows.length) return false;
+  payload.poYearRows = poYearRows;
+  payload.poYearCount = poYearRows.length;
+  payload.poNumber = poYearRows[0].poNumber;
+  return true;
+}
 function cleanPayload(body = {}) {
   const leadDetails = body.leadDetails && typeof body.leadDetails === 'object' ? body.leadDetails : {};
   const items = (Array.isArray(body.items) ? body.items : []).map((item) => {
@@ -92,7 +122,6 @@ exports.list = async (req, res) => {
 exports.create = async (req, res) => {
   const payload = cleanPayload(req.body);
   if (!payload.companyName) return res.status(400).json({ error: 'Company Name is required.' });
-  if (!payload.poNumber) return res.status(400).json({ error: 'PO Number is required.' });
   if (!payload.quotationNumber) return res.status(400).json({ error: 'Quotation Number is required.' });
   if (!payload.items.length) return res.status(400).json({ error: 'At least one invoice item is required.' });
   const validationError = await validateInvoice(payload, null, req.user);
@@ -107,7 +136,7 @@ exports.update = async (req, res) => {
   const row = await ProformaInvoice.findOne({ _id: req.params.id, ...(scope === null ? {} : { createdBy: { $in: scope.ids } }) });
   if (!row) return res.status(404).json({ error: 'Proforma Invoice not found or not accessible.' });
   const payload = cleanPayload(req.body);
-  if (!payload.companyName || !payload.poNumber || !payload.quotationNumber || !payload.items.length) {
+  if (!payload.companyName || !payload.quotationNumber || !payload.items.length) {
     return res.status(400).json({ error: 'Company, PO Number, Quotation Number and at least one item are required.' });
   }
   const validationError = await validateInvoice(payload, row._id, req.user);
@@ -117,7 +146,7 @@ exports.update = async (req, res) => {
   return res.json({ ok: true, proformaInvoice: row });
 };
 
-exports._test = { cleanPayload, validateInvoice, nextProformaNumber };
+exports._test = { cleanPayload, validateInvoice, nextProformaNumber, authoritativePoRows, applyAuthoritativePoRows, poRowsForQuotation };
 
 async function quotationContext(id) {
   const quote = await Quotation.findById(id).lean();
@@ -128,13 +157,14 @@ async function quotationContext(id) {
   const items = lead ? eligibleItems(quote, lead) : [];
   const orders = new Map();
   for (const item of items) {
-    const assignment = lead.assignments?.find(a => item.assignedServiceId && a.assignedServiceId === item.assignedServiceId) || lead.assignments?.[item.sourceServiceIndex] || (lead.assignments?.length === 1 ? lead.assignments[0] : lead);
+    const assignment = assignmentForService(lead, item.assignedServiceId, item.sourceServiceIndex, lead.serviceSelections?.length || 1);
     const rows = assignment?.poYearRows?.length ? assignment.poYearRows : assignment?.originalPoDetails ? [assignment.originalPoDetails] : [assignment];
-    for (const po of rows.filter(Boolean)) {
+    for (const po of poRowsForQuotation(rows.filter(Boolean), quote)) {
       const proof = resolvePoProof({ ...po, poFile: po.poFile || po.compliancePoFile });
-      if (!po.poNumber || !proof.url) continue;
-      const key = `${po.poNumber}|${po.fy || po.poFinancialYear || ''}`;
-      const row = orders.get(key) || { fy: po.fy || po.poFinancialYear || '', poNumber: po.poNumber, compliancePoFile: { name: proof.name || 'PO proof', secureUrl: proof.url, url: proof.url }, serviceCategory: [] };
+      const poNumber = text(po.poNumber || po.poNo);
+      if (!poNumber || poNumber.toUpperCase() === text(quote.quotationNumber).toUpperCase() || !proof.url) continue;
+      const key = `${poNumber}|${po.fy || po.poFinancialYear || ''}`;
+      const row = orders.get(key) || { fy: po.fy || po.poFinancialYear || '', poNumber, compliancePoFile: { name: proof.name || 'PO proof', secureUrl: proof.url, url: proof.url }, serviceCategory: [] };
       row.serviceCategory = [...new Set([...row.serviceCategory, item.serviceCategory])];
       orders.set(key, row);
     }
@@ -153,8 +183,9 @@ async function validateInvoice(payload, editingId, user) {
   if (!payload.quotationId) return 'Select a quotation with closed services and uploaded PO proof.';
   const scope = await getVisibleUserScope(user);
   if (!await Quotation.exists({ _id: payload.quotationId, ...(scope === null ? {} : { createdBy: { $in: scope.ids } }) })) return 'Quotation not found or not accessible.';
-  const { quote, items } = await quotationContext(payload.quotationId);
+  const { quote, items, poYearRows } = await quotationContext(payload.quotationId);
   if (!quote) return 'Selected quotation was not found.';
+  if (!applyAuthoritativePoRows(payload, poYearRows, quote.quotationNumber)) return 'No distinct PO number was found on the selected lead. Enter the actual PO number while closing the lead, then reload this quotation.';
   for (const item of payload.items) {
     if (item.sourceItemIndex != null) continue;
     const matches = items.filter(eligible => ['serviceCategory', 'piboCategory', 'servicesOffered', 'servicesForYear'].every(key => text(eligible[key]) === text(item[key])));

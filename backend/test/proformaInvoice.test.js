@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { _test } = require('../src/controllers/proformaInvoiceController');
+const { assignmentForService } = require('../src/services/proformaEligibility');
 const ProformaInvoice = require('../src/models/ProformaInvoice');
 
 test('proforma payload preserves quotation, PO and calculated item totals', () => {
@@ -44,22 +45,58 @@ test('invoice delivery, consignee and bank fields survive cleaning with explicit
   assert.deepEqual(_test.cleanPayload({}).invoiceDetails, {});
 });
 
-test('new Proforma invoice numbers start at 203 and continue after the latest number', async () => {
-  const originalFindOne = ProformaInvoice.findOne;
+test('proforma uses the lead PO number, never the quotation number, as its PO reference', () => {
+  const payload = { poNumber: 'AT/26-27/525', poYearRows: [] };
+  const applied = _test.applyAuthoritativePoRows(payload, [
+    { poNumber: 'CUSTOMER-PO-203', quotationNumber: 'AT/26-27/525', fy: '2026-27' },
+    { poNumber: '', quotationNumber: 'AT/26-27/526' }
+  ], 'AT/26-27/525');
+  assert.equal(applied, true);
+  assert.equal(payload.poNumber, 'CUSTOMER-PO-203');
+  assert.equal(payload.poYearRows.length, 1);
+  assert.equal(_test.applyAuthoritativePoRows({ poNumber: 'AT/26-27/525' }, [
+    { poNumber: 'AT/26-27/525' }
+  ], 'AT/26-27/525'), false);
+});
+
+test('quotation PO lookup selects rows linked to that quotation and supports unlinked legacy rows', () => {
+  const rows = [
+    { poNumber: 'PO-OLD', quotationId: 'quotation-a', quotationNumber: 'AT/26-27/100' },
+    { poNumber: 'PO-CURRENT', quotationId: 'quotation-b', quotationNumber: 'AT/26-27/200' }
+  ];
+  assert.deepEqual(_test.poRowsForQuotation(rows, { _id: 'quotation-b', quotationNumber: 'AT/26-27/200' }), [rows[1]]);
+  assert.deepEqual(_test.poRowsForQuotation([{ poNumber: 'PO-LEGACY' }], { _id: 'quotation-b' }), [{ poNumber: 'PO-LEGACY' }]);
+});
+
+test('quotation PO lookup does not fall back to a different service assignment by index', () => {
+  const lead = {
+    assignments: [
+      { assignedServiceId: 'service-a', poYearRows: [{ poNumber: 'PO-A' }] },
+      { assignedServiceId: 'service-b', poYearRows: [{ poNumber: 'PO-B' }] }
+    ]
+  };
+  assert.equal(assignmentForService(lead, 'service-b', 0, 2), lead.assignments[1]);
+  assert.deepEqual(assignmentForService(lead, 'service-c', 0, 2), {});
+});
+
+test('new Proforma invoice numbers start at 203 and continue after the highest number', async () => {
+  const originalAggregate = ProformaInvoice.aggregate;
   const now = new Date();
   const start = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
   const fy = `${String(start).slice(-2)}-${String(start + 1).slice(-2)}`;
-  let latestNumber = `PI/${fy}/002`;
-  ProformaInvoice.findOne = () => ({
-    sort() { return this; },
-    select() { return this; },
-    lean: async () => ({ proformaNumber: latestNumber })
-  });
+  let highestSequence = 2;
+  ProformaInvoice.aggregate = async (pipeline) => {
+    assert.ok(pipeline[0].$match.proformaNumber.test(`PI/${fy}/123`));
+    assert.equal(pipeline[0].$match.proformaNumber.flags, 'i');
+    return [{ sequence: highestSequence }];
+  };
   try {
     assert.equal(await _test.nextProformaNumber(), `PI/${fy}/203`);
-    latestNumber = `PI/${fy}/203`;
+    highestSequence = 203;
     assert.equal(await _test.nextProformaNumber(), `PI/${fy}/204`);
+    highestSequence = 525;
+    assert.equal(await _test.nextProformaNumber(), `PI/${fy}/526`);
   } finally {
-    ProformaInvoice.findOne = originalFindOne;
+    ProformaInvoice.aggregate = originalAggregate;
   }
 });
