@@ -2356,21 +2356,34 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
     ? selectionMatches[0]
     : selectionMatches.length > 1 ? {} : lead?.serviceSelections?.[resolvedIndex] || {};
   const allowLeadOwnerFallback = Math.max(lead?.assignments?.length || 0, lead?.serviceSelections?.length || 0) <= 1;
+  const hasAssignedOwner = [
+    assignment.assignedStaff, assignment.assignedStaffCrmUserId, assignment.assignedStaffText, assignment.assignedStaffEmail,
+    serviceSnapshot.assignedStaff, serviceSnapshot.assignedStaffCrmUserId, serviceSnapshot.assignedStaffText, serviceSnapshot.assignedStaffEmail,
+    serviceSelection.assignedStaff, serviceSelection.assignedStaffCrmUserId, serviceSelection.assignedStaffText, serviceSelection.assignedStaffEmail,
+    ...(allowLeadOwnerFallback ? [lead?.assignedStaff, lead?.assignedStaffCrmUserId, lead?.assignedStaffText, lead?.assignedStaffEmail] : [])
+  ].some(Boolean);
+  const closureOwner = !hasAssignedOwner
+    ? assignment.closedOnBehalfOfUser || lead?.closedOnBehalfOfUser || ''
+    : '';
   const owner = assignment.assignedStaff || assignment.assignedStaffCrmUserId
     || serviceSnapshot.assignedStaff || serviceSnapshot.assignedStaffCrmUserId
     || serviceSelection.assignedStaff || serviceSelection.assignedStaffCrmUserId
-    || (allowLeadOwnerFallback ? lead?.assignedStaffCrmUserId || lead?.assignedStaff : '') || '';
+    || (allowLeadOwnerFallback ? lead?.assignedStaffCrmUserId || lead?.assignedStaff : '')
+    || closureOwner || '';
   const ownerId = owner && typeof owner === 'object' && typeof owner.toHexString === 'function'
     ? owner
     : owner?._id || (typeof owner?.id === 'string' ? owner.id : '') || (mongoose.isValidObjectId(owner) ? owner : '');
   const ownerEmail = assignment.assignedStaffEmail || serviceSnapshot.assignedStaffEmail || serviceSelection.assignedStaffEmail
+    || (!hasAssignedOwner ? assignment.closedOnBehalfOfEmail || lead?.closedOnBehalfOfEmail : '')
     || (allowLeadOwnerFallback ? lead?.assignedStaffEmail : '') || owner?.email
     || (typeof owner === 'string' && owner.includes('@') ? owner : '');
   const ownerName = assignment.assignedStaffText || serviceSnapshot.assignedStaffText || serviceSelection.assignedStaffText
+    || (!hasAssignedOwner ? assignment.closedOnBehalfOfName || lead?.closedOnBehalfOfName : '')
     || (allowLeadOwnerFallback ? lead?.assignedStaffText : '') || owner?.name
     || (owner && !ownerId && !ownerEmail ? String(owner) : '');
   const ownerCrmId = assignment.assignedStaffCrmUserId || serviceSnapshot.assignedStaffCrmUserId
-    || serviceSelection.assignedStaffCrmUserId || (allowLeadOwnerFallback ? lead?.assignedStaffCrmUserId : '')
+    || serviceSelection.assignedStaffCrmUserId || (!hasAssignedOwner ? closureOwner : '')
+    || (allowLeadOwnerFallback ? lead?.assignedStaffCrmUserId : '')
     || owner?.crmUserId || (owner && !ownerId ? String(owner) : '');
   const ownerConditions = [
     ...(ownerId ? [{ _id: ownerId }] : []),

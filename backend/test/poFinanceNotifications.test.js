@@ -134,6 +134,23 @@ test('PO referral and payment notifications reach the owner and secondary-role a
   });
   assert.equal(serviceMatchedRetry.recipients, 1);
   assert.deepEqual(sent.map((mail) => mail.to), ['owner@example.test']);
+
+  sent.length = 0;
+  const closedOnBehalfRetry = await notifyPurchaseOrderDecision({
+    approval: { ...approval, payload: { ...approval.payload, assignedServiceId: 'service-a' } },
+    lead: {
+      ...lead,
+      assignments: [{
+        assignedServiceId: 'service-a',
+        closedOnBehalfOfUser: 'owner-crm',
+        closedOnBehalfOfName: 'Owner User',
+        closedOnBehalfOfEmail: 'owner@example.test'
+      }]
+    },
+    index: 0, status: 'REFERRED', remarks: '', specialApproval: true, ownerOnly: true
+  });
+  assert.equal(closedOnBehalfRetry.recipients, 1);
+  assert.deepEqual(sent.map((mail) => mail.to), ['owner@example.test']);
 });
 
 test('Finance Approval is visible to authenticated users and sidebar refreshes authenticated roles', () => {
@@ -183,4 +200,10 @@ test('lead owner request rows and details are restricted to the assigned owner',
       { assignedServiceId: 'service-a', assignedStaffCrmUserId: 'owner-crm' }
     ]
   }, { _id: 'owner-4', email: 'lead-wide@example.test' }), false);
+  assert.equal(financeTest.isAssignedLeadOwner({ payload: { assignmentIndex: 0 } }, {
+    assignments: [{ closedOnBehalfOfUser: 'owner-5', closedOnBehalfOfName: 'Owner User', closedOnBehalfOfEmail: 'owner@example.test' }]
+  }, { _id: 'owner-5', email: 'owner@example.test', name: 'Owner User' }), true);
+  assert.equal(financeTest.isAssignedLeadOwner({ payload: { assignmentIndex: 0 } }, {
+    assignments: [{ assignedStaff: 'other-owner', closedOnBehalfOfUser: 'owner-6', closedOnBehalfOfEmail: 'owner@example.test' }]
+  }, { _id: 'owner-6', email: 'owner@example.test' }), false);
 });
