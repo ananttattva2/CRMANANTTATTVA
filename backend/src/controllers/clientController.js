@@ -995,9 +995,16 @@ function mapPendingApprovalRecord(record) {
 function mapClientPendingApprovalRow(client, createdByLabel = 'CRM User') {
   const parts = approvalDateParts(client.createdAt || new Date());
   const data = client.data || {};
+  const assignedServiceId = String(
+    client.assignedServiceId
+    || data.assignedServiceId
+    || data.selectedLeadSnapshot?.assignedServiceId
+    || ''
+  ).trim();
 
   return {
     id: client._id,
+    assignedServiceId,
     selectedLeadId: client.selectedLead?._id || client.selectedLead || data.selectedLead || '',
     source: 'crm',
     uniqueId: data.importMeta?.uniqueId || '',
@@ -2140,6 +2147,7 @@ exports.listPendingApprovals = async (req, res) => {
     approvalRecordId: row.approvalRecordId,
     id: row.id,
     sourceClientId: row.sourceClientId,
+    assignedServiceId: row.assignedServiceId || row.payload?.assignedServiceId || '',
     quotationId: row.quotationId,
     source: row.source,
     uniqueId: row.uniqueId,

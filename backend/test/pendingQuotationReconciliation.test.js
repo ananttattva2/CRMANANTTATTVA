@@ -42,4 +42,6 @@ test('pending quotation rows expose and display their created or updated timesta
 test('Pending Approval client tab shows the unfiltered Client Master total', () => {
   assert.match(pageSource, /label: 'Clients', count: companyClients\.length/);
   assert.doesNotMatch(pageSource, /label: 'Clients', count: filteredClients\.length/);
+  assert.match(pageSource, /applicant:\$\{applicantId\}:service:\$\{assignedServiceId \|\| 'legacy'\}/);
+  assert.match(controllerSource, /assignedServiceId: row\.assignedServiceId \|\| row\.payload\?\.assignedServiceId \|\| ''/);
 });

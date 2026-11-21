@@ -170,8 +170,8 @@ test('pending approval reconciliation keeps every live Client Master row', () =>
 
 test('pending approval reconciliation does not merge separate clients sharing a lead ID', () => {
   const liveRows = [
-    { id: 'client-importer', uniqueId: 'ATPL-LEAD-100', clientName: 'Example Importer', approvalStatus: 'PENDING' },
-    { id: 'client-producer', uniqueId: 'ATPL-LEAD-100', clientName: 'Example Producer', approvalStatus: 'APPROVED' }
+    { id: 'client-importer', assignedServiceId: 'service-importer', uniqueId: 'ATPL-LEAD-100', clientName: 'Example Importer', approvalStatus: 'PENDING' },
+    { id: 'client-producer', assignedServiceId: 'service-producer', uniqueId: 'ATPL-LEAD-100', clientName: 'Example Producer', approvalStatus: 'APPROVED' }
   ];
   const indexedRows = [
     { ...liveRows[0], approvalRecordId: 'approval-importer', approvalStatus: 'PARTIALLY_APPROVED' }

@@ -661,7 +661,8 @@ function groupPendingClientsByCompany(rows = []) {
     // single confusing row. Duplicate rows for the same applicant and status
     // are still collapsed together.
     const applicantId = String(row.id || row.sourceClientId || row._id || '').trim();
-    const key = `applicant:${applicantId}:status:${getApprovalStatus(row)}`;
+    const assignedServiceId = String(row.assignedServiceId || row.payload?.assignedServiceId || '').trim();
+    const key = `applicant:${applicantId}:service:${assignedServiceId || 'legacy'}:status:${getApprovalStatus(row)}`;
     const current = groups.get(key) || [];
     current.push(row);
     groups.set(key, current);
