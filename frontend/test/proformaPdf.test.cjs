@@ -30,6 +30,22 @@ test('proforma supports multiple rows, combined prices and long invoice continua
   assert.ok(long.getNumberOfPages() > 1);
 });
 
+test('proforma shows explicitly selected Annual Return years instead of the derived service year', async () => {
+  const build = await renderer();
+  const pdf = build({
+    ...sample,
+    items: [{
+      serviceCategory: 'EPR - Plastic Waste',
+      servicesOffered: 'Annual Return',
+      servicesForYear: '2025-26',
+      annualReturnYears: ['2024-25'],
+      basicAmount: 35000
+    }]
+  });
+  const content = pdf.output();
+  assert.ok(content.includes('Annual Return: 2024-25'));
+  assert.ok(!content.includes('2025-26'));
+});
 
 test('PI view and download use the approved bank block instead of stale saved bank fields', async () => {
   const build = await renderer();

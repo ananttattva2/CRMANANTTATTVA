@@ -98,7 +98,11 @@ export function buildInvoicePdf(row) {
   const tax = Math.round(base * 18) / 100
   items.forEach((item, index) => {
     const title = item.serviceCategory || item.piboCategory || 'Service'
-    const description = [item.servicesOffered, item.servicesForYear, ...(item.annualReturnYears || []).map((value) => 'Annual Return: ' + value)].filter(Boolean).join('\n')
+    const annualReturnYears = [...new Set((item.annualReturnYears || []).filter(Boolean))]
+    const serviceYears = annualReturnYears.length
+      ? annualReturnYears.map((value) => 'Annual Return: ' + value)
+      : [item.servicesForYear]
+    const description = [item.servicesOffered, ...serviceYears].filter(Boolean).join('\n')
     font(8.5, 'bold')
     const titleLines = pdf.splitTextToSize(title, 302)
     font(8, 'italic')

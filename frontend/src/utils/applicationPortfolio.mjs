@@ -12,7 +12,7 @@ export const STATUS_COLUMNS = [
 // Pending application statuses that are grouped under the "Pending" header.
 export const PENDING_STATUS_KEYS = new Set(['annualActionRequired', 'applied', 'underReview', 'notStarted', 'rejected'])
 export function applicationSummaryRecords(group) {
-  return group.records.map(record => {
+  return group.records.map(record => { 
     const summaryService = applicationSummaryService(record)
     const matchingServices = record.services.filter(service => service.closed && service.offeredServices[0] === summaryService)
     const statusServices = matchingServices.length ? matchingServices : record.services
@@ -89,7 +89,7 @@ export function matchesServiceSummary(record, key, date = new Date()) {
   if (key === 'annualActionRequired') return representativeService === 'Annual Return Filling' && !annualForYear
   return matchesApplicationService(summary, key)
 }
-export function matchesStatusSummary(record, key, date = new Date()) {
+export function matchesStatusSummary(record, key, date = new Date()) { 
   // The status Total must reconcile with the visible status buckets. Completed
   // Registration is intentionally hidden from this summary, so it must not be
   // counted in Total either.
