@@ -68,6 +68,9 @@ jobs:
       - name: Test Legal SLA register and weekly reminders
         run: node --test backend/test/legalSla.test.js backend/test/legalSlaBrowser.test.js backend/test/mailerBranding.test.js
 
+      - name: Test Lead Closure Approval rendering
+        run: node --test backend/test/pendingApprovalLeadClosureRender.test.js
+
       - name: Build frontend
         env:
           NODE_OPTIONS: --max-old-space-size=4096

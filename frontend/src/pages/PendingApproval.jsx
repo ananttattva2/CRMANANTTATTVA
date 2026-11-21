@@ -1753,12 +1753,12 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                 <ApprovalTable title="Lead Closure Approval" columns={['Company / Lead', 'Service', 'PO Amount', 'Submitted By', 'Finance Remarks', 'Payment Data', 'Status', 'Actions']} emptyText="No POs are waiting for Lead Closure Approval." page={1} totalPages={1} showing={filteredLeadClosureApprovals.length} total={filteredLeadClosureApprovals.length} onPrev={() => {}} onNext={() => {}}>
                   {filteredLeadClosureApprovals.map((row) => {
                     const id = row._id || row.id;
-                    const pos = normalizePoRows(row);
+                    const pos = normalizeApprovalPoRows(row);
                     return (
-                      <tr key={id} className={approvalRowClassName(row, false)}>
+                      <tr key={id}>
                         <td><strong>{row.clientName}</strong>{row.uniqueId && <><br /><small>{row.uniqueId}</small></>}</td>
                         <td>{row.payload?.service?.servicesOffered || row.payload?.service?.eprCategory || '—'}</td>
-                        <td>{pos.length ? money(Number(pos.reduce((sum, po) => sum + Number(po.poAmount || 0), 0))) : '—'}</td>
+                        <td>{pos.length ? `₹${formatAmount(pos.reduce((sum, po) => sum + (po.poAmountValue || 0), 0))}` : '—'}</td>
                         <td>{row.payload?.poSubmittedByName || row.createdByName || '—'}</td>
                         <td>{row.poReview?.financeReferral?.remarks ? <span className="block max-w-xs whitespace-pre-wrap text-xs text-slate-600">{row.poReview.financeReferral.remarks}</span> : '—'}</td>
                         <td>{row.poReview?.leadOwnerRequest?.paymentDate ? <span className="block max-w-xs whitespace-pre-wrap text-xs text-slate-600">{new Date(`${row.poReview.leadOwnerRequest.paymentDate}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span> : row.poReview?.leadOwnerRequest?.paymentData ? <span className="block max-w-xs whitespace-pre-wrap text-xs text-slate-600">{row.poReview.leadOwnerRequest.paymentData}</span> : '—'}</td>
