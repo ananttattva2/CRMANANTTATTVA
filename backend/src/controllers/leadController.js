@@ -2331,7 +2331,8 @@ exports.permanentlyCloseProvisionalLead = async (req, res) => {
 
 async function notifyPurchaseOrderDecision({ approval, lead, index, status, remarks, screenshotUrl, leadClosure = false, specialApproval = false, paymentReceived = false, paymentStatus, poAmount }) {
   const assignment = lead?.assignments?.[index] || {};
-  const leadOwnerId = assignment.assignedStaff || '';
+  const leadOwnerId = assignment.assignedStaff?._id || assignment.assignedStaff || lead?.assignedStaff?._id || lead?.assignedStaff || '';
+  const leadOwnerEmail = assignment.assignedStaffEmail || lead?.assignedStaffEmail || '';
   const leadOwnerUsers = (leadClosure || specialApproval || paymentReceived) && leadOwnerId
     ? await User.find({ _id: leadOwnerId, isActive: { $ne: false } }).select('email').lean()
     : [];
@@ -2350,9 +2351,9 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
   ] }).select('email').lean();
   const recipients = [...new Set([
     ...(paymentReceived
-      ? [...leadOwnerUsers.map((user) => user.email), ...adminUsers.map((user) => user.email)]
+      ? [...leadOwnerUsers.map((user) => user.email), leadOwnerEmail, ...adminUsers.map((user) => user.email)]
       : specialApproval
-        ? [...leadOwnerUsers.map((user) => user.email), ...adminUsers.map((user) => user.email), ...responsibleUsers.map((user) => user.email)]
+        ? [...leadOwnerUsers.map((user) => user.email), leadOwnerEmail, ...adminUsers.map((user) => user.email), ...responsibleUsers.map((user) => user.email)]
         : responsibleUsers.map((user) => user.email)),
     ...financeUsers.map((user) => user.email),
     ...(!paymentReceived ? [

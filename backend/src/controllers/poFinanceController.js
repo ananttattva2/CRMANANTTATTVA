@@ -6,6 +6,36 @@ const { userHasAnyRole } = require('../utils/userRoles');
 const { transition, sourceSignature, termsSnapshot, fail } = require('../services/poApprovalWorkflow');
 const REVIEW_ROLES = ['accounts', 'finance', 'admin', 'superadmin'];
 const canView = user => userHasAnyRole(user, REVIEW_ROLES);
+function isAssignedLeadOwner(approval, lead, userId) {
+  if (!approval || !lead || !userId) return false;
+  const assignments = lead.assignments || [];
+  const serviceId = String(approval.payload?.assignedServiceId || '');
+  let assignment;
+  if (serviceId) {
+    const matches = assignments.filter(row => String(row.assignedServiceId || '') === serviceId);
+    if (matches.length !== 1) return false;
+    assignment = matches[0];
+  } else {
+    const index = Number(approval.payload?.assignmentIndex);
+    if (!Number.isInteger(index) || !assignments[index]) return false;
+    assignment = assignments[index];
+  }
+  return String(assignment.assignedStaff || lead.assignedStaff || '') === String(userId);
+}
+async function filterAssignedLeadOwnerApprovals(approvals, userId) {
+  const pending = approvals.filter(row => row.poReview?.stage === 'LEAD_OWNER_PENDING');
+  const leadIds = [...new Set(pending.map(row => String(row.payload?.leadId || '')).filter(mongoose.isValidObjectId))];
+  if (!leadIds.length) return [];
+  const leads = await Lead.find({ _id: { $in: leadIds } })
+    .select('_id assignedStaff assignments.assignedServiceId assignments.assignedStaff')
+    .lean();
+  const leadsById = new Map(leads.map(lead => [String(lead._id), lead]));
+  return pending.filter(approval => isAssignedLeadOwner(
+    approval,
+    leadsById.get(String(approval.payload?.leadId || '')),
+    userId
+  ));
+}
 function report(res, error) {
   console.error('PO review failed', { name: error.name, code: error.code, status: error.status });
   return res.status(error.status || 503).json({ error: error.status ? error.message : 'Unable to save this PO review. Refresh and try again.' });
@@ -210,18 +240,10 @@ exports.list = async (req, res) => {
   try {
     const baseFilter = { type: 'purchase_order', 'poReview.stage': { $in: ['FINANCE_READY', 'LEAD_OWNER_PENDING', 'LEAD_CLOSURE_PENDING', 'FINANCE_RELEASED', 'FINALIZED'] } };
     const approvals = await Approval.find(baseFilter)
-      .select('clientName uniqueId approvalStatus createdByName createdAt actionAt poReview payload.leadId payload.leadCode payload.poSubmittedByName payload.poSubmittedAt payload.service payload.poYearRows.poNumber payload.poYearRows.poAmount payload.poYearRows.quotationBasicAmount payload.poYearRows.quotationNumber payload.poYearRows.quotationItems.unit payload.poYearRows.quotationItems.basicAmount payload.poYearRows.fy')
+      .select('clientName uniqueId approvalStatus createdByName createdAt actionAt poReview payload.leadId payload.assignedServiceId payload.assignmentIndex payload.leadCode payload.poSubmittedByName payload.poSubmittedAt payload.service payload.poYearRows.poNumber payload.poYearRows.poAmount payload.poYearRows.quotationBasicAmount payload.poYearRows.quotationNumber payload.poYearRows.quotationItems.unit payload.poYearRows.quotationItems.basicAmount payload.poYearRows.fy')
       .sort({ updatedAt: -1 }).maxTimeMS(15000).lean();
     if (staffView) {
-      const visible = approvals.filter(row => {
-        const stage = row.poReview?.stage;
-        if (stage !== 'LEAD_OWNER_PENDING') return false;
-        const leadCode = String(row.payload?.leadCode || row.uniqueId || '').toLowerCase();
-        const leadId = String(row.payload?.leadId || '');
-        // Lead owner check is done client-side via the list returned; we include
-        // only LEAD_OWNER_PENDING items here. Ownership is enforced on action.
-        return Boolean(leadCode || leadId);
-      });
+      const visible = await filterAssignedLeadOwnerApprovals(approvals, req.user._id);
       return res.json({ ok: true, approvals: visible });
     }
     return res.json({ ok: true, approvals });
@@ -234,8 +256,10 @@ exports.detail = async (req, res) => {
     if (!approval) fail(404, 'PO review not found.');
     if (!canView(req.user)) {
       if (approval.poReview?.stage !== 'LEAD_OWNER_PENDING') return res.status(403).json({ error: 'Finance review access is required.' });
+      const visible = await filterAssignedLeadOwnerApprovals([approval], req.user._id);
+      if (!visible.length) return res.status(403).json({ error: 'Only the assigned lead owner can view this PO request.' });
     }
     return res.json({ ok: true, approval });
   } catch (error) { return report(res, error); }
 };
-exports._test = { clearRejectedPoClosure };
+exports._test = { clearRejectedPoClosure, isAssignedLeadOwner, filterAssignedLeadOwnerApprovals };

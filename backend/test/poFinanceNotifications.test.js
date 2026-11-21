@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const User = require('../src/models/User');
 const mailer = require('../src/utils/mailer');
+const { _test: financeTest } = require('../src/controllers/poFinanceController');
 
 function queryResult(rows) {
   return { select() { return this; }, lean: async () => rows };
@@ -76,14 +77,29 @@ test('PO referral and payment notifications reach the owner and secondary-role a
   assert.ok(sent.every((mail) => mail.html.includes('Received amount')));
 });
 
-test('Finance Approval remains role restricted and sidebar refreshes authenticated roles', () => {
+test('Finance Approval is visible to authenticated users and sidebar refreshes authenticated roles', () => {
   const dashboard = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/constants/dashboard.js'), 'utf8');
   const sidebar = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/components/dashboard/Sidebar.jsx'), 'utf8');
   const app = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/App.jsx'), 'utf8');
+  const financeController = fs.readFileSync(path.resolve(__dirname, '../src/controllers/poFinanceController.js'), 'utf8');
 
-  assert.match(dashboard, /label: 'Finance Approval'.*roles: \['accounts', 'finance', 'admin', 'superadmin'\]/);
-  assert.match(app, /path="\/finance-approval".*allowedRoles=\{\['accounts', 'finance', 'admin', 'superadmin'\]\}/);
+  assert.match(dashboard, /label: 'Finance Approval'.*path: '\/finance-approval'/);
+  assert.doesNotMatch(dashboard.match(/label: 'Finance Approval'[^\n]*/)?.[0] || '', /roles:/);
+  assert.match(app, /path="\/finance-approval" element=\{<ProtectedRoute>/);
   assert.match(sidebar, /api\.get\('\/auth\/me'\)/);
   assert.match(sidebar, /setSidebarUser\(data\.user\)/);
+  assert.match(financeController, /filterAssignedLeadOwnerApprovals\(approvals, req\.user\._id\)/);
 });
 
+test('lead owner request rows and details are restricted to the assigned owner', () => {
+  const approval = { payload: { assignmentIndex: 0 } };
+  assert.equal(financeTest.isAssignedLeadOwner(approval, {
+    assignments: [{ assignedStaff: 'owner-1' }]
+  }, 'owner-1'), true);
+  assert.equal(financeTest.isAssignedLeadOwner(approval, {
+    assignments: [{ assignedStaff: 'owner-1' }]
+  }, 'owner-2'), false);
+  assert.equal(financeTest.isAssignedLeadOwner({ payload: { assignedServiceId: 'service-2' } }, {
+    assignments: [{ assignedServiceId: 'service-1', assignedStaff: 'owner-1' }, { assignedServiceId: 'service-2', assignedStaff: 'owner-2' }]
+  }, 'owner-2'), true);
+});
