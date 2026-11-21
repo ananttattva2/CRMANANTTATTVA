@@ -40,3 +40,15 @@ test('Lead Closure Approval handles legacy payloads and missing PO data', () => 
   assert.match(renderRows([{ id: 'empty' }]), /<td>—<\/td>/);
   assert.equal(renderRows([]), '<table><tbody></tbody></table>');
 });
+
+test('Lead Closure Approval displays finance remarks, payment date and legacy payment text', () => {
+  const row = { id: 'review', poReview: {
+    financeReferral: { remarks: 'Confirm advance before closure' },
+    leadOwnerRequest: { paymentDate: '2026-12-15' }
+  } };
+  const html = renderRows([row]);
+  assert.match(html, /Confirm advance before closure/);
+  assert.match(html, /15 Dec 2026/);
+  row.poReview.leadOwnerRequest = { paymentData: 'Payment expected after delivery' };
+  assert.match(renderRows([row]), /Payment expected after delivery/);
+});

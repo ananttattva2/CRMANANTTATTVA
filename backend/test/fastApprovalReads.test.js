@@ -23,3 +23,27 @@ test('PO-only feed skips service backfill and preserves staff visibility filters
  assert.equal(calls.length, 2); for(const filter of calls) { assert.deepEqual(Array.from(filter.type.$in), ['purchase_order']); assert.ok(filter.$or.some(row => row['payload.poSubmittedById'] === 'staff-1')); }
  assert.equal(response.approvals.length, 0);
 });
+
+for (const snapshot of [false, true]) test(`PO list preserves Finance remarks and Payment Data (${snapshot ? 'admin snapshot' : 'staff query'})`, async () => {
+ const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+ const source = fs.readFileSync(path.resolve(__dirname, '../src/controllers/leadController.js'), 'utf8');
+ const start = source.indexOf('exports.listDuplicateLeadApprovals ='), end = source.indexOf('\nexports.', start + 1);
+ const review = { stage: 'LEAD_CLOSURE_PENDING', version: 3, frozen: true, financeReferral: { remarks: 'Confirm advance', name: 'Finance' }, leadOwnerRequest: { paymentDate: '2026-12-15', paymentData: 'Legacy payment details' } };
+ const project = selection => {
+   const fields = new Set(selection.split(/\s+/));
+   return { type: 'purchase_order', approvalStatus: 'PARTIALLY_APPROVED', poReview: Object.fromEntries(Object.entries(review).filter(([key]) => fields.has(`poReview.${key}`))), payload: { poYearRows: [{ poNumber: 'PO-1', poAmount: 30000 }] } };
+ };
+ const context = { exports: {}, Date, console, ADMIN_ROLES: ['admin'], userHasAnyRole: () => snapshot,
+   require: name => name === '../services/compactReadSnapshot' ? { compactReadSnapshot: async (Model, options) => [project(options.selection)] } : require(name.replace('../services/', '../src/services/')),
+   Notification: { find() { assert.fail('PO feed must not scan notifications'); } }, Lead: { collection: { collectionName: 'leads' } },
+   PendingApproval: { db: { readyState: snapshot ? 1 : 0 }, collection: { collectionName: 'approvals' }, populate: async rows => rows,
+     find(filter) { let selection; return { select(value) { selection = value; return this; }, populate() { return this; }, sort() { return this; }, limit() { return this; }, lean: async () => filter.approvalStatus.$in.includes('PARTIALLY_APPROVED') ? [project(selection)] : [] }; } }
+ };
+ vm.runInNewContext(source.slice(start, end), context);
+ let response;
+ await context.exports.listDuplicateLeadApprovals({ query: { listOnly: 'true', type: 'purchase_order' }, user: { _id: 'staff-1' } }, { json: value => { response = value; }, status() { assert.fail('PO feed failed'); } });
+ assert.equal(response.approvals.length, 1);
+ assert.equal(response.approvals[0].poReview.financeReferral?.remarks, 'Confirm advance');
+ assert.equal(response.approvals[0].poReview.leadOwnerRequest?.paymentDate, '2026-12-15');
+ assert.equal(response.approvals[0].poReview.leadOwnerRequest?.paymentData, 'Legacy payment details');
+});
