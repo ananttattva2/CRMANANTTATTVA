@@ -69,7 +69,7 @@ jobs:
         run: node --test backend/test/legalSla.test.js backend/test/legalSlaBrowser.test.js backend/test/mailerBranding.test.js
 
       - name: Test Lead Closure Approval rendering
-        run: node --test backend/test/pendingApprovalLeadClosureRender.test.js
+        run: node --test backend/test/pendingApprovalLeadClosureRender.test.js backend/test/pendingApprovalClosedPoClients.test.js backend/test/pendingQuotationReconciliation.test.js
 
       - name: Build frontend
         env:

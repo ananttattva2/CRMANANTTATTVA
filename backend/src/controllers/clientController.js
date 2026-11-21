@@ -2072,9 +2072,13 @@ exports.listPendingApprovals = async (req, res) => {
   const listOnly = req.query.listOnly === 'true';
   const storedApprovalsPromise = readStoredPendingApprovals(listOnly);
   const liveClientsPromise = isClientReviewer
-    ? clientAccessFilter(req.user).then((accessFilter) => Client.find(combineAccessFilters(
+    ? Promise.all([
+        clientAccessFilter(req.user),
+        require('../services/clientClosedPoDirectory').closedPoClientFilter()
+      ]).then(([accessFilter, closedPoFilter]) => Client.find(combineAccessFilters(
         clientMasterSourceRecordFilter(),
-        accessFilter
+        accessFilter,
+        closedPoFilter
       ))
         .select('_id selectedLead assignedServiceId workflowStatus adminControls.approvalStatus data.basic.clientLegalName data.basic.tradeName data.basic.piboCategory data.basic.eprCategory data.importMeta.uniqueId data.importMeta.createdBy data.importMeta.createdByEmail createdBy createdAt')
         .populate('createdBy', 'name email')
