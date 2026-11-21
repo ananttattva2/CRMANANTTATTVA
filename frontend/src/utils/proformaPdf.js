@@ -114,11 +114,10 @@ export function buildInvoicePdf(row) {
     const serviceYears = annualReturnYears.length
       ? annualReturnYears.map((value) => 'Annual Return: ' + value)
       : [item.servicesForYear]
-    const serviceDescription = specialService
-      ? `${specialService}${subApplicantType ? ` for ${subApplicantType}` : ''}`
-      : item.servicesOffered
+    const serviceDescription = specialService || item.servicesOffered
+    const displayTitle = specialService && subApplicantType ? `${title} for ${subApplicantType}` : title
     font(8.5, 'bold')
-    const titleLines = pdf.splitTextToSize(title, 302)
+    const titleLines = pdf.splitTextToSize(displayTitle, 302)
     const businessCategoryLines = businessCategory ? pdf.splitTextToSize(businessCategory, 302) : []
     font(8, 'italic')
     const serviceDescriptionLines = serviceDescription ? pdf.splitTextToSize(serviceDescription, 292) : []

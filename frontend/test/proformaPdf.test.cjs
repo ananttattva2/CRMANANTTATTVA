@@ -101,12 +101,13 @@ test('proforma prints fee text, business category, service and year in order', a
     assert.ok(!content.includes('New Registration'));
     assert.ok(!content.includes('2024-25'));
     assert.ok(content.indexOf(descriptionMarker) < content.indexOf(businessCategory));
+    assert.ok(content.indexOf(businessCategory) < content.indexOf('EPR - Plastic Waste'));
+    assert.ok(content.indexOf('EPR - Plastic Waste') < content.indexOf('for PWP'));
     if (descriptionTailMarker) {
       assert.ok(content.indexOf(descriptionMarker) < content.indexOf(descriptionTailMarker));
       assert.ok(content.indexOf(descriptionTailMarker) < content.indexOf(businessCategory));
     }
-    assert.ok(content.indexOf(businessCategory) < content.indexOf('EPR - Plastic Waste'));
-    assert.ok(content.indexOf('EPR - Plastic Waste') < content.indexOf('2026-27'));
+    assert.ok(content.indexOf('for PWP') < content.indexOf('2026-27'));
     assert.ok(content.includes('/Subtype /Image'));
   }
 });
