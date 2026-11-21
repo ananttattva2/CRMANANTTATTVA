@@ -7,14 +7,14 @@ const ProformaInvoice = require('../src/models/ProformaInvoice');
 
 test('proforma payload preserves quotation, PO and calculated item totals', () => {
   const payload = _test.cleanPayload({
-    quotationNumber: 'AT/26-27/292', poNumber: 'PO-1001',
+    quotationNumber: 'AT/26-27/292', poNumber: 'AT/26-27/525',
     leadDetails: { companyName: 'Example Limited', contactPerson: 'Krishna' },
     items: [{ serviceCategory: 'CONSULTANCY FEE', unit: '2', basicAmount: '30000' }],
     poYearCount: 1,
     poYearRows: [{ fy: '2024-25', annualReturnYear: '2024-25', quotationNo: 'AT/26-27/292', compliancePoDate: '2026-07-31', compliancePoFile: { name: 'po.pdf', secureUrl: 'https://files.example/po.pdf', publicId: 'crm/po-1', type: 'application/pdf', size: 2048 }, serviceCategory: ['CONSULTANCY FEE'], value: '60000' }]
   });
   assert.equal(payload.quotationNumber, 'AT/26-27/292');
-  assert.equal(payload.poNumber, 'PO-1001');
+  assert.equal(payload.poNumber, 'AT/26-27/525');
   assert.equal(payload.companyName, 'Example Limited');
   assert.equal(payload.subtotal, 60000);
   assert.equal(payload.gstRate, 18);
