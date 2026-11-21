@@ -236,8 +236,8 @@ exports.act = async (req, res) => {
     let notification;
     const result = await inTransaction(req.params.id, async ({ approval, lead, index }) => {
       requireUnchanged(approval, lead.assignments[index], lead.serviceSelections?.[index]);
-      const paymentData = req.body.paymentData;
-      const review = transition(approval.poReview, event, req.user, req.body.remarks, req.body.version, new Date(), paymentData);
+      const paymentDate = req.body.paymentDate;
+      const review = transition(approval.poReview, event, req.user, req.body.remarks, req.body.version, new Date(), paymentDate);
       // Lead owner request: verify the user is the assignment's assigned staff.
       if (event === 'LEAD_OWNER_REQUEST') {
         const assignment = lead.assignments[index];

@@ -9,9 +9,10 @@ test('PO requires Admin → Finance referral → Lead Owner request → Lead Clo
  assert.throws(()=>transition(initial,'FINANCE_FINAL',actor('accounts'),'Final',1),error=>error.status===409);
  assert.throws(()=>transition(initial,'FINANCE_REFER',actor('admin'),'Refer',1),error=>error.status===403);
  const referred=transition(initial,'FINANCE_REFER',actor('accounts'),'Finance remarks',1);assert.equal(referred.stage,'LEAD_OWNER_PENDING');assert.equal(referred.frozen,true);
- assert.throws(()=>transition(referred,'LEAD_OWNER_REQUEST',actor('sales'),'No payment data',2),error=>error.status===400);
+ assert.throws(()=>transition(referred,'LEAD_OWNER_REQUEST',actor('sales'),'No payment date',2),error=>error.status===400);
+ assert.throws(()=>transition(referred,'LEAD_OWNER_REQUEST',actor('sales'),'Invalid payment date',2,new Date(),'2026-02-31'),error=>error.status===400);
  assert.throws(()=>transition(referred,'FINANCE_FINAL',actor('accounts'),'Approve',2),error=>error.status===409);
- const leadRequest=transition(referred,'LEAD_OWNER_REQUEST',actor('sales'),'Lead owner remarks',2,new Date(),'50% advance received');assert.equal(leadRequest.stage,'LEAD_CLOSURE_PENDING');assert.equal(leadRequest.frozen,true);assert.equal(leadRequest.leadOwnerRequest.paymentData,'50% advance received');
+ const leadRequest=transition(referred,'LEAD_OWNER_REQUEST',actor('sales'),'Lead owner remarks',2,new Date(),'2026-12-15');assert.equal(leadRequest.stage,'LEAD_CLOSURE_PENDING');assert.equal(leadRequest.frozen,true);assert.equal(leadRequest.leadOwnerRequest.paymentDate,'2026-12-15');
  for(const role of ['manager','accounts','sales'])assert.throws(()=>transition(leadRequest,'LEAD_CLOSURE_APPROVE',actor(role),'Approve',3),error=>error.status===403);
  assert.throws(()=>transition(leadRequest,'FINANCE_FINAL',actor('accounts'),'Approve',3),error=>error.status===409);
  const released=transition(leadRequest,'LEAD_CLOSURE_APPROVE',actor('superadmin'),'Reviewed Finance remarks',3);assert.equal(released.frozen,false);assert.equal(released.stage,'FINANCE_RELEASED');assert.equal(released.financeReferral.remarks,'Finance remarks');

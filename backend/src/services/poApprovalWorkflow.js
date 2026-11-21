@@ -16,12 +16,15 @@ function sourceSignature(assignment = {}, service = {}) {
     poYearRows: (assignment.poYearRows || []).map(row => ({ ...row, currency: String(row.currency || 'INR').toUpperCase(), poAmount: Number(row.poAmount) || 0, quotationBasicAmount: Number(row.quotationBasicAmount) || 0, poFileSize: Number(row.poFileSize) || 0 })), earlierQuotationProofUrl: assignment.earlierQuotationProofUrl || ''
   }))).digest('hex');
 }
-function transition(review, event, user, remarks, expectedVersion, now = new Date(), paymentData = '') {
+function transition(review, event, user, remarks, expectedVersion, now = new Date(), paymentDate = '') {
   const text = String(remarks || '').trim();
   if (!text || text.length > 2500) fail(400, 'Enter remarks between 1 and 2,500 characters.');
   if (event === 'LEAD_OWNER_REQUEST') {
-    const paymentText = String(paymentData || '').trim();
-    if (!paymentText || paymentText.length > 500) fail(400, 'Enter payment data between 1 and 500 characters.');
+    const paymentDateText = String(paymentDate || '').trim();
+    const parsedPaymentDate = /^\d{4}-\d{2}-\d{2}$/.test(paymentDateText) ? new Date(`${paymentDateText}T00:00:00Z`) : null;
+    if (!parsedPaymentDate || Number.isNaN(parsedPaymentDate.getTime()) || parsedPaymentDate.toISOString().slice(0, 10) !== paymentDateText) {
+      fail(400, 'Enter a valid payment date.');
+    }
   }
   const rules = {
     ADMIN_APPROVE: { roles: ['admin', 'superadmin'], from: null, to: 'FINANCE_READY' },
@@ -42,7 +45,7 @@ function transition(review, event, user, remarks, expectedVersion, now = new Dat
     ...(event === 'ADMIN_APPROVE' ? { adminApproval: entry } : {}),
     ...(event === 'FINANCE_APPROVE' ? { financeFinal: entry } : {}),
     ...(event === 'FINANCE_REFER' ? { financeReferral: entry } : {}),
-    ...(event === 'LEAD_OWNER_REQUEST' ? { leadOwnerRequest: { ...entry, paymentData: String(paymentData || '').trim() } } : {}),
+    ...(event === 'LEAD_OWNER_REQUEST' ? { leadOwnerRequest: { ...entry, paymentDate: String(paymentDate || '').trim() } } : {}),
     ...(event === 'LEAD_CLOSURE_APPROVE' ? { leadClosureApproval: entry, managementGoAhead: entry } : {}),
     ...(event === 'FINANCE_FINAL' ? { financeFinal: entry } : {}) };
 }
