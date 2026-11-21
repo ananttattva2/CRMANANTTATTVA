@@ -25,6 +25,12 @@ test('proforma reference layout fits one page, calculates totals and omits scope
   assert.ok(!content.includes('HIDDEN_SCOPE_MARKER'));
   assert.ok(!content.includes('Invalid Date'));
   assert.ok(content.includes('31-Jul-26'));
+  assert.ok(content.includes('A 25, Technocraft Building'));
+  assert.ok(content.includes('Road No. 3, Mulgaon, Andheri East'));
+  assert.ok(content.includes('Mumbai, Maharashtra 400093'));
+  assert.ok(!content.includes('Midas Building'));
+  assert.ok(build({ ...sample, poNumber: 'AT26-27/525' }).output().includes('AT26-27/525'));
+  assert.ok(build({ ...sample, poYearRows: [{ poNumber: 'AT26-27/525' }] }).output().includes('AT26-27/525'));
 });
 test('proforma supports multiple rows, combined prices and long invoice continuation', async () => {
   const build = await renderer();

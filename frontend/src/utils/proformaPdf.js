@@ -64,12 +64,12 @@ export function buildInvoicePdf(row) {
     text('PROFORMA INVOICE', (left + right) / 2, 20, { style: 'bold', size: 11, align: 'center' })
     box(left, 26, split - left, 96)
     text('ANANTTATTVA PRIVATE LIMITED', left + 3, 37, { style: 'bold', size: 9 })
-    fitted('Office No. 14, Midas Building,\nSahar Plaza, J B Nagar, Andheri (East)\nMumbai - 400059\nUDYAM : UDYAM-MH-19-0252978 (Micro/Services)\nGSTIN/UIN: 27AAZCA6657R1ZB\nState Name: Maharashtra, Code: 27\nCIN: U39000MH2023PTC413566\nE-Mail: info@ananttattva.com', left + 3, 39, split - left - 6, 80)
+    fitted('A 25, Technocraft Building,\nRoad No. 3, Mulgaon, Andheri East,\nMumbai, Maharashtra 400093\nUDYAM : UDYAM-MH-19-0252978 (Micro/Services)\nGSTIN/UIN: 27AAZCA6657R1ZB\nState Name: Maharashtra, Code: 27\nCIN: U39000MH2023PTC413566\nE-Mail: info@ananttattva.com', left + 3, 39, split - left - 6, 80)
     party('Consignee (Ship To)', lead.companyName || row.companyName, buyerAddress, lead.gstNumber, buyerState, 122, 87)
     party('Buyer (Bill To)', lead.companyName || row.companyName, buyerAddress, lead.gstNumber, buyerState, 209, 87)
     const pairs = [
       ['Invoice No.', row.proformaNumber, 'Dated', date(row.invoiceDate)],
-      ['PO Number', row.poNumber || details.reference, 'Mode/Terms of Payment', paymentLabel]
+      ['PO Number', row.poNumber || row.poYearRows?.find((po) => po.poNumber)?.poNumber || details.reference, 'Mode/Terms of Payment', paymentLabel]
     ]
     pairs.forEach(([a, b, c, d], index) => {
       cell(a, b, split, 26 + index * 23, 113, 23)
@@ -203,7 +203,7 @@ export function buildInvoicePdf(row) {
   text('Declaration', 29, 756, { size: 7 })
   fitted(details.declaration, 29, 759, 268, 25, 'normal', 7)
   box(298, 750, 271, 37)
-  pdf.addImage(proformaStamp, 'PNG', 306, 750, 37, 37)
+  pdf.addImage(proformaStamp, 'PNG', 516, 762, 16, 16)
   text('for ANANTTATTVA PRIVATE LIMITED', 566, 759, { size: 7, style: 'bold', align: 'right' })
   text('Authorised Signatory', 566, 783, { size: 7, align: 'right' })
   text('SUBJECT TO MUMBAI JURISDICTION', 297, 798, { size: 7, align: 'center' })

@@ -33,6 +33,7 @@ test('invoice page loads only eligible services and submits the selected payment
     await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.includes('Q-TEST')));
     await clickText('Q-TEST');
     await page.waitForFunction(() => [...document.querySelectorAll('input')].some(i => i.value === 'CLOSED SERVICE'));
+    assert.equal(await page.evaluate(() => [...document.querySelectorAll('input')].some(i => i.value === 'PO-TEST')), true);
     assert.equal(await page.evaluate(() => [...document.querySelectorAll('input')].some(i => i.value === 'OPEN SERVICE')), false);
     assert.equal(await page.evaluate(() => document.body.textContent.includes('Invoice, Delivery & Bank Details')), false);
     assert.equal(await page.$$eval('[aria-label="Invoice pricing type"] button', buttons => buttons.length), 2);

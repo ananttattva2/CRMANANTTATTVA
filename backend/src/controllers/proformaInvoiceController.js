@@ -27,7 +27,7 @@ async function nextProformaNumber() {
   const fy = `${String(start).slice(-2)}-${String(start + 1).slice(-2)}`;
   const latest = await ProformaInvoice.findOne({ proformaNumber: new RegExp(`^PI/${fy}/\\d+$`, 'i') })
     .sort({ createdAt: -1 }).select('proformaNumber').lean();
-  const sequence = (Number.parseInt(String(latest?.proformaNumber || '').split('/').pop(), 10) || 0) + 1;
+  const sequence = Math.max(203, (Number.parseInt(String(latest?.proformaNumber || '').split('/').pop(), 10) || 0) + 1);
   return `PI/${fy}/${String(sequence).padStart(3, '0')}`;
 }
 
@@ -117,7 +117,7 @@ exports.update = async (req, res) => {
   return res.json({ ok: true, proformaInvoice: row });
 };
 
-exports._test = { cleanPayload, validateInvoice };
+exports._test = { cleanPayload, validateInvoice, nextProformaNumber };
 
 async function quotationContext(id) {
   const quote = await Quotation.findById(id).lean();

@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { _test } = require('../src/controllers/proformaInvoiceController');
+const ProformaInvoice = require('../src/models/ProformaInvoice');
 
 test('proforma payload preserves quotation, PO and calculated item totals', () => {
   const payload = _test.cleanPayload({
@@ -41,4 +42,24 @@ test('invoice delivery, consignee and bank fields survive cleaning with explicit
   const payload = _test.cleanPayload({ invoiceDetails: { paymentTerms: '', consignee: ' Ship To Ltd ', bankName: 'IDFC', accountNumber: '001234', hsn: '998311', unexpected: 'discard' } });
   assert.deepEqual(payload.invoiceDetails, { paymentTerms: '', consignee: 'Ship To Ltd', bankName: 'IDFC', accountNumber: '001234', hsn: '998311' });
   assert.deepEqual(_test.cleanPayload({}).invoiceDetails, {});
+});
+
+test('new Proforma invoice numbers start at 203 and continue after the latest number', async () => {
+  const originalFindOne = ProformaInvoice.findOne;
+  const now = new Date();
+  const start = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  const fy = `${String(start).slice(-2)}-${String(start + 1).slice(-2)}`;
+  let latestNumber = `PI/${fy}/002`;
+  ProformaInvoice.findOne = () => ({
+    sort() { return this; },
+    select() { return this; },
+    lean: async () => ({ proformaNumber: latestNumber })
+  });
+  try {
+    assert.equal(await _test.nextProformaNumber(), `PI/${fy}/203`);
+    latestNumber = `PI/${fy}/203`;
+    assert.equal(await _test.nextProformaNumber(), `PI/${fy}/204`);
+  } finally {
+    ProformaInvoice.findOne = originalFindOne;
+  }
 });
