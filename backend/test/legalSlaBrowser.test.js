@@ -14,12 +14,17 @@ test('Legal table renders grouped Yes/No headers, filters, search and empty resu
   const browser = await puppeteer.launch({headless:true,args:['--no-sandbox']});
   try {
     const page = await browser.newPage();
-    await page.setViewport({width:1280,height:850});
+    await page.setViewport({width:1536,height:768});
     await page.setContent('<html><body><div id="root"></div></body></html>');
     await page.addScriptTag({content: bundle.outputFiles[0].text});
     await page.waitForSelector('tbody tr');
     assert.deepEqual(await page.$$eval('thead th', nodes=>nodes.map(node=>node.textContent)), ['Client Name','User Name','SLA Status','Yes','No']);
     assert.equal(await page.$$eval('tbody tr', nodes=>nodes.length),10);
+    assert.ok(await page.$eval('[aria-label="Legal list pagination controls"]', node => {
+      const bounds = node.getBoundingClientRect();
+      return bounds.top >= 0 && bounds.bottom <= window.innerHeight;
+    }), 'pagination controls should be visible without scrolling');
+    assert.match(await page.$eval('[aria-label="Legal list pagination controls"]', node => node.textContent), /Showing 1-10 of 21/);
     await page.evaluate(()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Next').click());
     await page.waitForFunction(()=>document.querySelector('nav').textContent.includes('Page 2 of 3'));
     assert.equal(await page.$$eval('tbody tr', nodes=>nodes.length),10);
