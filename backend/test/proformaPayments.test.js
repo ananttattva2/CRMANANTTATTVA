@@ -36,7 +36,12 @@ test('50% advance and later payments each invoice 62500 basic plus GST without c
   }
 });
 test('PDF mirrors buyer details, removes delivery fields and calculates state-specific payment taxes', async () => {
-  const source = fs.readFileSync(path.join(__dirname, '../../frontend/src/utils/proformaPdf.js'), 'utf8').replace("from 'jspdf'", `from '${pathToFileURL(require.resolve('../../frontend/node_modules/jspdf')).href}'`);
+  const stampPath = path.join(__dirname, '../../frontend/src/assets/proforma-authorized-stamp.png');
+  const stampData = `data:image/png;base64,${fs.readFileSync(stampPath, 'base64')}`;
+  const stampModule = `data:text/javascript,export%20default%20${encodeURIComponent(JSON.stringify(stampData))}`;
+  const source = fs.readFileSync(path.join(__dirname, '../../frontend/src/utils/proformaPdf.js'), 'utf8')
+    .replace("from 'jspdf'", `from '${pathToFileURL(require.resolve('../../frontend/node_modules/jspdf')).href}'`)
+    .replace("from '../assets/proforma-authorized-stamp.png?inline'", `from '${stampModule}'`);
   const { buildInvoicePdf } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
   const row = { proformaNumber: 'PI/26-27/001', poNumber: 'PO-1001', paymentPercentage: 50, paymentStage: 'advance', leadDetails: { companyName: 'BUYER LIMITED', gstNumber: '27ABCDE1234F1Z5', state: 'Maharashtra' }, invoiceDetails: { consignee: 'OLD SHIP NAME', dispatchDocument: 'REMOVE ME' }, items: [{ serviceCategory: 'Consultancy', basicAmount: 125000, unit: '1' }] };
   const local = buildInvoicePdf(row).output();

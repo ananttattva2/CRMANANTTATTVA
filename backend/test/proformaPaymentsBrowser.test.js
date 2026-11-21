@@ -4,15 +4,21 @@ const path = require('node:path');
 const fs = require('node:fs');
 const esbuild = require('../../frontend/node_modules/esbuild');
 test('invoice page loads only eligible services and submits the selected payment percentage', async () => {
-  const bundle = await esbuild.build({ stdin: { resolveDir: path.resolve(__dirname, '../../frontend'), loader: 'jsx', contents: `import React from 'react';import{createRoot}from'react-dom/client';import{MemoryRouter}from'react-router-dom';import Page from './src/pages/ProformaInvoices.jsx';createRoot(document.getElementById('root')).render(<MemoryRouter><Page/></MemoryRouter>);` }, bundle: true, write: false, format: 'iife', platform: 'browser', plugins: [{ name: 'fixture', setup(build) {
+  const frontendRoot = path.resolve(__dirname, '../../frontend');
+  const stampData = `data:image/png;base64,${fs.readFileSync(path.join(frontendRoot, 'src/assets/proforma-authorized-stamp.png'), 'base64')}`;
+  const bundle = await esbuild.build({ stdin: { resolveDir: frontendRoot, loader: 'jsx', contents: `import React from 'react';import{createRoot}from'react-dom/client';import{MemoryRouter}from'react-router-dom';import Page from './src/pages/ProformaInvoices.jsx';createRoot(document.getElementById('root')).render(<MemoryRouter><Page/></MemoryRouter>);` }, bundle: true, write: false, format: 'iife', platform: 'browser', plugins: [{ name: 'fixture', setup(build) {
     build.onResolve({ filter: /DashboardShell$/ }, () => ({ path: 'shell', namespace: 'fixture' }));
     build.onResolve({ filter: /(^|\/)api$/ }, () => ({ path: 'api', namespace: 'fixture' }));
-    build.onLoad({ filter: /.*/, namespace: 'fixture' }, args => ({ loader: 'jsx', contents: args.path === 'shell' ? 'export default function Shell({children}){return children}' : `
+    build.onResolve({ filter: /proforma-authorized-stamp\.png\?inline$/ }, () => ({ path: 'stamp', namespace: 'fixture' }));
+    build.onLoad({ filter: /.*/, namespace: 'fixture' }, args => {
+      if (args.path === 'stamp') return { loader: 'js', contents: `export default ${JSON.stringify(stampData)};` };
+      return { loader: 'jsx', contents: args.path === 'shell' ? 'export default function Shell({children}){return children}' : `
       const quote={_id:'507f1f77bcf86cd799439099',quotationNumber:'Q-TEST',pricingMode:'individual',leadDetails:{companyName:'TEST BUYER',gstNumber:'27ABCDE1234F1Z5'},items:[{serviceCategory:'OPEN SERVICE',basicAmount:50000},{serviceCategory:'CLOSED SERVICE',basicAmount:125000,unit:'1'}]};
       const eligible={...quote.items[1],sourceItemIndex:1,assignedServiceId:'closed'};
       export const readApiError=e=>e.message;export const storeSessionUser=user=>user;export const clearStoredSession=()=>{};
       export default {get:async url=>({data:url==='/auth/me'?{user:{role:'superadmin',name:'Test'}}:url==='/quotations'?{quotations:[quote]}:url.includes('eligible-quotation')?{items:window.noEligible?[]:[eligible],poYearRows:[{fy:'2026-27',poNumber:'PO-TEST',compliancePoFile:{name:'po.pdf',secureUrl:'https://example.test/po.pdf'},serviceCategory:['CLOSED SERVICE']}]}:{proformaInvoices:[]}}),post:async(url,body)=>{window.savedPayload=body;return{data:{proformaInvoice:{proformaNumber:'PI-TEST'}}}},put:async()=>({data:{}})};
-    ` }));
+    ` };
+    });
   }}] });
   const { default: puppeteer } = await import('puppeteer');
   const browser = await puppeteer.launch({ headless: true, ...(process.env.QUOTATION_CHROME_PATH ? { executablePath: process.env.QUOTATION_CHROME_PATH } : {}), args: process.platform === 'linux' ? ['--no-sandbox'] : [] });
