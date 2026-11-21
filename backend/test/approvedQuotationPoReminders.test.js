@@ -45,7 +45,7 @@ test('dry runs perform no delivery claims or email writes; revised/rejected quot
  f.quote.status='rejected';await service.runApprovedQuotationPoReminders({now});assert.equal(sent.length,0);
 });
 test('email safely escapes company/service content and never includes completed services',()=>{
- const f=fixture();f.quote.companyName='<img src=x>';f.quote.items[1].servicesOffered='<script>bad</script>';close(f.lead.assignments[0]);const html=emailHtml(f.users[0],[{quote:f.quote,pending:openServices(f.quote,f.lead)}]);assert.ok(html.includes('&lt;img'));assert.ok(!html.includes('<script>'));assert.ok(!html.includes('Service a'));assert.ok(html.includes('Still Not Closed'));
+ const f=fixture();f.quote.companyName='<img src=x>';f.quote.items[1].servicesOffered='<script>bad</script>';close(f.lead.assignments[0]);const html=emailHtml(f.users[0],[{quote:f.quote,pending:openServices(f.quote,f.lead)}]);assert.ok(html.includes('&lt;img'));assert.ok(!html.includes('<script>'));assert.ok(!html.includes('Service a'));assert.ok(html.includes('Still Not Closed'));assert.match(html,/Regards,<br><strong>Krishna Yadav<\/strong><br>Anant Tattva CRM/);
 });
 
 
