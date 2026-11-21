@@ -222,7 +222,16 @@ exports.initialApproval = async (req, res) => {
       return { ok: true, message: 'Initial approval saved. The PO is now awaiting Finance review.', review: approval.poReview };
     });
     const emailNotification = notification ? await deliverDecisionNotification(notification) : null;
-    return res.json(emailNotification ? { ...result, emailNotification } : result);
+    let actionReminders = null;
+    if (notification?.initialApproval) {
+      try {
+        actionReminders = await require('../services/postPoApprovalReminders').runPostPoApprovalReminders({ approvalId: notification.approval._id });
+      } catch (error) {
+        console.error('Initial PO action reminders pending retry', { name: error.name, code: error.code });
+        actionReminders = { pendingRetry: true };
+      }
+    }
+    return res.json({ ...result, ...(emailNotification ? { emailNotification } : {}), ...(actionReminders ? { actionReminders } : {}) });
   } catch (error) { return report(res, error); }
 };
 exports.act = async (req, res) => {

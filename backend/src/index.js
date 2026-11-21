@@ -37,6 +37,7 @@ const dashboardInsightsRoutes = require('./routes/dashboardInsights');
 const documentRoutes = require('./routes/documents');
 const { startPendingApprovalReminderScheduler } = require('./services/pendingApprovalNotifications');
 const { runApprovedQuotationPoReminders, startApprovedQuotationPoReminderScheduler } = require('./services/approvedQuotationPoReminders');
+const { runPostPoApprovalReminders, startPostPoApprovalReminderScheduler } = require('./services/postPoApprovalReminders');
 const { runWeeklyPendingQuotationDigest } = require('./services/weeklyPendingQuotationDigest');
 const { runClientComplianceCorrectionReminders, startClientComplianceCorrectionReminderScheduler } = require('./services/clientComplianceCorrectionReminders');
 const { startClientOnboardingReminderScheduler, runClientOnboardingReminders } = require('./services/clientOnboardingReminders');
@@ -137,6 +138,7 @@ const connectAndStartServices = singleFlight(function () {
       startTemporaryAssignmentReminderScheduler();
       startPurchaseOrderWorkflowReminderScheduler();
       startApprovedQuotationPoReminderScheduler();
+      startPostPoApprovalReminderScheduler();
       startLegalSlaReminderScheduler();
       schedulerStarted = true;
     }
@@ -168,6 +170,14 @@ app.get('/api/health', (req, res) => res.json({
   cache: cacheStatus(),
   release: String(process.env.DEPLOY_COMMIT || process.env.RENDER_GIT_COMMIT || process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 12) || undefined
 }));
+
+app.get('/api/internal/post-po-approval-reminders', async (req, res) => {
+  const secret = String(process.env.CRON_SECRET || '').trim();
+  if (!secret) return res.status(503).json({ ok: false, error: 'CRON_SECRET is not configured' });
+  if (String(req.get('authorization') || '').trim() !== `Bearer ${secret}`) return res.status(401).json({ ok: false, error: 'Unauthorized cron request' });
+  try { return res.json({ ok: true, ...await runPostPoApprovalReminders({ dryRun: req.query.dryRun === 'true' }) }); }
+  catch (error) { return res.status(500).json({ ok: false, error: 'Post-approval reminder scan failed' }); }
+});
 
 app.get('/api/internal/consent-expiry-reminders', async (req, res) => {
   const secret = String(process.env.CRON_SECRET || '').trim();

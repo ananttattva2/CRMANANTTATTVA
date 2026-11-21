@@ -71,6 +71,9 @@ jobs:
       - name: Test weekly approved quotation PO reminders
         run: node --test backend/test/approvedQuotationPoReminders.test.js
 
+      - name: Test post-approval manager and PI reminders
+        run: node --test backend/test/postPoApprovalReminders.test.js
+
       - name: Test Legal SLA register and weekly reminders
         run: node --test backend/test/legalSla.test.js backend/test/legalSlaBrowser.test.js backend/test/mailerBranding.test.js
 
