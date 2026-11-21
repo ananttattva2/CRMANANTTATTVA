@@ -218,10 +218,11 @@ exports.initialApproval = async (req, res) => {
       approval.actionBy = req.user._id; approval.actionAt = new Date();
       approval.remarks = String(req.body.remarks).trim();
       lead.assignments[index].poApprovalStatus = 'FINANCE_PENDING';
+      notification = { approval, lead, index, status: 'FINANCE_PENDING', remarks: approval.remarks, screenshotUrl: '', initialApproval: true };
       return { ok: true, message: 'Initial approval saved. The PO is now awaiting Finance review.', review: approval.poReview };
     });
-    if (notification) void require('./leadController').notifyPurchaseOrderDecision(notification).catch(error => console.error('PO initial decision notification failed', { name: error.name }));
-    return res.json(result);
+    const emailNotification = notification ? await deliverDecisionNotification(notification) : null;
+    return res.json(emailNotification ? { ...result, emailNotification } : result);
   } catch (error) { return report(res, error); }
 };
 exports.act = async (req, res) => {

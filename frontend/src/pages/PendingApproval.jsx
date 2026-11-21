@@ -1315,7 +1315,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
         ? ` ${email.sent || 0} email(s) sent; ${email.failed} could not be sent.`
         : email?.sent ? ` Email sent to ${email.sent} responsible user(s).` : ' Decision saved; no recipient email was available.';
       if (response.data?.review) setPoApprovals(current => current.map(row => String(row._id || row.id) === String(id) ? { ...row, poReview: response.data.review, approvalStatus: 'PARTIALLY_APPROVED' } : row));
-      setNotice(response.data?.message || `Purchase Order ${decisionLabel}.${emailMessage}`);
+      setNotice(`${response.data?.message || `Purchase Order ${decisionLabel}.`}${emailMessage}`);
       await loadPage({ force: true, silent: true });
     } catch (err) {
       setError(readError(err, 'Unable to save the Purchase Order decision.'));

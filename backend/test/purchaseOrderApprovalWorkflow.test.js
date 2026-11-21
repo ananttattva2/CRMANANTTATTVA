@@ -140,12 +140,14 @@ test('PO approval is persisted and restricted to Admin and Super Admin', () => {
   assert.match(controller, /lead\.markModified\('assignments'\)/);
   assert.match(controller, /upsertPurchaseOrderApprovals/);
   assert.match(poFinanceController, /poApprovalStatus = status/);
+  assert.match(poFinanceController, /initialApproval: true/);
+  assert.match(poFinanceController, /await deliverDecisionNotification\(notification\)/);
   assert.match(controller, /attachments: screenshotAttachment \? \[screenshotAttachment\] : \[\]/);
   assert.match(controller, /poSubmittedByEmail/);
   assert.match(controller, /role: \{ \$in: ADMIN_ROLES \}/);
   assert.match(controller, /liveRows\.length \? liveRows : snapshotRows/);
-  assert.match(controller, /Purchase Order submitted for review/);
-  assert.match(controller, /New PO Approval/);
+  assert.match(controller, /Purchase Order received and submitted for review/);
+  assert.match(controller, /PO received/);
   assert.match(controller, /const poProofManifest = poRowsSnapshot\.map/);
   assert.match(controller, /payload: \{[\s\S]*poYearRows: poRowsSnapshot, poProofManifest/);
   assert.match(controller, /buildPurchaseOrderEmail/);

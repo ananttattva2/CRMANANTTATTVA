@@ -83,6 +83,6 @@ test('legacy lead-level closure can resubmit PO details for Admin approval', asy
     const lead={_id:'lead1',leadCode:'ATPL-LEAD-1',status:'Closed',assignments:[row],serviceSelections:[],markModified(){}};
     const result=await controller.upsertPurchaseOrderApprovals({beforeLead:{status:'Closed',assignments:[legacyBefore]},lead,actor:{role:'operation',name:'User'},modifyPoDetails:true});
     assert.equal(requests.length,1);
-    assert.deepEqual(result,[{approvalId:'legacy-review',assignmentIndex:0,approvalStatus:'PENDING'}]);
+    assert.deepEqual(result,[{approvalId:'legacy-review',assignmentIndex:0,approvalStatus:'PENDING',emailNotification:{recipients:0,sent:0,failed:0}}]);
   } finally {PendingApproval.findOne=originalFind;PendingApproval.findOneAndUpdate=originalCreate;User.find=originalUsers;}
 });

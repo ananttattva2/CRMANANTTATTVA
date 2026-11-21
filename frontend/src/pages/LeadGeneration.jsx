@@ -1426,7 +1426,11 @@ export default function LeadGeneration() {
       }
       setClosureDialog(null);
       const directlyApproved = closureDialog.poEditor && savedLead.assignments?.[closureDialog.index]?.poApprovalStatus === 'APPROVED';
-      showToast(closureDialog.choice === 'no' ? 'Special approval closure saved in the database.' : directlyApproved ? 'PO details updated and approved. No approval request sent.' : 'PO details saved and submitted for Admin approval.', 'success');
+      const mailSummaries = approvalSubmissions.map((submission) => submission?.emailNotification).filter(Boolean);
+      const mailSent = mailSummaries.reduce((sum, item) => sum + Number(item.sent || 0), 0);
+      const mailFailed = mailSummaries.reduce((sum, item) => sum + Number(item.failed || 0), 0);
+      const mailMessage = mailFailed ? ` ${mailSent} email(s) sent; ${mailFailed} failed.` : mailSent ? ` Email sent to ${mailSent} user(s).` : '';
+      showToast(`${closureDialog.choice === 'no' ? 'Special approval closure saved in the database.' : directlyApproved ? 'PO details updated and approved.' : 'PO details saved and submitted for Admin approval.'}${mailMessage}`, mailFailed ? 'warning' : 'success');
     } catch (saveError) {
       console.error('[POProof:closure:error]', {
         poDebugId,

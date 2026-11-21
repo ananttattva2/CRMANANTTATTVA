@@ -1021,21 +1021,50 @@ async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, subm
       } }, { upsert: true, new: true, setDefaultsOnInsert: true }
     );
     console.info('[POProof:approval:persisted]', { poDebugId, approvalId: String(savedApproval?._id || ''), leadCode: lead.leadCode || '', assignmentIndex: index, collection: PendingApproval.collection.collectionName, rowCount: poRowsSnapshot.length, proofCount: poProofManifest.filter((po) => po.poFileUrl).length });
-    if (directlyApproved) return { approvalId: String(savedApproval?._id || ''), assignmentIndex: index, approvalStatus: 'APPROVED' };
+    if (directlyApproved) {
+      let emailNotification;
+      try {
+        emailNotification = await notifyPurchaseOrderDecision({
+          approval: savedApproval,
+          lead,
+          index,
+          status: 'APPROVED',
+          remarks: 'PO details updated and approved by administrator.',
+          screenshotUrl: ''
+        });
+      } catch (error) {
+        console.error('Unable to send direct PO approval notification', error.message);
+        emailNotification = { recipients: 0, sent: 0, failed: 0, error: true };
+      }
+      return { approvalId: String(savedApproval?._id || ''), assignmentIndex: index, approvalStatus: 'APPROVED', emailNotification };
+    }
+    let emailNotification = { recipients: 0, sent: 0, failed: 0 };
     try {
       const notificationUsers = await User.find({
         isActive: { $ne: false },
         email: { $exists: true, $ne: '' }
       }).select('_id name email role roles').lean();
       const adminUsers = notificationUsers.filter((user) => userHasAnyRole(user, ADMIN_ROLES));
-      const recipients = [...new Set(adminUsers
-        .map((user) => String(user.email || '').trim().toLowerCase())
-        .filter(Boolean))];
+      const ownerIds = new Set([
+        actor?._id, actor?.id,
+        lead.generatedForUser?._id || lead.generatedForUser,
+        lead.createdBy?._id || lead.createdBy
+      ].map((value) => String(value || '').trim()).filter(Boolean));
+      const ownerUsers = notificationUsers.filter((user) => ownerIds.has(String(user._id || '')));
+      const recipients = [...new Set([
+        ...adminUsers.map((user) => user.email),
+        ...ownerUsers.map((user) => user.email),
+        actor?.email,
+        lead.generatedForEmail,
+        lead.generatedForUser?.email,
+        lead.createdByEmail,
+        lead.createdBy?.email
+      ].map((email) => String(email || '').trim().toLowerCase()).filter(Boolean))];
       const poRows = Array.isArray(row.poYearRows) ? row.poYearRows : [];
       const emailHtml = buildPurchaseOrderEmail({
         eyebrow: 'New purchase order approval',
-        title: 'Purchase Order submitted for review',
-        message: `<strong>${escapeHtml(actor?.name || actor?.email || 'CRM User')}</strong> submitted PO details. Please review the values and record your decision.`,
+        title: 'Purchase Order received and submitted for review',
+        message: `<strong>${escapeHtml(actor?.name || actor?.email || 'CRM User')}</strong> submitted PO details. The PO has been received in CRM and is awaiting Admin review.`,
         clientName: lead.company || lead.leadCode,
         leadCode: lead.leadCode,
         rows: poRows,
@@ -1043,22 +1072,21 @@ async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, subm
         actionUrl: `${String(process.env.FRONTEND_URL || 'https://crmananttattva.vercel.app').replace(/\/$/, '')}/pending-approval`
       });
       if (!recipients.length) {
-        console.error('Unable to send new PO approval notifications: no active Admin recipients', { leadCode: lead.leadCode || '', approvalId: String(savedApproval?._id || '') });
+        console.error('Unable to send new PO approval notifications: no active recipients', { leadCode: lead.leadCode || '', approvalId: String(savedApproval?._id || '') });
       } else {
-        // Keep the already-persisted approval response independent from a slow
-        // mail provider, while recording which Admin deliveries completed.
-        void Promise.allSettled(recipients.map((email) => sendMail(email, `New PO Approval - ${lead.company || lead.leadCode}`, emailHtml, { branded: false })))
-          .then(async (results) => {
-            const delivered = recipients.filter((_email, index) => results[index]?.status === 'fulfilled');
-            const failed = results.filter((result) => result.status === 'rejected');
-            if (delivered.length) await PendingApproval.updateOne({ _id: savedApproval._id }, { $set: { notifiedAdminEmails: delivered } }).catch(() => null);
-            if (failed.length) console.error('Unable to send some new PO approval notifications', { failed: failed.length, recipients: recipients.length, leadCode: lead.leadCode || '' });
-          });
+        const results = await Promise.allSettled(recipients.map((email) => sendMail(email, `PO received - ${lead.company || lead.leadCode}`, emailHtml, { branded: false })));
+        const delivered = recipients.filter((_email, recipientIndex) => results[recipientIndex]?.status === 'fulfilled'
+          && !(results[recipientIndex].value?.summary?.rejected?.length && !results[recipientIndex].value?.summary?.accepted?.length));
+        const failed = recipients.length - delivered.length;
+        emailNotification = { recipients: recipients.length, sent: delivered.length, failed };
+        if (delivered.length) await PendingApproval.updateOne({ _id: savedApproval._id }, { $set: { notifiedAdminEmails: delivered } }).catch(() => null);
+        if (failed) console.error('Unable to send some new PO approval notifications', { failed, recipients: recipients.length, leadCode: lead.leadCode || '' });
       }
     } catch (error) {
       console.error('Unable to send new PO approval notifications', error.message);
+      emailNotification = { recipients: 0, sent: 0, failed: 0, error: true };
     }
-    return { approvalId: String(savedApproval?._id || ''), assignmentIndex: index, approvalStatus: 'PENDING' };
+    return { approvalId: String(savedApproval?._id || ''), assignmentIndex: index, approvalStatus: 'PENDING', emailNotification };
   }));
   lead.markModified('assignments');
   return savedApprovals.filter(Boolean);
@@ -2334,7 +2362,7 @@ exports.permanentlyCloseProvisionalLead = async (req, res) => {
   }
 };
 
-async function notifyPurchaseOrderDecision({ approval, lead, index, status, remarks, screenshotUrl, leadClosure = false, specialApproval = false, ownerOnly = false, paymentReceived = false, paymentStatus, poAmount }) {
+async function notifyPurchaseOrderDecision({ approval, lead, index, status, remarks, screenshotUrl, leadClosure = false, specialApproval = false, initialApproval = false, ownerOnly = false, paymentReceived = false, paymentStatus, poAmount }) {
   const serviceId = String(approval.payload?.assignedServiceId || '');
   const assignmentMatches = serviceId
     ? (lead?.assignments || []).filter(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === serviceId)
@@ -2408,7 +2436,9 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
     ...(ownerName ? [{ name: String(ownerName).trim() }] : []),
     ...(ownerCrmId ? [{ crmUserId: String(ownerCrmId).trim() }] : [])
   ];
-  const leadOwnerUsers = (leadClosure || specialApproval || ownerOnly || paymentReceived) && ownerConditions.length
+  const shouldNotifyOwner = leadClosure || specialApproval || initialApproval || ownerOnly || paymentReceived
+    || ['APPROVED', 'REJECTED', 'REVISION_REQUIRED'].includes(String(status || '').toUpperCase());
+  const leadOwnerUsers = shouldNotifyOwner && ownerConditions.length
     ? await User.find({ $or: ownerConditions, isActive: { $ne: false } }).select('email').lean()
     : [];
   const leadOwnerEmail = String(ownerEmail || '').trim().toLowerCase();
@@ -2431,7 +2461,7 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
       ? [...leadOwnerUsers.map((user) => user.email), leadOwnerEmail]
       : paymentReceived
       ? [...leadOwnerUsers.map((user) => user.email), leadOwnerEmail, ...adminUsers.map((user) => user.email)]
-      : responsibleUsers.map((user) => user.email)),
+      : [...responsibleUsers.map((user) => user.email), ...leadOwnerUsers.map((user) => user.email), leadOwnerEmail]),
     ...financeUsers.map((user) => user.email),
     ...(!paymentReceived && !ownerOnly && !specialApproval ? [
       approval.payload?.poSubmittedByEmail,
@@ -2444,8 +2474,8 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
     ? approval.payload.poYearRows
     : (lead.assignments?.[resolvedIndex]?.poYearRows || []);
   const paymentLabel = paymentStatus?.status === 'COMPLETE_RECEIVED' ? 'Complete payment received' : 'Advance payment received';
-  const emailTitle = paymentReceived ? paymentLabel : specialApproval ? 'PO Special Approval requested' : leadClosure ? 'Lead Closure Approval granted' : status === 'APPROVED' ? 'Purchase Order approved successfully' : status === 'REJECTED' ? 'Purchase Order rejected' : 'Purchase Order revision required';
-  const emailEyebrow = paymentReceived ? 'Payment update' : specialApproval ? 'PO Special Approval' : leadClosure ? 'Lead closure approval' : `Purchase order ${verb}`;
+  const emailTitle = paymentReceived ? paymentLabel : specialApproval ? 'PO Special Approval requested' : leadClosure ? 'Lead Closure Approval granted' : initialApproval ? 'Purchase Order passed Admin review' : status === 'APPROVED' ? 'Purchase Order approved successfully' : status === 'REJECTED' ? 'Purchase Order rejected' : 'Purchase Order revision required';
+  const emailEyebrow = paymentReceived ? 'Payment update' : specialApproval ? 'PO Special Approval' : leadClosure ? 'Lead closure approval' : initialApproval ? 'Admin review completed' : `Purchase order ${verb}`;
   const receivedAmount = Number(paymentStatus?.amount || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
   const totalPoAmount = Number(poAmount || decisionRows.reduce((sum, row) => sum + Number(row.poAmount || 0), 0)).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
   const paymentSummaryHtml = paymentReceived ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #99f6e4;background:#f0fdfa">
@@ -2457,9 +2487,11 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
   const emailMessage = paymentReceived
     ? `Finance recorded an ${paymentStatus?.status === 'COMPLETE_RECEIVED' ? 'complete' : 'advance'} payment for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong>. Review the summary below and open the CRM record for full details.`
     : specialApproval
-    ? `Finance requested Special Approval for the Purchase Order for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong>. Review the finance remarks and submit the required payment data in the CRM.`
+    ? `Finance requested Special Approval for the Purchase Order for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong>. Review the finance remarks and submit the required payment date in the CRM.`
     : leadClosure
     ? `Lead Closure Approval for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong> was <strong>approved</strong>. Finance can now record the final decision.`
+    : initialApproval
+    ? `The Purchase Order for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong> passed Admin review and is now awaiting Finance approval.`
     : `The Purchase Order for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong> was <strong>${escapeHtml(verb)}</strong>.`;
   const html = buildPurchaseOrderEmail({
     eyebrow: emailEyebrow,
@@ -2488,7 +2520,9 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
     ? `${paymentLabel} - ${lead.company || lead.leadCode}`
     : specialApproval
       ? `PO Special Approval requested - ${lead.company || lead.leadCode}`
-      : `PO ${status.replace('_', ' ')} - ${lead.company || lead.leadCode}`;
+      : initialApproval
+        ? `PO passed Admin review - ${lead.company || lead.leadCode}`
+        : `PO ${status.replace('_', ' ')} - ${lead.company || lead.leadCode}`;
   const mailResults = await Promise.allSettled(recipients.map((email) => sendMail(email, subject, html, { branded: false, attachments: screenshotAttachment ? [screenshotAttachment] : [] })));
   const emailNotification = {
     recipients: recipients.length,

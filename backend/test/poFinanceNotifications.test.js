@@ -109,6 +109,39 @@ test('PO referral and payment notifications reach the owner and secondary-role a
   assert.ok(sent.every((mail) => mail.html.includes('/finance-approval')));
   assert.ok(sent.every((mail) => !mail.html.includes('display:flex')));
 
+  sent.length = 0;
+  const approved = await notifyPurchaseOrderDecision({
+    approval,
+    lead: {
+      ...lead,
+      generatedForUser: 'gaurav-id',
+      generatedForName: 'Gaurav Chandra',
+      generatedForEmail: 'gaurav@example.test'
+    },
+    index: 0, status: 'APPROVED', remarks: 'Finance approved the PO.'
+  });
+  assert.equal(approved.failed, 0);
+  assert.deepEqual(new Set(sent.map((mail) => mail.to)), new Set([
+    'gaurav@example.test', 'superadmin@example.test', 'admin@example.test', 'submitter@example.test'
+  ]));
+  assert.ok(sent.every((mail) => /PO APPROVED/i.test(mail.subject)));
+
+  sent.length = 0;
+  const initialApproval = await notifyPurchaseOrderDecision({
+    approval,
+    lead: {
+      ...lead,
+      generatedForUser: 'gaurav-id',
+      generatedForName: 'Gaurav Chandra',
+      generatedForEmail: 'gaurav@example.test'
+    },
+    index: 0, status: 'FINANCE_PENDING', remarks: 'Admin review completed.', initialApproval: true
+  });
+  assert.equal(initialApproval.failed, 0);
+  assert.ok(sent.some((mail) => mail.to === 'gaurav@example.test'));
+  assert.ok(sent.every((mail) => /passed Admin review/i.test(mail.subject)));
+  assert.ok(sent.every((mail) => /awaiting Finance approval/i.test(mail.html)));
+
   const preview = leadTest.buildPurchaseOrderEmail({
     eyebrow: 'Payment update', title: 'Advance payment received', message: 'A payment was recorded.',
     clientName: 'Example Ltd', leadCode: 'LEAD-1', rows: [], status: 'PAYMENT',
