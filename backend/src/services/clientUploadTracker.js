@@ -156,13 +156,13 @@ function applicationDescriptor(client, selectedFinancialYear = '') {
 }
 function buildUploadTracker(clients, users, purchases, sales, options = {}) {
   const identities = new Map();
-  users = users.filter(user => user.isActive !== false && userHasAnyRole(user, ['operation', 'operations', 'manager']) && !userHasAnyRole(user, ['admin', 'superadmin', 'sales']));
+  users = users.filter(user => user.isActive !== false && userHasAnyRole(user, ['operation', 'operations', 'manager']) && !userHasAnyRole(user, ['admin', 'superadmin']));
   users.forEach(user => [user._id, user.crmUserId, user.name, user.email].filter(Boolean).forEach(value => identities.set(id(value).trim().toLowerCase(), user)));
   const index = records => new Map(records.map(record => [id(record.clientId), record]));
   const purchaseIndex = index(purchases), salesIndex = index(sales), groups = new Map();
   const reviewIndex = new Map((options.annualReviews || []).map(review => [`${id(review.client)}:${normalizeYear(review.financialYear)}`, review]));
   const emptyGroup = user => ({ userId: id(user._id), userName: user.name || user.email || 'Team member', clients: [], slaReceived: 0, slaNotReceived: 0, purchase: STAGES.map(() => ({ complete: 0, progress: 0, pending: 0, rejected: 0 })), sales: STAGES.map(() => ({ complete: 0, progress: 0, pending: 0, rejected: 0 })) });
-  users.filter(user => userHasAnyRole(user, ['manager'])).forEach(user => groups.set(id(user._id), emptyGroup(user)));
+  users.forEach(user => groups.set(id(user._id), emptyGroup(user)));
   const seen = new Set();
   for (const client of clients) {
     if (options.groupBy !== 'application' && options.serviceType && !matchesTrackedService(client, options.serviceType)) continue;

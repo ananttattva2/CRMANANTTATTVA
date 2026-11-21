@@ -77,11 +77,14 @@ test('tracker counts allocated clients once and separates Purchase and Sales sta
   const users = [{_id:'u1',name:'First User',role:'operations'}, {_id:'u2',name:'Second User',role:'operations'}];
   const purchases = [{clientId:'c1',checklist:[{particular:'Data Explained',yesNo:'Yes'}],baseUpload:{importStatus:'Imported'},portalUpload:{importStatus:'Imported'}}];
   const result = buildUploadTracker(clients,users,purchases,[]);
-  assert.equal(result.length,1); assert.equal(result[0].clients.length,2);
-  assert.equal(result[0].slaReceived,1); assert.equal(result[0].slaNotReceived,1);
-  assert.equal(result[0].purchase[0].complete,1); assert.equal(result[0].purchase[6].complete,1);
-  assert.equal(result[0].sales[6].pending,2);
-  assert.equal(result[0].purchase[0].pending,1);
+  const firstUser = result.find(row => row.userId === 'u1');
+  const secondUser = result.find(row => row.userId === 'u2');
+  assert.equal(result.length,2); assert.equal(firstUser.clients.length,2);
+  assert.equal(firstUser.slaReceived,1); assert.equal(firstUser.slaNotReceived,1);
+  assert.equal(firstUser.purchase[0].complete,1); assert.equal(firstUser.purchase[6].complete,1);
+  assert.equal(firstUser.sales[6].pending,2);
+  assert.equal(firstUser.purchase[0].pending,1);
+  assert.equal(secondUser.clients.length,0);
 });
 test('partial data and single import stay in progress; empty rows stay pending', () => {
   assert.equal(stageState({checklist:[{particular:'Received from client',yesNo:'Yes',partialDataReceived:true}]},'Received from client'),'progress');
@@ -110,7 +113,9 @@ test('service allocation metadata alone is excluded and permanent snapshot assig
   const users = [{_id:'s',name:'Shubham',roles:['Operations']}, {_id:'t',name:'Tushar',role:'operation'}];
   const clients = [{_id:'a',adminControls:{assignedTo:'t'},serviceAllocations:{annual:{userId:'s'}}}, {_id:'b',data:{selectedLeadSnapshot:{assignedStaffText:'Shubham'}}}];
   const result = buildUploadTracker(clients,users,[],[]);
-  assert.equal(result.length,1); assert.equal(result[0].userId,'s'); assert.equal(result[0].clients.length,1);
+  assert.equal(result.length,2);
+  assert.equal(result.find(row => row.userId === 's').clients.length,1);
+  assert.equal(result.find(row => row.userId === 't').clients.length,0);
 });
 
 test('legacy lead assignments without service IDs resolve the consistent permanent owner', () => {
@@ -127,6 +132,20 @@ test('managers appear with their own allocations and zero-count managers remain 
   assert.equal(result.find(row => row.userId === 't').clients[0].clientId,'t-client');
   assert.equal(result.find(row => row.userId === 'b').clients.length,0);
   assert.equal(result.find(row => row.userId === 's').clients[0].clientId,'s-client');
+});
+
+test('active Operations users without allocations still appear by name in the tracker', () => {
+  const result = buildUploadTracker([], [
+    { _id: 'ritual', name: 'Ritual', email: 'ritual@example.test', role: 'sales', roles: ['sales', 'operation'], isActive: true },
+    { _id: 'inactive', name: 'Inactive User', role: 'operation', isActive: false },
+    { _id: 'sales-only', name: 'Sales Only', role: 'sales', isActive: true }
+  ], [], []);
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].userId, 'ritual');
+  assert.equal(result[0].userName, 'Ritual');
+  assert.equal(result[0].clients.length, 0);
+  assert.equal(result[0].purchase[0].pending, 0);
 });
 
 test('Nil Upload counts only Yes and follows Ready to upload in both dashboard modules', () => {

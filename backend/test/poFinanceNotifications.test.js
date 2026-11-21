@@ -19,11 +19,18 @@ test('PO referral and payment notifications reach the owner and secondary-role a
   const superAdmin = { email: 'superadmin@example.test' };
   const admin = { email: 'admin@example.test' };
   const submitter = { email: 'submitter@example.test' };
+  const adminRoleQueries = [];
 
   User.find = (filter) => {
-    if (filter._id) return queryResult([owner]);
     const clauses = filter.$or || [];
+    if (clauses.some((clause) => clause.crmUserId === 'owner-id' || clause.name === 'owner-id')) return queryResult([owner]);
     if (clauses.some((clause) => clause.roles?.$in?.includes('accounts'))) return queryResult([]);
+    if (clauses.some((clause) => {
+      const patterns = [...(clause.role?.$in || []), ...(clause.roles?.$in || [])];
+      const matchesSuperAdminAlias = patterns.some((pattern) => pattern instanceof RegExp && pattern.test('Super Admin'));
+      if (matchesSuperAdminAlias) adminRoleQueries.push(filter);
+      return matchesSuperAdminAlias;
+    })) return queryResult([superAdmin, admin]);
     if (clauses.some((clause) => clause._id)) return queryResult([superAdmin, admin, submitter]);
     return queryResult([superAdmin, admin]);
   };
@@ -32,7 +39,7 @@ test('PO referral and payment notifications reach the owner and secondary-role a
     return { summary: { accepted: [to], rejected: [] } };
   };
   delete require.cache[controllerPath];
-  const { notifyPurchaseOrderDecision } = require('../src/controllers/leadController');
+  const { notifyPurchaseOrderDecision, _test: leadTest } = require('../src/controllers/leadController');
 
   t.after(() => {
     User.find = originalFind;
@@ -73,8 +80,34 @@ test('PO referral and payment notifications reach the owner and secondary-role a
   assert.deepEqual(new Set(sent.map((mail) => mail.to)), new Set([
     'owner@example.test', 'superadmin@example.test', 'admin@example.test'
   ]));
-  assert.ok(sent.every((mail) => mail.subject.includes('Payment received')));
-  assert.ok(sent.every((mail) => mail.html.includes('Received amount')));
+  assert.ok(adminRoleQueries.length > 0, 'payment notifications query role aliases such as "Super Admin"');
+  assert.ok(sent.every((mail) => /payment received/i.test(mail.subject)));
+  assert.ok(sent.every((mail) => mail.html.includes('Amount received')));
+  assert.ok(sent.every((mail) => mail.html.includes('Payment status')));
+  assert.ok(sent.every((mail) => mail.html.includes('Review payment in Finance Approval')));
+  assert.ok(sent.every((mail) => mail.html.includes('/finance-approval')));
+  assert.ok(sent.every((mail) => !mail.html.includes('display:flex')));
+
+  const preview = leadTest.buildPurchaseOrderEmail({
+    eyebrow: 'Payment update', title: 'Advance payment received', message: 'A payment was recorded.',
+    clientName: 'Example Ltd', leadCode: 'LEAD-1', rows: [], status: 'PAYMENT',
+    summaryHtml: '<table><tr><td>Amount received</td></tr></table>',
+    actionUrl: 'https://crm.example.test/finance-approval',
+    actionLabel: 'Review payment in Finance Approval'
+  });
+  assert.match(preview, /role="presentation"/);
+  assert.match(preview, /Review payment in Finance Approval/);
+  assert.match(preview, /Anant Tattva CRM/);
+
+  sent.length = 0;
+  const retry = await notifyPurchaseOrderDecision({
+    approval, lead, index: 0, status: 'REFERRED', remarks: 'Please confirm payment terms.',
+    specialApproval: true, ownerOnly: true
+  });
+  assert.equal(retry.recipients, 1);
+  assert.equal(retry.sent, 1);
+  assert.deepEqual(sent.map((mail) => mail.to), ['owner@example.test']);
+  assert.ok(sent[0].subject.includes('PO Special Approval requested'));
 });
 
 test('Finance Approval is visible to authenticated users and sidebar refreshes authenticated roles', () => {
@@ -88,7 +121,8 @@ test('Finance Approval is visible to authenticated users and sidebar refreshes a
   assert.match(app, /path="\/finance-approval" element=\{<ProtectedRoute>/);
   assert.match(sidebar, /api\.get\('\/auth\/me'\)/);
   assert.match(sidebar, /setSidebarUser\(data\.user\)/);
-  assert.match(financeController, /filterAssignedLeadOwnerApprovals\(approvals, req\.user\._id\)/);
+  assert.match(financeController, /filterAssignedLeadOwnerApprovals\(approvals, req\.user\)/);
+  assert.match(financeController, /exports\.resendOwnerNotification/);
 });
 
 test('lead owner request rows and details are restricted to the assigned owner', () => {
@@ -102,4 +136,7 @@ test('lead owner request rows and details are restricted to the assigned owner',
   assert.equal(financeTest.isAssignedLeadOwner({ payload: { assignedServiceId: 'service-2' } }, {
     assignments: [{ assignedServiceId: 'service-1', assignedStaff: 'owner-1' }, { assignedServiceId: 'service-2', assignedStaff: 'owner-2' }]
   }, 'owner-2'), true);
+  assert.equal(financeTest.isAssignedLeadOwner({ payload: { assignmentIndex: 0 } }, {
+    assignments: [{ assignedStaffText: 'Ritual Owner', assignedStaffEmail: 'ritual@example.test' }]
+  }, { _id: 'owner-3', name: 'Ritual Owner', email: 'ritual@example.test' }), true);
 });

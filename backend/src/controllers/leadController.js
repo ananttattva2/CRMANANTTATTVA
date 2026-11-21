@@ -923,35 +923,40 @@ function preserveExistingClosureEvidence(beforeData = {}, nextData = {}) {
   return nextData;
 }
 
-function buildPurchaseOrderEmail({ eyebrow, title, message, clientName, leadCode, rows = [], remarks = '', status = 'PENDING', actionUrl = '' }) {
-  const tone = status === 'APPROVED' ? '#059669' : status === 'REJECTED' ? '#dc2626' : status === 'REVISION_REQUIRED' ? '#ea580c' : '#2563eb';
+function buildPurchaseOrderEmail({ eyebrow, title, message, clientName, leadCode, rows = [], remarks = '', remarksLabel = 'Decision remarks', status = 'PENDING', summaryHtml = '', actionUrl = '', actionLabel = 'Open Pending Approval' }) {
+  const tone = status === 'APPROVED' || status === 'PAYMENT' ? '#0f766e' : status === 'REJECTED' ? '#dc2626' : status === 'REVISION_REQUIRED' ? '#ea580c' : status === 'REFERRED' ? '#4f46e5' : '#2563eb';
   const safeRows = rows.length ? rows : [{}];
   const rowHtml = safeRows.map((po) => `<tr>
-    <td style="padding:12px;border-bottom:1px solid #e2e8f0;font-weight:700;color:#0f172a">${escapeHtml(po.poNumber || '-')}</td>
-    <td style="padding:12px;border-bottom:1px solid #e2e8f0;color:#475569">${escapeHtml(po.fy || '-')}</td>
-    <td style="padding:12px;border-bottom:1px solid #e2e8f0;color:#475569">${escapeHtml(po.poDate || '-')}</td>
-    <td style="padding:12px;border-bottom:1px solid #e2e8f0;font-weight:700;color:#0f172a">INR ${Number(po.poAmount || 0).toLocaleString('en-IN')}</td>
-    <td style="padding:12px;border-bottom:1px solid #e2e8f0;color:#475569">${escapeHtml(po.quotationNumber || '-')}</td>
+    <td style="padding:12px;border-bottom:1px solid #e2e8f0;font-weight:700;color:#0f172a">${escapeHtml(po.poNumber || '-')}<br><span style="font-size:11px;font-weight:400;color:#64748b">${escapeHtml(po.fy || 'FY not recorded')}</span></td>
+    <td align="right" style="padding:12px;border-bottom:1px solid #e2e8f0;font-weight:700;color:#0f172a;white-space:nowrap">INR ${Number(po.poAmount || 0).toLocaleString('en-IN')}</td>
+    <td style="padding:12px;border-bottom:1px solid #e2e8f0;color:#475569">${escapeHtml(po.poDate || 'Date not recorded')}<br><span style="font-size:11px;color:#64748b">${escapeHtml(po.quotationNumber || 'No quotation linked')}</span></td>
     <td style="padding:12px;border-bottom:1px solid #e2e8f0">${po.poFileUrl ? `<a href="${escapeHtml(po.poFileUrl)}" style="color:#2563eb;font-weight:700;text-decoration:none">View proof</a>` : '<span style="color:#94a3b8">Not attached</span>'}</td>
   </tr>`).join('');
-  return `<div style="margin:0;padding:28px 12px;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#334155">
-    <div style="max-width:720px;margin:0 auto;overflow:hidden;border:1px solid #dbe4ef;border-radius:18px;background:#ffffff;box-shadow:0 12px 34px rgba(15,23,42,.08)">
-      <div style="height:5px;background:${tone}"></div>
-      <div style="padding:28px 30px 20px;background:linear-gradient(135deg,#ffffff,#f8fafc)">
-        <div style="font-size:11px;font-weight:800;letter-spacing:1.6px;color:${tone};text-transform:uppercase">${escapeHtml(eyebrow)}</div>
-        <h1 style="margin:8px 0 10px;color:#0f172a;font-size:25px;line-height:1.25">${escapeHtml(title)}</h1>
-        <p style="margin:0;color:#475569;font-size:15px;line-height:1.7">${message}</p>
-      </div>
-      <div style="padding:0 30px 24px">
-        <div style="display:flex;margin-bottom:18px;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc;padding:15px">
-          <div><div style="font-size:10px;font-weight:800;letter-spacing:1px;color:#94a3b8;text-transform:uppercase">Company / Lead</div><div style="margin-top:5px;color:#0f172a;font-size:16px;font-weight:800">${escapeHtml(clientName || '-')}</div><div style="margin-top:3px;color:#64748b;font-size:12px">${escapeHtml(leadCode || '')}</div></div>
-        </div>
-        <div style="overflow:hidden;border:1px solid #e2e8f0;border-radius:12px"><table role="presentation" style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#f8fafc;color:#64748b;text-align:left"><th style="padding:11px 12px">PO Number</th><th style="padding:11px 12px">FY</th><th style="padding:11px 12px">PO Date</th><th style="padding:11px 12px">PO Amount</th><th style="padding:11px 12px">Quotation</th><th style="padding:11px 12px">Proof</th></tr></thead><tbody>${rowHtml}</tbody></table></div>
-        ${remarks ? `<div style="margin-top:18px;border-left:4px solid ${tone};border-radius:8px;background:#f8fafc;padding:14px 16px"><div style="font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase">Decision remarks</div><div style="margin-top:6px;color:#1e293b;font-size:14px;line-height:1.6">${escapeHtml(remarks)}</div></div>` : ''}
-        ${actionUrl ? `<div style="margin-top:22px;text-align:center"><a href="${escapeHtml(actionUrl)}" style="display:inline-block;border-radius:9px;background:${tone};padding:12px 20px;color:#fff;font-size:14px;font-weight:800;text-decoration:none">Open Pending Approval</a></div>` : ''}
-      </div>
-      <div style="border-top:1px solid #e2e8f0;background:#f8fafc;padding:15px 30px;color:#94a3b8;font-size:11px;text-align:center">AnantTattva CRM · Automated workflow notification</div>
-    </div>
+  const preview = `${title || 'Purchase Order update'} - ${clientName || leadCode || ''}`;
+  return `<div style="margin:0;padding:24px 10px;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#334155">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${escapeHtml(preview)}</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:720px;margin:0 auto;border:1px solid #dbe4ef;border-radius:14px;background:#ffffff;border-collapse:separate">
+      <tr><td height="6" style="background:${tone};border-radius:14px 14px 0 0;font-size:0;line-height:0">&nbsp;</td></tr>
+      <tr><td style="padding:26px 28px 18px;background:#f8fafc">
+        <div style="font-size:11px;font-weight:800;letter-spacing:1.5px;color:${tone};text-transform:uppercase">${escapeHtml(eyebrow)}</div>
+        <h1 style="margin:8px 0 10px;color:#0f172a;font-size:24px;line-height:1.3">${escapeHtml(title)}</h1>
+        <p style="margin:0;color:#475569;font-size:15px;line-height:1.65">${message}</p>
+      </td></tr>
+      <tr><td style="padding:20px 28px 26px">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:16px;border:1px solid #dbe4ef;background:#f8fafc">
+          <tr><td style="padding:13px 15px"><div style="font-size:10px;font-weight:800;letter-spacing:1px;color:#64748b;text-transform:uppercase">Company / Lead</div><div style="margin-top:5px;color:#0f172a;font-size:16px;font-weight:700">${escapeHtml(clientName || '-')}</div><div style="margin-top:3px;color:#64748b;font-size:12px">${escapeHtml(leadCode || '')}</div></td></tr>
+        </table>
+        ${summaryHtml}
+        <h2 style="margin:20px 0 8px;color:#0f172a;font-size:15px">Purchase Order details</h2>
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e2e8f0;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:#f1f5f9;color:#475569;text-align:left"><th style="padding:10px">PO / FY</th><th align="right" style="padding:10px">Amount</th><th style="padding:10px">Date / quotation</th><th style="padding:10px">Proof</th></tr></thead>
+          <tbody>${rowHtml}</tbody>
+        </table>
+        ${remarks ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:16px;border-left:4px solid ${tone};background:#f8fafc"><tr><td style="padding:12px 14px"><div style="font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase">${escapeHtml(remarksLabel)}</div><div style="margin-top:5px;color:#1e293b;font-size:14px;line-height:1.6">${escapeHtml(remarks)}</div></td></tr></table>` : ''}
+        ${actionUrl ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:22px"><tr><td align="center"><a href="${escapeHtml(actionUrl)}" style="display:inline-block;border-radius:8px;background:${tone};padding:13px 20px;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none">${escapeHtml(actionLabel)}</a></td></tr></table>` : ''}
+      </td></tr>
+      <tr><td style="border-top:1px solid #e2e8f0;background:#f8fafc;padding:14px 20px;color:#64748b;font-size:11px;line-height:1.5;text-align:center">Anant Tattva CRM · Internal workflow notification. Please do not forward this message to the client.</td></tr>
+    </table>
   </div>`;
 }
 
@@ -2329,34 +2334,51 @@ exports.permanentlyCloseProvisionalLead = async (req, res) => {
   }
 };
 
-async function notifyPurchaseOrderDecision({ approval, lead, index, status, remarks, screenshotUrl, leadClosure = false, specialApproval = false, paymentReceived = false, paymentStatus, poAmount }) {
+async function notifyPurchaseOrderDecision({ approval, lead, index, status, remarks, screenshotUrl, leadClosure = false, specialApproval = false, ownerOnly = false, paymentReceived = false, paymentStatus, poAmount }) {
   const assignment = lead?.assignments?.[index] || {};
-  const leadOwnerId = assignment.assignedStaff?._id || assignment.assignedStaff || lead?.assignedStaff?._id || lead?.assignedStaff || '';
-  const leadOwnerEmail = assignment.assignedStaffEmail || lead?.assignedStaffEmail || '';
-  const leadOwnerUsers = (leadClosure || specialApproval || paymentReceived) && leadOwnerId
-    ? await User.find({ _id: leadOwnerId, isActive: { $ne: false } }).select('email').lean()
+  const owner = assignment.assignedStaff || lead?.assignedStaff || '';
+  const ownerId = owner && typeof owner === 'object' && typeof owner.toHexString === 'function'
+    ? owner
+    : owner?._id || (typeof owner?.id === 'string' ? owner.id : '') || (mongoose.isValidObjectId(owner) ? owner : '');
+  const ownerEmail = assignment.assignedStaffEmail || lead?.assignedStaffEmail || owner?.email
+    || (typeof owner === 'string' && owner.includes('@') ? owner : '');
+  const ownerName = assignment.assignedStaffText || lead?.assignedStaffText || owner?.name
+    || (owner && !ownerId && !ownerEmail ? String(owner) : '');
+  const ownerCrmId = owner?.crmUserId || (owner && !ownerId ? String(owner) : '');
+  const ownerConditions = [
+    ...(ownerId ? [{ _id: ownerId }] : []),
+    ...(ownerEmail ? [{ email: String(ownerEmail).trim().toLowerCase() }] : []),
+    ...(ownerName ? [{ name: String(ownerName).trim() }] : []),
+    ...(ownerCrmId ? [{ crmUserId: String(ownerCrmId).trim() }] : [])
+  ];
+  const leadOwnerUsers = (leadClosure || specialApproval || ownerOnly || paymentReceived) && ownerConditions.length
+    ? await User.find({ $or: ownerConditions, isActive: { $ne: false } }).select('email').lean()
     : [];
-  const adminUsers = specialApproval || paymentReceived
-    ? await User.find({ $or: [{ role: { $in: ['admin', 'superadmin'] } }, { roles: { $in: ['admin', 'superadmin'] } }], isActive: { $ne: false } }).select('email').lean()
+  const leadOwnerEmail = String(ownerEmail || '').trim().toLowerCase();
+  const adminRolePatterns = [/^admin$/i, /^super[\s_-]*admin$/i];
+  const adminUsers = !ownerOnly && (specialApproval || paymentReceived)
+    ? await User.find({ $or: [{ role: { $in: adminRolePatterns } }, { roles: { $in: adminRolePatterns } }], isActive: { $ne: false } }).select('email').lean()
     : [];
-  const financeUsers = leadClosure
+  const financeUsers = !ownerOnly && leadClosure
     ? await User.find({ $or: [{ role: { $in: ['accounts', 'finance'] } }, { roles: { $in: ['accounts', 'finance'] } }], isActive: { $ne: false } }).select('email').lean()
     : [];
-  const responsibleUsers = await User.find({ $or: [
+  const responsibleUsers = ownerOnly ? [] : await User.find({ $or: [
     { role: { $in: ADMIN_ROLES }, isActive: { $ne: false } },
     { roles: { $in: ADMIN_ROLES }, isActive: { $ne: false } },
     ...(approval.payload?.poSubmittedById ? [{ _id: approval.payload.poSubmittedById }] : []),
     ...(approval.createdByName ? [{ name: approval.createdByName }] : []),
-    ...(leadClosure && leadOwnerId ? [{ _id: leadOwnerId }] : [])
+    ...(leadClosure && ownerId ? [{ _id: ownerId }] : [])
   ] }).select('email').lean();
   const recipients = [...new Set([
-    ...(paymentReceived
+    ...(ownerOnly
+      ? [...leadOwnerUsers.map((user) => user.email), leadOwnerEmail]
+      : paymentReceived
       ? [...leadOwnerUsers.map((user) => user.email), leadOwnerEmail, ...adminUsers.map((user) => user.email)]
       : specialApproval
         ? [...leadOwnerUsers.map((user) => user.email), leadOwnerEmail, ...adminUsers.map((user) => user.email), ...responsibleUsers.map((user) => user.email)]
         : responsibleUsers.map((user) => user.email)),
     ...financeUsers.map((user) => user.email),
-    ...(!paymentReceived ? [
+    ...(!paymentReceived && !ownerOnly ? [
       approval.payload?.poSubmittedByEmail,
       approval.payload?.leadCreatorEmail,
       ...(approval.payload?.quotationCreatorEmails || [])
@@ -2366,14 +2388,21 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
   const decisionRows = Array.isArray(approval.payload?.poYearRows) && approval.payload.poYearRows.length
     ? approval.payload.poYearRows
     : (lead.assignments[index].poYearRows || []);
-  const emailTitle = paymentReceived ? `Payment ${paymentStatus?.status === 'COMPLETE_RECEIVED' ? 'fully' : 'advance'} received` : specialApproval ? 'PO Special Approval requested' : leadClosure ? 'Lead Closure Approval granted' : status === 'APPROVED' ? 'Purchase Order approved successfully' : status === 'REJECTED' ? 'Purchase Order rejected' : 'Purchase Order revision required';
-  const emailEyebrow = paymentReceived ? 'Payment received' : specialApproval ? 'PO Special Approval' : leadClosure ? 'Lead closure approval' : `Purchase order ${verb}`;
+  const paymentLabel = paymentStatus?.status === 'COMPLETE_RECEIVED' ? 'Complete payment received' : 'Advance payment received';
+  const emailTitle = paymentReceived ? paymentLabel : specialApproval ? 'PO Special Approval requested' : leadClosure ? 'Lead Closure Approval granted' : status === 'APPROVED' ? 'Purchase Order approved successfully' : status === 'REJECTED' ? 'Purchase Order rejected' : 'Purchase Order revision required';
+  const emailEyebrow = paymentReceived ? 'Payment update' : specialApproval ? 'PO Special Approval' : leadClosure ? 'Lead closure approval' : `Purchase order ${verb}`;
   const receivedAmount = Number(paymentStatus?.amount || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
   const totalPoAmount = Number(poAmount || decisionRows.reduce((sum, row) => sum + Number(row.poAmount || 0), 0)).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
+  const paymentSummaryHtml = paymentReceived ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #99f6e4;background:#f0fdfa">
+    <tr><td style="padding:12px 14px;border-bottom:1px solid #ccfbf1;color:#475569;font-size:13px">Payment status</td><td align="right" style="padding:12px 14px;border-bottom:1px solid #ccfbf1;color:#115e59;font-size:13px;font-weight:700">${paymentStatus?.status === 'COMPLETE_RECEIVED' ? 'Complete received' : 'Advance received'}</td></tr>
+    <tr><td style="padding:12px 14px;border-bottom:1px solid #ccfbf1;color:#475569;font-size:13px">PO amount</td><td align="right" style="padding:12px 14px;border-bottom:1px solid #ccfbf1;color:#0f172a;font-size:14px;font-weight:700">${totalPoAmount}</td></tr>
+    <tr><td style="padding:12px 14px;color:#475569;font-size:13px">Amount received</td><td align="right" style="padding:12px 14px;color:#0f766e;font-size:16px;font-weight:800">${receivedAmount}</td></tr>
+    ${paymentStatus?.confirmed ? '<tr><td colspan="2" style="padding:0 14px 12px;color:#0f766e;font-size:12px">Amount confirmed against the PO total.</td></tr>' : ''}
+  </table>` : '';
   const emailMessage = paymentReceived
-    ? `Finance has recorded <strong>${paymentStatus?.status === 'COMPLETE_RECEIVED' ? 'complete payment received' : 'advance payment received'}</strong> for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong>.<br/>PO amount: <strong>${totalPoAmount}</strong><br/>Received amount: <strong>${receivedAmount}</strong>${paymentStatus?.confirmed ? ' (confirmed as per PO amount)' : ''}${remarks ? `<br/>Remarks: ${escapeHtml(remarks)}` : ''}`
+    ? `Finance recorded an ${paymentStatus?.status === 'COMPLETE_RECEIVED' ? 'complete' : 'advance'} payment for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong>. Review the summary below and open the CRM record for full details.`
     : specialApproval
-    ? `Finance requested Special Approval for the Purchase Order for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong>. The assigned lead owner should review the finance remarks and submit the required payment data.${remarks ? `<br/>Finance remarks: ${escapeHtml(remarks)}` : ''}`
+    ? `Finance requested Special Approval for the Purchase Order for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong>. Review the finance remarks and submit the required payment data in the CRM.`
     : leadClosure
     ? `Lead Closure Approval for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong> was <strong>approved</strong>. Finance can now record the final decision.`
     : `The Purchase Order for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong> was <strong>${escapeHtml(verb)}</strong>.`;
@@ -2385,8 +2414,11 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
     leadCode: lead.leadCode,
     rows: decisionRows,
     remarks,
+    remarksLabel: paymentReceived ? 'Payment remarks' : specialApproval ? 'Finance remarks' : leadClosure ? 'Approval remarks' : 'Decision remarks',
     status,
-    actionUrl: `${String(process.env.FRONTEND_URL || 'https://crmananttattva.vercel.app').replace(/\/$/, '')}/pending-approval`
+    summaryHtml: paymentSummaryHtml,
+    actionUrl: `${String(process.env.FRONTEND_URL || process.env.APP_URL || 'https://crmananttattva.com').replace(/\/$/, '')}${paymentReceived || specialApproval ? '/finance-approval' : '/pending-approval'}`,
+    actionLabel: paymentReceived ? 'Review payment in Finance Approval' : specialApproval ? 'Open Lead Owner Request' : 'Open Pending Approval'
   });
   let screenshotAttachment = null;
   if (screenshotUrl) {
@@ -2398,7 +2430,7 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
     }
   }
   const subject = paymentReceived
-    ? `Payment received - ${lead.company || lead.leadCode}`
+    ? `${paymentLabel} - ${lead.company || lead.leadCode}`
     : specialApproval
       ? `PO Special Approval requested - ${lead.company || lead.leadCode}`
       : `PO ${status.replace('_', ' ')} - ${lead.company || lead.leadCode}`;
@@ -3009,6 +3041,7 @@ exports.updateDuplicateLeadApproval = async (req, res) => {
 };
 
 exports._test = {
+  buildPurchaseOrderEmail,
   normalizeAccountsRecordImportRow,
   mapAccountsRecordRowsToLead,
   preserveExistingClosureEvidence,

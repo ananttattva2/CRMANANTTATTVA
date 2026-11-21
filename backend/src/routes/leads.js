@@ -51,6 +51,7 @@ router.get('/search/company', requireAuth, cacheRead, leadCtrl.searchCompanies);
 const financeCtrl = require('../controllers/poFinanceController');
 router.get('/finance-approvals', requireAuth, cacheRead, financeCtrl.list);
 router.get('/finance-approvals/:id', requireAuth, cacheRead, financeCtrl.detail);
+router.post('/finance-approvals/:id/resend-owner-notification', requireAuth, financeCtrl.resendOwnerNotification);
 router.post('/finance-approvals/:id/:action', requireAuth, financeCtrl.act);
 router.get('/duplicate-approvals', requireAuth, cacheRead, leadCtrl.listDuplicateLeadApprovals);
 router.get('/temporary', requireAuth, cacheRead, temporaryLeadCtrl.list);

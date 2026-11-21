@@ -6,13 +6,39 @@ const { userHasAnyRole } = require('../utils/userRoles');
 const { transition, sourceSignature, termsSnapshot, fail } = require('../services/poApprovalWorkflow');
 const REVIEW_ROLES = ['accounts', 'finance', 'admin', 'superadmin'];
 const canView = user => userHasAnyRole(user, REVIEW_ROLES);
-function isAssignedLeadOwner(approval, lead, userId) {
-  if (!approval || !lead || !userId) return false;
+function identity(value) {
+  if (value && typeof value === 'object') {
+    if (typeof value.toHexString === 'function') return value.toHexString().toLowerCase();
+    const nested = value._id || (typeof value.id === 'string' ? value.id : '') || value.crmUserId || value.email || value.name;
+    return nested ? identity(nested) : '';
+  }
+  return String(value || '').trim().toLowerCase();
+}
+function isAssignedStaff(assignment, lead, user) {
+  const userValues = typeof user === 'object' && user !== null
+    ? [user._id, user.id, user.crmUserId, user.email, user.name]
+    : [user];
+  const userKeys = new Set(userValues.map(identity).filter(Boolean));
+  const primary = assignment?.assignedStaff || lead?.assignedStaff;
+  if (primary) {
+    const primaryId = primary && typeof primary === 'object' && typeof primary.toHexString !== 'function'
+      ? primary._id || (typeof primary.id === 'string' ? primary.id : '') || primary
+      : primary;
+    if (mongoose.isValidObjectId(primaryId)) return identity(primaryId) === identity(user?._id);
+    if (userKeys.has(identity(primary))) return true;
+  }
+  return [
+    assignment?.assignedStaffText, assignment?.assignedStaffEmail,
+    lead?.assignedStaffText, lead?.assignedStaffEmail
+  ].some(value => userKeys.has(identity(value)));
+}
+function isAssignedLeadOwner(approval, lead, user) {
+  if (!approval || !lead || !user) return false;
   const assignments = lead.assignments || [];
   const serviceId = String(approval.payload?.assignedServiceId || '');
   let assignment;
   if (serviceId) {
-    const matches = assignments.filter(row => String(row.assignedServiceId || '') === serviceId);
+    const matches = assignments.filter(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === serviceId);
     if (matches.length !== 1) return false;
     assignment = matches[0];
   } else {
@@ -20,20 +46,20 @@ function isAssignedLeadOwner(approval, lead, userId) {
     if (!Number.isInteger(index) || !assignments[index]) return false;
     assignment = assignments[index];
   }
-  return String(assignment.assignedStaff || lead.assignedStaff || '') === String(userId);
+  return isAssignedStaff(assignment, lead, user);
 }
-async function filterAssignedLeadOwnerApprovals(approvals, userId) {
+async function filterAssignedLeadOwnerApprovals(approvals, user) {
   const pending = approvals.filter(row => row.poReview?.stage === 'LEAD_OWNER_PENDING');
   const leadIds = [...new Set(pending.map(row => String(row.payload?.leadId || '')).filter(mongoose.isValidObjectId))];
   if (!leadIds.length) return [];
   const leads = await Lead.find({ _id: { $in: leadIds } })
-    .select('_id assignedStaff assignments.assignedServiceId assignments.assignedStaff')
+    .select('_id assignedStaff assignedStaffText assignedStaffEmail assignments.assignedServiceId assignments.serviceAssignmentId assignments.assignedStaff assignments.assignedStaffText assignments.assignedStaffEmail')
     .lean();
   const leadsById = new Map(leads.map(lead => [String(lead._id), lead]));
   return pending.filter(approval => isAssignedLeadOwner(
     approval,
     leadsById.get(String(approval.payload?.leadId || '')),
-    userId
+    user
   ));
 }
 function report(res, error) {
@@ -170,8 +196,7 @@ exports.act = async (req, res) => {
       // Lead owner request: verify the user is the assignment's assigned staff.
       if (event === 'LEAD_OWNER_REQUEST') {
         const assignment = lead.assignments[index];
-        const ownerId = String(assignment.assignedStaff || lead.assignedStaff || '');
-        if (!ownerId || ownerId !== String(req.user._id)) fail(403, 'Only the assigned lead owner can request management approval.');
+        if (!isAssignedStaff(assignment, lead, req.user)) fail(403, 'Only the assigned lead owner can request management approval.');
       }
       if (event === 'FINANCE_APPROVE' || event === 'FINANCE_FINAL') {
         const status = event === 'FINANCE_APPROVE' ? 'APPROVED' : String(req.body.status || '').toUpperCase();
@@ -243,7 +268,7 @@ exports.list = async (req, res) => {
       .select('clientName uniqueId approvalStatus createdByName createdAt actionAt poReview payload.leadId payload.assignedServiceId payload.assignmentIndex payload.leadCode payload.poSubmittedByName payload.poSubmittedAt payload.service payload.poYearRows.poNumber payload.poYearRows.poAmount payload.poYearRows.quotationBasicAmount payload.poYearRows.quotationNumber payload.poYearRows.quotationItems.unit payload.poYearRows.quotationItems.basicAmount payload.poYearRows.fy')
       .sort({ updatedAt: -1 }).maxTimeMS(15000).lean();
     if (staffView) {
-      const visible = await filterAssignedLeadOwnerApprovals(approvals, req.user._id);
+      const visible = await filterAssignedLeadOwnerApprovals(approvals, req.user);
       return res.json({ ok: true, approvals: visible });
     }
     return res.json({ ok: true, approvals });
@@ -256,10 +281,46 @@ exports.detail = async (req, res) => {
     if (!approval) fail(404, 'PO review not found.');
     if (!canView(req.user)) {
       if (approval.poReview?.stage !== 'LEAD_OWNER_PENDING') return res.status(403).json({ error: 'Finance review access is required.' });
-      const visible = await filterAssignedLeadOwnerApprovals([approval], req.user._id);
+      const visible = await filterAssignedLeadOwnerApprovals([approval], req.user);
       if (!visible.length) return res.status(403).json({ error: 'Only the assigned lead owner can view this PO request.' });
     }
     return res.json({ ok: true, approval });
   } catch (error) { return report(res, error); }
 };
-exports._test = { clearRejectedPoClosure, isAssignedLeadOwner, filterAssignedLeadOwnerApprovals };
+exports.resendOwnerNotification = async (req, res) => {
+  if (!canView(req.user)) return res.status(403).json({ error: 'Finance review access is required.' });
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) fail(400, 'Invalid PO approval ID.');
+    const approval = await Approval.findOne({
+      _id: req.params.id,
+      type: 'purchase_order',
+      'poReview.stage': 'LEAD_OWNER_PENDING'
+    }).select('clientName uniqueId poReview payload').lean();
+    if (!approval) fail(404, 'Pending lead owner PO request not found.');
+    const lead = await Lead.findById(approval.payload?.leadId)
+      .select('company leadCode assignedStaff assignedStaffText assignedStaffEmail assignments.assignedServiceId assignments.serviceAssignmentId assignments.assignedStaff assignments.assignedStaffText assignments.assignedStaffEmail assignments.poYearRows')
+      .lean();
+    if (!lead) fail(404, 'The source lead for this PO request was not found.');
+
+    const serviceId = String(approval.payload?.assignedServiceId || '');
+    const matches = serviceId
+      ? (lead.assignments || []).map((row, index) => String(row.assignedServiceId || row.serviceAssignmentId || '') === serviceId ? index : -1).filter(index => index >= 0)
+      : [];
+    if (serviceId && matches.length !== 1) fail(409, 'The PO service assignment changed. Refresh and contact Admin.');
+    const index = serviceId ? matches[0] : Number(approval.payload?.assignmentIndex);
+    if (!Number.isInteger(index) || !lead.assignments?.[index]) fail(409, 'The PO owner assignment is unavailable.');
+
+    const emailNotification = await deliverDecisionNotification({
+      approval,
+      lead,
+      index,
+      status: 'REFERRED',
+      remarks: approval.poReview?.financeReferral?.remarks || '',
+      screenshotUrl: '',
+      specialApproval: true,
+      ownerOnly: true
+    });
+    return res.json({ ok: true, message: 'Lead owner email retry completed.', emailNotification });
+  } catch (error) { return report(res, error); }
+};
+exports._test = { clearRejectedPoClosure, isAssignedLeadOwner, isAssignedStaff, filterAssignedLeadOwnerApprovals };
