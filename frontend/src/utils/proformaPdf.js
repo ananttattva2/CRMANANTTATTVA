@@ -107,7 +107,7 @@ export function buildInvoicePdf(row) {
     const specialService = businessCategoryKey === 'eprcredit'
       ? 'Service Charge for Waste Collection & Treatment of Non Hazardous Waste (AMC)'
       : CONSULTANCY_BUSINESS_CATEGORIES.has(businessCategoryKey)
-        ? 'CONSULTANCY FEES FOR WASTE COLLECTION AND MANAGEMENT UNDER EPR'
+        ? 'CONSULTANCY FEES FOR WASTE COLLECTION AND MANAGEMENT\nUNDER EPR'
         : ''
     const annualReturnService = !isCustomService && /\bannual\s*returns?\b/i.test([item.servicesOffered, item.applicableService].filter(Boolean).join(' '))
     const annualReturnYears = annualReturnService ? [...new Set((item.annualReturnYears || []).filter(Boolean))] : []
@@ -117,17 +117,25 @@ export function buildInvoicePdf(row) {
     const serviceDescription = specialService
       ? `${specialService}${subApplicantType ? ` for ${subApplicantType}` : ''}`
       : item.servicesOffered
-    const description = [serviceDescription, ...serviceYears].filter(Boolean).join('\n')
     font(8.5, 'bold')
     const titleLines = pdf.splitTextToSize(title, 302)
-    const businessCategoryLine = businessCategory ? `Business Category: ${businessCategory}` : ''
+    const businessCategoryLines = businessCategory ? pdf.splitTextToSize(businessCategory, 302) : []
     font(8, 'italic')
-    const detailLines = description ? pdf.splitTextToSize(description, 292) : []
-    const lines = [
-      ...(businessCategoryLine ? [{ value: businessCategoryLine, title: true }] : []),
-      ...titleLines.map((value) => ({ value, title: true })),
-      ...detailLines.map((value) => ({ value, title: false }))
-    ]
+    const serviceDescriptionLines = serviceDescription ? pdf.splitTextToSize(serviceDescription, 292) : []
+    const serviceYearLines = serviceYears.filter(Boolean).flatMap((value) => pdf.splitTextToSize(String(value), 292))
+    const lines = specialService
+      ? [
+          ...serviceDescriptionLines.map((value) => ({ value, title: false })),
+          ...businessCategoryLines.map((value) => ({ value, title: true })),
+          ...titleLines.map((value) => ({ value, title: true })),
+          ...serviceYearLines.map((value) => ({ value, title: false }))
+        ]
+      : [
+          ...businessCategoryLines.map((value) => ({ value, title: true })),
+          ...titleLines.map((value) => ({ value, title: true })),
+          ...serviceDescriptionLines.map((value) => ({ value, title: false })),
+          ...serviceYearLines.map((value) => ({ value, title: false }))
+        ]
     let first = true
     for (const entry of lines) {
       if (y > 552) {

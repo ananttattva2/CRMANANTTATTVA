@@ -71,15 +71,15 @@ test('proforma ignores stale Annual Return years for a non-Annual Return service
   assert.ok(!content.includes('Annual Return: 2025-26'));
 });
 
-test('proforma prints the business category, applicable fee text, sub-applicant and service year', async () => {
+test('proforma prints fee text, business category, service and year in order', async () => {
   const build = await renderer();
   const categories = [
-    { businessCategory: 'EPR Consultancy', descriptionMarker: 'CONSULTANCY FEES FOR WASTE' },
-    { businessCategory: 'EPR - Waste Water', descriptionMarker: 'CONSULTANCY FEES FOR WASTE' },
-    { businessCategory: 'Other Consultancy', descriptionMarker: 'CONSULTANCY FEES FOR WASTE' },
+    { businessCategory: 'EPR Consultancy', descriptionMarker: 'CONSULTANCY FEES FOR WASTE', descriptionTailMarker: 'UNDER EPR' },
+    { businessCategory: 'EPR - Waste Water', descriptionMarker: 'CONSULTANCY FEES FOR WASTE', descriptionTailMarker: 'UNDER EPR' },
+    { businessCategory: 'Other Consultancy', descriptionMarker: 'CONSULTANCY FEES FOR WASTE', descriptionTailMarker: 'UNDER EPR' },
     { businessCategory: 'EPR Credit', descriptionMarker: 'Service Charge for Waste Collection' }
   ];
-  for (const { businessCategory, descriptionMarker } of categories) {
+  for (const { businessCategory, descriptionMarker, descriptionTailMarker } of categories) {
     const pdf = build({
       ...sample,
       items: [{
@@ -93,15 +93,20 @@ test('proforma prints the business category, applicable fee text, sub-applicant 
       }]
     });
     const content = pdf.output();
-    assert.ok(content.includes(`Business Category: ${businessCategory}`));
+    assert.ok(content.includes(businessCategory));
+    assert.ok(!content.includes('Business Category:'));
     assert.ok(content.includes(descriptionMarker));
     assert.ok(content.includes('for PWP'));
     assert.ok(content.includes('2026-27'));
     assert.ok(!content.includes('New Registration'));
     assert.ok(!content.includes('2024-25'));
-    assert.ok(content.indexOf(`Business Category: ${businessCategory}`) < content.indexOf('EPR - Plastic Waste'));
-    assert.ok(content.indexOf('EPR - Plastic Waste') < content.indexOf(descriptionMarker));
-    assert.ok(content.indexOf(descriptionMarker) < content.indexOf('2026-27'));
+    assert.ok(content.indexOf(descriptionMarker) < content.indexOf(businessCategory));
+    if (descriptionTailMarker) {
+      assert.ok(content.indexOf(descriptionMarker) < content.indexOf(descriptionTailMarker));
+      assert.ok(content.indexOf(descriptionTailMarker) < content.indexOf(businessCategory));
+    }
+    assert.ok(content.indexOf(businessCategory) < content.indexOf('EPR - Plastic Waste'));
+    assert.ok(content.indexOf('EPR - Plastic Waste') < content.indexOf('2026-27'));
     assert.ok(content.includes('/Subtype /Image'));
   }
 });
