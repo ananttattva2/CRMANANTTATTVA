@@ -168,6 +168,22 @@ test('pending approval reconciliation keeps every live Client Master row', () =>
   assert.equal(reconciled.at(-1).id, 'client-247');
 });
 
+test('pending approval reconciliation does not merge separate clients sharing a lead ID', () => {
+  const liveRows = [
+    { id: 'client-importer', uniqueId: 'ATPL-LEAD-100', clientName: 'Example Importer', approvalStatus: 'PENDING' },
+    { id: 'client-producer', uniqueId: 'ATPL-LEAD-100', clientName: 'Example Producer', approvalStatus: 'APPROVED' }
+  ];
+  const indexedRows = [
+    { ...liveRows[0], approvalRecordId: 'approval-importer', approvalStatus: 'PARTIALLY_APPROVED' }
+  ];
+
+  const reconciled = __test.mergePendingClients(indexedRows, liveRows);
+
+  assert.equal(reconciled.length, 2);
+  assert.deepEqual(reconciled.map((row) => row.id), ['client-importer', 'client-producer']);
+  assert.equal(reconciled[0].approvalRecordId, 'approval-importer');
+});
+
 test('review applicant list keeps identical services separate when plant units differ', () => {
   const common = {
     selectedLead: 'lead-67',

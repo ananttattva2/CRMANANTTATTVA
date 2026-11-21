@@ -878,13 +878,13 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
   }
 
   const approvalTabs = useMemo(() => {
-    if (companyOnly) return [{ id: 'clients', icon: Clock3, label: 'Pending Clients', count: filteredClients.length }];
+    if (companyOnly) return [{ id: 'clients', icon: Clock3, label: 'Pending Clients', count: companyClients.length }];
     if (!isComplianceApprovalView && !isServiceParticipantView) {
       const adminTabs = [
         { id: 'po', icon: FileCheck2, label: 'PO Approvals', count: filteredPoApprovals.length },
         { id: 'lead-closure', icon: FileCheck2, label: 'Lead Closure Approval', count: filteredLeadClosureApprovals.length }
       ];
-      if (canViewClients) adminTabs.push({ id: 'clients', icon: Users, label: 'Clients', count: filteredClients.length });
+      if (canViewClients) adminTabs.push({ id: 'clients', icon: Users, label: 'Clients', count: companyClients.length });
       adminTabs.push(
         { id: 'quotations', icon: FileText, label: 'Quotations', count: filteredQuotations.length },
         { id: 'services', icon: FileText, label: 'Service Approvals', count: filteredServices.length },
@@ -897,12 +897,12 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
     }
     const list = [{ id: 'deactivation', icon: Users, label: 'Client Deactivation', count: deactivationCount }];
     if (isServiceParticipantView) {
-      if (canViewClients) list.push({ id: 'clients', icon: Clock3, label: 'Client Decisions', count: filteredClients.length });
+      if (canViewClients) list.push({ id: 'clients', icon: Clock3, label: 'Client Decisions', count: companyClients.length });
       list.push({ id: 'services', icon: FileText, label: 'Pending Service Approvals', count: filteredServices.length });
       return list;
     }
     if (canViewClients) {
-      list.push({ id: 'clients', icon: Clock3, label: 'Pending Clients', count: filteredClients.length });
+      list.push({ id: 'clients', icon: Clock3, label: 'Pending Clients', count: companyClients.length });
     }
     if (canApproveTemporary) {
       list.push({ id: 'temporary', icon: Users, label: 'Temporary Assignments', count: filteredTemporary.length });
@@ -915,7 +915,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
       list.push({ id: 'duplicates', icon: Users, label: 'Special Approvals', count: filteredDuplicateLeads.length });
     }
     return list;
-  }, [companyOnly, deactivationCount, canViewClients, canApproveTemporary, isComplianceApprovalView, isServiceParticipantView, filteredClients.length, filteredTemporary.length, filteredPoApprovals.length, filteredLeadClosureApprovals.length, filteredQuotations.length, filteredRoyalty.length, filteredServices.length, filteredDuplicateLeads.length]);
+  }, [companyOnly, deactivationCount, canViewClients, canApproveTemporary, isComplianceApprovalView, isServiceParticipantView, companyClients.length, filteredTemporary.length, filteredPoApprovals.length, filteredLeadClosureApprovals.length, filteredQuotations.length, filteredRoyalty.length, filteredServices.length, filteredDuplicateLeads.length]);
 
   useEffect(() => {
     let mounted = true;

@@ -329,7 +329,10 @@ function readApprovalDateParts(client) {
 }
 
 function getPendingClientKey(row) {
-  return String(row.uniqueId || row.id || row.clientName || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  // A lead/unique ID can legitimately have several Client Master records for
+  // different services or applicants. Reconcile by the Client document ID so
+  // those rows are not collapsed into one approval entry.
+  return String(row.id || row.sourceClientId || row.uniqueId || row.clientName || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
 function getPendingClientKeys(row) {
@@ -2062,13 +2065,9 @@ exports.listPendingApprovals = async (req, res) => {
   const listOnly = req.query.listOnly === 'true';
   const storedApprovalsPromise = readStoredPendingApprovals(listOnly);
   const liveClientsPromise = isClientReviewer
-    ? Promise.all([
-        clientAccessFilter(req.user),
-        require('../services/clientClosedPoDirectory').closedPoClientFilter()
-      ]).then(([accessFilter, directoryFilter]) => Client.find(combineAccessFilters(
+    ? clientAccessFilter(req.user).then((accessFilter) => Client.find(combineAccessFilters(
         clientMasterSourceRecordFilter(),
-        accessFilter,
-        directoryFilter
+        accessFilter
       ))
         .select('_id selectedLead assignedServiceId workflowStatus adminControls.approvalStatus data.basic.clientLegalName data.basic.tradeName data.basic.piboCategory data.basic.eprCategory data.importMeta.uniqueId data.importMeta.createdBy data.importMeta.createdByEmail createdBy createdAt')
         .populate('createdBy', 'name email')

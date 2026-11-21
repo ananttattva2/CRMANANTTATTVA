@@ -26,7 +26,7 @@ test('pending approval reads active rows separately from bounded decision histor
 test('stored approvals and live client and quotation reconciliation run in parallel', () => {
   assert.match(controllerSource, /const storedApprovalsPromise = readStoredPendingApprovals\(listOnly\)/);
   assert.match(controllerSource, /const liveClientsPromise = isClientReviewer/);
-  assert.match(controllerSource, /clientClosedPoDirectory'\)\.closedPoClientFilter\(\)/);
+  assert.doesNotMatch(controllerSource.match(/const liveClientsPromise[\s\S]*?: Promise\.resolve\(\[\]\);/)?.[0] || '', /closedPoClientFilter/);
   assert.match(controllerSource, /const \[storedFallback, liveClients, liveQuotations\] = await Promise\.all/);
   assert.match(controllerSource, /responseClients = mergePendingClients\(indexedLiveRows, liveClientRows\)/);
 });
@@ -37,4 +37,9 @@ test('pending quotation rows expose and display their created or updated timesta
   assert.match(pageSource, /function quotationActivityDate/);
   assert.match(pageSource, /'Quotation Date'/);
   assert.match(pageSource, /pending-quotation-activity-date/);
+});
+
+test('Pending Approval client tab shows the unfiltered Client Master total', () => {
+  assert.match(pageSource, /label: 'Clients', count: companyClients\.length/);
+  assert.doesNotMatch(pageSource, /label: 'Clients', count: filteredClients\.length/);
 });
