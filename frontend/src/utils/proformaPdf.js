@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf'
+import proformaStamp from '../assets/proforma-authorized-stamp.png?inline'
 export const proformaBankDetails = [
   'AnantTattva Private Limited',
   'BANK NAME- IDFC FIRST BANK',
@@ -7,6 +8,7 @@ export const proformaBankDetails = [
   'TYPE OF A/C.- CURRENT',
   'BRANCH MUMBAI-BORIVALI-WEST'
 ].join('\n')
+const CONSULTANCY_BUSINESS_CATEGORIES = new Set(['eprconsultancy', 'eprwastewater', 'otherconsultancy'])
 export const invoiceFields = [
  ['deliveryNote','Delivery Note'], ['paymentTerms','Mode / Terms of Payment','50% ADVANCE'], ['reference','Reference No. & Date'], ['otherReferences','Other References','AS PER PO'], ['buyerOrder','BuyerÃ¢â‚¬â„¢s Order No.'], ['buyerOrderDate','BuyerÃ¢â‚¬â„¢s Order Date'], ['dispatchDocument','Dispatch Doc No.'], ['deliveryDate','Delivery Note Date'], ['dispatchedThrough','Dispatched Through'], ['destination','Destination'], ['deliveryTerms','Terms of Delivery'], ['consignee','Consignee (Ship To) Name'], ['consigneeAddress','Consignee Address'], ['consigneeGst','Consignee GSTIN / UIN'], ['consigneeState','Consignee State & Code'], ['buyerStateCode','Buyer State Code'], ['hsn','HSN / SAC','998311'], ['bankName','Bank Name'], ['accountName','Account Name','Ananttattva Private Limited'], ['accountNumber','Account Number'], ['ifsc','IFSC Code'], ['pan','Company PAN'], ['declaration','Declaration','We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.']
 ]
@@ -98,17 +100,34 @@ export function buildInvoicePdf(row) {
   const tax = Math.round(base * 18) / 100
   items.forEach((item, index) => {
     const title = item.serviceCategory || item.piboCategory || 'Service'
-    const annualReturnService = /\bannual\s*returns?\b/i.test([item.servicesOffered, item.applicableService].filter(Boolean).join(' '))
+    const businessCategory = String(item.businessCategory || '').trim()
+    const businessCategoryKey = businessCategory.toLowerCase().replace(/[^a-z0-9]+/g, '')
+    const isCustomService = businessCategoryKey === 'eprcredit' || CONSULTANCY_BUSINESS_CATEGORIES.has(businessCategoryKey)
+    const subApplicantType = String(item.subApplicantType || item.piboCategory || '').trim()
+    const specialService = businessCategoryKey === 'eprcredit'
+      ? 'Service Charge for Waste Collection & Treatment of Non Hazardous Waste (AMC)'
+      : CONSULTANCY_BUSINESS_CATEGORIES.has(businessCategoryKey)
+        ? 'CONSULTANCY FEES FOR WASTE COLLECTION AND MANAGEMENT UNDER EPR'
+        : ''
+    const annualReturnService = !isCustomService && /\bannual\s*returns?\b/i.test([item.servicesOffered, item.applicableService].filter(Boolean).join(' '))
     const annualReturnYears = annualReturnService ? [...new Set((item.annualReturnYears || []).filter(Boolean))] : []
     const serviceYears = annualReturnYears.length
       ? annualReturnYears.map((value) => 'Annual Return: ' + value)
       : [item.servicesForYear]
-    const description = [item.servicesOffered, ...serviceYears].filter(Boolean).join('\n')
+    const serviceDescription = specialService
+      ? `${specialService}${subApplicantType ? ` for ${subApplicantType}` : ''}`
+      : item.servicesOffered
+    const description = [serviceDescription, ...serviceYears].filter(Boolean).join('\n')
     font(8.5, 'bold')
     const titleLines = pdf.splitTextToSize(title, 302)
+    const businessCategoryLine = businessCategory ? `Business Category: ${businessCategory}` : ''
     font(8, 'italic')
     const detailLines = description ? pdf.splitTextToSize(description, 292) : []
-    const lines = [...titleLines.map((value) => ({ value, title: true })), ...detailLines.map((value) => ({ value, title: false }))]
+    const lines = [
+      ...(businessCategoryLine ? [{ value: businessCategoryLine, title: true }] : []),
+      ...titleLines.map((value) => ({ value, title: true })),
+      ...detailLines.map((value) => ({ value, title: false }))
+    ]
     let first = true
     for (const entry of lines) {
       if (y > 552) {
@@ -176,6 +195,7 @@ export function buildInvoicePdf(row) {
   text('Declaration', 29, 756, { size: 7 })
   fitted(details.declaration, 29, 759, 268, 25, 'normal', 7)
   box(298, 750, 271, 37)
+  pdf.addImage(proformaStamp, 'PNG', 306, 750, 37, 37)
   text('for ANANTTATTVA PRIVATE LIMITED', 566, 759, { size: 7, style: 'bold', align: 'right' })
   text('Authorised Signatory', 566, 783, { size: 7, align: 'right' })
   text('SUBJECT TO MUMBAI JURISDICTION', 297, 798, { size: 7, align: 'center' })

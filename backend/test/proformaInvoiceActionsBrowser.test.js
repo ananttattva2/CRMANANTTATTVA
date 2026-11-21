@@ -1,10 +1,12 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 const esbuild = require('../../frontend/node_modules/esbuild');
 
 test('Proforma Invoice view can be reopened and both download actions save a PDF', async () => {
   const frontendRoot = path.resolve(__dirname, '../../frontend');
+  const stampData = `data:image/png;base64,${fs.readFileSync(path.join(frontendRoot, 'src/assets/proforma-authorized-stamp.png'), 'base64')}`;
   const invoice = {
     _id: 'pi-test',
     proformaNumber: 'PI/26-27/002',
@@ -33,8 +35,10 @@ test('Proforma Invoice view can be reopened and both download actions save a PDF
         build.onResolve({ filter: /DashboardShell$/ }, () => ({ path: 'shell', namespace: 'proforma-test' }));
         build.onResolve({ filter: /services\/api$/ }, () => ({ path: 'api', namespace: 'proforma-test' }));
         build.onResolve({ filter: /dataExport\.mjs$/ }, () => ({ path: 'data-export', namespace: 'proforma-test' }));
+        build.onResolve({ filter: /proforma-authorized-stamp\.png\?inline$/ }, () => ({ path: 'stamp', namespace: 'proforma-test' }));
         build.onLoad({ filter: /.*/, namespace: 'proforma-test' }, args => {
           if (args.path === 'shell') return { loader: 'jsx', contents: 'export default function Shell({children}) { return children }' };
+          if (args.path === 'stamp') return { loader: 'js', contents: `export default ${JSON.stringify(stampData)};` };
           if (args.path === 'data-export') return {
             loader: 'js',
             contents: `export async function exportWithReason(filename, save) { window.proformaExports = [...(window.proformaExports || []), filename]; await save(); window.proformaSaves = (window.proformaSaves || 0) + 1; return true; }`

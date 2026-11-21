@@ -6,7 +6,12 @@ const { pathToFileURL } = require('node:url');
 async function renderer() {
   const file = path.join(__dirname, '../src/utils/proformaPdf.js');
   const jspdf = pathToFileURL(require.resolve('../node_modules/jspdf/dist/jspdf.node.min.js')).href;
-  const source = fs.readFileSync(file, 'utf8').replace("from 'jspdf'", `from '${jspdf}'`);
+  const stampPath = path.join(__dirname, '../src/assets/proforma-authorized-stamp.png');
+  const stampData = `data:image/png;base64,${fs.readFileSync(stampPath, 'base64')}`;
+  const stampModule = `data:text/javascript,export%20default%20${encodeURIComponent(JSON.stringify(stampData))}`;
+  const source = fs.readFileSync(file, 'utf8')
+    .replace("from 'jspdf'", `from '${jspdf}'`)
+    .replace("from '../assets/proforma-authorized-stamp.png?inline'", `from '${stampModule}'`);
   return (await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'))).buildInvoicePdf;
 }
 const sample = { proformaNumber: 'PI/26-27/001', invoiceDate: '2026-07-31', leadDetails: { companyName: 'Example Ltd' }, items: [{ serviceCategory: 'Consultancy fees', unit: '1', basicAmount: 35000 }], invoiceDetails: { deliveryDate: 'Invalid Date', buyerOrderDate: 'bad-date' }, scopeOfWork: ['HIDDEN_SCOPE_MARKER'] };
@@ -64,6 +69,41 @@ test('proforma ignores stale Annual Return years for a non-Annual Return service
   assert.ok(content.includes('2026-27'));
   assert.ok(!content.includes('Annual Return: 2024-25'));
   assert.ok(!content.includes('Annual Return: 2025-26'));
+});
+
+test('proforma prints the business category, applicable fee text, sub-applicant and service year', async () => {
+  const build = await renderer();
+  const categories = [
+    { businessCategory: 'EPR Consultancy', descriptionMarker: 'CONSULTANCY FEES FOR WASTE' },
+    { businessCategory: 'EPR - Waste Water', descriptionMarker: 'CONSULTANCY FEES FOR WASTE' },
+    { businessCategory: 'Other Consultancy', descriptionMarker: 'CONSULTANCY FEES FOR WASTE' },
+    { businessCategory: 'EPR Credit', descriptionMarker: 'Service Charge for Waste Collection' }
+  ];
+  for (const { businessCategory, descriptionMarker } of categories) {
+    const pdf = build({
+      ...sample,
+      items: [{
+        businessCategory,
+        serviceCategory: 'EPR - Plastic Waste',
+        servicesOffered: 'New Registration',
+        servicesForYear: '2026-27',
+        piboCategory: 'PWP',
+        annualReturnYears: ['2024-25'],
+        basicAmount: 35000
+      }]
+    });
+    const content = pdf.output();
+    assert.ok(content.includes(`Business Category: ${businessCategory}`));
+    assert.ok(content.includes(descriptionMarker));
+    assert.ok(content.includes('for PWP'));
+    assert.ok(content.includes('2026-27'));
+    assert.ok(!content.includes('New Registration'));
+    assert.ok(!content.includes('2024-25'));
+    assert.ok(content.indexOf(`Business Category: ${businessCategory}`) < content.indexOf('EPR - Plastic Waste'));
+    assert.ok(content.indexOf('EPR - Plastic Waste') < content.indexOf(descriptionMarker));
+    assert.ok(content.indexOf(descriptionMarker) < content.indexOf('2026-27'));
+    assert.ok(content.includes('/Subtype /Image'));
+  }
 });
 
 test('PI view and download use the approved bank block instead of stale saved bank fields', async () => {
