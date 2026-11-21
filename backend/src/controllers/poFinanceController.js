@@ -10,6 +10,19 @@ function report(res, error) {
   console.error('PO review failed', { name: error.name, code: error.code, status: error.status });
   return res.status(error.status || 503).json({ error: error.status ? error.message : 'Unable to save this PO review. Refresh and try again.' });
 }
+async function deliverDecisionNotification(notification) {
+  try {
+    return await require('./leadController').notifyPurchaseOrderDecision(notification);
+  } catch (error) {
+    console.error('PO decision notification could not be delivered', {
+      approvalId: String(notification.approval?._id || ''),
+      name: error.name,
+      code: error.code,
+      message: error.message
+    });
+    return { recipients: 0, sent: 0, failed: 0, error: true };
+  }
+}
 async function inTransaction(id, work) {
   if (!mongoose.isValidObjectId(id)) fail(400, 'Invalid PO approval ID.');
   const session = await mongoose.startSession();
@@ -156,11 +169,14 @@ exports.act = async (req, res) => {
         approval.markModified('payload');
         notification = { approval, lead, index, status: 'APPROVED', remarks: review.leadClosureApproval?.remarks || '', screenshotUrl: '', leadClosure: true };
       }
+      if (event === 'FINANCE_REFER') {
+        notification = { approval, lead, index, status: 'REFERRED', remarks: review.financeReferral?.remarks || '', screenshotUrl: '', specialApproval: true };
+      }
       approval.poReview = review;
       return { ok: true, review, message: event === 'FINANCE_APPROVE' ? 'Finance approval saved. Staff assignment is now unlocked.' : event === 'FINANCE_REFER' ? 'Remark submitted. This PO is now with the lead owner to request management approval.' : event === 'LEAD_OWNER_REQUEST' ? 'Request submitted. This PO is now awaiting Lead Closure Approval from Super Admin.' : event === 'LEAD_CLOSURE_APPROVE' ? 'Lead Closure Approval saved. Finance can now record the final decision.' : 'Finance final decision saved.' };
     });
-    if (notification) void require('./leadController').notifyPurchaseOrderDecision(notification).catch(error => console.error('Finance PO notification failed', { name: error.name }));
-    return res.json(result);
+    const emailNotification = notification ? await deliverDecisionNotification(notification) : null;
+    return res.json(emailNotification ? { ...result, emailNotification } : result);
   } catch (error) { return report(res, error); }
 };
 exports.paymentStatus = async (req, res) => {
@@ -183,8 +199,10 @@ exports.paymentStatus = async (req, res) => {
       notification = { approval, lead, index, status: 'PAYMENT', remarks: entry.remarks, screenshotUrl: '', paymentStatus: entry, poAmount };
       return { ok: true, review: approval.poReview, message: `Payment status recorded: ${status.replace('_', ' ').toLowerCase()} (${amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}).` };
     });
-    if (notification) void require('./leadController').notifyPurchaseOrderDecision({ ...notification, paymentReceived: true }).catch(error => console.error('Payment status notification failed', { name: error.name }));
-    return res.json(result);
+    const emailNotification = notification
+      ? await deliverDecisionNotification({ ...notification, paymentReceived: true })
+      : null;
+    return res.json(emailNotification ? { ...result, emailNotification } : result);
   } catch (error) { return report(res, error); }
 };
 exports.list = async (req, res) => {

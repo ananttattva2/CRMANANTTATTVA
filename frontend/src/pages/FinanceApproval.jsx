@@ -7,6 +7,13 @@ import useCrmRefresh from '../hooks/useCrmRefresh';
 
 const labels = { FINANCE_READY: 'Finance review pending', LEAD_OWNER_PENDING: 'Awaiting lead owner request', LEAD_CLOSURE_PENDING: 'Awaiting Lead Closure Approval', FINANCE_RELEASED: 'Go Ahead received', FINALIZED: 'Final decision recorded' };
 const money = value => Number(value || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
+const emailNotice = (message, email) => {
+  if (!email) return message;
+  if (email.error) return `${message} Email notification could not be sent.`;
+  if (!email.recipients) return `${message} No email recipients were found.`;
+  if (email.failed) return `${message} Email sent to ${email.sent} of ${email.recipients} recipients; ${email.failed} failed.`;
+  return `${message} Email sent to ${email.sent} recipient${email.sent === 1 ? '' : 's'}.`;
+};
 const date = value => value ? new Date(value).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST' : '—';
 const basic = po => Number(po.quotationBasicAmount) || (po.quotationItems || []).reduce((sum,item) => sum + (Number(item.unit) || 1) * Number(item.basicAmount || 0), 0);
 const poRows = row => row.payload?.poYearRows || row.payload?.poRows || row.payload?.purchaseOrders || [];
@@ -59,7 +66,7 @@ export default function FinanceApproval() {
       const payload = { remarks: remarks.trim(), status: modal.status, version: modal.row.poReview.version };
       if (modal.action === 'request-approval') payload.paymentData = paymentData.trim();
       const { data } = await api.post(`/leads/finance-approvals/${modal.row._id}/${modal.action}`, payload);
-      setNotice(data.message); setModal(null); await load();
+      setNotice(emailNotice(data.message, data.emailNotification)); setModal(null); await load();
     } catch (failure) { setModal(current => ({ ...current, error: readApiError(failure) })); }
     finally { setSaving(false); }
   }
@@ -82,7 +89,7 @@ export default function FinanceApproval() {
       };
       if (!paymentModal.confirmAmount) payload.amount = Number(paymentModal.amount);
       const { data } = await api.post(`/leads/finance-approvals/${paymentModal.row._id}/payment-status`, payload);
-      setNotice(data.message); setPaymentModal(null); await load();
+      setNotice(emailNotice(data.message, data.emailNotification)); setPaymentModal(null); await load();
     } catch (failure) {
       setPaymentModal(current => ({ ...current, saving: false, error: readApiError(failure, 'Unable to record payment status.') }));
     }

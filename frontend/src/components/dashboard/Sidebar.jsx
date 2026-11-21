@@ -18,6 +18,7 @@ const PENDING_STATUS_LABELS = {
 export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onClose, dashboardMode = 'operations', onDashboardModeChange }) {
   const location = useLocation()
   const navigate = useNavigate()
+  const [sidebarUser, setSidebarUser] = useState(currentUser)
   const [openSection, setOpenSection] = useState(null)
   const [openGroups, setOpenGroups] = useState({})
   const [flyout, setFlyout] = useState(null)
@@ -27,7 +28,17 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
   const flyoutRef = useRef(null)
   const triggerRef = useRef(null)
   const currentPath = `${location.pathname}${location.search}`
-  const canChooseDashboard = hasAnyRole(currentUser, adminRoles)
+  const canChooseDashboard = hasAnyRole(sidebarUser, adminRoles)
+
+  useEffect(() => { setSidebarUser(currentUser) }, [currentUser])
+
+  useEffect(() => {
+    let cancelled = false
+    api.get('/auth/me').then(({ data }) => {
+      if (!cancelled && data?.user) setSidebarUser(data.user)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [currentUser?._id])
 
   useEffect(() => {
     let cancelled = false
@@ -67,7 +78,7 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
     return path.includes('?') ? path === currentPath : path === location.pathname && !location.search
   }
   function canShowItem(item) {
-    if (Array.isArray(item.roles) && !hasAnyRole(currentUser, item.roles)) return false
+    if (Array.isArray(item.roles) && !hasAnyRole(sidebarUser, item.roles)) return false
     if (item.label === 'User Management' && !canChooseDashboard) return false
     if (item.label === 'Dashboard') return true
     return !item.children?.length || item.children.some(canShowItem)
