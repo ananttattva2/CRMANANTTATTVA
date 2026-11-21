@@ -114,6 +114,7 @@ export function buildInvoicePdf(row) {
     const serviceYears = annualReturnYears.length
       ? annualReturnYears.map((value) => 'Annual Return: ' + value)
       : [item.servicesForYear]
+    const hideBusinessCategory = CONSULTANCY_BUSINESS_CATEGORIES.has(businessCategoryKey)
     const serviceDescription = specialService || item.servicesOffered
     const displayTitle = specialService && subApplicantType ? `${title} for ${subApplicantType}` : title
     font(8.5, 'bold')
@@ -124,16 +125,16 @@ export function buildInvoicePdf(row) {
     const serviceYearLines = serviceYears.filter(Boolean).flatMap((value) => pdf.splitTextToSize(String(value), 292))
     const lines = specialService
       ? [
-          ...serviceDescriptionLines.map((value) => ({ value, title: false })),
-          ...businessCategoryLines.map((value) => ({ value, title: true })),
-          ...titleLines.map((value) => ({ value, title: true })),
-          ...serviceYearLines.map((value) => ({ value, title: false }))
+          ...serviceDescriptionLines.map((value) => ({ value, bold: true })),
+          ...(hideBusinessCategory ? [] : businessCategoryLines.map((value) => ({ value, bold: true }))),
+          ...titleLines.map((value) => ({ value, bold: true })),
+          ...serviceYearLines.map((value) => ({ value, bold: false }))
         ]
       : [
-          ...businessCategoryLines.map((value) => ({ value, title: true })),
-          ...titleLines.map((value) => ({ value, title: true })),
-          ...serviceDescriptionLines.map((value) => ({ value, title: false })),
-          ...serviceYearLines.map((value) => ({ value, title: false }))
+          ...businessCategoryLines.map((value) => ({ value, bold: true })),
+          ...titleLines.map((value) => ({ value, bold: true })),
+          ...serviceDescriptionLines.map((value) => ({ value, bold: false })),
+          ...serviceYearLines.map((value) => ({ value, bold: false }))
         ]
     let first = true
     for (const entry of lines) {
@@ -153,10 +154,10 @@ export function buildInvoicePdf(row) {
         text(value, 566, y, { style: 'bold', size: 8, align: 'right' })
         first = false
       }
-      text(entry.value, entry.title ? 44 : 54, y, { style: entry.title ? 'bold' : 'italic', size: entry.title ? 8.5 : 8 })
-      y += 10
+      text(entry.value, 44, y, { style: entry.bold ? 'bold' : 'italic', size: entry.bold ? 8.5 : 8 })
+      y += 9
     }
-    y += 7
+    y += 2
   })
   bodyBorders(600)
   const taxes = intraState ? [['CGST OUTPUT 9%', 9, Math.round(base * 9) / 100], ['SGST OUTPUT 9%', 9, Math.round((tax - Math.round(base * 9) / 100) * 100) / 100]] : [['IGST OUTPUT 18%', 18, tax]]
