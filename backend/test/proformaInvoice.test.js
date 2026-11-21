@@ -45,16 +45,20 @@ test('invoice delivery, consignee and bank fields survive cleaning with explicit
   assert.deepEqual(_test.cleanPayload({}).invoiceDetails, {});
 });
 
-test('proforma uses the lead PO number, never the quotation number, as its PO reference', () => {
-  const payload = { poNumber: 'AT/26-27/525', poYearRows: [] };
-  const applied = _test.applyAuthoritativePoRows(payload, [
+test('proforma defaults to the lead PO but preserves a distinct invoice PO override', () => {
+  const leadPoRows = [
     { poNumber: 'CUSTOMER-PO-203', quotationNumber: 'AT/26-27/525', fy: '2026-27' },
     { poNumber: '', quotationNumber: 'AT/26-27/526' }
-  ], 'AT/26-27/525');
+  ];
+  const payload = { poNumber: 'CUSTOMER-PO-EDITED', poYearRows: [] };
+  const applied = _test.applyLeadPoRows(payload, leadPoRows, 'AT/26-27/525');
   assert.equal(applied, true);
-  assert.equal(payload.poNumber, 'CUSTOMER-PO-203');
+  assert.equal(payload.poNumber, 'CUSTOMER-PO-EDITED');
   assert.equal(payload.poYearRows.length, 1);
-  assert.equal(_test.applyAuthoritativePoRows({ poNumber: 'AT/26-27/525' }, [
+  const defaulted = { poNumber: '' };
+  assert.equal(_test.applyLeadPoRows(defaulted, leadPoRows, 'AT/26-27/525'), true);
+  assert.equal(defaulted.poNumber, 'CUSTOMER-PO-203');
+  assert.equal(_test.applyLeadPoRows({ poNumber: 'AT/26-27/525' }, [
     { poNumber: 'AT/26-27/525' }
   ], 'AT/26-27/525'), false);
 });

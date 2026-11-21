@@ -53,12 +53,15 @@ function authoritativePoRows(rows = [], quotationNumber = '') {
     poNumber: text(row.poNumber || row.poNo)
   }));
 }
-function applyAuthoritativePoRows(payload, rows, quotationNumber) {
+function applyLeadPoRows(payload, rows, quotationNumber) {
   const poYearRows = authoritativePoRows(rows, quotationNumber);
   if (!poYearRows.length) return false;
+  const invoicePoNumber = text(payload.poNumber);
+  const quotationKey = text(quotationNumber).toUpperCase();
+  if (invoicePoNumber && quotationKey && invoicePoNumber.toUpperCase() === quotationKey) return false;
   payload.poYearRows = poYearRows;
   payload.poYearCount = poYearRows.length;
-  payload.poNumber = poYearRows[0].poNumber;
+  payload.poNumber = invoicePoNumber || poYearRows[0].poNumber;
   return true;
 }
 function cleanPayload(body = {}) {
@@ -103,7 +106,7 @@ function cleanPayload(body = {}) {
   }));
   return {
     invoiceDetails: Object.fromEntries(['deliveryNote','paymentTerms','reference','otherReferences','buyerOrder','buyerOrderDate','dispatchDocument','deliveryDate','dispatchedThrough','destination','deliveryTerms','consignee','consigneeAddress','consigneeGst','consigneeState','buyerStateCode','hsn','bankName','accountName','accountNumber','ifsc','pan','declaration'].filter((key) => Object.prototype.hasOwnProperty.call(body.invoiceDetails || {}, key)).map((key) => [key, text(body.invoiceDetails[key]).slice(0, 2000)])),
-    quotationId: body.quotationId || undefined, quotationNumber: text(body.quotationNumber), poNumber: text(body.poNumber),
+    quotationId: body.quotationId || undefined, quotationNumber: text(body.quotationNumber), poNumber: text(body.poNumber).slice(0, 120),
     leadId: text(body.leadId), leadCode: text(body.leadCode), companyName: text(body.companyName || leadDetails.companyName),
     leadDetails, invoiceDate: body.invoiceDate || new Date(), validUntil: text(body.validUntil), pricingMode, combinedBasicAmount, items, poYearCount, poYearRows,
     terms: (Array.isArray(body.terms) ? body.terms : String(body.terms || '').split(/\r?\n/)).map(text).filter(Boolean),
@@ -146,7 +149,7 @@ exports.update = async (req, res) => {
   return res.json({ ok: true, proformaInvoice: row });
 };
 
-exports._test = { cleanPayload, validateInvoice, nextProformaNumber, authoritativePoRows, applyAuthoritativePoRows, poRowsForQuotation };
+exports._test = { cleanPayload, validateInvoice, nextProformaNumber, authoritativePoRows, applyLeadPoRows, poRowsForQuotation };
 
 async function quotationContext(id) {
   const quote = await Quotation.findById(id).lean();
@@ -185,7 +188,10 @@ async function validateInvoice(payload, editingId, user) {
   if (!await Quotation.exists({ _id: payload.quotationId, ...(scope === null ? {} : { createdBy: { $in: scope.ids } }) })) return 'Quotation not found or not accessible.';
   const { quote, items, poYearRows } = await quotationContext(payload.quotationId);
   if (!quote) return 'Selected quotation was not found.';
-  if (!applyAuthoritativePoRows(payload, poYearRows, quote.quotationNumber)) return 'No distinct PO number was found on the selected lead. Enter the actual PO number while closing the lead, then reload this quotation.';
+  if (text(payload.poNumber) && text(payload.poNumber).toUpperCase() === text(quote.quotationNumber).toUpperCase()) {
+    return 'PO Number must be different from the quotation number.';
+  }
+  if (!applyLeadPoRows(payload, poYearRows, quote.quotationNumber)) return 'No distinct PO number was found on the selected lead. Enter the actual PO number while closing the lead, then reload this quotation.';
   for (const item of payload.items) {
     if (item.sourceItemIndex != null) continue;
     const matches = items.filter(eligible => ['serviceCategory', 'piboCategory', 'servicesOffered', 'servicesForYear'].every(key => text(eligible[key]) === text(item[key])));

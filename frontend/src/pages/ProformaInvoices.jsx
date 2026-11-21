@@ -217,10 +217,11 @@ export default function ProformaInvoices() {
   }
   function edit(row) {
     const requestId = ++poLookupRequest.current
+    const savedPoNumber = firstDistinctPoNumber([{ poNumber: row.poNumber }, ...(row.poYearRows || [])], row.quotationNumber)
     setEditingId(row._id)
     setForm({
       ...blankForm, ...row,
-      poNumber: row.quotationId ? '' : firstDistinctPoNumber([{ poNumber: row.poNumber }, ...(row.poYearRows || [])], row.quotationNumber),
+      poNumber: savedPoNumber,
       poYearRows: row.quotationId ? [] : row.poYearRows || [],
       poYearCount: row.quotationId ? 0 : row.poYearCount || 0,
       pricingMode: row.pricingMode || 'individual',
@@ -241,7 +242,7 @@ export default function ProformaInvoices() {
             ...current,
             poYearRows,
             poYearCount: poYearRows.length,
-            poNumber: firstDistinctPoNumber(poYearRows, row.quotationNumber)
+            poNumber: current.poNumber || firstDistinctPoNumber(poYearRows, row.quotationNumber)
           }))
         })
         .catch((err) => {
@@ -252,17 +253,19 @@ export default function ProformaInvoices() {
   }
   async function save() {
     if (!form.quotationNumber.trim() || !form.leadDetails.companyName.trim()) { setError('Quotation Number and Company Name are required.'); return }
+    const invoicePoNumber = String(form.poNumber || '').trim()
+    if (!invoicePoNumber) { setError('Enter the PO Number for this invoice.'); return }
+    if (invoicePoNumber.toUpperCase() === String(form.quotationNumber || '').trim().toUpperCase()) { setError('PO Number must be different from the quotation number.'); return }
     if (!(Number(form.paymentPercentage) > 0 && Number(form.paymentPercentage) <= 100)) { setError('Select a payment percentage greater than 0 and up to 100.'); return }
     if (!form.pricingMode) { setError('Select Combined Price or Individual Price.'); return }
     if (!form.items.length || form.items.some((item) => !item.serviceCategory)) { setError('Every item requires Service Category.'); return }
-    if (!form.poNumber) { setError('No distinct received PO number was found for the selected quotation.'); return }
     if (form.pricingMode === 'combined' && !(Number(form.combinedBasicAmount) > 0)) { setError('Enter a valid Combined Basic Amount.'); return }
     if (form.pricingMode === 'individual' && form.items.some((item) => !(Number(item.basicAmount) > 0))) { setError('Every item requires a valid Basic Amount.'); return }
     setSaving(true); setError(''); setNotice('')
     try {
       const taxable = Math.round(total * Number(form.paymentPercentage)) / 100
       const tax = Math.round(taxable * 18) / 100
-      const payload = { ...form, poNumber: form.poNumber, poYearRows: (form.poYearRows || []).slice(0, Math.max(0, Number(form.poYearCount) || 0)), items: form.items.map((item) => ({ ...item, basicAmount: item.basicAmount || 0 })), companyName: form.leadDetails.companyName, subtotal: taxable, gstRate: 18, gstAmount: tax, grandTotal: taxable + tax }
+      const payload = { ...form, poNumber: invoicePoNumber, poYearRows: (form.poYearRows || []).slice(0, Math.max(0, Number(form.poYearCount) || 0)), items: form.items.map((item) => ({ ...item, basicAmount: item.basicAmount || 0 })), companyName: form.leadDetails.companyName, subtotal: taxable, gstRate: 18, gstAmount: tax, grandTotal: taxable + tax }
       const response = editingId ? await api.put(API_ENDPOINTS.proformaInvoices.detail(editingId), payload) : await api.post(API_ENDPOINTS.proformaInvoices.create, payload)
       setNotice(`${response.data.proformaInvoice?.proformaNumber || 'Proforma Invoice'} saved successfully.`)
       setForm({ ...blankForm, leadDetails: { ...blankLead }, items: [{ ...blankItem }], terms: [''] }); setEditingId(''); await load()
@@ -287,7 +290,7 @@ export default function ProformaInvoices() {
     {(error || notice || downloadError) && <div className={`mt-5 rounded-2xl border px-5 py-4 font-bold ${error || downloadError ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>{error || notice || downloadError}</div>}
 
     <section className="mt-6 overflow-hidden rounded-3xl border border-emerald-100 bg-white shadow-[0_20px_60px_rgba(15,93,70,.09)]"><div className="border-b bg-gradient-to-r from-emerald-50 to-orange-50 p-5"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-emerald-700 text-white"><FileCheck2 /></span><div><h2 className="text-xl font-black">{editingId ? 'Edit Proforma Invoice' : 'Create Proforma Invoice'}</h2><p className="text-sm font-semibold text-slate-500">Select a quotation to load its PO and services.</p></div></div></div>
-      <div className="p-5"><div className="mt-2 grid gap-4 lg:grid-cols-4"><label className="lg:col-span-2"><span className="mb-2 block text-sm font-black">Select Quotation</span><QuotationPicker value={form.quotationId || ''} quotations={quotations} onChange={selectQuotation} /></label><label className="lg:col-span-2"><span className="mb-2 block text-sm font-black">Quotation Number *</span><input value={form.quotationNumber} readOnly={Boolean(form.quotationId)} onChange={(e) => setForm((c) => ({ ...c, quotationNumber: e.target.value }))} className="h-14 w-full rounded-2xl border px-4 font-black read-only:bg-slate-100" placeholder="AT/26-27/001" /></label><label className="lg:col-span-2"><span className="mb-2 block text-sm font-black">PO Number</span><input readOnly value={form.poNumber} placeholder="Auto-fetched from the received PO" className="h-12 w-full rounded-xl border bg-slate-50 px-4 font-bold" /></label><label><span className="mb-2 block text-sm font-black">Invoice Date</span><input type="date" value={form.invoiceDate} onChange={(e) => setForm((c) => ({ ...c, invoiceDate: e.target.value }))} className="h-12 w-full rounded-xl border px-4 font-bold" /></label><label><span className="mb-2 block text-sm font-black">Valid Until</span><input type="date" value={form.validUntil} onChange={(e) => setForm((c) => ({ ...c, validUntil: e.target.value }))} className="h-12 w-full rounded-xl border px-4 font-bold" /></label></div>
+      <div className="p-5"><div className="mt-2 grid gap-4 lg:grid-cols-4"><label className="lg:col-span-2"><span className="mb-2 block text-sm font-black">Select Quotation</span><QuotationPicker value={form.quotationId || ''} quotations={quotations} onChange={selectQuotation} /></label><label className="lg:col-span-2"><span className="mb-2 block text-sm font-black">Quotation Number *</span><input value={form.quotationNumber} readOnly={Boolean(form.quotationId)} onChange={(e) => setForm((c) => ({ ...c, quotationNumber: e.target.value }))} className="h-14 w-full rounded-2xl border px-4 font-black read-only:bg-slate-100" placeholder="AT/26-27/001" /></label><label className="lg:col-span-2"><span className="mb-2 block text-sm font-black">PO Number *</span><input aria-label="PO Number" value={form.poNumber} onChange={(e) => setForm((c) => ({ ...c, poNumber: e.target.value }))} maxLength={120} placeholder="Enter or edit PO number" className="h-12 w-full rounded-xl border px-4 font-bold outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" /><span className="mt-1 block text-xs font-semibold text-slate-500">Auto-filled from the lead when available. You can edit it here; the saved value appears on the invoice and PDF.</span></label><label><span className="mb-2 block text-sm font-black">Invoice Date</span><input type="date" value={form.invoiceDate} onChange={(e) => setForm((c) => ({ ...c, invoiceDate: e.target.value }))} className="h-12 w-full rounded-xl border px-4 font-bold" /></label><label><span className="mb-2 block text-sm font-black">Valid Until</span><input type="date" value={form.validUntil} onChange={(e) => setForm((c) => ({ ...c, validUntil: e.target.value }))} className="h-12 w-full rounded-xl border px-4 font-bold" /></label></div>
       <h3 className="mb-3 mt-7 text-lg font-black">Client & Quotation Details</h3><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{leadFields.map(([key, label]) => <label key={key}><span className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500">{label}</span><input value={form.leadDetails[key] || ''} onChange={(e) => setLead(key, e.target.value)} className="h-11 w-full rounded-xl border border-slate-200 px-3 font-bold outline-none focus:border-emerald-400" placeholder={`Enter ${label.toLowerCase()}`} /></label>)}</div>
 
       <div className="mb-3 mt-7 flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-lg font-black">Invoice Items</h3><p className="text-xs font-bold text-slate-500">{form.pricingMode ? `${form.pricingMode === 'combined' ? 'Combined' : 'Individual'} pricing selected` : 'Choose pricing type first.'}</p></div>{form.pricingMode && <div className="flex flex-wrap items-center gap-2">{form.quotationId && <select value="" onChange={(e) => { if (e.target.value) { addQuoteItem(Number(e.target.value)); e.target.value = '' } }} className="h-10 rounded-xl border border-emerald-200 bg-white px-3 text-sm font-bold text-emerald-700"><option value="">+ Add from Quotation</option>{quoteItems.map((item, idx) => <option key={idx} value={idx}>{item.serviceCategory || `Item ${idx + 1}`}{item.piboCategory ? ` · ${item.piboCategory}` : ''}</option>)}</select>}<button type="button" onClick={addBlankItem} className="inline-flex h-10 items-center gap-1 rounded-xl bg-emerald-700 px-3 text-sm font-black text-white hover:bg-emerald-600"><Plus className="h-4 w-4" /> Add Item</button></div>}</div>

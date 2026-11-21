@@ -50,6 +50,7 @@ test('PDF mirrors buyer details, removes delivery fields and calculates state-sp
   assert.match(local, /SGST OUTPUT 9%/);
   assert.match(local, /62,500.00/);
   assert.match(local, /5,625.00/);
+  assert.match(local, /PO-1001/);
   assert.doesNotMatch(local, /IGST OUTPUT|Dispatch Doc|Other References|Buyer's Order|OLD SHIP NAME|REMOVE ME/);
   const interstate = buildInvoicePdf({ ...row, leadDetails: { ...row.leadDetails, gstNumber: '29ABCDE1234F1Z5', state: 'Karnataka' } }).output();
   assert.match(interstate, /IGST OUTPUT 18%/);
@@ -75,6 +76,13 @@ test('server rejects percentages above the remaining service balance and permits
     assert.match(await _test.validateInvoice(payload, null, actor), /Only 50% remains/);
     payload.paymentPercentage = 50;
     assert.equal(await _test.validateInvoice(payload, null, actor), '');
+    payload.poNumber = 'CUSTOMER-PO-EDITED';
+    assert.equal(await _test.validateInvoice(payload, null, actor), '');
+    assert.equal(payload.poNumber, 'CUSTOMER-PO-EDITED');
+    assert.equal(payload.poYearRows[0].poNumber, 'PO-1');
+    payload.poNumber = 'Q-1';
+    assert.match(await _test.validateInvoice(payload, null, actor), /different from the quotation number/);
+    payload.poNumber = 'PO-1';
     payload.pricingMode = 'combined';
     payload.combinedBasicAmount = 75000;
     assert.equal(await _test.validateInvoice(payload, null, actor), '');

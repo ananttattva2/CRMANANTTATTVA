@@ -15,8 +15,13 @@ test('invoice page loads only eligible services and submits the selected payment
       return { loader: 'jsx', contents: args.path === 'shell' ? 'export default function Shell({children}){return children}' : `
       const quote={_id:'507f1f77bcf86cd799439099',quotationNumber:'Q-TEST',pricingMode:'individual',leadDetails:{companyName:'TEST BUYER',gstNumber:'27ABCDE1234F1Z5'},items:[{serviceCategory:'OPEN SERVICE',basicAmount:50000},{serviceCategory:'CLOSED SERVICE',basicAmount:125000,unit:'1'}]};
       const eligible={...quote.items[1],sourceItemIndex:1,assignedServiceId:'closed'};
+      let savedInvoices=[];
       export const readApiError=e=>e.message;export const storeSessionUser=user=>user;export const clearStoredSession=()=>{};
-      export default {get:async url=>({data:url==='/auth/me'?{user:{role:'superadmin',name:'Test'}}:url==='/quotations'?{quotations:[quote]}:url.includes('eligible-quotation')?{items:window.noEligible?[]:[eligible],poYearRows:[{fy:'2026-27',poNumber:'AT/26-27/525',compliancePoFile:{name:'po.pdf',secureUrl:'https://example.test/po.pdf'},serviceCategory:['CLOSED SERVICE']}]}:{proformaInvoices:[]}}),post:async(url,body)=>{window.savedPayload=body;return{data:{proformaInvoice:{proformaNumber:'PI-TEST'}}}},put:async()=>({data:{}})};
+      export default {
+        get:async url=>({data:url==='/auth/me'?{user:{role:'superadmin',name:'Test'}}:url==='/quotations'?{quotations:[quote]}:url.includes('eligible-quotation')?{items:window.noEligible?[]:[eligible],poYearRows:[{fy:'2026-27',poNumber:'AT/26-27/525',compliancePoFile:{name:'po.pdf',secureUrl:'https://example.test/po.pdf'},serviceCategory:['CLOSED SERVICE']}]}:{proformaInvoices:savedInvoices}}),
+        post:async(url,body)=>{window.savedPayload=body;const row={...body,_id:'pi-created',proformaNumber:'PI-TEST'};savedInvoices=[row];return{data:{proformaInvoice:row}}},
+        put:async(url,body)=>{window.updatedPayload=body;savedInvoices=savedInvoices.map(row=>({...row,...body}));return{data:{proformaInvoice:savedInvoices[0]}}}
+      };
     ` };
     });
   }}] });
@@ -33,7 +38,16 @@ test('invoice page loads only eligible services and submits the selected payment
     await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.includes('Q-TEST')));
     await clickText('Q-TEST');
     await page.waitForFunction(() => [...document.querySelectorAll('input')].some(i => i.value === 'CLOSED SERVICE'));
-    assert.equal(await page.evaluate(() => [...document.querySelectorAll('input')].some(i => i.value === 'AT/26-27/525')), true);
+    const poInput = 'input[aria-label="PO Number"]';
+    assert.equal(await page.$eval(poInput, input => input.placeholder), 'Enter or edit PO number');
+    assert.equal(await page.evaluate(() => document.body.textContent.includes('the saved value appears on the invoice and PDF')), true);
+    assert.equal(await page.$eval(poInput, input => input.readOnly), false);
+    await page.$eval(poInput, input => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'CUSTOMER-PO-EDITED');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.waitForFunction(() => document.querySelector('input[aria-label="PO Number"]')?.value === 'CUSTOMER-PO-EDITED');
     assert.equal(await page.evaluate(() => [...document.querySelectorAll('input')].some(i => i.value === 'OPEN SERVICE')), false);
     assert.equal(await page.evaluate(() => document.body.textContent.includes('Invoice, Delivery & Bank Details')), false);
     assert.equal(await page.$$eval('[aria-label="Invoice pricing type"] button', buttons => buttons.length), 2);
@@ -55,9 +69,21 @@ test('invoice page loads only eligible services and submits the selected payment
     assert.equal(payload.grandTotal, 73750);
     assert.equal(payload.items.length, 1);
     assert.equal(payload.items[0].sourceItemIndex, 1);
-    assert.equal(payload.poNumber, 'AT/26-27/525');
-    assert.equal(await page.evaluate(() => document.body.textContent.includes('PO Received For No Of Year')), false);
+    assert.equal(payload.poNumber, 'CUSTOMER-PO-EDITED');
     await page.waitForFunction(() => document.body.textContent.includes('saved successfully'));
+    await clickText('Edit');
+    await page.waitForFunction(() => document.querySelector('input[aria-label="PO Number"]')?.value === 'CUSTOMER-PO-EDITED');
+    await page.$eval(poInput, input => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'CUSTOMER-PO-UPDATED');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.waitForFunction(() => document.querySelector('input[aria-label="PO Number"]')?.value === 'CUSTOMER-PO-UPDATED');
+    await clickText('Update Invoice');
+    await page.waitForFunction(() => window.updatedPayload);
+    assert.equal((await page.evaluate(() => window.updatedPayload)).poNumber, 'CUSTOMER-PO-UPDATED');
+    await page.waitForFunction(() => [...document.querySelectorAll('tbody tr')].some(row => row.textContent.includes('CUSTOMER-PO-UPDATED')));
+    assert.equal(await page.evaluate(() => document.body.textContent.includes('PO Received For No Of Year')), false);
     await page.evaluate(() => { window.noEligible = true; });
     await clickText('Select a quotation');
     await clickText('Q-TEST');

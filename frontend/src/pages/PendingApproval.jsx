@@ -776,6 +776,10 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
   const isServiceParticipantView = !canApprove && !isComplianceApprovalView;
   const canApproveClients = canApprove || isComplianceApprovalView;
   const companyClients = useMemo(() => groupPendingClientsByCompany(pendingClients), [pendingClients]);
+  const pendingClientReviewCount = useMemo(
+    () => companyClients.filter((client) => getApprovalStatus(client) === 'PENDING').length,
+    [companyClients]
+  );
   const canViewClients = canApproveClients || companyClients.length > 0;
 
   useEffect(() => {
@@ -1664,7 +1668,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
           {(loading || poLoading) && <div className="sr-only" aria-live="polite">{poLoading ? 'Refreshing PO approvals...' : 'Refreshing approval data...'}</div>}
 
           {!embedded && <div className="pending-metrics">
-            {canViewClients && <Metric icon={Users} label={canApproveClients ? 'Pending Clients' : 'Client Decisions'} value={companyClients.length} hint={canApproveClients ? 'Needs your review' : 'Compliance results'} tone="mint" onClick={() => openMetric('clients', 'all')} />}
+            {canViewClients && <Metric icon={Users} label={canApproveClients && !isComplianceApprovalView ? 'Pending Clients' : 'Client Decisions'} value={canApproveClients && !isComplianceApprovalView ? pendingClientReviewCount : companyClients.length} hint={canApproveClients && !isComplianceApprovalView ? `${companyClients.length} client approval records total` : 'Compliance results'} tone="mint" onClick={() => openMetric('clients', canApproveClients && !isComplianceApprovalView ? 'PENDING' : 'all')} />}
             {!isComplianceApprovalView && <Metric icon={FileText} label="Pending Quotations" value={pendingQuotations.filter((row) => getApprovalStatus(row) === 'PENDING').length} hint="Needs your review" tone="blue" onClick={() => openMetric('quotations')} />}
             {!isComplianceApprovalView && <Metric icon={Users} label="Special Approvals" value={duplicateLeadApprovals.filter((row) => getApprovalStatus(row) === 'PENDING').length} hint="Lead review" tone="mint" onClick={() => openMetric('duplicates')} />}
             {!isComplianceApprovalView && <Metric icon={Users} label="Royalty Claims" value={royaltyApprovals.filter((row) => getApprovalStatus(row) === 'PENDING').length} hint="Ratio review" tone="blue" onClick={() => openMetric('royalty')} />}
