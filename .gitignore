@@ -21,3 +21,4 @@ frontend/.env.local
 backend/storage-migration-output/
 
 /.storage-migration/
+/.invoice-correction-backups/

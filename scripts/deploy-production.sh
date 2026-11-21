@@ -200,6 +200,9 @@ if [[ -f backend/src/scripts/syncStaffLicenses.js ]]; then
   node backend/src/scripts/syncStaffLicenses.js
 fi
 
+# Idempotent correction requested for the saved Shri Sagar Proforma Invoice.
+node backend/src/scripts/repairRequestedProforma.js
+
 BACKUP_DIST="$APP_DIR/frontend/.dist-previous-$(date +%s)"
 if [[ -d "$APP_DIR/frontend/dist" ]]; then
   HAD_PREVIOUS_DIST=true
