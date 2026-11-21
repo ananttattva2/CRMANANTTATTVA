@@ -98,7 +98,8 @@ export function buildInvoicePdf(row) {
   const tax = Math.round(base * 18) / 100
   items.forEach((item, index) => {
     const title = item.serviceCategory || item.piboCategory || 'Service'
-    const annualReturnYears = [...new Set((item.annualReturnYears || []).filter(Boolean))]
+    const annualReturnService = /\bannual\s*returns?\b/i.test([item.servicesOffered, item.applicableService].filter(Boolean).join(' '))
+    const annualReturnYears = annualReturnService ? [...new Set((item.annualReturnYears || []).filter(Boolean))] : []
     const serviceYears = annualReturnYears.length
       ? annualReturnYears.map((value) => 'Annual Return: ' + value)
       : [item.servicesForYear]

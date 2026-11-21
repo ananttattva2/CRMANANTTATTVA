@@ -47,6 +47,25 @@ test('proforma shows explicitly selected Annual Return years instead of the deri
   assert.ok(!content.includes('2025-26'));
 });
 
+test('proforma ignores stale Annual Return years for a non-Annual Return service', async () => {
+  const build = await renderer();
+  const pdf = build({
+    ...sample,
+    items: [{
+      serviceCategory: 'EPR - Plastic Waste',
+      servicesOffered: 'New Registration',
+      servicesForYear: '2026-27',
+      annualReturnYears: ['2024-25', '2025-26'],
+      basicAmount: 35000
+    }]
+  });
+  const content = pdf.output();
+  assert.ok(content.includes('New Registration'));
+  assert.ok(content.includes('2026-27'));
+  assert.ok(!content.includes('Annual Return: 2024-25'));
+  assert.ok(!content.includes('Annual Return: 2025-26'));
+});
+
 test('PI view and download use the approved bank block instead of stale saved bank fields', async () => {
   const build = await renderer();
   const pdf = build({ ...sample, invoiceDetails: { bankName: 'OLD_BANK_MARKER', accountName: 'OLD_ACCOUNT_MARKER', accountNumber: 'OLD_NUMBER_MARKER', ifsc: 'OLD_IFSC_MARKER', pan: 'OLD_PAN_MARKER' } });
