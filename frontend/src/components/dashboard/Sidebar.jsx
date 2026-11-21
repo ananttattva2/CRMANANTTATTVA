@@ -120,6 +120,10 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
   const visibleSections = navSections.map((section, index) => ({ ...section, icon: sectionIcons[index] })).filter(section => section.items.some(canShowItem))
   const selectedSection = visibleSections.find(section => section.label === flyout?.label)
 
+  // A section with a single childless item renders directly as a top-level
+  // button (no collapsible header) so it stays immediately visible.
+  const isDirectItemSection = section => section.items.length === 1 && !section.items[0]?.children?.length
+
   return <div ref={sidebarRef} className="relative flex h-full min-h-0 flex-col bg-[#16805f] pt-4 text-white">
     <div className={`flex h-9 shrink-0 items-center ${collapsed ? 'justify-center px-2' : 'justify-between px-5'}`}>
       {!collapsed && <p className="text-xs font-black uppercase tracking-[0.24em] text-emerald-100/70">Navigation</p>}
@@ -131,6 +135,9 @@ export default function Sidebar({ currentUser, collapsed, onToggleCollapsed, onC
         const Icon = section.icon
         const expanded = collapsed ? flyout?.label === section.label : openSection === section.label
         const active = section.items.some(containsRoute)
+        if (isDirectItemSection(section)) {
+          return <div key={section.label}>{renderItems(sectionItems(section), false, section.label)}</div>
+        }
         return <div key={section.label}>
           <button type="button" onClick={event => toggleSection(section, event)} aria-label={section.label} aria-expanded={Boolean(expanded)} aria-controls={sectionId(section.label)} title={collapsed ? section.label : undefined}
             className={collapsed
