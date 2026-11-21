@@ -69,3 +69,19 @@ test('Legal API scope excludes other users, supports manager teams and fails clo
   assert.equal(legal.visibleLegalRows(rows, null).length, 2);
   assert.deepEqual(legal.visibleLegalRows(rows, undefined), []);
 });
+
+test('manual send works before Monday and shares the weekly delivery ledger', async t => {
+  const { sent } = setup(t);
+  const saturday = new Date('2026-11-21T06:00:00Z');
+  assert.equal((await reminder.runLegalSlaReminders({ now: saturday })).emails, 0);
+  assert.equal((await reminder.runLegalSlaReminders({ now: saturday, sendNow: true })).emails, 4);
+  assert.equal((await reminder.runLegalSlaReminders({ now: saturday, sendNow: true })).emails, 0);
+  assert.equal(sent.length, 4);
+});
+test('email renders every pending row with numbering and requested sender signature', () => {
+  const rows = Array.from({length:21}, (_,index)=>({...pending,id:String(index),clientName:`Client ${index+1}`}));
+  const html = reminder.emailHtml(rows);
+  assert.match(html, /Client 21/);
+  assert.match(html, /Sr. No./);
+  assert.match(html, /Krishna Yadav/);
+});

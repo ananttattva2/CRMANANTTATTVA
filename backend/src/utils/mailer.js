@@ -81,10 +81,10 @@ function quoteDisplayName(name) {
   return `"${String(name || 'CRM').replace(/["\\]/g, '')}"`;
 }
 
-function formatFromAddress() {
+function formatFromAddress(fromName) {
   const mailUser = readMailUser();
   const configuredFrom = String(process.env.MAIL_FROM || '').trim();
-  const displayName = readMailFromName();
+  const displayName = fromName || readMailFromName();
 
   if (configuredFrom) {
     const bracketMatch = configuredFrom.match(/<([^>]+)>/);
@@ -316,6 +316,7 @@ async function sendMicrosoftGraphMail(recipients, subject, messageHtml, options 
     body: { contentType: 'HTML', content: messageHtml },
     toRecipients: toGraphRecipients(recipients)
   };
+  if (options.fromName) message.from = { emailAddress: { address: config.senderEmail, name: String(options.fromName).replace(/[\r\n]/g, '') } };
   if (ccRecipients.length) message.ccRecipients = toGraphRecipients(ccRecipients);
   if (replyTo) message.replyTo = toGraphRecipients([replyTo]);
   if (attachments.length) message.attachments = attachments;
@@ -366,7 +367,7 @@ async function sendSmtpMail(recipients, subject, messageHtml, options = {}) {
   const mailUser = readMailUser();
   if (!process.env.SMTP_HOST) throw new Error('SMTP_HOST is not configured');
 
-  const from = formatFromAddress();
+  const from = formatFromAddress(options.fromName);
   const replyTo = process.env.MAIL_REPLY_TO || mailUser || undefined;
   const transporter = createTransporter();
   const cc = normalizeRecipients(options.cc);

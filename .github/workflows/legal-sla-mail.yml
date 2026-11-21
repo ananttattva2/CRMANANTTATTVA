@@ -1,0 +1,41 @@
+name: Legal SLA Mail
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Preview recipients or send the authorized current-week SLA lists
+        type: choice
+        options: [preview, send]
+        default: preview
+permissions:
+  contents: read
+concurrency:
+  group: legal-sla-mail
+  cancel-in-progress: false
+jobs:
+  mail:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      DO_HOST: ${{ secrets.DO_HOST }}
+      DO_USER: ${{ secrets.DO_USER }}
+      DO_PORT: ${{ secrets.DO_PORT }}
+      DO_SSH_PRIVATE_KEY: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+      DO_SSH_KNOWN_HOSTS: ${{ secrets.DO_SSH_KNOWN_HOSTS }}
+      APP_DIR: ${{ vars.DO_APP_DIR }}
+      OPERATION: ${{ inputs.operation }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Send or preview Legal SLA lists on production
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REF" == refs/heads/main ]]
+          [[ "$OPERATION" == preview || "$OPERATION" == send ]]
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$DO_SSH_PRIVATE_KEY" > "$HOME/.ssh/digitalocean_deploy"
+          chmod 600 "$HOME/.ssh/digitalocean_deploy"
+          printf '%s\n' "$DO_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          printf -v command 'node - %q %q' "${APP_DIR:-/var/www/CRMANANTTATTVA}" "$OPERATION"
+          ssh -i "$HOME/.ssh/digitalocean_deploy" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=15 -p "${DO_PORT:-22}" "$DO_USER@$DO_HOST" "$command" < scripts/legal-sla-operator.cjs
