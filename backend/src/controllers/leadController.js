@@ -2329,11 +2329,15 @@ exports.permanentlyCloseProvisionalLead = async (req, res) => {
   }
 };
 
-async function notifyPurchaseOrderDecision({ approval, lead, index, status, remarks, screenshotUrl, leadClosure = false }) {
+async function notifyPurchaseOrderDecision({ approval, lead, index, status, remarks, screenshotUrl, leadClosure = false, paymentReceived = false, paymentStatus, poAmount }) {
   const assignment = lead?.assignments?.[index] || {};
   const leadOwnerId = assignment.assignedStaff || lead.assignedStaff || approval.payload?.leadCreatorId || '';
+  const leadOwnerUsers = leadOwnerId ? await User.find({ _id: leadOwnerId, isActive: { $ne: false } }).select('email').lean() : [];
   const financeUsers = leadClosure
     ? await User.find({ role: { $in: ['accounts', 'finance'] }, isActive: { $ne: false } }).select('email').lean()
+    : [];
+  const superAdminUsers = paymentReceived
+    ? await User.find({ role: { $in: ['superadmin', 'admin'] }, isActive: { $ne: false } }).select('email').lean()
     : [];
   const responsibleUsers = await User.find({ $or: [
     { role: { $in: ADMIN_ROLES }, isActive: { $ne: false } },
@@ -2342,7 +2346,7 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
     ...(leadClosure && leadOwnerId ? [{ _id: leadOwnerId }] : [])
   ] }).select('email').lean();
   const recipients = [...new Set([
-    ...responsibleUsers.map((user) => user.email),
+    ...(paymentReceived ? [...leadOwnerUsers.map((user) => user.email), ...superAdminUsers.map((user) => user.email)] : responsibleUsers.map((user) => user.email)),
     ...financeUsers.map((user) => user.email),
     approval.payload?.poSubmittedByEmail,
     approval.payload?.leadCreatorEmail,
@@ -2352,9 +2356,13 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
   const decisionRows = Array.isArray(approval.payload?.poYearRows) && approval.payload.poYearRows.length
     ? approval.payload.poYearRows
     : (lead.assignments[index].poYearRows || []);
-  const emailTitle = leadClosure ? 'Lead Closure Approval granted' : status === 'APPROVED' ? 'Purchase Order approved successfully' : status === 'REJECTED' ? 'Purchase Order rejected' : 'Purchase Order revision required';
-  const emailEyebrow = leadClosure ? 'Lead closure approval' : `Purchase order ${verb}`;
-  const emailMessage = leadClosure
+  const emailTitle = paymentReceived ? `Payment ${paymentStatus?.status === 'COMPLETE_RECEIVED' ? 'fully' : 'advance'} received` : leadClosure ? 'Lead Closure Approval granted' : status === 'APPROVED' ? 'Purchase Order approved successfully' : status === 'REJECTED' ? 'Purchase Order rejected' : 'Purchase Order revision required';
+  const emailEyebrow = paymentReceived ? 'Payment received' : leadClosure ? 'Lead closure approval' : `Purchase order ${verb}`;
+  const receivedAmount = Number(paymentStatus?.amount || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
+  const totalPoAmount = Number(poAmount || decisionRows.reduce((sum, row) => sum + Number(row.poAmount || 0), 0)).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
+  const emailMessage = paymentReceived
+    ? `Finance has recorded <strong>${paymentStatus?.status === 'COMPLETE_RECEIVED' ? 'complete payment received' : 'advance payment received'}</strong> for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong>.<br/>PO amount: <strong>${totalPoAmount}</strong><br/>Received amount: <strong>${receivedAmount}</strong>${paymentStatus?.confirmed ? ' (confirmed as per PO amount)' : ''}${remarks ? `<br/>Remarks: ${escapeHtml(remarks)}` : ''}`
+    : leadClosure
     ? `Lead Closure Approval for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong> was <strong>approved</strong>. Finance can now record the final decision.`
     : `The Purchase Order for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong> was <strong>${escapeHtml(verb)}</strong>.`;
   const html = buildPurchaseOrderEmail({
@@ -2377,7 +2385,8 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
       console.error('Unable to attach PO correction screenshot', error.message);
     }
   }
-  const mailResults = await Promise.allSettled(recipients.map((email) => sendMail(email, `PO ${status.replace('_', ' ')} - ${lead.company || lead.leadCode}`, html, { branded: false, attachments: screenshotAttachment ? [screenshotAttachment] : [] })));
+  const subject = paymentReceived ? `Payment received - ${lead.company || lead.leadCode}` : `PO ${status.replace('_', ' ')} - ${lead.company || lead.leadCode}`;
+  const mailResults = await Promise.allSettled(recipients.map((email) => sendMail(email, subject, html, { branded: false, attachments: screenshotAttachment ? [screenshotAttachment] : [] })));
   const emailNotification = {
     recipients: recipients.length,
     sent: mailResults.filter((result) => result.status === 'fulfilled').length,

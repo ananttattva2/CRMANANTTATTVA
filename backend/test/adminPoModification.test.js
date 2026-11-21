@@ -28,7 +28,7 @@ test('an Admin PO edit is approved directly and archives the completed Finance a
     assert.equal(requests.length,1);assert.equal(requests[0][1].$set.approvalStatus,'APPROVED');
     assert.equal(requests[0][1].$set.poReview,null);assert.equal(requests[0][1].$push.poReviewHistory.stage,'FINALIZED');
     assert.equal(requests[0][1].$set.payload.poYearRows[0].poAmount,200);
-    assert.ok(requests[0][0]['poReview.stage'].$nin.includes('MANAGEMENT_PENDING'));
+    assert.ok(requests[0][0]['poReview.stage'].$nin.includes('LEAD_CLOSURE_PENDING'));
   } finally {PendingApproval.findOne=originalFind;PendingApproval.findOneAndUpdate=originalCreate;User.find=originalUsers;}
 });
 const User = require('../src/models/User');

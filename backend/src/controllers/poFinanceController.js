@@ -111,6 +111,7 @@ exports.initialApproval = async (req, res) => {
   } catch (error) { return report(res, error); }
 };
 exports.act = async (req, res) => {
+  if (req.params.action === 'payment-status') return exports.paymentStatus(req, res);
   const event = req.params.action === 'approve' ? 'FINANCE_APPROVE'
     : req.params.action === 'refer' ? 'FINANCE_REFER'
     : req.params.action === 'request-approval' ? 'LEAD_OWNER_REQUEST'
@@ -159,6 +160,30 @@ exports.act = async (req, res) => {
       return { ok: true, review, message: event === 'FINANCE_APPROVE' ? 'Finance approval saved. Staff assignment is now unlocked.' : event === 'FINANCE_REFER' ? 'Remark submitted. This PO is now with the lead owner to request management approval.' : event === 'LEAD_OWNER_REQUEST' ? 'Request submitted. This PO is now awaiting Lead Closure Approval from Super Admin.' : event === 'LEAD_CLOSURE_APPROVE' ? 'Lead Closure Approval saved. Finance can now record the final decision.' : 'Finance final decision saved.' };
     });
     if (notification) void require('./leadController').notifyPurchaseOrderDecision(notification).catch(error => console.error('Finance PO notification failed', { name: error.name }));
+    return res.json(result);
+  } catch (error) { return report(res, error); }
+};
+exports.paymentStatus = async (req, res) => {
+  if (!userHasAnyRole(req.user, ['accounts', 'finance'])) return res.status(403).json({ error: 'Only Finance can record payment status.' });
+  try {
+    const status = String(req.body.status || '').toUpperCase();
+    if (!['ADVANCE_RECEIVED', 'COMPLETE_RECEIVED'].includes(status)) fail(400, 'Select a valid payment status.');
+    const confirmAmount = req.body.confirmAmount === true;
+    let amount = Number(req.body.amount);
+    let notification;
+    const result = await inTransaction(req.params.id, async ({ approval, lead, index }) => {
+      if (!approval.poReview) fail(409, 'This PO is not under Finance review.');
+      const pos = approval.payload?.poYearRows || lead.assignments[index]?.poYearRows || [];
+      const poAmount = pos.reduce((sum, row) => sum + Number(row.poAmount || 0), 0);
+      if (confirmAmount) amount = poAmount;
+      if (!(amount > 0)) fail(400, 'Enter a valid received amount.');
+      const entry = { status, amount, confirmed: confirmAmount, remarks: String(req.body.remarks || '').trim(), by: String(req.user._id), name: req.user.name || req.user.email || '', at: new Date().toISOString() };
+      approval.poReview = { ...approval.poReview, paymentStatus: entry, history: [...(approval.poReview.history || []), { event: `PAYMENT_${status}`, remarks: `${status}: ${amount}${confirmAmount ? ' (confirmed as PO amount)' : ''}`, by: entry.by, name: entry.name, at: entry.at }] };
+      approval.markModified('poReview');
+      notification = { approval, lead, index, status: 'PAYMENT', remarks: entry.remarks, screenshotUrl: '', paymentStatus: entry, poAmount };
+      return { ok: true, review: approval.poReview, message: `Payment status recorded: ${status.replace('_', ' ').toLowerCase()} (${amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}).` };
+    });
+    if (notification) void require('./leadController').notifyPurchaseOrderDecision({ ...notification, paymentReceived: true }).catch(error => console.error('Payment status notification failed', { name: error.name }));
     return res.json(result);
   } catch (error) { return report(res, error); }
 };
