@@ -84,7 +84,6 @@ test('proforma prints fee text, business category, service and year in order', a
     { businessCategory: 'EPR Consultancy', descriptionMarker: 'CONSULTANCY FEES FOR WASTE', descriptionTailMarker: 'UNDER EPR', hideBusinessCategory: true },
     { businessCategory: 'EPR - Waste Water', descriptionMarker: 'CONSULTANCY FEES FOR WASTE', descriptionTailMarker: 'UNDER EPR', hideBusinessCategory: true },
     { businessCategory: 'Other Consultancy', descriptionMarker: 'CONSULTANCY FEES FOR WASTE', descriptionTailMarker: 'UNDER EPR', hideBusinessCategory: true },
-    { businessCategory: 'EPR Credit', descriptionMarker: 'Service Charge for Waste Collection', hideBusinessCategory: false }
   ];
   for (const { businessCategory, descriptionMarker, descriptionTailMarker, hideBusinessCategory } of categories) {
     const pdf = build({
@@ -103,10 +102,14 @@ test('proforma prints fee text, business category, service and year in order', a
     assert.equal(content.includes(businessCategory), !hideBusinessCategory);
     assert.ok(!content.includes('Business Category:'));
     assert.ok(content.includes(descriptionMarker));
-    assert.ok(content.includes('FOR New Registration - PWP'));
-    assert.ok(content.includes('2026-27'));
-    assert.ok(content.includes('New Registration'));
-    assert.ok(content.includes('100% OF PO VALUE'));
+    if (businessCategory === 'EPR Credit') {
+      assert.ok(content.includes('FOR EPR NEW REGISTRATION CREDIT AR 25-26'));
+    } else {
+      assert.ok(content.includes('FOR New Registration - PWP'));
+      assert.ok(content.includes('2026-27'));
+      assert.ok(content.includes('New Registration'));
+    }
+    assert.equal(content.includes('100% OF PO VALUE'), businessCategory !== 'EPR Credit');
     assert.ok(!content.includes('2024-25'));
     if (!hideBusinessCategory) {
       assert.ok(content.indexOf(descriptionMarker) < content.indexOf(businessCategory));
@@ -141,15 +144,20 @@ test('reference payment percentage, Services Offered and tax totals render toget
   assert.ok(local.includes('CGST')); assert.ok(local.includes('SGST')); assert.ok(local.includes('2,137.50'));
 });
 
-test('EPR Credit PI prints MT quantity, per-kg rate, selected credit year and HSN 999422', async () => {
+test('EPR Credit PI matches reference kilograms, rate, category and preceding credit year', async () => {
   const build = await renderer();
   const row = { ...sample, invoiceDetails: { hsn: '998311' }, items: [{ businessCategory: 'EPR Credit', serviceCategory: 'EPR - Plastic Waste', servicesOffered: 'Category 1 - EOL', servicesForYear: '2026-27', annualReturnEprCreditYears: ['2025-26'], unit: '6,83,000.000 Kgs', basicAmount: 819600, eprCreditRatePerKg: 1.2 }] };
   const pdf = build(row), content = pdf.output();
-  assert.match(content, /\(683\) Tj/);
-  assert.match(content, /\(1\.2\) Tj/);
-  assert.match(content, /Annual Return EPR Credit: 2025-26/);
+  assert.match(content, /6,83,000.000 Kgs\./);
+  assert.match(content, /\(1\.20\) Tj/);
+  assert.match(content, /FOR EPR EOL CREDIT AR 25-26/);
+  assert.match(content, /CATEGORY-I/);
+  const shifted = build({ ...row, items: [{ ...row.items[0], annualReturnEprCreditYears: ['2026-27'], servicesOffered: 'Category 2 - Recycling' }] }).output();
+  assert.match(shifted, /FOR EPR RECYCLING CREDIT AR 25-26/);
+  assert.match(shifted, /CATEGORY-II/);
+  assert.doesNotMatch(shifted, /AR 26-27|2026-27/);
   assert.match(content, /999422/);
-  assert.doesNotMatch(content, /998311|2026-27|Kgs|1,200.00/);
+  assert.doesNotMatch(content, /998311|2026-27|1,200.00/);
   assert.match(content, /8,19,600.00/);
   if (process.env.PROFORMA_PREVIEW_DIR) fs.writeFileSync(path.join(process.env.PROFORMA_PREVIEW_DIR, 'credit-format.pdf'), Buffer.from(pdf.output('arraybuffer')));
 });

@@ -24,7 +24,8 @@ const firstDistinctPoNumber = (rows = [], quotationNumber = '') => {
 const leadFields = [['referredBy', 'Referred By'], ['salutation', 'Salutation'], ['contactPerson', 'Contact Person'], ['designation', 'Designation'], ['mobileNo1', 'Mobile No. 1'], ['mobileNo2', 'Mobile No. 2'], ['companyName', 'Company Name'], ['addressLine1', 'Address Line 1'], ['addressLine2', 'Address Line 2'], ['addressLine3', 'Address Line 3'], ['state', 'State'], ['city', 'City'], ['pinCode', 'Pincode'], ['gstNumber', 'GST Number']]
 
 function isCredit(item = {}) { return String(item.businessCategory || '').toLowerCase().replace(/[^a-z0-9]/g, '') === 'eprcredit' }
-function fromQuoteItem(item = {}) { if (!isCredit(item)) return item; const target = item.eprCreditTargetMt ?? (item.eprCreditTargetKg != null ? Number(item.eprCreditTargetKg) / 1000 : null); return { ...item, servicesForYear: (item.annualReturnEprCreditYears || []).join(', ') || item.servicesForYear, unit: target == null ? '' : String(target), eprCreditRatePerKg: Number(item.basicAmount), basicAmount: target == null ? '' : Math.round(Number(item.basicAmount) * 1000 * Number(target) * 100) / 100 } }
+function creditServiceYears(item) { const basis = item.financialYear || item.servicesForYear; return (item.annualReturnEprCreditYears?.length ? item.annualReturnEprCreditYears : [basis]).filter(Boolean).map(value => { const match = String(value).match(/^(\d{4})-(\d{2})$/); return value === basis && match ? String(Number(match[1]) - 1) + '-' + match[1].slice(-2) : value }).join(', ') }
+function fromQuoteItem(item = {}) { if (!isCredit(item)) return item; const target = item.eprCreditTargetMt ?? (item.eprCreditTargetKg != null ? Number(item.eprCreditTargetKg) / 1000 : null); return { ...item, financialYear: item.financialYear || item.servicesForYear, servicesForYear: creditServiceYears(item), unit: target == null ? '' : String(target), eprCreditRatePerKg: Number(item.basicAmount), basicAmount: target == null ? '' : Math.round(Number(item.basicAmount) * 1000 * Number(target) * 100) / 100 } }
 function amount(items = []) { return items.reduce((sum, item) => sum + ((isCredit(item) ? 1 : (Number(item.unit) || 1)) * (Number(item.basicAmount) || 0)), 0) }
 function invoiceTotal(row = {}) { const full = row.pricingMode === 'combined' ? (Number(row.combinedBasicAmount) || 0) : amount(row.items); return Math.round(full * (row.paymentPercentage ?? 100)) / 100 }
 function gstAmount(row = {}) { const subtotal = invoiceTotal(row); return Number.isFinite(Number(row.gstAmount)) && Number(row.gstAmount) > 0 ? Number(row.gstAmount) : Math.round(subtotal * 18) / 100 }
@@ -233,7 +234,7 @@ export default function ProformaInvoices() {
       combinedBasicAmount: row.combinedBasicAmount ?? '',
       invoiceDate: String(row.invoiceDate || '').slice(0, 10),
       leadDetails: { ...blankLead, ...(row.leadDetails || {}) },
-      items: row.items?.length ? row.items.map((item) => ({ ...blankItem, ...item, servicesForYear: isCredit(item) && item.annualReturnEprCreditYears?.length ? item.annualReturnEprCreditYears.join(', ') : item.servicesForYear, basicAmount: item.basicAmount ?? '' })) : [{ ...blankItem }],
+      items: row.items?.length ? row.items.map((item) => ({ ...blankItem, ...item, servicesForYear: isCredit(item) ? creditServiceYears(item) : item.servicesForYear, basicAmount: item.basicAmount ?? '' })) : [{ ...blankItem }],
       terms: row.terms?.length ? row.terms : [''],
       scopeOfWork: row.scopeOfWork?.length ? row.scopeOfWork : ['']
     })

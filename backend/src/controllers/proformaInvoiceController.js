@@ -7,6 +7,7 @@ const { resolveCrmRelationships } = require('../services/crmRelationships');
 const { getVisibleUserScope } = require('../utils/visibilityScope');
 
 const text = (value) => String(value || '').trim();
+const creditServiceYears = item => { const basis = item.financialYear || item.servicesForYear; return (item.annualReturnEprCreditYears?.length ? item.annualReturnEprCreditYears : [basis]).filter(Boolean).map(value => { const match = String(value).match(/^(\d{4})-(\d{2})$/); return value === basis && match ? String(Number(match[1]) - 1) + '-' + match[1].slice(-2) : value; }).join(', '); };
 const isCredit = item => String(item.businessCategory || '').toLowerCase().replace(/[^a-z0-9]/g, '') === 'eprcredit';
 const money = (value) => Number.isFinite(Number(value)) ? Math.round(Number(value) * 100) / 100 : 0;
 const mediaReference = (value) => {
@@ -122,7 +123,7 @@ function cleanPayload(body = {}) {
 exports.list = async (req, res) => {
   const scope = await getVisibleUserScope(req.user);
   const rows = await ProformaInvoice.find(scope === null ? {} : { createdBy: { $in: scope.ids } }).populate('createdBy', 'name email').sort({ createdAt: -1 }).lean();
-  const creditRows = rows.filter(row => (row.items || []).some(item => isCredit(item) && (!item.annualReturnEprCreditYears?.length || item.eprCreditRatePerKg == null)));
+  const creditRows = rows.filter(row => (row.items || []).some(item => isCredit(item) && (!item.annualReturnEprCreditYears?.length || item.eprCreditRatePerKg == null || !item.financialYear)));
   const quoteIds = [...new Set(creditRows.map(row => String(row.quotationId || '')).filter(id => /^[a-f0-9]{24}$/i.test(id)))];
   if (quoteIds.length) {
     const quotes = await Quotation.find({ _id: { $in: quoteIds } }).select('items').lean();
@@ -135,6 +136,7 @@ exports.list = async (req, res) => {
       if (!source || !isCredit(source)) continue;
       if (!item.annualReturnEprCreditYears?.length) item.annualReturnEprCreditYears = source.annualReturnEprCreditYears || [];
       if (item.eprCreditRatePerKg == null) item.eprCreditRatePerKg = money(source.basicAmount);
+      if (!item.financialYear) item.financialYear = source.financialYear || source.servicesForYear;
     }
   }
   return res.json({ ok: true, proformaInvoices: rows });
@@ -211,7 +213,7 @@ async function quotationContext(id) {
     const mapped = matched.find(row => row.sourceItemIndex === sourceItemIndex) || { ...item, sourceItemIndex };
     if (!isCredit(item)) return mapped;
     const target = item.eprCreditTargetMt ?? (item.eprCreditTargetKg != null ? Number(item.eprCreditTargetKg) / 1000 : null);
-    return { ...mapped, servicesForYear: (item.annualReturnEprCreditYears || []).join(', ') || item.servicesForYear, eprCreditRatePerKg: money(item.basicAmount), unit: target == null ? '' : String(target), basicAmount: target == null ? 0 : money(Number(item.basicAmount) * 1000 * Number(target)) };
+    return { ...mapped, financialYear: item.financialYear || item.servicesForYear, servicesForYear: creditServiceYears(item), eprCreditRatePerKg: money(item.basicAmount), unit: target == null ? '' : String(target), basicAmount: target == null ? 0 : money(Number(item.basicAmount) * 1000 * Number(target)) };
   });
   const orders = new Map();
   for (const item of items) {

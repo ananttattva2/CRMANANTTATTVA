@@ -131,7 +131,22 @@ export function buildInvoicePdf(row) {
     const serviceDescriptionLines = serviceDescription ? pdf.splitTextToSize(serviceDescription, 292) : []
     const serviceYearLines = serviceYears.filter(Boolean).flatMap((value) => pdf.splitTextToSize(String(value), 292))
     const offeredLines = offered ? pdf.splitTextToSize(`FOR ${offered}${subApplicantType ? ' - ' + subApplicantType : ''}`, 292) : []
-    const lines = specialService
+    const credit = businessCategoryKey === 'eprcredit'
+    const yearBefore = value => { const match = String(value || '').match(/^(\d{4})-(\d{2})$/); return match ? String(Number(match[1]) - 1) + '-' + String(Number(match[1])).slice(-2) : String(value || '') }
+    const basisYear = item.financialYear || item.servicesForYear
+    const invoiceCreditYears = (creditYears.length ? creditYears : [basisYear]).filter(Boolean).map(value => value === basisYear ? yearBefore(value) : value)
+    const categoryMatch = offered.match(/category[\s–—-]*(IV|III|II|I|[1-4])\b/i)
+    const categoryNumber = categoryMatch ? ({ 1: 'I', 2: 'II', 3: 'III', 4: 'IV' }[categoryMatch[1]] || categoryMatch[1].toUpperCase()) : ''
+    const creditTitle = specialService + (categoryNumber ? 'CATEGORY-' + categoryNumber : '')
+    font(8.5, 'bold')
+    const creditTitleLines = pdf.splitTextToSize(creditTitle, 292)
+    font(8, 'italic')
+    const creditOffering = /recycl/i.test(offered) ? 'RECYCLING' : /eol|end.?of.?life/i.test(offered) ? 'EOL' : offered.toUpperCase()
+    const creditSubtitle = invoiceCreditYears.map(value => 'FOR EPR ' + creditOffering + ' CREDIT AR ' + value.replace(/^(\d{2})(\d{2})-/, '$2-'))
+    const lines = credit ? [
+      ...creditTitleLines.map(value => ({ value, bold: true })),
+      ...creditSubtitle.flatMap(value => pdf.splitTextToSize(value, 292)).map(value => ({ value, bold: false }))
+    ] : specialService
       ? [
           ...serviceDescriptionLines.map((value) => ({ value, bold: true })),
           ...(hideBusinessCategory ? [] : businessCategoryLines.map((value) => ({ value, bold: true }))),
@@ -163,13 +178,14 @@ export function buildInvoicePdf(row) {
         text(index + 1, 30, y)
         text(details.hsn, 353, y, { size: 7 })
         if (!combined) {
-          const credit = businessCategoryKey === 'eprcredit'
           const rawQuantity = Number(String(item.unit || '1').replace(/,/g, '').replace(/[^0-9.]/g, ''))
           const quantityMt = /kg/i.test(String(item.unit)) ? rawQuantity / 1000 : rawQuantity
-          text(credit ? quantityMt.toLocaleString('en-IN', { maximumFractionDigits: 3 }) : (item.unit || '1'), 417, y, { align: 'center', size: 7 })
+          if (credit) fitted((quantityMt * 1000).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' Kgs.', 394, y - 8, 46, 8, 'normal', 7)
+          else text(item.unit || '1', 417, y, { align: 'center', size: 7 })
           const rate = item.eprCreditRatePerKg ?? (quantityMt > 0 ? Number(item.basicAmount) / quantityMt / 1000 : 0)
-          fitted(credit ? Number(rate).toLocaleString('en-IN', { maximumFractionDigits: 4 }) : cash(Number(item.basicAmount) * percentage / 100), 442, y - 8, 41, 12, 'normal', 7)
+          fitted(credit ? Number(rate).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : cash(Number(item.basicAmount) * percentage / 100), 442, y - 8, 41, 12, 'normal', 7)
         }
+        if (credit && !combined) text('Kgs.', 498, y, { align: 'center', size: 7 })
         const value = combined ? (index === 0 ? cash(base) : '') : cash(Math.round(itemMultiplier(item) * Number(item.basicAmount || 0) * percentage) / 100)
         text(value, 566, y, { style: 'bold', size: 8, align: 'right' })
         first = false
