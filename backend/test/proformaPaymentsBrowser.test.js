@@ -71,6 +71,8 @@ test('invoice page loads only eligible services and submits the selected payment
     assert.equal(payload.items[0].sourceItemIndex, 1);
     assert.equal(payload.poNumber, 'CUSTOMER-PO-EDITED');
     await page.waitForFunction(() => document.body.textContent.includes('saved successfully'));
+    await clickText('Saved Proforma Invoices');
+    await page.waitForFunction(() => [...document.querySelectorAll('tbody tr')].some(row => row.textContent.includes('CUSTOMER-PO-EDITED')));
     await clickText('Edit');
     await page.waitForFunction(() => document.querySelector('input[aria-label="PO Number"]')?.value === 'CUSTOMER-PO-EDITED');
     await page.$eval(poInput, input => {
@@ -85,6 +87,7 @@ test('invoice page loads only eligible services and submits the selected payment
     await page.waitForFunction(() => [...document.querySelectorAll('tbody tr')].some(row => row.textContent.includes('CUSTOMER-PO-UPDATED')));
     assert.equal(await page.evaluate(() => document.body.textContent.includes('PO Received For No Of Year')), false);
     await page.evaluate(() => { window.noEligible = true; });
+    await clickText('Create Proforma Invoice');
     await clickText('Select a quotation');
     await clickText('Q-TEST');
     await page.waitForFunction(() => document.body.textContent.includes('No PO-uploaded, closed services found'));
