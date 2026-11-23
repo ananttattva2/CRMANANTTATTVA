@@ -4,6 +4,7 @@ import TrafficSources from '../components/leads/TrafficSources';
 import { isExistingClientTrafficSource, trafficSourceHierarchy, trafficSourceKey } from '../utils/trafficSources.mjs';
 import { currentPipelineRows, uniquePipelineRows, pipelinePeriodRange, previousPipelinePeriodRange, inPipelinePeriod } from '../utils/leadPipeline.mjs';
 import { salesRepSummary, salesRepTableData, salesRepOwner, isUnassignedOwner } from '../utils/salesRepSummary.mjs';
+import { downloadSalesRepPerformancePdf } from '../utils/salesRepPerformancePdf.mjs';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ArrowDown, ArrowUp, ArrowUpRight, CalendarDays, CircleDollarSign, Download, FileText, Flame, LayoutGrid, Minus, RefreshCw, Search, Snowflake, Target, Users, WalletCards, X } from 'lucide-react';
@@ -207,6 +208,8 @@ function SalesDashboardRepTable({ reps: allReps, comparisonLabel, range, previou
   const { reps, totals } = useMemo(() => salesRepTableData(allReps), [allReps]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
+  const [pdfExporting, setPdfExporting] = useState(false);
+  const [pdfExportError, setPdfExportError] = useState('');
   const pageCount = Math.max(1, Math.ceil(reps.length / pageSize));
   const safePage = Math.min(page, pageCount);
   const first = (safePage - 1) * pageSize;
@@ -226,8 +229,21 @@ function SalesDashboardRepTable({ reps: allReps, comparisonLabel, range, previou
     sheet['!cols'] = (XLSX.utils.sheet_to_json(sheet, { header: 1 })[0] || []).map(label => ({ wch: label === 'Major Service Interest' ? 55 : label === 'Sales Representative' ? 25 : Math.max(14, Math.min(30, String(label).length + 2)) }));
     const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, 'Sales Reps'); await exportWithReason('sales-rep-performance.xlsx', () => XLSX.writeFile(book, 'sales-rep-performance.xlsx'));
   }
+  async function exportPdf() {
+    setPdfExporting(true);
+    setPdfExportError('');
+    try {
+      await downloadSalesRepPerformancePdf({ reps, totals, range, comparisonLabel, previousRange });
+    } catch (error) {
+      console.error('Unable to download Sales Rep Performance PDF.', error);
+      setPdfExportError(error?.message || 'Unable to download the PDF report. Please try again.');
+    } finally {
+      setPdfExporting(false);
+    }
+  }
   return <section className="sales-dashboard-reps" aria-labelledby="sales-performance-heading">
-    <header><div><span><Users/></span><div><h2 id="sales-performance-heading">Sales Rep Performance</h2><p>Lead summary, conversion and revenue by sales representative.</p><small className="sales-dashboard-sort-note">Sorting: Highest to lowest based on total Hot Leads.</small></div></div><button type="button" onClick={exportReps} disabled={!allReps.length}><Download/>Export</button></header>
+    <header><div><span><Users/></span><div><h2 id="sales-performance-heading">Sales Rep Performance</h2><p>Lead summary, conversion and revenue by sales representative.</p><small className="sales-dashboard-sort-note">Sorting: Highest to lowest based on total Hot Leads.</small></div></div><div className="sales-dashboard-export-actions"><button type="button" onClick={exportReps} disabled={!allReps.length}><Download/>Export Excel</button><button type="button" onClick={exportPdf} disabled={!allReps.length || pdfExporting}><FileText/>{pdfExporting ? 'Preparing PDF...' : 'Download PDF'}</button></div></header>
+    {pdfExportError && <p className="sales-dashboard-export-error" role="alert">{pdfExportError}</p>}
     {comparisonLabel && <div className="sales-rep-comparison" role="note"><div><small>This {comparisonLabel}</small><strong>{range.label}</strong></div><span aria-hidden="true">vs</span><div><small>Previous {comparisonLabel}</small><strong>{previousRange.label}</strong></div><p>Current values, previous values and change are shown for every sales metric.</p></div>}
     <div className="sales-dashboard-reps-table"><table><thead><tr><th>Sales Representative</th><th>Total<br/>Leads</th><th colSpan="3">Hot Leads<div className="has-unassigned"><small>Closed</small><small>Open</small><small>Unassigned <button type="button" className="sales-unassigned-count" aria-label={`${totals.hotUnassigned} unassigned hot leads`} onClick={() => onMetricClick('Unassigned', 'hot', '')}>{totals.hotUnassigned.toLocaleString('en-IN')}</button></small></div></th><th>Cold Leads<br/><small>Open</small></th><th>Expected Revenue</th><th>PO Value</th><th>Major Service Interest</th></tr></thead>
       <tbody>{visible.map((rep) => <tr key={rep.owner}><td><span className="sales-dashboard-rep"><i>{rep.owner.split(/\s+/).slice(0,2).map(part => part[0]).join('').toUpperCase()}</i><b>{rep.owner.toUpperCase()}</b></span></td><td><RepMetric value={rep.totalLeads} previous={rep.previousTotalLeads} comparisonLabel={comparisonLabel} label={`${rep.owner} total leads`} onClick={() => onMetricClick(rep.owner, '', '')}/></td><td className="is-closed"><RepMetric value={rep.hotClosed} previous={rep.previousHotClosed} comparisonLabel={comparisonLabel} label={`${rep.owner} hot closed leads`} onClick={() => onMetricClick(rep.owner, 'hot', 'closed')}/></td><td className="is-hot"><RepMetric value={rep.hotOpen} previous={rep.previousHotOpen} comparisonLabel={comparisonLabel} label={`${rep.owner} hot open leads`} onClick={() => onMetricClick(rep.owner, 'hot', 'open')}/></td><td className="is-unassigned"><RepMetric value={rep.hotUnassigned || 0} previous={rep.previousHotUnassigned || 0} comparisonLabel={comparisonLabel} label={`${rep.owner} released unassigned hot leads`} onClick={() => onMetricClick(rep.owner, 'hot', 'unassigned')}/></td><td className="is-cold"><RepMetric value={rep.coldOpen} previous={rep.previousColdOpen} comparisonLabel={comparisonLabel} label={`${rep.owner} cold leads`} onClick={() => onMetricClick(rep.owner, 'cold', '')}/></td><td><strong>{revenueMoney(rep.expectedRevenuePaise)}</strong><CardPeriodComparison value={rep.expectedRevenuePaise} previous={rep.previousExpectedRevenuePaise} comparisonLabel={comparisonLabel} money/></td><td><strong>{revenueMoney(rep.poValuePaise)}</strong><CardPeriodComparison value={rep.poValuePaise} previous={rep.previousPoValuePaise} comparisonLabel={comparisonLabel} money/></td><td><div className="sales-service-tags">{rep.serviceInterests.length ? rep.serviceInterests.map((item, index) => <span key={item.label}><i>{index + 1}</i>{item.label}<b>{item.count}</b></span>) : <small>Not recorded</small>}</div></td></tr>)}</tbody>

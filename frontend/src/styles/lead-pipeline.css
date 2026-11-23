@@ -807,7 +807,11 @@
 .sales-dashboard-reps h2 { color:#14243a; font-size:14px; font-weight:950; }
 .sales-dashboard-reps header p { color:#7a8c9b; font-size:8px; }
 .sales-dashboard-sort-note { display:block; margin-top:3px; color:#e06025; font-size:8px; font-weight:850; }
-.sales-dashboard-reps>header>button { display:flex; align-items:center; gap:5px; padding:7px 10px; border:1px solid #bfe8d8; border-radius:8px; color:#098560; background:#effbf6; font-size:9px; font-weight:900; }
+.sales-dashboard-export-actions { display:flex; align-items:center; gap:7px; }
+.sales-dashboard-export-actions button { display:flex; align-items:center; gap:5px; padding:7px 10px; border:1px solid #bfe8d8; border-radius:8px; color:#098560; background:#effbf6; font-size:9px; font-weight:900; }
+.sales-dashboard-export-actions button:last-child { border-color:#fed7aa; color:#c2410c; background:#fff7ed; }
+.sales-dashboard-export-actions button:disabled { cursor:not-allowed; opacity:.45; }
+.sales-dashboard-export-error { padding:7px 13px; border-bottom:1px solid #fecaca; color:#b91c1c; background:#fef2f2; font-size:9px; font-weight:800; }
 .sales-dashboard-reps-table { overflow:auto; }
 .sales-dashboard-reps table { width:100%; min-width:900px; border-collapse:collapse; table-layout:fixed; }
 .sales-dashboard-reps th { height:46px; padding:6px 7px; border-right:1px solid #dfe7eb; border-bottom:1px solid #d9e4e8; color:#3c536a; background:#f2f6f8; font-size:8px; font-weight:950; text-align:center; text-transform:uppercase; }
