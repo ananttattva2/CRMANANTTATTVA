@@ -23,7 +23,7 @@ import { formatDisplayDate, formatDisplayDateTime } from '../utils/dateFormat';
 import { buildPendingClientApprovalExportRows, buildPendingClientApprovalSummary } from '../utils/pendingClientApprovalExport.mjs';
 
 const rowsPerPage = 5;
-const PENDING_APPROVAL_CACHE_KEY = 'crm.pendingApproval.cache.v10';
+const PENDING_APPROVAL_CACHE_KEY = 'crm.pendingApproval.cache.v11';
 const PENDING_APPROVAL_CACHE_TTL_MS = 5 * 60 * 1000;
 const PENDING_APPROVAL_AUTH_TIMEOUT_MS = 4500;
 const PENDING_APPROVAL_DATA_TIMEOUT_MS = 20000;

@@ -30,6 +30,7 @@ function setup(t, f, options = {}) {
     options.afterClaim?.(f);
     return saved;
   });
+  t.mock.method(Delivery, 'findOne', filter => ({ sort() { return this; }, select() { return this; }, lean: async () => [...ledger.values()].filter(row => row.status === 'sent' && filter.key.test(row.key)).sort((a, b) => +b.sentAt - +a.sentAt)[0] || null }));
   t.mock.method(Delivery, 'findOneAndUpdate', async (filter, update) => {
     const row = ledger.get(filter.key);
     if (!row || row.status !== 'sending' || +row.leaseUntil > +filter.leaseUntil.$lte) return null;
@@ -55,9 +56,11 @@ test('Admin approval sends two separate action emails to user, Admin and Super A
   await service.runPostPoApprovalReminders({ now: new Date(+f.now + TWO_DAYS - 1), approvalId });
   assert.equal(sent.length, 6);
   await service.runPostPoApprovalReminders({ now: new Date(+f.now + TWO_DAYS), approvalId });
-  assert.equal(sent.length, 12);
+  assert.equal(sent.length, 9, 'only manager reminders repeat after two days');
   await service.runPostPoApprovalReminders({ now: new Date(+f.now + TWO_DAYS + 3600000), approvalId });
-  assert.equal(sent.length, 12, 'duplicate scans do not resend a delivered cycle');
+  assert.equal(sent.length, 9, 'duplicate scans do not resend a delivered cycle');
+  await service.runPostPoApprovalReminders({ now: new Date(+f.now + 7 * 86400000), approvalId });
+  assert.equal(sent.filter(mail => mail.subject.startsWith('Send PI')).length, 6, 'PI reminders repeat after a week');
 });
 
 test('completed manager assignment stops only that action; PI generation alone does not stop sending reminders', async t => {
@@ -70,6 +73,21 @@ test('completed manager assignment stops only that action; PI generation alone d
   f.invoices[0] = f.sentInvoice;
   await service.runPostPoApprovalReminders({ now: new Date(+f.now + TWO_DAYS), approvalId });
   assert.equal(sent.length, 3);
+});
+
+test('switching from old two-day PI reminders waits seven days after the last successful email', async t => {
+  const f = fixture(), { sent, ledger } = setup(t, f);
+  await service.runPostPoApprovalReminders({ now: f.now, approvalId });
+  for (const [key, row] of [...ledger]) if (key.includes(':pi-weekly:')) {
+    ledger.delete(key);
+    row.key = key.replace(':pi-weekly:0:', ':pi:3:');
+    row.sentAt = new Date(+f.now + 6 * 86400000);
+    ledger.set(row.key, row);
+  }
+  await service.runPostPoApprovalReminders({ now: new Date(+f.now + 7 * 86400000), approvalId });
+  assert.equal(sent.filter(mail => mail.subject.startsWith('Send PI')).length, 3);
+  await service.runPostPoApprovalReminders({ now: new Date(+f.now + 13 * 86400000), approvalId });
+  assert.equal(sent.filter(mail => mail.subject.startsWith('Send PI')).length, 6);
 });
 
 test('PI email must belong to the exact lead/service and go to an external client', () => {

@@ -85,6 +85,14 @@ async function clientAccessFilter(user) {
 }
 exports.clientAccessFilter = clientAccessFilter;
 
+async function clientApprovalAccessFilter(user) {
+  // The review queue follows the same role authorization as compliance-review
+  // routes and reviewer discovery, independently of who owns the client.
+  if (userHasAnyRole(user, CLIENT_APPROVAL_ROLES)) return {};
+  return clientAccessFilter(user);
+}
+exports.clientApprovalAccessFilter = clientApprovalAccessFilter;
+
 async function leadAccessFilter(user) {
   const scope = await getVisibleUserScope(user);
   return leadOwnerFilter(scope);
@@ -2073,7 +2081,7 @@ exports.listPendingApprovals = async (req, res) => {
   const storedApprovalsPromise = readStoredPendingApprovals(listOnly);
   const liveClientsPromise = isClientReviewer
     ? Promise.all([
-        clientAccessFilter(req.user),
+        clientApprovalAccessFilter(req.user),
         require('../services/clientClosedPoDirectory').closedPoClientFilter()
       ]).then(([accessFilter, closedPoFilter]) => Client.find(combineAccessFilters(
         clientMasterSourceRecordFilter(),
