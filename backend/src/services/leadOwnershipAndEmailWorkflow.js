@@ -225,4 +225,4 @@ function startLeadOwnershipAndEmailScheduler() {
   setTimeout(run, 15000);
   setInterval(run, 60000);
 }
-module.exports = { DAY, lastLeadActivityAt, noOwnerEligibilityFilter, noOwnerWorkspaceFilter, refreshNoOwnerLeads, runLeadOwnershipAndEmailWorkflow, startLeadOwnershipAndEmailScheduler, __test: { DAY, lastLeadActivityAt, eligibleForNoOwner, noOwnerEligibilityFilter, noOwnerWorkspaceFilter, noOwnerUpdate, eventEmail, noOwnerSummaryEmail, moveOldOpenLeads, notifyNoOwnerLeads, remindMissingTemporaryEmails, sendOnce } };
+module.exports = { eligibleForNoOwner, previousOwner, DAY, lastLeadActivityAt, noOwnerEligibilityFilter, noOwnerWorkspaceFilter, refreshNoOwnerLeads, runLeadOwnershipAndEmailWorkflow, startLeadOwnershipAndEmailScheduler, __test: { DAY, lastLeadActivityAt, eligibleForNoOwner, noOwnerEligibilityFilter, noOwnerWorkspaceFilter, noOwnerUpdate, eventEmail, noOwnerSummaryEmail, moveOldOpenLeads, notifyNoOwnerLeads, remindMissingTemporaryEmails, sendOnce } };

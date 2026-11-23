@@ -1,3 +1,4 @@
+const { isSharedLead, prepareSharedLeadClaim } = require('../services/sharedLeadClaim');
 const Lead = require('../models/Lead');
 const { cleanPoCommercialDetails, validatePoCommercialDetails } = require('../utils/poCommercialDetails');
 const mongoose = require('mongoose');
@@ -1927,9 +1928,10 @@ exports.updateLead = async (req, res) => {
     const assignmentOnlyUpdate = isAssignmentOnlyLeadUpdate(req.body);
     const lead = addServicesMode
       ? await Lead.findById(req.params.id)
-      : await Lead.findOne(combineAccessFilters({ _id: req.params.id }, await leadAccessFilter(req.user)));
+      : await Lead.findOne(combineAccessFilters({ _id: req.params.id }, await leadAccessFilter(req.user, { includeShared: true })));
     if (!lead) return res.status(404).json({ error: 'Lead not found or not accessible' });
-    if (lead.noOwner?.active && !userHasAnyRole(req.user, ADMIN_ROLES)) return res.status(403).json({ error: 'Ask an administrator to allocate this shared lead before editing it.' });
+    const sharedClaim = isSharedLead(lead.toObject());
+    if (!sharedClaim && req.body?.noOwner?.active) return res.status(409).json({ error: 'This lead already has an owner. Refresh No Owner Leads before continuing.' });
     const beforeLead = lead.toObject();
 
     if (req.body?.company) {
@@ -1952,7 +1954,7 @@ exports.updateLead = async (req, res) => {
     const sendIntroductionEmail = req.body?.sendIntroductionEmail === true;
     const poDebugId = String(req.get('x-po-debug-id') || '').trim().slice(0, 100);
     let data = preserveExistingClosureEvidence(beforeLead, cleanBody(req.body));
-    data = enforcePrimaryOwnerClosureCredit(beforeLead, data, req.user);
+    data = enforcePrimaryOwnerClosureCredit(sharedClaim ? { ...beforeLead, generatedForUser: req.user._id, generatedForName: req.user.name || req.user.email, generatedForEmail: req.user.email } : beforeLead, data, req.user);
     if (addServicesMode) data = buildAppendOnlyServicePatch(beforeLead, data, req.user);
     data = setProvisionalClosureDeadlines(data, beforeLead);
     await require('../services/poReviewFreeze').assertLeadPoEditable(lead._id, beforeLead, data);
@@ -2030,6 +2032,7 @@ exports.updateLead = async (req, res) => {
       });
       if (prematureStaffAssignment) return res.status(409).json({ error: 'Finance must finally approve the Purchase Order before a manager can assign staff.' });
     }
+    if (sharedClaim) data = prepareSharedLeadClaim(lead, beforeLead, data, req.user);
     Object.assign(lead, data);
     if (Object.prototype.hasOwnProperty.call(data, 'subApplicantType') || Array.isArray(data.serviceSelections)) {
       lead.piboCategory = undefined;
@@ -2098,10 +2101,12 @@ exports.updateLead = async (req, res) => {
         actor: req.user
       }).catch((error) => console.error('Additional lead service notification failed', error));
     }
+    if (sharedClaim) await LeadActivity.create({ lead: lead._id, type: 'lead_allocated', title: 'Shared lead claimed', description: `${req.user.name || req.user.email} became the lead owner by updating this No Owner Lead.`, actor: req.user._id, metadata: { previousOwner: lead.noOwner?.previousOwner } });
     const changedFields = Object.keys(data).filter((key) => key !== 'followUpHistory');
     await LeadActivity.create({ lead: lead._id, type: 'lead_updated', title: 'Lead updated', description: changedFields.length ? `Updated ${changedFields.join(', ')}` : 'Lead details updated', actor: req.user?._id, metadata: { changedFields, modifyPoDetails: req.body?.modifyPoDetails === true } });
     res.json({ ok: true, lead, introductionEmail, poApprovalSubmissions });
   } catch (err) {
+    if (err.name === 'DocumentNotFoundError') return res.status(409).json({ error: 'This lead was already claimed or updated by another user. Refresh the lead before continuing.' });
     res.status(err.status || err.statusCode || (err.code === 11000 || err.name === 'VersionError' ? 409 : 500)).json({ error: err.code === 11000 ? 'This PO entered Finance review while you were editing. Refresh the lead.' : err.message || 'Unable to update lead' });
   }
 };
