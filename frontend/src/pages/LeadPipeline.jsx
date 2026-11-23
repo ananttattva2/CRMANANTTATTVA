@@ -204,7 +204,7 @@ function SalesPriorityCard({ kind, open, closed, expectedRevenue, quotationValue
   </article>;
 }
 
-function SalesDashboardRepTable({ reps: allReps, comparisonLabel, range, previousRange, onMetricClick }) {
+function SalesDashboardRepTable({ reps: allReps, comparisonLabel, range, previousRange, dashboardSummary, onMetricClick }) {
   const { reps, totals } = useMemo(() => salesRepTableData(allReps), [allReps]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
@@ -233,7 +233,7 @@ function SalesDashboardRepTable({ reps: allReps, comparisonLabel, range, previou
     setPdfExporting(true);
     setPdfExportError('');
     try {
-      await downloadSalesRepPerformancePdf({ reps, totals, range, comparisonLabel, previousRange });
+      await downloadSalesRepPerformancePdf({ reps, totals, summary: dashboardSummary, range, comparisonLabel, previousRange });
     } catch (error) {
       console.error('Unable to download Sales Rep Performance PDF.', error);
       setPdfExportError(error?.message || 'Unable to download the PDF report. Please try again.');
@@ -405,6 +405,15 @@ export default function LeadPipeline() {
     { label: 'Hot Closed', value: previousHotClosed.length },
     { label: 'Cold Open', value: previousColdRows.length }
   ], [previousHotOpen.length, previousHotClosed.length, previousColdRows.length]);
+  const dashboardPdfSummary = useMemo(() => ({
+    hotOpen: hotOpen.length,
+    hotClosed: hotClosed.length,
+    hotExpectedRevenuePaise: total(hotOpen),
+    hotQuotationValuePaise: quotationTotal(hotOpen),
+    hotPoValuePaise: poTotal(hotClosed),
+    coldOpen: coldRows.length,
+    coldExpectedRevenuePaise: total(coldRows)
+  }), [hotOpen, hotClosed, coldRows]);
   const salesDashboardReps = useMemo(() => salesReps.map((rep) => {
     const ownerRows = activeOwnerRows(filtered).filter((row) => salesRepOwner(row) === rep.owner);
     const previousOwnerRows = activeOwnerRows(previousFiltered).filter((row) => salesRepOwner(row) === rep.owner);
@@ -479,7 +488,7 @@ export default function LeadPipeline() {
       <section className="summary-analytics-grid">
         <TrafficSources sources={trafficSources} onSelect={openSource} optionsUnavailable={sourceOptionsUnavailable}/>
       </section>
-      <SalesDashboardRepTable reps={salesDashboardReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)}/></>}
+      <SalesDashboardRepTable reps={salesDashboardReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} dashboardSummary={dashboardPdfSummary} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)}/></>}
       {salesDesignView && <>
         {comparisonLabel ? <section className="sales-period-comparison" aria-label="Dashboard period comparison"><span>{comparisonLabel[0].toUpperCase() + comparisonLabel.slice(1)} comparison</span><strong>{range.label}</strong><small>vs</small><strong>{previousRange.label}</strong></section> : <p className="sales-comparison-hint">Select This Week or This Month above to compare the complete dashboard with the previous period.</p>}
         {!unique.length && <p role="status" className="pipeline-filter-empty">No leads match these filters. Try another period or owner.</p>}
@@ -489,7 +498,7 @@ export default function LeadPipeline() {
           <SalesPriorityCard kind="cold" open={coldRows.length} closed={0} expectedRevenue={total(coldRows)} poValue={0} previousOpen={previousColdRows.length} previousClosed={0} previousExpectedRevenue={total(previousColdRows)} previousPoValue={0} comparisonLabel={comparisonLabel} onOpen={open}/>
         </section>
         <section className="sales-dashboard-main">
-          <SalesDashboardRepTable reps={salesDashboardReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)}/>
+          <SalesDashboardRepTable reps={salesDashboardReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} dashboardSummary={dashboardPdfSummary} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)}/>
         </section>
         <SalesTrafficStrip sources={trafficSources} previousSources={previousTrafficSources} comparisonLabel={comparisonLabel} onSelect={openSource}/>
       </>}
