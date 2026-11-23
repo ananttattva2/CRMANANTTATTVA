@@ -39,7 +39,7 @@ export function buildPendingClientApprovalExportRows(clients = []) {
       'Client Name': text(client.clientName || client.companyName),
       'Approval Status': STATUS_LABELS[statusOf(client)] || statusOf(client),
       'User Name': text(client.createdBy || client.submittedBy || client.createdByName || client.userName),
-      'Decision By': statusOf(client) === 'PENDING' ? '-' : text(client.decisionBy || client.actionBy),
+      'Decision By': text(client.decisionBy || client.actionBy),
       'Applicant Type': text(client.piboCategory || client.applicantType),
       'Service Category': text(client.eprCategory || client.serviceCategory),
       'Applicant Count': Number(client.applicantCount) || 1,

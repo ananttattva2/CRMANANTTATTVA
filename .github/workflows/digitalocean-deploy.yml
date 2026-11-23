@@ -56,6 +56,9 @@ jobs:
       - name: Test EPR Credit tariffs and restricted approvals
         run: node --test backend/test/eprCreditRateApproval.test.js backend/test/eprCreditRateBrowser.test.js backend/test/eprCreditQuotationCalculation.test.js backend/test/companyQuotationCreditBrowser.test.js backend/test/quotationListCreditPopupBrowser.test.js backend/test/eprCreditFinalAmountBrowser.test.js
 
+      - name: Test previous client decision identity
+        run: node --test backend/test/clientDecisionHistory.test.js backend/test/clientDecisionHistoryBrowser.test.js backend/test/pendingApprovalCompliance.test.js backend/test/pendingClientApprovalExcel.test.js backend/test/clientComplianceSubmissionNotifications.test.js
+
       - name: Test application category tabs and counts
         run: node --test backend/test/portfolioWasteCategories.test.js backend/test/applicationPortfolioHeaders.test.js backend/test/applicationPortfolio.test.js backend/test/applicationPortfolioPdf.test.js
 

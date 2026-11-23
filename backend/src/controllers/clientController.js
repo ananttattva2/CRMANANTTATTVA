@@ -1,3 +1,4 @@
+const { readPreviousClientDecisions } = require('../services/clientDecisionHistory');
 const mongoose = require('mongoose');
 const { inclusionProjection } = require('../utils/inclusionProjection');
 const Client = require('../models/Client');
@@ -1058,7 +1059,7 @@ async function queueCreatedClientApproval(client, user, { resubmission = false, 
   if (resubmission) {
     await PendingApproval.findOneAndUpdate(
       { type: 'client', source: 'crm', sourceClientId: String(client._id) },
-      { $set: { approvalStatus: 'PENDING', actionBy: null, actionAt: null, remarks: 'Corrected Client Master resubmitted for compliance review', nextReminderAt: new Date(Date.now() + 24 * 60 * 60 * 1000) } }
+      { $set: { approvalStatus: 'PENDING', remarks: 'Corrected Client Master resubmitted for compliance review', nextReminderAt: new Date(Date.now() + 24 * 60 * 60 * 1000) } }
     );
     const review = await ClientComplianceReview.findOne({ client: client._id });
     if (review) {
@@ -1087,7 +1088,7 @@ async function syncPendingApprovalRows(rows, type = 'client') {
 }
 
 async function readStoredPendingApprovals(listOnly = false) {
-  return require('../services/crmCache').getCrmCache().remember(`pending-approval-index-v4:${listOnly}`, () => loadStoredPendingApprovals(listOnly));
+  return require('../services/crmCache').getCrmCache().remember(`pending-approval-index-v5:${listOnly}`, () => loadStoredPendingApprovals(listOnly));
 }
 
 async function loadStoredPendingApprovals(listOnly = false) {
@@ -1129,11 +1130,13 @@ async function loadStoredPendingApprovals(listOnly = false) {
       .lean()
   ]);
   const submittedIds = new Set(submittedClients.filter(pendingClientWorkflowReady).map((client) => String(client._id)));
+  const previousClientDecisions = await readPreviousClientDecisions(clientRecords.filter(record => submittedIds.has(String(record.sourceClientId))));
   const reviewByClient = new Map(complianceReviews.map((review) => [String(review.client), review]));
   const clientRows = clientRecords
     .filter((record) => submittedIds.has(String(record.sourceClientId)))
     .map((record) => ({
       ...mapPendingApprovalRecord(record),
+      ...(previousClientDecisions.get(String(record.sourceClientId)) || {}),
       complianceReview: reviewByClient.get(String(record.sourceClientId)) || null
     }));
 
