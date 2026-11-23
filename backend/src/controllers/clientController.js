@@ -2500,6 +2500,8 @@ exports.updateAnnualReturn = async (req, res) => {
   try {
     const annualYear = normalizeAnnualYearKey(req.body.annualYear);
     if (!annualYear) return res.status(400).json({ error: 'Annual return year is required' });
+    const yearAccess = require('../../../shared/serviceYearAccess.cjs').annualYearAccess(annualYear);
+    if (!yearAccess.allowed) return res.status(403).json({ error: yearAccess.message, code: 'ANNUAL_YEAR_FROZEN' });
     const approvalWorkflow = isPlainObject(req.body.approvalWorkflow) ? req.body.approvalWorkflow : {};
     const workflowRemark = String(approvalWorkflow.remark || approvalWorkflow.lastRemark || '').trim();
     if (workflowRemark.length > 250) return res.status(400).json({ error: 'Remark must be 250 characters or less' });

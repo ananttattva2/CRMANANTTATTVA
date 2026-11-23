@@ -204,6 +204,7 @@ fi
 node backend/src/scripts/repairRequestedProforma.js
 node backend/src/scripts/repairMysticalPoAmount.js
 node backend/src/scripts/migrateProformaPrefix.js
+node backend/src/scripts/repairRequestedClientCreators.js
 
 BACKUP_DIST="$APP_DIR/frontend/.dist-previous-$(date +%s)"
 if [[ -d "$APP_DIR/frontend/dist" ]]; then

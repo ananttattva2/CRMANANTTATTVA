@@ -36,6 +36,8 @@ router.get('/discovery/services', requireAuth, clientCtrl.listClientMasterServic
 router.get('/discovery/catalog', requireAuth, clientCtrl.listClientMasterCatalog);
 router.get('/pending-approvals/clients/:id/applicants', requireAuth, requireRoles(CLIENT_APPROVAL_ROLES), clientCtrl.listClientReviewApplicants);
 router.get('/pending-approvals', requireAuth, cacheRead, clientCtrl.listPendingApprovals);
+router.get('/:id/registration-tracker', requireAuth, require('../controllers/registrationTrackerController').get);
+router.put('/:id/registration-tracker', requireAuth, require('../controllers/registrationTrackerController').save);
 router.patch('/pending-approvals/clients/approve-all', requireAuth, requireRoles(CLIENT_APPROVAL_ROLES), clientCtrl.approveAllPendingClients);
 router.post('/bulk', requireAuth, requireRoles(ADMIN_ROLES), clientCtrl.bulkCreateClients);
 router.post('/years/bulk', requireAuth, requireRoles(ADMIN_ROLES), clientCtrl.bulkUpdateClientYears);

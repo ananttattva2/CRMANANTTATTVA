@@ -11,6 +11,7 @@ import { adminRoles } from '../../constants/dashboard';
 import { quotationServiceCategoryOptions, selectOptions } from './clientMaster.constants';
 import { UploadButton } from './ClientMasterFormSections';
 import PurchaseDataWorkspace from './PurchaseDataWorkspace';
+import serviceYearAccess from '../../../../shared/serviceYearAccess.cjs';
 import { uploadMedia, uploadMediaBatch } from '../../services/mediaUpload';
 import { formatDisplayDate as formatProjectDate } from '../../utils/dateFormat';
 import {
@@ -1934,6 +1935,8 @@ export function AnnualReturnHistory({ client, quotations = [], proformaInvoices 
   }, [activeProcessingTab, activeSections]);
 
   function openAnnualYear(year) {
+    const access = serviceYearAccess.annualYearAccess(year.label);
+    if (!access.allowed) { setAnnualToast({ type: 'warning', message: access.message }); return; }
     const clientKey = client?._id || client?.id || data.importMeta?.uniqueId || getClientUniqueId(client);
     const nextYear = year?.label || '';
     const poState = poStateForYear(nextYear);
@@ -1966,6 +1969,7 @@ export function AnnualReturnHistory({ client, quotations = [], proformaInvoices 
   }
 
   const hubPoStates = years.map((year) => poStateForYear(year.label));
+  if (selected && !serviceYearAccess.annualYearAccess(selected.label).allowed) return <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-5"><p role="alert">{serviceYearAccess.annualYearAccess(selected.label).message}</p><button type="button" onClick={() => navigate('/sales/client-master')} className="mt-4 rounded-lg bg-teal-700 px-4 py-2 text-white">Back to Client Master</button></div>;
 
   return (
     <div className="mt-5 space-y-5">
@@ -1982,13 +1986,14 @@ export function AnnualReturnHistory({ client, quotations = [], proformaInvoices 
           : poResolution.error ? <div className="p-6 text-sm text-red-600" role="alert">{poResolution.error}<button type="button" onClick={() => setPoRefreshToken((value) => value + 1)} className="ml-4 rounded-lg border px-3 py-2">Retry</button></div>
           : <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-left text-sm">
             <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500"><tr>
-              {['Sub Applicant Type', 'Services Offered', 'PO Year', 'PO Number', 'View PO', 'Action'].map((label) => <th key={label} scope="col" className="px-5 py-4">{label}</th>)}
+              {['Sub Applicant Type', 'Services Offered', 'PO Year', 'Annual Return Year', 'PO Number', 'View PO', 'Action'].map((label) => <th key={label} scope="col" className="px-5 py-4">{label}</th>)}
             </tr></thead>
             <tbody className="divide-y divide-slate-100">
               {hubPoStates.filter((state) => state.poStatus === 'received' && state.po?.isClosed).map((state) => <tr key={state.fy} className="hover:bg-teal-50/40">
                 <td className="px-5 py-5 font-semibold text-slate-800">{data.basic?.piboCategory || 'Not recorded'}</td>
                 <td className="px-5 py-5 text-slate-700">{state.po?.service || data.basic?.servicesOffered || 'Annual Return Filling'}</td>
                 <td className="whitespace-nowrap px-5 py-5">{state.po?.poYear || state.fy}</td>
+                <td className="whitespace-nowrap px-5 py-5 font-bold">{state.fy}</td>
                 <td className="px-5 py-5 font-semibold">{state.po?.number || 'Not recorded'}</td>
                 <td className="px-5 py-5">{state.po?.fileUrl ? <a href={normalizeDocumentUrl(state.po.fileUrl)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-teal-200 px-3 py-2 font-bold text-[#30737B]"><Eye className="h-4 w-4" />View PO</a> : <button type="button" onClick={() => setPoDetails(state)} className="whitespace-nowrap rounded-lg border border-teal-200 px-3 py-2 font-bold text-[#30737B]">View Details</button>}</td>
                 <td className="px-5 py-5"><button type="button" onClick={() => openAnnualYear({ label: state.fy })} className="whitespace-nowrap rounded-lg bg-[#30737B] px-4 py-2.5 font-bold text-white hover:bg-teal-800">Continue to Service</button></td>

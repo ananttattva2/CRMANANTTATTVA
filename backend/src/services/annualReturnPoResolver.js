@@ -285,6 +285,7 @@ async function resolveServiceHistory({ clientMaster, LeadModel = Lead } = {}) {
         rows.push({ assignedServiceId, applicantType: label(service.subApplicantType || service.piboCategory || assignment.subApplicantType || assignment.piboCategory || clientMaster.data?.basic?.piboCategory),
           service: serviceName, annual: isAnnualReturnService(serviceName),
           annualYear: normalizeFinancialYear(poRow.annualReturnYear || poRow.fy || poRow.fyYear || poRow.financialYear),
+          registrationYear: normalizeFinancialYear(poRow.registrationYear),
           poYear: po.poYear, number: po.number, fileUrl: po.fileUrl, fileName: po.fileName });
       });
     });

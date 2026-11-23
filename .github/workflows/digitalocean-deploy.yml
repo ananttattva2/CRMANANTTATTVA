@@ -65,6 +65,9 @@ jobs:
       - name: Test targeted Mystical PO amount correction
         run: node --test backend/test/mysticalPoAmountCorrection.test.js
 
+      - name: Test service year access and registration tracker
+        run: node --test backend/test/serviceYearRegistration.test.js backend/test/registrationTrackerAccess.test.js backend/test/requestedClientCreators.test.js
+
       - name: Test invoice email and payment notifications
         run: node --test backend/test/proformaEmail.test.js backend/test/paymentStatusNotification.test.js backend/test/invoiceEmailUiBrowser.test.js backend/test/sidebarCollapsedBrowser.test.js backend/test/sidebarFlyoutVisibility.test.js
 
