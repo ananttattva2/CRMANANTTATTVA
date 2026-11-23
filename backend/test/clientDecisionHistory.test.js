@@ -14,6 +14,12 @@ test('a new final decision updates Decision By; untouched first-time clients sta
  const result=await readPreviousClientDecisions([{sourceClientId:client}],{ReviewModel,UserModel});assert.equal(result.get(client).decisionBy,'Kamlesh Zore');assert.equal(result.has('507f1f77bcf86cd799439098'),false);
  await readPreviousClientDecisions([{sourceClientId:client,actionBy:{name:'KRISHNA Yadav'}}],{ReviewModel:{aggregate:()=>assert.fail('Existing decision must not require history reads')}});
 });
+test('string actionBy in review history is used directly as Decision By',async()=>{
+ const ReviewModel={aggregate:async()=>[{client,lastDecision:{action:'PARTIALLY_APPROVED',actionBy:'Morvi Gupta',actionAt:'2026-11-14T05:15:00Z'}}]};
+ const UserModel={find:()=>({select:()=>({lean:async()=>[]})})};
+ const result=await readPreviousClientDecisions([{sourceClientId:client,approvalStatus:'PARTIALLY_APPROVED',actionBy:null}],{ReviewModel,UserModel});
+ assert.equal(result.get(client).decisionBy,'Morvi Gupta');assert.equal(result.get(client).decisionAt,'2026-11-14T05:15:00Z');
+});
 test('corrected Client Master returns to pending without clearing previous decision identity',async()=>{
  const source=fs.readFileSync(path.resolve(__dirname,'../src/controllers/clientController.js'),'utf8');const start=source.indexOf('async function queueCreatedClientApproval('),end=source.indexOf('\nasync function syncPendingApprovalRows(',start);
  const pending={actionBy:krishna,actionAt:'2026-11-01'},review={history:[],save:async()=>{}};

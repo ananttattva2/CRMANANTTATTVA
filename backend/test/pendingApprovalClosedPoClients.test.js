@@ -55,6 +55,10 @@ test('Approval Center reconciles only closed-PO clients and removes stale indexe
     exports: {}, Date, console,
     mongoose: { isValidObjectId: value => /^[a-f\d]{24}$/i.test(String(value)) },
     userHasAnyRole: () => true,
+    normalizeApprovalStatus: value => {
+      const status = String(value || '').trim().toUpperCase();
+      return ['PENDING', 'PARTIALLY_APPROVED', 'APPROVED', 'REJECTED'].includes(status) ? status : '';
+    },
     readStoredPendingApprovals: async () => ({ pendingClients: [...eligible.map(row => ({ id: row._id, approvalStatus: 'APPROVED', serviceOffered: '-', assignedStaff: '-' })), ...stale], pendingQuotations: [] }),
     clientAccessFilter: async () => ({ assignedUser: 'reviewer' }),
     clientApprovalAccessFilter: async () => ({}),

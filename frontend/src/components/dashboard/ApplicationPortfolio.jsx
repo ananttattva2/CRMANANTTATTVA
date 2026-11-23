@@ -106,7 +106,9 @@ const ApplicationPortfolio = forwardRef(function ApplicationPortfolio({ mode, pe
   const matches = (row, key) => distribution ? matchesDistributionSummary(row, key) : serviceSummary ? matchesServiceSummary(row, key) : matchesStatusSummary(row, key)
   const wasteCounts = Object.fromEntries(PORTFOLIO_WASTE_CATEGORIES.map(({ key }) => [key,
     searchedGroups(categoryGroups[key])
-      .reduce((sum, group) => sum + group.records.filter(record => matches(record, 'total')).length, 0)
+      .reduce((sum, group) => sum + group.records.filter(record =>
+        matchesServiceSummary(record, 'Annual Return Filling') || matchesServiceSummary(record, 'annualActionRequired')
+      ).length, 0)
   ]))
   const excelRecords = allRecords.filter(row => matches(row, 'total'))
   const open = (name, records, label = 'All categories', key = '') => setSelection({ name, records, label: `${wasteLabel} · ${label}`, key })

@@ -998,7 +998,9 @@ function mapPendingApprovalRecord(record) {
     createdBy: record.createdByName || payload.createdBy || payload.userName || '-',
     requestDate: record.requestDate || payload.requestDate || '-',
     requestTime: record.requestTime || payload.requestTime || '-',
-    decisionBy: record.actionBy?.name || record.actionBy?.email || '-',
+    decisionBy: record.actionBy?.name || record.actionBy?.email
+      || (typeof record.actionBy === 'string' && record.actionBy.trim() ? record.actionBy.trim() : '')
+      || '-',
     decisionAt: record.actionAt || null,
     remarks: record.remarks || '',
     managementApproverId: record.managementApprover || payload.managementApproverId || '',
@@ -2153,7 +2155,7 @@ exports.listPendingApprovals = async (req, res) => {
         accessFilter,
         closedPoFilter
       ))
-        .select('_id selectedLead assignedServiceId workflowStatus adminControls.approvalStatus data.assignedServiceId data.basic.clientLegalName data.basic.tradeName data.basic.piboCategory data.basic.eprCategory data.basic.servicesOffered data.selectedLeadSnapshot.assignedServiceId data.selectedLeadSnapshot.servicesOffered data.importMeta.uniqueId data.importMeta.createdBy data.importMeta.createdByEmail createdBy createdAt')
+        .select('_id selectedLead assignedServiceId workflowStatus adminControls.approvalStatus data.assignedServiceId data.basic.clientLegalName data.basic.tradeName data.basic.piboCategory data.basic.eprCategory data.basic.servicesOffered data.selectedLeadSnapshot.assignedServiceId data.selectedLeadSnapshot.servicesOffered data.importMeta.uniqueId data.importMeta.createdBy data.importMeta.createdByEmail data.approvalMeta createdBy createdAt')
         .populate('createdBy', 'name email')
         .populate('selectedLead', 'assignments.assignedServiceId assignments.serviceAssignmentId assignments.assignmentId assignments.assignedStaff assignments.assignedStaffText assignments.assignedStaffName assignments.assignedStaffEmail assignments.servicesOffered assignments.applicableService assignments.serviceName serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId serviceSelections.assignmentId serviceSelections.servicesOffered serviceSelections.applicableService serviceSelections.serviceName')
         .sort({ createdAt: -1 })
@@ -2204,17 +2206,51 @@ exports.listPendingApprovals = async (req, res) => {
       String(user._id),
       user.name || user.email || ''
     ]));
-    const liveClientRows = liveClients.map((client) => mapClientPendingApprovalRow(
+    const baseLiveClientRows = liveClients.map((client) => mapClientPendingApprovalRow(
       client,
       client.createdBy?.name
         || client.createdBy?.email
         || client.data?.importMeta?.createdBy
         || client.data?.importMeta?.createdByEmail
         || 'CRM User'
-    )).map((row, index) => ({
-      ...row,
-      ...pendingClientDisplayContext(liveClients[index], assignedStaffNames)
-    }));
+    ));
+    // Resolve the last compliance decision from the live Client Master's
+    // approvalMeta. The PendingApproval index row can be absent when the lead
+    // assignment is not yet fully workflow-ready, so the live record is the
+    // authoritative source of who decided and when.
+    const decisionStatuses = new Set(['APPROVED', 'PARTIALLY_APPROVED', 'REJECTED']);
+    const liveDecisionActors = [...new Set(liveClients
+      .filter((client) => decisionStatuses.has(normalizeApprovalStatus(client.adminControls?.approvalStatus)))
+      .map((client) => String(client.data?.approvalMeta?.actionBy || '').trim())
+      .filter((id) => mongoose.isValidObjectId(id)))];
+    const liveDecisionUsers = liveDecisionActors.length
+      ? await User.find({ _id: { $in: liveDecisionActors } }).select('_id name email').lean()
+      : [];
+    const liveDecisionUserNames = new Map(liveDecisionUsers.map((user) => [
+      String(user._id),
+      user.name || user.email || ''
+    ]));
+    const liveClientRows = baseLiveClientRows.map((row, index) => {
+      const client = liveClients[index];
+      const approvalMeta = client.data?.approvalMeta || {};
+      const status = normalizeApprovalStatus(client.adminControls?.approvalStatus);
+      const hasDecision = decisionStatuses.has(status);
+      const actor = String(approvalMeta.actionBy || '').trim();
+      const decisionBy = hasDecision
+        ? (liveDecisionUserNames.get(actor)
+            || (actor && !mongoose.isValidObjectId(actor) ? actor : '')
+            || '-')
+        : row.decisionBy;
+      return {
+        ...row,
+        ...pendingClientDisplayContext(client, assignedStaffNames),
+        ...(hasDecision ? {
+          decisionBy,
+          decisionAt: approvalMeta.actionAt || row.decisionAt || null,
+          remarks: approvalMeta.remarks || row.remarks || ''
+        } : {})
+      };
+    });
     const liveClientIds = new Set(liveClientRows.map((row) => String(row.id || '')));
     const indexedLiveRows = storedFallback.pendingClients.filter((row) => liveClientIds.has(String(row.id || row.sourceClientId || '')));
     responseClients = mergePendingClients(indexedLiveRows, liveClientRows);

@@ -16,8 +16,16 @@ async function readPreviousClientDecisions(records = [], { ReviewModel = Review,
   const usersById = new Map(users.map(user => [String(user._id), user]));
   const result = new Map();
   for (const review of reviews) {
-    const event = review.lastDecision, user = usersById.get(String(event?.actionBy || ''));
-    if (event && user) result.set(String(review.client), { decisionBy: user.name || user.email || '-', decisionAt: event.actionAt || null });
+    const event = review.lastDecision;
+    if (!event) continue;
+    const actor = String(event.actionBy || '');
+    const user = usersById.get(actor);
+    // actionBy may be a legacy plain-string name/email instead of an ObjectId;
+    // use it directly instead of dropping the decision maker.
+    const decisionBy = user
+      ? (user.name || user.email || '-')
+      : (actor && !mongoose.isValidObjectId(actor) ? actor : '');
+    if (decisionBy) result.set(String(review.client), { decisionBy, decisionAt: event.actionAt || null });
   }
   return result;
 }
