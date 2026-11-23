@@ -55,6 +55,8 @@ test('compliance review workspace exposes uploaded images and documents securely
   assert.match(workspace, /function MsmeReviewTable/);
   assert.match(workspace, /Registered MSME \/ Udyam Records/);
   assert.match(workspace, /function complianceHeaderMetadata/);
+  assert.match(workspace, /reviewService\.applicationType, reviewService\.servicesOffered, reviewService\.applicableService, reviewService\.serviceName/);
+  assert.match(workspace, /service\.applicationType, service\.servicesOffered, service\.applicableService, service\.serviceName/);
   assert.match(workspace, /\['Applicant Type', headerMetadata\.applicantTypes\]/);
   assert.match(workspace, /\['Sub Applicant Type', headerMetadata\.subApplicantTypes\]/);
   assert.match(workspace, /\['Application Type', headerMetadata\.applicationTypes\]/);
@@ -81,7 +83,7 @@ test('saving a tab review never changes the overall client approval bucket', () 
 
 test('dashboard brand identifies the e-connect workspace', () => {
   const topbar = fs.readFileSync(path.join(__dirname, '../../frontend/src/components/dashboard/Topbar.jsx'), 'utf8');
-  assert.match(topbar, />e-connect<\/small>/);
+  assert.match(topbar, /<strong[^>]*>e-Connect<\/strong>/);
 });
 
 test('compliance review resolves the same assigned-service data used by Client Master', () => {

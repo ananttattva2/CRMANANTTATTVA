@@ -40,14 +40,27 @@ test('Pending Clients matches the exact assigned service instead of another read
 
 test('Pending Clients displays staff and service from the exact manager assignment', () => {
   const { pendingClientDisplayContext } = clientController.__test;
-  const client = ready({ servicesOffered: 'Registration' });
+  const client = ready();
+  client.selectedLead.assignments.push({
+    assignedServiceId: 'service-2',
+    assignedStaff: 'staff-2',
+    assignedStaffText: 'Another Staff Member'
+  });
+  client.selectedLead.serviceSelections = [
+    { assignedServiceId: 'service-1', servicesOffered: 'New Registration' },
+    { assignedServiceId: 'service-2', servicesOffered: 'Annual Return' }
+  ];
   client.data = {
     assignedServiceId: 'service-1',
-    basic: { servicesOffered: 'Annual Return' }
+    basic: {}
   };
 
   assert.deepEqual(
-    pendingClientDisplayContext(client, new Map([['staff-1', 'Assigned Staff Name']])),
-    { assignedStaff: 'Assigned Staff Name', serviceOffered: 'Annual Return' }
+    pendingClientDisplayContext(client, new Map([['staff-1', 'Shubham Desai'], ['staff-2', 'Another Staff Member']])),
+    { assignedStaff: 'Shubham Desai', serviceOffered: 'New Registration' }
+  );
+  assert.deepEqual(
+    pendingClientDisplayContext({ ...client, assignedServiceId: 'service-2' }, new Map([['staff-2', 'Another Staff Member']])),
+    { assignedStaff: 'Another Staff Member', serviceOffered: 'Annual Return' }
   );
 });

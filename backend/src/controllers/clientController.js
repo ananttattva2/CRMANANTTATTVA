@@ -857,12 +857,20 @@ function applyApprovalDecisionToClientData(existingData = {}, status, source, us
 function mergePendingClients(localRows, incomingRows) {
   const merged = [];
   const indexByKey = new Map();
+  const displayFields = ['serviceOffered', 'assignedStaff'];
 
   [...incomingRows, ...localRows].forEach((row) => {
     const key = getPendingClientKey(row);
     if (key && indexByKey.has(key)) {
       const index = indexByKey.get(key);
-      merged[index] = { ...merged[index], ...row };
+      const current = merged[index];
+      const combined = { ...current, ...row };
+      displayFields.forEach((field) => {
+        const currentValue = String(current?.[field] || '').trim();
+        const incomingValue = String(row?.[field] || '').trim();
+        if (incomingValue === '-' && currentValue && currentValue !== '-') combined[field] = currentValue;
+      });
+      merged[index] = combined;
       return;
     }
 
@@ -1045,7 +1053,9 @@ function pendingClientAssignment(client = {}) {
     || client.data?.selectedLeadSnapshot?.assignedServiceId
     || ''
   ).trim();
-  return assignments.find((row) => assignedServiceId && String(row?.assignedServiceId || '').trim() === assignedServiceId)
+  return assignments.find((row) => assignedServiceId && String(
+    row?.assignedServiceId || row?.serviceAssignmentId || row?.assignmentId || ''
+  ).trim() === assignedServiceId)
     || (assignments.length === 1 ? assignments[0] : null);
 }
 
@@ -1053,7 +1063,9 @@ function pendingClientDisplayContext(client = {}, userNames = new Map()) {
   const assignment = pendingClientAssignment(client) || {};
   const lead = client.selectedLead && typeof client.selectedLead === 'object' ? client.selectedLead : {};
   const assignedServiceId = String(client.assignedServiceId || client.data?.assignedServiceId || client.data?.selectedLeadSnapshot?.assignedServiceId || '').trim();
-  const service = (Array.isArray(lead.serviceSelections) ? lead.serviceSelections : []).find((row) => assignedServiceId && String(row?.assignedServiceId || '').trim() === assignedServiceId) || {};
+  const service = (Array.isArray(lead.serviceSelections) ? lead.serviceSelections : []).find((row) => assignedServiceId && String(
+    row?.assignedServiceId || row?.serviceAssignmentId || row?.assignmentId || ''
+  ).trim() === assignedServiceId) || {};
   const staffValue = assignment.assignedStaff;
   const staffId = String(staffValue?._id || staffValue?.id || staffValue || '').trim();
   const assignedStaff = String(
@@ -2141,8 +2153,9 @@ exports.listPendingApprovals = async (req, res) => {
         accessFilter,
         closedPoFilter
       ))
-        .select('_id selectedLead assignedServiceId workflowStatus adminControls.approvalStatus data.basic.clientLegalName data.basic.tradeName data.basic.piboCategory data.basic.eprCategory data.importMeta.uniqueId data.importMeta.createdBy data.importMeta.createdByEmail createdBy createdAt')
+        .select('_id selectedLead assignedServiceId workflowStatus adminControls.approvalStatus data.assignedServiceId data.basic.clientLegalName data.basic.tradeName data.basic.piboCategory data.basic.eprCategory data.basic.servicesOffered data.selectedLeadSnapshot.assignedServiceId data.selectedLeadSnapshot.servicesOffered data.importMeta.uniqueId data.importMeta.createdBy data.importMeta.createdByEmail createdBy createdAt')
         .populate('createdBy', 'name email')
+        .populate('selectedLead', 'assignments.assignedServiceId assignments.serviceAssignmentId assignments.assignmentId assignments.assignedStaff assignments.assignedStaffText assignments.assignedStaffName assignments.assignedStaffEmail assignments.servicesOffered assignments.applicableService assignments.serviceName serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId serviceSelections.assignmentId serviceSelections.servicesOffered serviceSelections.applicableService serviceSelections.serviceName')
         .sort({ createdAt: -1 })
         .lean())
     : Promise.resolve([]);
@@ -2180,6 +2193,17 @@ exports.listPendingApprovals = async (req, res) => {
   if (missingQuotationRows.length) backgroundSyncPendingApprovals([], missingQuotationRows);
   let responseClients;
   if (isClientReviewer) {
+    const assignedStaffIds = [...new Set(liveClients
+      .map((client) => pendingClientAssignment(client)?.assignedStaff)
+      .map((value) => String(value?._id || value?.id || value || '').trim())
+      .filter((value) => mongoose.isValidObjectId(value)))];
+    const assignedStaffUsers = assignedStaffIds.length
+      ? await User.find({ _id: { $in: assignedStaffIds } }).select('_id name email').lean()
+      : [];
+    const assignedStaffNames = new Map(assignedStaffUsers.map((user) => [
+      String(user._id),
+      user.name || user.email || ''
+    ]));
     const liveClientRows = liveClients.map((client) => mapClientPendingApprovalRow(
       client,
       client.createdBy?.name
@@ -2187,7 +2211,10 @@ exports.listPendingApprovals = async (req, res) => {
         || client.data?.importMeta?.createdBy
         || client.data?.importMeta?.createdByEmail
         || 'CRM User'
-    ));
+    )).map((row, index) => ({
+      ...row,
+      ...pendingClientDisplayContext(liveClients[index], assignedStaffNames)
+    }));
     const liveClientIds = new Set(liveClientRows.map((row) => String(row.id || '')));
     const indexedLiveRows = storedFallback.pendingClients.filter((row) => liveClientIds.has(String(row.id || row.sourceClientId || '')));
     responseClients = mergePendingClients(indexedLiveRows, liveClientRows);
@@ -3748,6 +3775,7 @@ exports.__test = {
   enrichClientMasterReviewServiceFromLead,
   uniqueClientMasterReviewServices,
   mergePendingClients,
+  pendingClientAssignment,
   pendingClientWorkflowReady,
   pendingClientDisplayContext
 };

@@ -223,13 +223,13 @@ function complianceHeaderMetadata(client = {}) {
     return {
       applicantTypes: unique([snapshot.applicantType, snapshot.piboParent, snapshot.piboCategoryParent, reviewService.applicantType, reviewService.piboParent, reviewService.piboCategoryParent]),
       subApplicantTypes: unique([data.basic?.piboCategory, snapshot.subApplicantType, snapshot.piboCategory, reviewService.subApplicantType, reviewService.piboCategory]),
-      applicationTypes: unique([data.cpcb?.applicationType, data.annualReturn?.applicationRenewal, data.basic?.applicationType, snapshot.applicationType, reviewService.applicationType])
+      applicationTypes: unique([data.cpcb?.applicationType, data.annualReturn?.applicationRenewal, data.basic?.applicationType, snapshot.applicationType, snapshot.servicesOffered, snapshot.serviceName, reviewService.applicationType, reviewService.servicesOffered, reviewService.applicableService, reviewService.serviceName])
     }
   }
   return {
     applicantTypes: unique([snapshot.applicantType, snapshot.piboParent, snapshot.piboCategoryParent, lead.applicantType, lead.piboParent, lead.piboCategoryParent, ...services.flatMap((service) => [service.applicantType, service.piboParent, service.piboCategoryParent])]),
     subApplicantTypes: unique([data.basic?.piboCategory, snapshot.subApplicantType, snapshot.piboCategory, lead.subApplicantType, lead.piboCategory, ...services.flatMap((service) => [service.subApplicantType, service.piboCategory])]),
-    applicationTypes: unique([data.cpcb?.applicationType, data.annualReturn?.applicationRenewal, data.basic?.applicationType, snapshot.applicationType, ...services.map((service) => service.applicationType)])
+    applicationTypes: unique([data.cpcb?.applicationType, data.annualReturn?.applicationRenewal, data.basic?.applicationType, snapshot.applicationType, snapshot.servicesOffered, snapshot.serviceName, ...services.flatMap((service) => [service.applicationType, service.servicesOffered, service.applicableService, service.serviceName])])
   }
 }
 
