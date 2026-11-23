@@ -672,15 +672,19 @@ function groupPendingClientsByCompany(rows = []) {
     const piboCategory = String(representative.piboCategory || '').trim() || '-';
     const eprCategory = String(representative.eprCategory || '').trim() || '-';
     const createdBy = String(representative.createdBy || '').trim() || '-';
+    const serviceOffered = String(representative.serviceOffered || representative.servicesOffered || '').trim() || '-';
+    const assignedStaff = String(representative.assignedStaff || representative.assignedStaffName || '').trim() || '-';
     return {
       ...representative,
       approvalStatus: getApprovalStatus(representative),
       piboCategory,
       eprCategory,
       createdBy,
+      serviceOffered,
+      assignedStaff,
       applicantCount: 1,
-      _applicantTypes: [piboCategory].filter((value) => value && value !== '-'),
-      _createdByUsers: [createdBy].filter((value) => value && value !== '-'),
+      _applicantTypes: [serviceOffered].filter((value) => value && value !== '-'),
+      _createdByUsers: [assignedStaff].filter((value) => value && value !== '-'),
       _clientApprovalRows: applicantRows
     };
   });
@@ -798,7 +802,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
       .filter((value) => value && value !== '-');
     return [...new Set(values)].sort((a, b) => a.localeCompare(b));
   }, [allApprovalRows]);
-  const approvalUserName = (row) => formatApprovalValue(row?.createdBy || row?.submittedBy || row?.createdByName || row?.userName || row?.claimedBy || row?.leadGeneratedBy);
+  const approvalUserName = (row) => formatApprovalValue(row?.assignedStaff || row?.assignedStaffName || row?.createdBy || row?.submittedBy || row?.createdByName || row?.userName || row?.claimedBy || row?.leadGeneratedBy);
   const userOptions = useMemo(() => [...new Set(allApprovalRows
     .flatMap((row) => row?._createdByUsers?.length ? row._createdByUsers : [approvalUserName(row)])
     .filter((value) => value && value !== '-'))].sort((a, b) => a.localeCompare(b)), [allApprovalRows]);
@@ -1705,13 +1709,13 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                 <option value="REJECTED">Rejected</option>
               </select>}
               <select value={piboFilter} onChange={(event) => setPiboFilter(event.target.value)} aria-label="Filter PIBO category">
-                <option value="all">All Applicant Types</option>
+                <option value="all">{activeTab === 'clients' ? 'All Services Offered' : 'All Applicant Types'}</option>
                 {piboOptions.map((option) => (
                   <option key={option} value={option}>{option}</option>
                 ))}
               </select>
               <select value={userFilter} onChange={(event) => setUserFilter(event.target.value)} aria-label="Filter by user">
-                <option value="all">All Users</option>
+                <option value="all">{activeTab === 'clients' ? 'All Assigned Staff' : 'All Users'}</option>
                 {userOptions.map((option) => <option key={option} value={option}>{option}</option>)}
               </select>
               {activeTab === 'po' && <select value={poDateSort} onChange={(event) => { setPoDateSort(event.target.value); setPoPage(1); }} aria-label="Sort PO upload date">
@@ -1877,7 +1881,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
             ) : activeTab === 'clients' ? (
               <ApprovalTable
                 title={canApproveClients ? 'Pending Clients' : 'Client Compliance Decisions'}
-                columns={['Client Name', 'Approval Status', 'Decision By', 'Decision Remarks', 'Applicant Type', 'Service Category', 'Created By', 'Request Date', 'Actions']}
+                columns={['Client Name', 'Approval Status', 'Decision By', 'Decision Remarks', 'Service Offered', 'Service Category', 'Assigned Staff', 'Request Date', 'Actions']}
                 emptyText={canApproveClients ? 'No pending clients found.' : 'No client compliance decisions found.'}
                 page={clientPage}
                 totalPages={clientTotalPages}
@@ -1902,9 +1906,9 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                     <Cell><div className="flex flex-col items-start gap-1">{statusBadge(client.approvalStatus)}{['RED', 'PERMANENT_RED'].includes(client.reminderFlag) && <><span className="rounded-full bg-red-100 px-2 py-1 text-[9px] font-black text-red-700">{client.reminderFlag === 'PERMANENT_RED' ? 'PERMANENT RED FLAG' : 'RED FLAG - 24H RECOVERY'}</span>{client.reminderFlag === 'RED' && client.greenFlagDeadline && <small className="font-bold text-red-600">Recover by {formatDisplayDateTime(client.greenFlagDeadline)}</small>}</>}</div></Cell>
                     <Cell><span className="font-black text-slate-700">{formatApprovalValue(client.decisionBy)}{client.decisionAt && <small className="mt-1 block font-semibold text-slate-400">{new Date(client.decisionAt).toLocaleString('en-IN')}</small>}</span></Cell>
                     <Cell><p className="max-w-72 whitespace-pre-wrap text-xs font-semibold text-slate-600">{client.remarks || (approvalState === 'PENDING' ? 'Awaiting compliance decision.' : 'No decision remarks recorded.')}</p></Cell>
-                    <Cell><span>{client.piboCategory}</span>{client.applicantCount > 1 && <small className="mt-1 block font-semibold text-slate-400">{client.applicantCount} applicants — open Review to select</small>}</Cell>
+                    <Cell>{formatApprovalValue(client.serviceOffered)}</Cell>
                     <Cell>{client.eprCategory}</Cell>
-                    <Cell>{formatApprovalValue(client.createdBy)}</Cell>
+                    <Cell>{formatApprovalValue(client.assignedStaff)}</Cell>
                     <Cell>{[formatApprovalValue(client.requestDate), formatApprovalValue(client.requestTime)].filter((item) => item !== '-').join(' ')}</Cell>
                     <Cell>
                       <div className="flex flex-wrap items-center gap-2">

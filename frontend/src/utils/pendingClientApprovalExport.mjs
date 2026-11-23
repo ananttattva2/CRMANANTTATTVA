@@ -38,11 +38,10 @@ export function buildPendingClientApprovalExportRows(clients = []) {
       'Sr. No.': index + 1,
       'Client Name': text(client.clientName || client.companyName),
       'Approval Status': STATUS_LABELS[statusOf(client)] || statusOf(client),
-      'User Name': text(client.createdBy || client.submittedBy || client.createdByName || client.userName),
+      'Assigned Staff': text(client.assignedStaff || client.assignedStaffName),
       'Decision By': text(client.decisionBy || client.actionBy),
-      'Applicant Type': text(client.piboCategory || client.applicantType),
+      'Service Offered': text(client.serviceOffered || client.servicesOffered),
       'Service Category': text(client.eprCategory || client.serviceCategory),
-      'Applicant Count': Number(client.applicantCount) || 1,
       'Request Date': [text(client.requestDate, ''), text(client.requestTime, '')].filter(Boolean).join(' ') || '-',
       'Decision Date': indiaDateTime(client.decisionAt || client.actionAt)
     }));

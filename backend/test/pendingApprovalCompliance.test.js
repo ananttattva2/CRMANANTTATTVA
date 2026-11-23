@@ -57,7 +57,7 @@ test('pending client rows clearly show compliance approval state', () => {
   assert.match(page, /client-status-tab-label/);
   assert.match(page, /PARTIALLY_APPROVED/);
   assert.match(page, /Partially Approved/);
-  assert.match(page, /'Approval Status', 'Decision By', 'Decision Remarks', 'Applicant Type'/);
+  assert.match(page, /'Approval Status', 'Decision By', 'Decision Remarks', 'Service Offered', 'Service Category', 'Assigned Staff'/);
   assert.match(page, /formatApprovalValue\(client\.decisionBy\)/);
   assert.match(page, /client\.decisionAt/);
   assert.match(controller, /populate\('actionBy', 'name email'\)/);

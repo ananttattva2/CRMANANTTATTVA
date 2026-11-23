@@ -37,3 +37,17 @@ test('Pending Clients matches the exact assigned service instead of another read
   client.selectedLead.assignments[1].assignedStaff = '';
   assert.equal(pendingClientWorkflowReady(client), false);
 });
+
+test('Pending Clients displays staff and service from the exact manager assignment', () => {
+  const { pendingClientDisplayContext } = clientController.__test;
+  const client = ready({ servicesOffered: 'Registration' });
+  client.data = {
+    assignedServiceId: 'service-1',
+    basic: { servicesOffered: 'Annual Return' }
+  };
+
+  assert.deepEqual(
+    pendingClientDisplayContext(client, new Map([['staff-1', 'Assigned Staff Name']])),
+    { assignedStaff: 'Assigned Staff Name', serviceOffered: 'Annual Return' }
+  );
+});

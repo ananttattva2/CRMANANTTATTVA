@@ -985,6 +985,8 @@ function mapPendingApprovalRecord(record) {
     approvalStatus: record.approvalStatus,
     piboCategory: record.piboCategory || payload.piboCategory || '-',
     eprCategory: record.eprCategory || payload.eprCategory || payload.category || '-',
+    serviceOffered: payload.serviceOffered || payload.servicesOffered || '-',
+    assignedStaff: payload.assignedStaff || payload.assignedStaffName || '-',
     createdBy: record.createdByName || payload.createdBy || payload.userName || '-',
     requestDate: record.requestDate || payload.requestDate || '-',
     requestTime: record.requestTime || payload.requestTime || '-',
@@ -1021,6 +1023,7 @@ function mapClientPendingApprovalRow(client, createdByLabel = 'CRM User') {
     approvalStatus: normalizeApprovalStatus(client.adminControls?.approvalStatus) || 'PENDING',
     piboCategory: data.basic?.piboCategory || '-',
     eprCategory: data.basic?.eprCategory || '-',
+    serviceOffered: data.basic?.servicesOffered || data.selectedLeadSnapshot?.servicesOffered || '-',
     createdBy: createdByLabel,
     requestDate: parts.date,
     requestTime: parts.time
@@ -1033,7 +1036,7 @@ function hasAssignmentIdentity(value) {
   return Boolean(String(value).trim());
 }
 
-function pendingClientWorkflowReady(client = {}) {
+function pendingClientAssignment(client = {}) {
   const lead = client.selectedLead && typeof client.selectedLead === 'object' ? client.selectedLead : {};
   const assignments = Array.isArray(lead.assignments) ? lead.assignments : [];
   const assignedServiceId = String(
@@ -1042,8 +1045,42 @@ function pendingClientWorkflowReady(client = {}) {
     || client.data?.selectedLeadSnapshot?.assignedServiceId
     || ''
   ).trim();
-  const assignment = assignments.find((row) => assignedServiceId && String(row?.assignedServiceId || '').trim() === assignedServiceId)
+  return assignments.find((row) => assignedServiceId && String(row?.assignedServiceId || '').trim() === assignedServiceId)
     || (assignments.length === 1 ? assignments[0] : null);
+}
+
+function pendingClientDisplayContext(client = {}, userNames = new Map()) {
+  const assignment = pendingClientAssignment(client) || {};
+  const lead = client.selectedLead && typeof client.selectedLead === 'object' ? client.selectedLead : {};
+  const assignedServiceId = String(client.assignedServiceId || client.data?.assignedServiceId || client.data?.selectedLeadSnapshot?.assignedServiceId || '').trim();
+  const service = (Array.isArray(lead.serviceSelections) ? lead.serviceSelections : []).find((row) => assignedServiceId && String(row?.assignedServiceId || '').trim() === assignedServiceId) || {};
+  const staffValue = assignment.assignedStaff;
+  const staffId = String(staffValue?._id || staffValue?.id || staffValue || '').trim();
+  const assignedStaff = String(
+    staffValue?.name
+    || assignment.assignedStaffText
+    || assignment.assignedStaffName
+    || userNames.get(staffId)
+    || (staffId && !mongoose.isValidObjectId(staffId) ? staffId : '')
+    || assignment.assignedStaffEmail
+    || ''
+  ).trim();
+  const serviceOffered = String(
+    client.data?.basic?.servicesOffered
+    || client.data?.selectedLeadSnapshot?.servicesOffered
+    || service.servicesOffered
+    || service.applicableService
+    || service.serviceName
+    || assignment.servicesOffered
+    || assignment.applicableService
+    || assignment.serviceName
+    || ''
+  ).trim();
+  return { assignedStaff: assignedStaff || '-', serviceOffered: serviceOffered || '-' };
+}
+
+function pendingClientWorkflowReady(client = {}) {
+  const assignment = pendingClientAssignment(client);
   if (!assignment) return false;
 
   const poClosed = String(assignment.poStatus || '').trim().toLowerCase() === 'received'
@@ -1088,11 +1125,11 @@ async function syncPendingApprovalRows(rows, type = 'client') {
 }
 
 async function readStoredPendingApprovals(listOnly = false) {
-  return require('../services/crmCache').getCrmCache().remember(`pending-approval-index-v5:${listOnly}`, () => loadStoredPendingApprovals(listOnly));
+  return require('../services/crmCache').getCrmCache().remember(`pending-approval-index-v6:${listOnly}`, () => loadStoredPendingApprovals(listOnly));
 }
 
 async function loadStoredPendingApprovals(listOnly = false) {
-  const payloadFields = 'id uniqueId source quotationId quotationNumber leadId leadCode businessLeadCode companyName clientName contactPerson mobileNo1 quotationDate validUntil pricingMode combinedBasicAmount basicAmount grandTotal status approvalType createdBy userName leadGeneratedBy createdAt updatedAt service category piboCategory eprCategory managementApprovalStatus managementApproverId managementApproverName adminApprovalStatus priceApprovedByName managementApprovalSource managementApprovalNote selectedLeadId';
+  const payloadFields = 'id uniqueId source quotationId quotationNumber leadId leadCode businessLeadCode companyName clientName contactPerson mobileNo1 quotationDate validUntil pricingMode combinedBasicAmount basicAmount grandTotal status approvalType createdBy userName leadGeneratedBy createdAt updatedAt service category piboCategory eprCategory serviceOffered servicesOffered assignedStaff assignedStaffName managementApprovalStatus managementApproverId managementApproverName adminApprovalStatus priceApprovedByName managementApprovalSource managementApprovalNote selectedLeadId';
   const listFields = 'type source sourceClientId uniqueId clientName approvalStatus piboCategory eprCategory createdByName requestDate requestTime actionBy actionAt remarks managementApprover managementApproverName managementApprovalSource managementApprovalNote reminderFlag redFlagAt greenFlagDeadline createdAt updatedAt ' + payloadFields.split(' ').map(field => `payload.${field}`).join(' ');
   async function readIndex(filter, sort, limit) {
     if (!listOnly) return PendingApproval.find(filter).populate('actionBy', 'name email').sort(sort).limit(limit).maxTimeMS(15000).lean();
@@ -1113,32 +1150,45 @@ async function loadStoredPendingApprovals(listOnly = false) {
   const clientIds = sourceClientIds.map(id => new mongoose.Types.ObjectId(String(id)));
   async function compactReviewContext() {
     const { readDashboardCollection } = require('../services/dashboardSnapshotCache');
-    const clients = await readDashboardCollection(Client, { _id: { $in: clientIds }, workflowStatus: 'submitted' }, { assignedServiceId: 1, 'data.assignedServiceId': 1, 'data.selectedLeadSnapshot.assignedServiceId': 1, selectedLead: 1 });
+    const clients = await readDashboardCollection(Client, { _id: { $in: clientIds }, workflowStatus: 'submitted' }, { assignedServiceId: 1, 'data.assignedServiceId': 1, 'data.basic.servicesOffered': 1, 'data.selectedLeadSnapshot.assignedServiceId': 1, 'data.selectedLeadSnapshot.servicesOffered': 1, selectedLead: 1 });
     const ids = clients.map(client => client.selectedLead).filter(id => id && mongoose.isValidObjectId(String(id))).map(id => new mongoose.Types.ObjectId(String(id)));
-    const projection = Object.fromEntries('assignments.assignedServiceId assignments.poStatus assignments.poApprovalStatus assignments.closedAt assignments.closedBy assignments.closureFinalizedByManager assignments.assignedTo assignments.assignedStaff'.split(' ').map(field => [field, 1]));
+    const projection = Object.fromEntries('assignments.assignedServiceId assignments.poStatus assignments.poApprovalStatus assignments.closedAt assignments.closedBy assignments.closureFinalizedByManager assignments.assignedTo assignments.assignedStaff assignments.assignedStaffText assignments.assignedStaffName assignments.assignedStaffEmail assignments.servicesOffered assignments.applicableService assignments.serviceName serviceSelections.assignedServiceId serviceSelections.servicesOffered serviceSelections.applicableService serviceSelections.serviceName'.split(' ').map(field => [field, 1]));
     const leads = ids.length ? await readDashboardCollection(Lead, { _id: { $in: ids } }, projection) : [];
     const byId = new Map(leads.map(lead => [String(lead._id), lead]));
     return clients.map(client => ({ ...client, selectedLead: byId.get(String(client.selectedLead)) || client.selectedLead }));
   }
   const [submittedClients, complianceReviews] = await Promise.all([
     listOnly ? compactReviewContext() : Client.find({ _id: { $in: sourceClientIds }, workflowStatus: 'submitted' })
-      .select('_id assignedServiceId data.assignedServiceId data.selectedLeadSnapshot.assignedServiceId selectedLead')
-      .populate('selectedLead', 'assignments.assignedServiceId assignments.poStatus assignments.poApprovalStatus assignments.closedAt assignments.closedBy assignments.closureFinalizedByManager assignments.assignedTo assignments.assignedStaff')
+      .select('_id assignedServiceId data.assignedServiceId data.basic.servicesOffered data.selectedLeadSnapshot.assignedServiceId data.selectedLeadSnapshot.servicesOffered selectedLead')
+      .populate('selectedLead', 'assignments.assignedServiceId assignments.poStatus assignments.poApprovalStatus assignments.closedAt assignments.closedBy assignments.closureFinalizedByManager assignments.assignedTo assignments.assignedStaff assignments.assignedStaffText assignments.assignedStaffName assignments.assignedStaffEmail assignments.servicesOffered assignments.applicableService assignments.serviceName serviceSelections.assignedServiceId serviceSelections.servicesOffered serviceSelections.applicableService serviceSelections.serviceName')
       .lean(),
     listOnly ? require('../services/dashboardSnapshotCache').readDashboardCollection(ClientComplianceReview, { client: { $in: clientIds } }, { client: 1, status: 1, sections: 1, finalRemarks: 1, updatedAt: 1 }) : ClientComplianceReview.find({ client: { $in: sourceClientIds } })
       .select('client status sections finalRemarks updatedAt')
       .lean()
   ]);
   const submittedIds = new Set(submittedClients.filter(pendingClientWorkflowReady).map((client) => String(client._id)));
+  const assignedStaffIds = [...new Set(submittedClients
+    .map((client) => pendingClientAssignment(client)?.assignedStaff)
+    .map((value) => String(value?._id || value?.id || value || '').trim())
+    .filter((value) => mongoose.isValidObjectId(value)))];
+  const assignedStaffUsers = assignedStaffIds.length
+    ? await User.find({ _id: { $in: assignedStaffIds } }).select('_id name email').lean()
+    : [];
+  const assignedStaffNames = new Map(assignedStaffUsers.map((user) => [String(user._id), user.name || user.email || '']));
+  const submittedClientById = new Map(submittedClients.map((client) => [String(client._id), client]));
   const previousClientDecisions = await readPreviousClientDecisions(clientRecords.filter(record => submittedIds.has(String(record.sourceClientId))));
   const reviewByClient = new Map(complianceReviews.map((review) => [String(review.client), review]));
   const clientRows = clientRecords
     .filter((record) => submittedIds.has(String(record.sourceClientId)))
-    .map((record) => ({
-      ...mapPendingApprovalRecord(record),
-      ...(previousClientDecisions.get(String(record.sourceClientId)) || {}),
-      complianceReview: reviewByClient.get(String(record.sourceClientId)) || null
-    }));
+    .map((record) => {
+      const sourceClientId = String(record.sourceClientId);
+      return {
+        ...mapPendingApprovalRecord(record),
+        ...pendingClientDisplayContext(submittedClientById.get(sourceClientId), assignedStaffNames),
+        ...(previousClientDecisions.get(sourceClientId) || {}),
+        complianceReview: reviewByClient.get(sourceClientId) || null
+      };
+    });
 
   return {
     pendingClients: clientRows,
@@ -2172,6 +2222,8 @@ exports.listPendingApprovals = async (req, res) => {
     managementApprovalStatus: row.managementApprovalStatus,
     piboCategory: row.piboCategory,
     eprCategory: row.eprCategory,
+    serviceOffered: row.serviceOffered,
+    assignedStaff: row.assignedStaff,
     createdBy: row.createdBy,
     requestDate: row.requestDate,
     requestTime: row.requestTime,
@@ -3696,5 +3748,6 @@ exports.__test = {
   enrichClientMasterReviewServiceFromLead,
   uniqueClientMasterReviewServices,
   mergePendingClients,
-  pendingClientWorkflowReady
+  pendingClientWorkflowReady,
+  pendingClientDisplayContext
 };
