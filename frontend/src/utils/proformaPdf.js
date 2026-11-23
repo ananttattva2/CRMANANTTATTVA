@@ -14,7 +14,7 @@ function actualPoNumber(row = {}) {
   return values.map((value) => String(value || '').trim()).find((value) => value && value.toUpperCase() !== quotationNumber) || 'NA'
 }
 export const invoiceFields = [
- ['deliveryNote','Delivery Note'], ['paymentTerms','Mode / Terms of Payment','50% ADVANCE'], ['reference','Reference No. & Date'], ['otherReferences','Other References','AS PER PO'], ['buyerOrder','BuyerÃ¢â‚¬â„¢s Order No.'], ['buyerOrderDate','BuyerÃ¢â‚¬â„¢s Order Date'], ['dispatchDocument','Dispatch Doc No.'], ['deliveryDate','Delivery Note Date'], ['dispatchedThrough','Dispatched Through'], ['destination','Destination'], ['deliveryTerms','Terms of Delivery'], ['consignee','Consignee (Ship To) Name'], ['consigneeAddress','Consignee Address'], ['consigneeGst','Consignee GSTIN / UIN'], ['consigneeState','Consignee State & Code'], ['buyerStateCode','Buyer State Code'], ['hsn','HSN / SAC','998311'], ['bankName','Bank Name'], ['accountName','Account Name','Ananttattva Private Limited'], ['accountNumber','Account Number'], ['ifsc','IFSC Code'], ['pan','Company PAN'], ['declaration','Declaration','We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.']
+ ['deliveryNote','Delivery Note'], ['paymentTerms','Mode / Terms of Payment','50% ADVANCE'], ['reference','Reference No. & Date'], ['otherReferences','Other References','AS PER PO'], ['buyerOrder','BuyerÃ¢â‚¬â„¢s Order No.'], ['buyerOrderDate','BuyerÃ¢â‚¬â„¢s Order Date'], ['dispatchDocument','Dispatch Doc No.'], ['deliveryDate','Delivery Note Date'], ['dispatchedThrough','Dispatched Through'], ['destination','Destination'], ['deliveryTerms','Terms of Delivery'], ['consignee','Consignee (Ship To) Name'], ['consigneeAddress','Consignee Address'], ['consigneeGst','Consignee GSTIN / UIN'], ['consigneeState','Consignee State & Code'], ['buyerStateCode','Buyer State Code'], ['hsn','HSN / SAC','999422'], ['bankName','Bank Name'], ['accountName','Account Name','Ananttattva Private Limited'], ['accountNumber','Account Number'], ['ifsc','IFSC Code'], ['pan','Company PAN'], ['declaration','Declaration','We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.']
 ]
 const small = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen']
 function words(n) { n = Math.floor(n); if (!n) return 'Zero'; if(n<20)return small[n]; if(n<100)return ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'][Math.floor(n/10)]+(n%10?' '+words(n%10):''); for(const [v,t] of [[10000000,'Crore'],[100000,'Lakh'],[1000,'Thousand'],[100,'Hundred']])if(n>=v)return words(n/v)+' '+t+(n%v?' '+words(n%v):''); return '' }
@@ -23,6 +23,7 @@ const itemMultiplier = item => String(item.businessCategory || '').toLowerCase()
 export function buildInvoicePdf(row) {
   const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
   const details = { ...Object.fromEntries(invoiceFields.map(([key, , value]) => [key, value || ''])), ...(row.invoiceDetails || {}) }
+  details.hsn = '999422'
   const lead = row.leadDetails || {}
   const left = 26, right = 569, width = right - left, split = 342
   const cash = (value) => Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -115,7 +116,8 @@ export function buildInvoicePdf(row) {
         : ''
     const annualReturnService = /\bannual\s*returns?\b|\bAR\b/i.test([item.servicesOffered, item.applicableService].filter(Boolean).join(' '))
     const annualReturnYears = annualReturnService ? [...new Set((item.annualReturnYears || []).filter(Boolean))] : []
-    const serviceYears = annualReturnYears.length
+    const creditYears = businessCategoryKey === 'eprcredit' ? [...new Set((item.annualReturnEprCreditYears || []).filter(Boolean))] : []
+    const serviceYears = creditYears.length ? creditYears.map(value => 'Annual Return EPR Credit: ' + value) : annualReturnYears.length
       ? annualReturnYears.map((value) => 'Annual Return: ' + value)
       : [item.servicesForYear]
     const hideBusinessCategory = CONSULTANCY_BUSINESS_CATEGORIES.has(businessCategoryKey)
@@ -161,8 +163,12 @@ export function buildInvoicePdf(row) {
         text(index + 1, 30, y)
         text(details.hsn, 353, y, { size: 7 })
         if (!combined) {
-          text(item.unit || '1', 417, y, { align: 'center', size: 7 })
-          fitted(cash(Number(item.basicAmount) * percentage / 100 / (businessCategoryKey === 'eprcredit' && Number(item.unit) > 0 ? Number(item.unit) : 1)), 442, y - 8, 41, 12, 'normal', 7)
+          const credit = businessCategoryKey === 'eprcredit'
+          const rawQuantity = Number(String(item.unit || '1').replace(/,/g, '').replace(/[^0-9.]/g, ''))
+          const quantityMt = /kg/i.test(String(item.unit)) ? rawQuantity / 1000 : rawQuantity
+          text(credit ? quantityMt.toLocaleString('en-IN', { maximumFractionDigits: 3 }) : (item.unit || '1'), 417, y, { align: 'center', size: 7 })
+          const rate = item.eprCreditRatePerKg ?? (quantityMt > 0 ? Number(item.basicAmount) / quantityMt / 1000 : 0)
+          fitted(credit ? Number(rate).toLocaleString('en-IN', { maximumFractionDigits: 4 }) : cash(Number(item.basicAmount) * percentage / 100), 442, y - 8, 41, 12, 'normal', 7)
         }
         const value = combined ? (index === 0 ? cash(base) : '') : cash(Math.round(itemMultiplier(item) * Number(item.basicAmount || 0) * percentage) / 100)
         text(value, 566, y, { style: 'bold', size: 8, align: 'right' })

@@ -24,7 +24,7 @@ const firstDistinctPoNumber = (rows = [], quotationNumber = '') => {
 const leadFields = [['referredBy', 'Referred By'], ['salutation', 'Salutation'], ['contactPerson', 'Contact Person'], ['designation', 'Designation'], ['mobileNo1', 'Mobile No. 1'], ['mobileNo2', 'Mobile No. 2'], ['companyName', 'Company Name'], ['addressLine1', 'Address Line 1'], ['addressLine2', 'Address Line 2'], ['addressLine3', 'Address Line 3'], ['state', 'State'], ['city', 'City'], ['pinCode', 'Pincode'], ['gstNumber', 'GST Number']]
 
 function isCredit(item = {}) { return String(item.businessCategory || '').toLowerCase().replace(/[^a-z0-9]/g, '') === 'eprcredit' }
-function fromQuoteItem(item = {}) { if (!isCredit(item)) return item; const target = item.eprCreditTargetMt ?? (item.eprCreditTargetKg != null ? Number(item.eprCreditTargetKg) / 1000 : null); return { ...item, unit: target == null ? '' : String(target), basicAmount: target == null ? '' : Math.round(Number(item.basicAmount) * 1000 * Number(target) * 100) / 100 } }
+function fromQuoteItem(item = {}) { if (!isCredit(item)) return item; const target = item.eprCreditTargetMt ?? (item.eprCreditTargetKg != null ? Number(item.eprCreditTargetKg) / 1000 : null); return { ...item, servicesForYear: (item.annualReturnEprCreditYears || []).join(', ') || item.servicesForYear, unit: target == null ? '' : String(target), eprCreditRatePerKg: Number(item.basicAmount), basicAmount: target == null ? '' : Math.round(Number(item.basicAmount) * 1000 * Number(target) * 100) / 100 } }
 function amount(items = []) { return items.reduce((sum, item) => sum + ((isCredit(item) ? 1 : (Number(item.unit) || 1)) * (Number(item.basicAmount) || 0)), 0) }
 function invoiceTotal(row = {}) { const full = row.pricingMode === 'combined' ? (Number(row.combinedBasicAmount) || 0) : amount(row.items); return Math.round(full * (row.paymentPercentage ?? 100)) / 100 }
 function gstAmount(row = {}) { const subtotal = invoiceTotal(row); return Number.isFinite(Number(row.gstAmount)) && Number(row.gstAmount) > 0 ? Number(row.gstAmount) : Math.round(subtotal * 18) / 100 }
@@ -116,6 +116,7 @@ export default function ProformaInvoices() {
   const [form, setForm] = useState(blankForm)
   const [editingId, setEditingId] = useState('')
   const [loading, setLoading] = useState(true)
+  const [quotationLoading, setQuotationLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -136,21 +137,19 @@ export default function ProformaInvoices() {
   }
 
   async function load() {
-    setLoading(true); setError('')
-    try {
-      const [me, quotes, invoices] = await Promise.all([
-        api.get(API_ENDPOINTS.auth.me), api.get(API_ENDPOINTS.quotations.list), api.get(API_ENDPOINTS.proformaInvoices.list)
-      ])
-      setUser(storeSessionUser(me.data.user || user)); setQuotations(quotes.data.quotations || []); setRows(invoices.data.proformaInvoices || [])
-    } catch (err) { setError(readApiError(err, 'Unable to load Proforma Invoices.')) }
-    finally { setLoading(false) }
+    setLoading(true); setQuotationLoading(true); setError('')
+    await Promise.allSettled([
+      api.get(API_ENDPOINTS.proformaInvoices.list).then(response => setRows(response.data.proformaInvoices || [])).catch(err => setError(readApiError(err, 'Unable to load Proforma Invoices.'))).finally(() => setLoading(false)),
+      api.get(API_ENDPOINTS.quotations.list, { params: { compact: 'true' } }).then(response => setQuotations(response.data.quotations || [])).catch(err => setError(readApiError(err, 'Unable to load quotations.'))).finally(() => setQuotationLoading(false)),
+      api.get(API_ENDPOINTS.auth.me).then(response => setUser(storeSessionUser(response.data.user || user))).catch(() => {})
+    ])
   }
   useEffect(() => { load() }, [])
 
   useEffect(() => {
     const leadContext = location.state?.leadContext
     const leadAction = String(location.state?.leadAction || '').trim().toLowerCase()
-    if (!leadContext || !leadAction || loading) return
+    if (!leadContext || !leadAction || loading || quotationLoading) return
 
     if (leadAction === 'revise') {
       const invoice = [...rows]
@@ -190,7 +189,7 @@ export default function ProformaInvoices() {
       setError('')
     }
     navigate(location.pathname, { replace: true, state: {} })
-  }, [loading, location.pathname, location.state, navigate, quotations, rows])
+  }, [loading, quotationLoading, location.pathname, location.state, navigate, quotations, rows])
 
   async function selectQuotation(id) {
     const requestId = ++poLookupRequest.current
@@ -234,7 +233,7 @@ export default function ProformaInvoices() {
       combinedBasicAmount: row.combinedBasicAmount ?? '',
       invoiceDate: String(row.invoiceDate || '').slice(0, 10),
       leadDetails: { ...blankLead, ...(row.leadDetails || {}) },
-      items: row.items?.length ? row.items.map((item) => ({ ...blankItem, ...item, basicAmount: item.basicAmount ?? '' })) : [{ ...blankItem }],
+      items: row.items?.length ? row.items.map((item) => ({ ...blankItem, ...item, servicesForYear: isCredit(item) && item.annualReturnEprCreditYears?.length ? item.annualReturnEprCreditYears.join(', ') : item.servicesForYear, basicAmount: item.basicAmount ?? '' })) : [{ ...blankItem }],
       terms: row.terms?.length ? row.terms : [''],
       scopeOfWork: row.scopeOfWork?.length ? row.scopeOfWork : ['']
     })
@@ -292,7 +291,7 @@ export default function ProformaInvoices() {
   }
 
   return <DashboardShell currentUser={user}><div className="min-h-screen bg-gradient-to-br from-[#effaf7] via-white to-[#fff7ef] px-3 py-5 sm:px-4"><div className="w-full min-w-0">
-    <header className="flex flex-wrap items-center justify-between gap-4"><div className="flex items-center gap-4"><button onClick={() => navigate('/dashboard')} className="grid h-11 w-11 place-items-center rounded-xl border border-emerald-100 bg-white text-orange-600 shadow-sm"><ArrowLeft /></button><div><p className="text-xs font-black uppercase tracking-[.2em] text-emerald-700">Sales & Billing</p><h1 className="text-3xl font-black text-slate-950">Proforma Invoice</h1><p className="text-sm font-semibold text-slate-500">Create invoices for PO-uploaded, closed services.</p></div></div><button onClick={load} className="inline-flex h-11 items-center gap-2 rounded-xl border bg-white px-4 font-black text-emerald-700"><RefreshCw className="h-4 w-4" /> Refresh</button></header>
+    <header className="flex flex-wrap items-center justify-between gap-4"><div className="flex items-center gap-4"><button onClick={() => navigate('/dashboard')} className="grid h-11 w-11 place-items-center rounded-xl border border-emerald-100 bg-white text-orange-600 shadow-sm"><ArrowLeft /></button><div><p className="text-xs font-black uppercase tracking-[.2em] text-emerald-700">Sales & Billing</p><h1 className="text-3xl font-black text-slate-950">Proforma Invoice</h1><p className="text-sm font-semibold text-slate-500">Create and manage proforma invoices.</p></div></div><button onClick={load} className="inline-flex h-11 items-center gap-2 rounded-xl border bg-white px-4 font-black text-emerald-700"><RefreshCw className="h-4 w-4" /> Refresh</button></header>
     {(error || notice || downloadError) && <div className={`mt-5 rounded-2xl border px-5 py-4 font-bold ${error || downloadError ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>{error || notice || downloadError}</div>}
 
     <div className="mt-6 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm" role="tablist" aria-label="Proforma Invoice sections">

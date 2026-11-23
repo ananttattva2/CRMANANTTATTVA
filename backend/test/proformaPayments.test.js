@@ -121,7 +121,7 @@ test('legacy service labels and stale IDs match only one closed applicant servic
   const Invoice = require('../src/models/ProformaInvoice');
   const controller = require('../src/controllers/proformaInvoiceController');
   const original = { quote: Quotation.findById, exists: Quotation.exists, lead: Lead.findById, invoices: Invoice.find };
-  const credit = { businessCategory: 'EPR Credit', serviceCategory: 'EPR - Plastic Waste', servicesOffered: 'Category 1 - EOL', unit: '1', basicAmount: 1.2, eprCreditTargetMt: 100 };
+  const credit = { businessCategory: 'EPR Credit', serviceCategory: 'EPR - Plastic Waste', servicesOffered: 'Category 1 - EOL', unit: '1', basicAmount: 1.2, eprCreditTargetMt: 100, servicesForYear: '2026-27', annualReturnEprCreditYears: ['2025-26'] };
   Quotation.exists = async () => true;
   Quotation.findById = () => ({ lean: async () => ({ quotationNumber: 'Q-CREDIT', leadRef: 'lead', items: [credit] }) });
   Lead.findById = () => ({ lean: async () => ({ serviceSelections: [], assignments: [] }) });
@@ -130,9 +130,13 @@ test('legacy service labels and stale IDs match only one closed applicant servic
     let loaded;
     await controller.eligibleQuotation({ params: { id: 'quote' }, user: { role: 'superadmin' } }, { json: data => { loaded = data; } });
     assert.equal(loaded.items[0].unit, '100');
+    assert.equal(loaded.items[0].servicesForYear, '2025-26');
+    assert.equal(loaded.items[0].eprCreditRatePerKg, 1.2);
     assert.equal(loaded.items[0].basicAmount, 120000);
     assert.deepEqual(loaded.poYearRows, []);
     const payload = _test.cleanPayload({ quotationId: 'quote', quotationNumber: 'Q-CREDIT', paymentPercentage: 50, items: loaded.items });
+    assert.deepEqual(payload.items[0].annualReturnEprCreditYears, ['2025-26']);
+    assert.equal(payload.items[0].eprCreditRatePerKg, 1.2);
     assert.equal(payload.subtotal, 60000);
     assert.equal(payload.grandTotal, 70800);
     assert.equal(await _test.validateInvoice(payload, null, { role: 'superadmin' }), '');

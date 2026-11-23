@@ -140,3 +140,16 @@ test('reference payment percentage, Services Offered and tax totals render toget
   const local = build({ ...row, leadDetails: { companyName: 'Example Ltd', gstNumber: '27AAZCA6657R1ZB' } }).output();
   assert.ok(local.includes('CGST')); assert.ok(local.includes('SGST')); assert.ok(local.includes('2,137.50'));
 });
+
+test('EPR Credit PI prints MT quantity, per-kg rate, selected credit year and HSN 999422', async () => {
+  const build = await renderer();
+  const row = { ...sample, invoiceDetails: { hsn: '998311' }, items: [{ businessCategory: 'EPR Credit', serviceCategory: 'EPR - Plastic Waste', servicesOffered: 'Category 1 - EOL', servicesForYear: '2026-27', annualReturnEprCreditYears: ['2025-26'], unit: '6,83,000.000 Kgs', basicAmount: 819600, eprCreditRatePerKg: 1.2 }] };
+  const pdf = build(row), content = pdf.output();
+  assert.match(content, /\(683\) Tj/);
+  assert.match(content, /\(1\.2\) Tj/);
+  assert.match(content, /Annual Return EPR Credit: 2025-26/);
+  assert.match(content, /999422/);
+  assert.doesNotMatch(content, /998311|2026-27|Kgs|1,200.00/);
+  assert.match(content, /8,19,600.00/);
+  if (process.env.PROFORMA_PREVIEW_DIR) fs.writeFileSync(path.join(process.env.PROFORMA_PREVIEW_DIR, 'credit-format.pdf'), Buffer.from(pdf.output('arraybuffer')));
+});

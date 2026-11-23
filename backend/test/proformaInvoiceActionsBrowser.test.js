@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const esbuild = require('../../frontend/node_modules/esbuild');
 
-test('Proforma Invoice view can be reopened and both download actions save a PDF', async () => {
+test('Saved invoices load without waiting for quotations/profile and both download actions save a PDF', async () => {
   const frontendRoot = path.resolve(__dirname, '../../frontend');
   const stampData = `data:image/png;base64,${fs.readFileSync(path.join(frontendRoot, 'src/assets/proforma-authorized-stamp.png'), 'base64')}`;
   const invoice = {
@@ -49,7 +49,7 @@ test('Proforma Invoice view can be reopened and both download actions save a PDF
               const invoice = ${JSON.stringify(invoice)};
               export const readApiError = error => error.message;
               export const storeSessionUser = user => user;
-              export default { get: async url => ({ data: url.includes('auth/me') ? { user: { role: 'superadmin', name: 'Test' } } : url.includes('quotations') ? { quotations: [] } : { proformaInvoices: [invoice] } }) };
+              export default { get: async url => { if (url.includes('auth/me') || url.includes('quotations')) return new Promise(() => {}); return { data: { proformaInvoices: [invoice] } }; } };
             `
           };
         });

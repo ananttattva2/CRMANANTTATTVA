@@ -10,6 +10,8 @@ const ProformaItemSchema = new mongoose.Schema({
   servicePeriod: { type: Number, min: 1, max: 3650 },
   periodUnit: { type: String, trim: true, enum: ['days', 'months', 'annual'], default: 'annual' },
   transitionPeriod: { type: String, trim: true, enum: ['Yes', 'No'], default: 'No' },
+  eprCreditRatePerKg: { type: Number, min: 0 },
+  annualReturnEprCreditYears: { type: [String], default: [] },
   annualReturnYears: { type: [String], default: [] },
   servicesOffered: { type: String, trim: true },
   applicableService: { type: String, trim: true },
