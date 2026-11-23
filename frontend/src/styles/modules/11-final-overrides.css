@@ -7847,3 +7847,29 @@ input[type=time].form-input,input[type=time]{color-scheme:light}input[type=time]
   .annual-workspace .annual-step:last-child { border-bottom: 0 !important; }
   .annual-workspace .annual-step-active { box-shadow: inset 4px 0 0 #6574d9 !important; }
 }
+
+/* Keep every Todo field reachable above the fixed action area. */
+.calendar-todo-modal {
+  display: flex !important;
+  flex-direction: column;
+  overflow: hidden !important;
+}
+.calendar-todo-modal .calendar-modal-head {
+  position: relative !important;
+  top: auto !important;
+  flex-shrink: 0;
+}
+.calendar-todo-modal .calendar-form-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px 4px 24px;
+  margin-top: 0 !important;
+}
+.calendar-todo-modal .calendar-modal-actions {
+  position: relative !important;
+  bottom: auto !important;
+  flex-shrink: 0;
+  margin-top: 0 !important;
+}

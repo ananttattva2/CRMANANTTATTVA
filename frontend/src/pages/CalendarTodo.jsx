@@ -6,6 +6,8 @@ import { ArrowLeft, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock
 import DashboardShell from '../components/dashboard/DashboardShell';
 import ProfileModal from '../components/dashboard/ProfileModal';
 import PremiumDatePicker from '../components/form/PremiumDatePicker';
+import MultiUserSelect from '../components/form/SearchableSelect';
+import calendarAssignment from '../../../shared/calendarAssignment.cjs';
 import api from '../services/api';
 import { API_ENDPOINTS } from '../services/apiEndpoints';
 import { getClientUniqueId, mergeClientSources, mergeLeadSources, readClientData } from '../features/clientMaster/clientMaster.utils';
@@ -69,7 +71,7 @@ function calendarItemsForUser(items = [], user = {}) {
   return items.filter((item) => {
     const ownerTokens = [item.createdByUser, item.createdBy, item.assignedToId, item.assignedToEmail, item.assignedToName, item.assignedTo]
       .map((value) => String(value?._id || value || '').trim().toLowerCase()).filter(Boolean);
-    return userTokens.some((token) => ownerTokens.includes(token));
+    return userTokens.some((token) => [...ownerTokens, ...calendarAssignment.assignmentTokens(item)].includes(token));
   });
 }
 
@@ -113,6 +115,7 @@ function emptyTodo(date = new Date()) {
     scheduledDate: dateKey(date),
     scheduledTime: '',
     assignedTo: '',
+    assignedUserIds: '',
     status: 'open',
     history: [],
     type: 'todo'
@@ -245,7 +248,7 @@ export default function CalendarTodo() {
   const [calendarView, setCalendarView] = useState('month');
   const [dayPanelTab, setDayPanelTab] = useState('agenda');
   const [assignmentTarget, setAssignmentTarget] = useState(null);
-  const [assignmentDraft, setAssignmentDraft] = useState({ assignedTo: '', reason: '' });
+  const [assignmentDraft, setAssignmentDraft] = useState({ assignedTo: '', reason: '', scheduledTime: '' });
   const [historyTarget, setHistoryTarget] = useState(null);
   const [completionTarget, setCompletionTarget] = useState(null);
   const [completionRemarks, setCompletionRemarks] = useState('');
@@ -306,7 +309,7 @@ export default function CalendarTodo() {
   }, [clients, leads, temporaryLeads]);
   const leadOptions = useMemo(() => leads.map(getLeadOption), [leads]);
   const userOptions = useMemo(() => users.map((user) => ({
-    value: user.name || user.email || user._id || user.id,
+    value: user._id || user.id || user.email || user.name,
     label: `${user.name || user.email || 'User'}${user.email ? ` (${user.email})` : ''}`
   })), [users]);
   const userLookup = useMemo(() => new Map(users.flatMap((user) => {
@@ -315,6 +318,17 @@ export default function CalendarTodo() {
       .map((value) => String(value).trim().toLowerCase());
     return keys.map((key) => [key, user]);
   })), [users]);
+
+  function assignmentSelection(item) {
+    return calendarAssignment.assigneesOf(item).map(row => {
+      const user = [row.id, row.email, row.name].map(value => userLookup.get(String(value || '').toLowerCase())).find(Boolean);
+      return String(user?._id || user?.id || row.id || row.email || row.name);
+    }).filter(Boolean).join(',');
+  }
+  function assignmentPayload(value) {
+    const assignees = String(value || '').split(',').map(value => userLookup.get(value.trim().toLowerCase())).filter(Boolean).map(user => ({ id: String(user._id || user.id || ''), name: user.name || user.email, email: user.email || '' }));
+    return { assignees, assignedTo: assignees.map(user => user.name).join(', '), assignedToName: assignees.map(user => user.name).join(', '), assignedToId: assignees[0]?.id || '', assignedToEmail: assignees[0]?.email || '' };
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -561,6 +575,7 @@ export default function CalendarTodo() {
       leadNumber: source?.leadNumber || '', leadId: source?.leadId || '',
       priority: source?.priority || 'Medium', category: 'Follow-Up', type: 'follow-up',
       assignedTo: source?.assignedTo || storedUser?.name || storedUser?.email || '',
+      assignedUserIds: assignmentSelection(source || { assignedTo: storedUser?.name || storedUser?.email }),
       metadata: source?.metadata || {}, previousFollowUpId: source?.id || source?._id || ''
     });
   }
@@ -577,13 +592,14 @@ export default function CalendarTodo() {
     setTodoDraft({
       ...emptyTodo(new Date(`${scheduledDate}T00:00:00`)),
       ...item,
+      assignedUserIds: assignmentSelection(item),
       updateReason: ''
     });
     setModalDate(new Date(`${scheduledDate}T00:00:00`));
   }
 
   function saveTodo() {
-    if (!todoDraft.title.trim() || !todoDraft.updateReason.trim() || !todoDraft.scheduledDate) return;
+    if (!todoDraft.title.trim() || !todoDraft.updateReason.trim() || !todoDraft.scheduledDate || !calendarAssignment.validReminderTime(todoDraft.scheduledTime)) return;
     const selectedClient = clientOptions.find((option) => option.value === todoDraft.clientNumber);
     const selectedLead = leadOptions.find((option) => option.value === todoDraft.leadNumber);
     const assignedUser = userLookup.get(String(todoDraft.assignedTo || '').trim().toLowerCase());
@@ -603,6 +619,7 @@ export default function CalendarTodo() {
         assignedToName: assignedUser?.name || todoDraft.assignedTo,
         assignedToEmail: assignedUser?.email || '',
         assignedToId: assignedUser?._id || assignedUser?.id || assignedUser?.crmUserId || assignedUser?.userId || '',
+        ...assignmentPayload(todoDraft.assignedUserIds),
         createdAt: existingItem?.createdAt || new Date().toISOString(),
         createdBy: existingItem?.createdBy || storedUser?.name || storedUser?.email || '',
         updatedAt: existingItem ? new Date().toISOString() : '',
@@ -689,11 +706,11 @@ export default function CalendarTodo() {
   function openAssignModal(item) {
     if (item.status === 'completed') return;
     setAssignmentTarget(item);
-    setAssignmentDraft({ assignedTo: item.assignedTo || '', reason: '' });
+    setAssignmentDraft({ assignedTo: assignmentSelection(item), reason: '', scheduledTime: item.scheduledTime || '' });
   }
 
   function saveAssignment() {
-    if (!assignmentTarget || assignmentTarget.status === 'completed' || !assignmentDraft.assignedTo) return;
+    if (!assignmentTarget || assignmentTarget.status === 'completed' || !assignmentDraft.assignedTo || !calendarAssignment.validReminderTime(assignmentDraft.scheduledTime)) return;
     const assignedBy = storedUser?.name || storedUser?.email || 'Current User';
     const assignedUser = userLookup.get(String(assignmentDraft.assignedTo || '').trim().toLowerCase());
     let changedItem = null;
@@ -705,6 +722,8 @@ export default function CalendarTodo() {
         assignedToName: assignedUser?.name || assignmentDraft.assignedTo,
         assignedToEmail: assignedUser?.email || '',
         assignedToId: assignedUser?._id || assignedUser?.id || assignedUser?.crmUserId || assignedUser?.userId || '',
+        ...assignmentPayload(assignmentDraft.assignedTo),
+        scheduledTime: assignmentDraft.scheduledTime,
         assignmentHistory: [
           {
             assignedTo: assignmentDraft.assignedTo,
@@ -720,7 +739,7 @@ export default function CalendarTodo() {
     });
     persist(nextItems, changedItem);
     setAssignmentTarget(null);
-    setAssignmentDraft({ assignedTo: '', reason: '' });
+    setAssignmentDraft({ assignedTo: '', reason: '', scheduledTime: '' });
   }
 
   function moveMonth(offset) {
@@ -1068,7 +1087,7 @@ export default function CalendarTodo() {
               </div>
               <div className="calendar-assignment-form">
                 <Field label="Assign To" required>
-                  <SearchSelect
+                  <MultiUserSelect multiple allowCustom={false}
                     value={assignmentDraft.assignedTo}
                     placeholder="Search and select user"
                     options={userOptions}
@@ -1078,10 +1097,11 @@ export default function CalendarTodo() {
                 <Field label="Reason for Assignment/Reassignment">
                   <textarea value={assignmentDraft.reason} onChange={(event) => setAssignmentDraft((current) => ({ ...current, reason: event.target.value }))} placeholder="Enter reason for assignment (optional)" />
                 </Field>
+                <Field label="Reminder Time" required><input type="time" required aria-label="Assignment Reminder Time" value={assignmentDraft.scheduledTime} onChange={event => setAssignmentDraft(current => ({ ...current, scheduledTime: event.target.value }))} /></Field>
               </div>
               <div className="calendar-assignment-actions">
                 <button type="button" onClick={() => setAssignmentTarget(null)}>Cancel</button>
-                <button type="button" onClick={saveAssignment}>Assign Todo</button>
+                <button type="button" disabled={!assignmentDraft.assignedTo || !calendarAssignment.validReminderTime(assignmentDraft.scheduledTime)} onClick={saveAssignment}>Assign Todo</button>
               </div>
             </motion.section>
           </motion.div>
@@ -1192,22 +1212,22 @@ export default function CalendarTodo() {
                   <em className="calendar-field-count">{todoDraft.updateReason.length} / 500</em>
                 </Field>
                 <Field label="Scheduled Date" required className="calendar-field-compact calendar-scheduled-date-field"><PremiumDatePicker value={todoDraft.scheduledDate} onChange={(event) => setTodoDraft((current) => ({ ...current, scheduledDate: event.target.value }))} /></Field>
-                <Field label="Reminder Time"><input type="time" value={todoDraft.scheduledTime} onChange={(event) => setTodoDraft((current) => ({ ...current, scheduledTime: event.target.value }))} /></Field>
+                <Field label="Reminder Time" required><input aria-label="Reminder Time" type="time" required value={todoDraft.scheduledTime} onChange={(event) => setTodoDraft((current) => ({ ...current, scheduledTime: event.target.value }))} /><small className="mt-1 block text-xs text-slate-500">Select a reminder time to save this Todo.</small></Field>
                 <Field label="Assign To User" wide>
-                  <SearchSelect
-                    value={todoDraft.assignedTo}
-                    placeholder="Select user (optional)"
+                  <MultiUserSelect multiple allowCustom={false}
+                    value={todoDraft.assignedUserIds}
+                    placeholder="Select users (multiple allowed)"
                     options={userOptions}
                     loading={optionsLoading}
                     emptyMessage="No active users found"
                     onRetry={() => setOptionsReloadKey((value) => value + 1)}
-                    onChange={(value) => setTodoDraft((current) => ({ ...current, assignedTo: value }))}
+                    onChange={(value) => setTodoDraft((current) => ({ ...current, assignedUserIds: value }))}
                   />
                 </Field>
               </div>
               <div className="calendar-modal-actions">
                 <button type="button" onClick={() => { setModalDate(null); setEditingTodoId(''); }}>Cancel</button>
-                <button type="button" disabled={!todoDraft.title.trim() || !todoDraft.updateReason.trim() || !todoDraft.scheduledDate || (isFollowUp(todoDraft) && !todoDraft.leadNumber && !todoDraft.temporaryLeadId)} onClick={saveTodo}>{editingTodoId ? `Update ${isFollowUp(todoDraft) ? 'Follow-Up' : 'Todo'}` : `Add ${isFollowUp(todoDraft) ? 'Follow-Up' : 'Todo'}`}</button>
+                <button type="button" disabled={!todoDraft.title.trim() || !todoDraft.updateReason.trim() || !todoDraft.scheduledDate || !calendarAssignment.validReminderTime(todoDraft.scheduledTime) || (isFollowUp(todoDraft) && !todoDraft.leadNumber && !todoDraft.temporaryLeadId)} onClick={saveTodo}>{editingTodoId ? `Update ${isFollowUp(todoDraft) ? 'Follow-Up' : 'Todo'}` : `Add ${isFollowUp(todoDraft) ? 'Follow-Up' : 'Todo'}`}</button>
               </div>
             </motion.div>
           </motion.div>

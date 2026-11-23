@@ -18,6 +18,7 @@ const CalendarItemSchema = new mongoose.Schema({
   assignedToName: { type: String, trim: true, default: '' },
   assignedToEmail: { type: String, trim: true, default: '' },
   assignedToId: { type: String, trim: true, default: '', index: true },
+  assignees: { type: [{ id: { type: String, trim: true }, name: String, email: String, _id: false }], default: [] },
   status: { type: String, trim: true, default: 'open', index: true },
   type: { type: String, trim: true, default: 'todo', index: true },
   history: { type: Array, default: [] },
@@ -31,5 +32,6 @@ const CalendarItemSchema = new mongoose.Schema({
 }, { timestamps: true, strict: false });
 
 CalendarItemSchema.index({ scheduledDate: 1, status: 1, type: 1 });
+CalendarItemSchema.index({ 'assignees.id': 1, scheduledDate: 1 });
 
 module.exports = mongoose.model('CalendarItem', CalendarItemSchema);

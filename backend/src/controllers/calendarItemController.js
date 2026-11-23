@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const CalendarItem = require('../models/CalendarItem');
+const calendarAssignment = require('../../../shared/calendarAssignment.cjs');
 const Lead = require('../models/Lead');
 const TemporaryLead = require('../models/TemporaryLead');
 const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
@@ -24,7 +25,7 @@ function canAccessCalendarItem(item = {}, user = {}) {
   const userTokens = identityTokens(user);
   const itemTokens = [item.createdByUser, item.createdBy, item.assignedToId, item.assignedToEmail, item.assignedToName, item.assignedTo]
     .map((value) => String(value?._id || value || '').trim().toLowerCase()).filter(Boolean);
-  return userTokens.some((token) => itemTokens.includes(token));
+  return userTokens.some((token) => [...itemTokens, ...calendarAssignment.assignmentTokens(item)].includes(token));
 }
 
 function calendarVisibilityFilter(user = {}) {
@@ -35,7 +36,9 @@ function calendarVisibilityFilter(user = {}) {
   const textIds = identityTokens(user);
   const clauses = [
     ...(mongoose.isValidObjectId(userId) ? [{ createdByUser: userId }] : []),
-    ...(textIds.length ? [{ assignedToId: { $in: textIds } }, { assignedTo: { $in: textIds } }] : []),
+    ...(textIds.length ? [{ assignedToId: { $in: textIds } }, { assignedTo: { $in: textIds } }, { 'assignees.id': { $in: textIds } }] : []),
+    ...(email ? [{ 'assignees.email': email }] : []),
+    ...(name ? [{ 'assignees.name': name }] : []),
     ...(email ? [{ assignedToEmail: email }, { createdBy: email }] : []),
     ...(name ? [{ assignedToName: name }, { createdBy: name }] : [])
   ];
@@ -48,7 +51,8 @@ function calendarScopeFilter(scope) {
   const identities = (scope?.identities || []).map((value) => String(value || '').trim()).filter(Boolean);
   const emails = identities.filter((value) => value.includes('@')).map((value) => value.toLowerCase());
   const clauses = [
-    ...(ids.length ? [{ createdByUser: { $in: ids } }, { assignedToId: { $in: ids } }] : []),
+    ...(ids.length ? [{ createdByUser: { $in: ids } }, { assignedToId: { $in: ids } }, { 'assignees.id': { $in: ids } }] : []),
+    ...(identities.length ? [{ 'assignees.name': { $in: identities } }, { 'assignees.email': { $in: emails } }] : []),
     ...(identities.length ? [{ assignedTo: { $in: identities } }, { assignedToName: { $in: identities } }, { createdBy: { $in: identities } }] : []),
     ...(emails.length ? [{ assignedToEmail: { $in: emails } }] : [])
   ];
@@ -79,7 +83,7 @@ function canAccessCalendarScope(item = {}, scope) {
     .map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
   const itemTokens = [item.createdByUser, item.createdBy, item.assignedToId, item.assignedToEmail, item.assignedToName, item.assignedTo]
     .map((value) => String(value?._id || value || '').trim().toLowerCase()).filter(Boolean);
-  return allowed.some((token) => itemTokens.includes(token));
+  return allowed.some((token) => [...itemTokens, ...calendarAssignment.assignmentTokens(item)].includes(token));
 }
 
 function buildItemData(body = {}, user) {
@@ -104,6 +108,8 @@ function buildItemData(body = {}, user) {
   data.assignedToName = String(data.assignedToName || '').trim();
   data.assignedToEmail = String(data.assignedToEmail || '').trim();
   data.assignedToId = String(data.assignedToId || '').trim();
+  if (Array.isArray(data.assignees)) data.assignees = calendarAssignment.assigneesOf({ assignees: data.assignees });
+  delete data.assignedUserIds;
   data.status = String(data.status || 'open').trim() || 'open';
   data.type = String(data.type || 'todo').trim() || 'todo';
   data.createdBy = String(data.createdBy || user?.name || user?.email || '').trim();
@@ -113,6 +119,28 @@ function buildItemData(body = {}, user) {
   data.assignmentHistory = Array.isArray(data.assignmentHistory) ? data.assignmentHistory : [];
   data.completionHistory = Array.isArray(data.completionHistory) ? data.completionHistory : [];
   return data;
+}
+
+async function resolveSelectedAssignees(data) {
+  if (!Array.isArray(data.assignees)) return '';
+  if (data.assignees.length > 50) return 'Select up to 50 users.';
+  if (!data.assignees.length) {
+    data.assignedTo = ''; data.assignedToName = ''; data.assignedToEmail = ''; data.assignedToId = '';
+    return '';
+  }
+  const ids = data.assignees.map(row => row.id);
+  if (ids.some(id => !mongoose.isValidObjectId(id))) return 'Select valid active users from the list.';
+  const users = await require('../models/User').find({ _id: { $in: ids }, isActive: { $ne: false } }).select('_id name email').lean();
+  if (users.length !== ids.length) return 'One or more selected users are unavailable. Refresh the users list.';
+  data.assignees = ids.map(id => {
+    const user = users.find(user => String(user._id) === id);
+    return { id, name: user.name || user.email, email: String(user.email || '').toLowerCase() };
+  });
+  data.assignedTo = data.assignees.map(user => user.name).join(', ');
+  data.assignedToName = data.assignedTo;
+  data.assignedToId = data.assignees[0].id;
+  data.assignedToEmail = data.assignees[0].email;
+  return '';
 }
 
 function mapItem(item) {
@@ -310,6 +338,9 @@ exports.listCalendarItems = async (req, res) => {
 exports.createCalendarItem = async (req, res) => {
   const data = buildItemData(req.body, req.user);
   if (!data.title) return res.status(400).json({ error: 'Title is required' });
+  if (!calendarAssignment.validReminderTime(data.scheduledTime)) return res.status(400).json({ error: 'Reminder Time is required. Select a valid time.' });
+  const assignmentError = await resolveSelectedAssignees(data);
+  if (assignmentError) return res.status(400).json({ error: assignmentError });
 
   let item = data.externalId ? await CalendarItem.findOne({ externalId: data.externalId }) : null;
   if (item) {
@@ -330,8 +361,11 @@ exports.updateCalendarItem = async (req, res) => {
   if (!item) return res.status(404).json({ error: 'Calendar item not found' });
   if (!canAccessCalendarScope(item, await getVisibleUserScope(req.user))) return res.status(403).json({ error: 'You do not have access to this calendar item' });
 
-  const data = buildItemData({ ...req.body, id: item.externalId || req.params.id }, req.user);
+  const data = buildItemData({ ...req.body, assignees: req.body.assignees ?? (item.assignees?.length ? item.assignees : undefined), id: item.externalId || req.params.id }, req.user);
   if (!data.title) return res.status(400).json({ error: 'Title is required' });
+  if (!calendarAssignment.validReminderTime(data.scheduledTime) && !(data.status === 'completed' && !item.scheduledTime && !data.scheduledTime)) return res.status(400).json({ error: 'Reminder Time is required. Select a valid time.' });
+  const assignmentError = await resolveSelectedAssignees(data);
+  if (assignmentError) return res.status(400).json({ error: assignmentError });
   Object.assign(item, data);
   await item.save();
   const syncedLead = String(item.status || '').toLowerCase() === 'completed'
