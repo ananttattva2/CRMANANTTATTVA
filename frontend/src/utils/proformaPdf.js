@@ -208,7 +208,7 @@ export function buildInvoicePdf(row) {
   text('Declaration', 29, 756, { size: 7 })
   fitted(details.declaration, 29, 759, 268, 25, 'normal', 7)
   box(298, 750, 271, 37)
-  pdf.addImage(proformaStamp, 'PNG', 516, 762, 16, 16)
+  pdf.addImage(proformaStamp, 'PNG', 510, 755, 28, 28)
   text('for ANANTTATTVA PRIVATE LIMITED', 566, 759, { size: 7, style: 'bold', align: 'right' })
   text('Authorised Signatory', 566, 783, { size: 7, align: 'right' })
   text('SUBJECT TO MUMBAI JURISDICTION', 297, 798, { size: 7, align: 'center' })
