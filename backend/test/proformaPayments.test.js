@@ -87,7 +87,9 @@ test('server rejects percentages above the remaining service balance and permits
     payload.combinedBasicAmount = 75000;
     assert.equal(await _test.validateInvoice(payload, null, actor), '');
     payload.items[0].sourceItemIndex = 0;
-    assert.match(await _test.validateInvoice(payload, null, actor), /Only PO-uploaded, closed services/);
+    assert.equal(await _test.validateInvoice(payload, null, actor), '');
+    payload.items[0].sourceItemIndex = 99;
+    assert.match(await _test.validateInvoice(payload, null, actor), /Only services from the selected quotation/);
     payload.paymentPercentage = 0;
     assert.match(await _test.validateInvoice(payload, null, actor), /payment percentage/);
   } finally { Quotation.findById = original.quote; Quotation.exists = original.exists; Lead.findById = original.lead; Invoice.find = original.invoices; }
@@ -111,4 +113,35 @@ test('legacy service labels and stale IDs match only one closed applicant servic
   const saved = { serviceSelections: [{ assignedServiceId: 'importer', eprCategory: 'Plastic Waste', subApplicantType: 'Importer', servicesOffered: 'Annual Return Filling' }, { assignedServiceId: 'brand', eprCategory: 'Plastic Waste', subApplicantType: 'Brand Owner', servicesOffered: 'Annual Return Filling' }], assignments: [{ assignedServiceId: 'importer' }, { assignedServiceId: 'brand', closureRequestedBy: 'sender', poStatus: 'received', poYearRows: [{ poNumber: 'PO-2', poProofUrl: 'https://example.com/po.pdf' }] }] };
   assert.equal(eligibleItems(legacy, saved)[0]?.assignedServiceId, 'brand');
   assert.equal(eligibleItems(legacy, saved)[0]?.sourceServiceIndex, 1);
+});
+
+ test('PI can be created without PO and EPR Credit uses target MT and calculated total', async () => {
+  const Quotation = require('../src/models/Quotation');
+  const Lead = require('../src/models/Lead');
+  const Invoice = require('../src/models/ProformaInvoice');
+  const controller = require('../src/controllers/proformaInvoiceController');
+  const original = { quote: Quotation.findById, exists: Quotation.exists, lead: Lead.findById, invoices: Invoice.find };
+  const credit = { businessCategory: 'EPR Credit', serviceCategory: 'EPR - Plastic Waste', servicesOffered: 'Category 1 - EOL', unit: '1', basicAmount: 1.2, eprCreditTargetMt: 100 };
+  Quotation.exists = async () => true;
+  Quotation.findById = () => ({ lean: async () => ({ quotationNumber: 'Q-CREDIT', leadRef: 'lead', items: [credit] }) });
+  Lead.findById = () => ({ lean: async () => ({ serviceSelections: [], assignments: [] }) });
+  Invoice.find = () => ({ select: () => ({ lean: async () => [] }) });
+  try {
+    let loaded;
+    await controller.eligibleQuotation({ params: { id: 'quote' }, user: { role: 'superadmin' } }, { json: data => { loaded = data; } });
+    assert.equal(loaded.items[0].unit, '100');
+    assert.equal(loaded.items[0].basicAmount, 120000);
+    assert.deepEqual(loaded.poYearRows, []);
+    const payload = _test.cleanPayload({ quotationId: 'quote', quotationNumber: 'Q-CREDIT', paymentPercentage: 50, items: loaded.items });
+    assert.equal(payload.subtotal, 60000);
+    assert.equal(payload.grandTotal, 70800);
+    assert.equal(await _test.validateInvoice(payload, null, { role: 'superadmin' }), '');
+    assert.equal(payload.poNumber, '');
+    const { invoicePdf } = require('../src/services/proformaEmail');
+    const pdf = (await invoicePdf({ ...payload, proformaNumber: 'ATPI/26-27/203' })).toString();
+    assert.match(pdf, /\(NA\)/);
+    assert.match(pdf, /60,000.00/);
+    assert.doesNotMatch(pdf, /6,000,000/);
+    if (process.env.PROFORMA_PREVIEW_DIR) fs.writeFileSync(path.join(process.env.PROFORMA_PREVIEW_DIR, 'credit-no-po.pdf'), await invoicePdf({ ...payload, proformaNumber: 'ATPI/26-27/203' }));
+  } finally { Quotation.findById = original.quote; Quotation.exists = original.exists; Lead.findById = original.lead; Invoice.find = original.invoices; }
 });

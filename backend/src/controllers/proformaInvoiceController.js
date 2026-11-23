@@ -7,6 +7,7 @@ const { resolveCrmRelationships } = require('../services/crmRelationships');
 const { getVisibleUserScope } = require('../utils/visibilityScope');
 
 const text = (value) => String(value || '').trim();
+const isCredit = item => String(item.businessCategory || '').toLowerCase().replace(/[^a-z0-9]/g, '') === 'eprcredit';
 const money = (value) => Number.isFinite(Number(value)) ? Math.round(Number(value) * 100) / 100 : 0;
 const mediaReference = (value) => {
   if (!value) return null;
@@ -88,7 +89,7 @@ function cleanPayload(body = {}) {
     };
   }).filter((item) => item.serviceCategory || item.piboCategory || item.basicAmount);
   const pricingMode = body.pricingMode === 'combined' ? 'combined' : 'individual';
-  const individualTotal = items.reduce((sum, item) => sum + ((Number(item.unit) || 1) * item.basicAmount), 0);
+  const individualTotal = items.reduce((sum, item) => sum + ((isCredit(item) ? 1 : (Number(item.unit) || 1)) * item.basicAmount), 0);
   const combinedBasicAmount = pricingMode === 'combined' ? money(body.combinedBasicAmount) : 0;
   const calculated = pricingMode === 'combined' ? combinedBasicAmount : individualTotal;
   const gstRate = 18;
@@ -171,7 +172,7 @@ exports.update = async (req, res) => {
   if (!row) return res.status(404).json({ error: 'Proforma Invoice not found or not accessible.' });
   const payload = cleanPayload(req.body);
   if (!payload.companyName || !payload.quotationNumber || !payload.items.length) {
-    return res.status(400).json({ error: 'Company, PO Number, Quotation Number and at least one item are required.' });
+    return res.status(400).json({ error: 'Company, Quotation Number and at least one item are required.' });
   }
   const validationError = await validateInvoice(payload, row._id, req.user);
   if (validationError) return res.status(400).json({ error: validationError });
@@ -188,10 +189,16 @@ async function quotationContext(id) {
   let refs = quote.leadRef ? { leadRef: quote.leadRef } : await resolveCrmRelationships({ leadId: quote.leadId || quote.leadCode });
   if (!refs.leadRef) refs = await resolveCrmRelationships({ companyName: quote.leadDetails?.companyName || quote.companyName });
   const lead = refs.leadRef ? await Lead.findById(refs.leadRef).lean() : null;
-  const items = lead ? eligibleItems(quote, lead) : [];
+  const matched = lead ? eligibleItems(quote, lead) : [];
+  const items = (quote.items || []).map((item, sourceItemIndex) => {
+    const mapped = matched.find(row => row.sourceItemIndex === sourceItemIndex) || { ...item, sourceItemIndex };
+    if (!isCredit(item)) return mapped;
+    const target = item.eprCreditTargetMt ?? (item.eprCreditTargetKg != null ? Number(item.eprCreditTargetKg) / 1000 : null);
+    return { ...mapped, unit: target == null ? '' : String(target), basicAmount: target == null ? 0 : money(Number(item.basicAmount) * 1000 * Number(target)) };
+  });
   const orders = new Map();
   for (const item of items) {
-    const assignment = assignmentForService(lead, item.assignedServiceId, item.sourceServiceIndex, lead.serviceSelections?.length || 1);
+    const assignment = assignmentForService(lead || {}, item.assignedServiceId, item.sourceServiceIndex, lead?.serviceSelections?.length || 1);
     const rows = assignment?.poYearRows?.length ? assignment.poYearRows : assignment?.originalPoDetails ? [assignment.originalPoDetails] : [assignment];
     for (const po of poRowsForQuotation(rows.filter(Boolean), quote)) {
       const proof = resolvePoProof({ ...po, poFile: po.poFile || po.compliancePoFile });
@@ -214,7 +221,7 @@ exports.eligibleQuotation = async (req, res) => {
 };
 async function validateInvoice(payload, editingId, user) {
   if (!(payload.paymentPercentage > 0 && payload.paymentPercentage <= 100)) return 'Select a payment percentage greater than 0 and up to 100.';
-  if (!payload.quotationId) return 'Select a quotation with closed services and uploaded PO proof.';
+  if (!payload.quotationId) return 'Select a quotation.';
   const scope = await getVisibleUserScope(user);
   if (!await Quotation.exists({ _id: payload.quotationId, ...(scope === null ? {} : { createdBy: { $in: scope.ids } }) })) return 'Quotation not found or not accessible.';
   const { quote, items, poYearRows } = await quotationContext(payload.quotationId);
@@ -222,14 +229,14 @@ async function validateInvoice(payload, editingId, user) {
   if (text(payload.poNumber) && text(payload.poNumber).toUpperCase() === text(quote.quotationNumber).toUpperCase()) {
     return 'PO Number must be different from the quotation number.';
   }
-  if (!applyLeadPoRows(payload, poYearRows, quote.quotationNumber)) return 'No distinct PO number was found on the selected lead. Enter the actual PO number while closing the lead, then reload this quotation.';
+  if (!applyLeadPoRows(payload, poYearRows, quote.quotationNumber)) { payload.poYearRows = []; payload.poYearCount = 0; }
   for (const item of payload.items) {
     if (item.sourceItemIndex != null) continue;
     const matches = items.filter(eligible => ['serviceCategory', 'piboCategory', 'servicesOffered', 'servicesForYear'].every(key => text(eligible[key]) === text(item[key])));
     if (matches.length === 1) item.sourceItemIndex = matches[0].sourceItemIndex;
   }
   if (new Set(payload.items.map(item => item.sourceItemIndex)).size !== payload.items.length) return 'Each quotation service can appear only once.';
-  if (payload.items.some(item => !items.some(eligible => eligible.sourceItemIndex === item.sourceItemIndex))) return 'Only PO-uploaded, closed services can be invoiced. Reload the quotation.';
+  if (payload.items.some(item => !items.some(eligible => eligible.sourceItemIndex === item.sourceItemIndex))) return 'Only services from the selected quotation can be invoiced. Reload the quotation.';
   const previous = await ProformaInvoice.find({ quotationId: payload.quotationId, status: { $ne: 'cancelled' }, ...(editingId ? { _id: { $ne: editingId } } : {}) }).select('items paymentPercentage').lean();
   for (const item of payload.items) {
     const billed = previous.filter(row => row.items.some(old => old.sourceItemIndex === item.sourceItemIndex || (old.sourceItemIndex == null && old.serviceCategory === item.serviceCategory && old.piboCategory === item.piboCategory))).reduce((sum, row) => sum + (row.paymentPercentage ?? 100), 0);

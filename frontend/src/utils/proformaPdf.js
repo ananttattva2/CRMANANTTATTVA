@@ -11,7 +11,7 @@ const CONSULTANCY_BUSINESS_CATEGORIES = new Set(['eprconsultancy', 'eprwastewate
 function actualPoNumber(row = {}) {
   const quotationNumber = String(row.quotationNumber || '').trim().toUpperCase()
   const values = [row.poNumber, ...(Array.isArray(row.poYearRows) ? row.poYearRows.map((po) => po?.poNumber || po?.poNo) : [])]
-  return values.map((value) => String(value || '').trim()).find((value) => value && value.toUpperCase() !== quotationNumber) || '-'
+  return values.map((value) => String(value || '').trim()).find((value) => value && value.toUpperCase() !== quotationNumber) || 'NA'
 }
 export const invoiceFields = [
  ['deliveryNote','Delivery Note'], ['paymentTerms','Mode / Terms of Payment','50% ADVANCE'], ['reference','Reference No. & Date'], ['otherReferences','Other References','AS PER PO'], ['buyerOrder','BuyerÃ¢â‚¬â„¢s Order No.'], ['buyerOrderDate','BuyerÃ¢â‚¬â„¢s Order Date'], ['dispatchDocument','Dispatch Doc No.'], ['deliveryDate','Delivery Note Date'], ['dispatchedThrough','Dispatched Through'], ['destination','Destination'], ['deliveryTerms','Terms of Delivery'], ['consignee','Consignee (Ship To) Name'], ['consigneeAddress','Consignee Address'], ['consigneeGst','Consignee GSTIN / UIN'], ['consigneeState','Consignee State & Code'], ['buyerStateCode','Buyer State Code'], ['hsn','HSN / SAC','998311'], ['bankName','Bank Name'], ['accountName','Account Name','Ananttattva Private Limited'], ['accountNumber','Account Number'], ['ifsc','IFSC Code'], ['pan','Company PAN'], ['declaration','Declaration','We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.']
@@ -19,6 +19,7 @@ export const invoiceFields = [
 const small = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen']
 function words(n) { n = Math.floor(n); if (!n) return 'Zero'; if(n<20)return small[n]; if(n<100)return ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'][Math.floor(n/10)]+(n%10?' '+words(n%10):''); for(const [v,t] of [[10000000,'Crore'],[100000,'Lakh'],[1000,'Thousand'],[100,'Hundred']])if(n>=v)return words(n/v)+' '+t+(n%v?' '+words(n%v):''); return '' }
 const currencyWords = n => words(n)+(Math.round((n%1)*100)?' and '+words(Math.round((n%1)*100))+' Paise':'')+' Only'
+const itemMultiplier = item => String(item.businessCategory || '').toLowerCase().replace(/[^a-z0-9]/g, '') === 'eprcredit' ? 1 : (Number(item.unit) || 1)
 export function buildInvoicePdf(row) {
   const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
   const details = { ...Object.fromEntries(invoiceFields.map(([key, , value]) => [key, value || ''])), ...(row.invoiceDetails || {}) }
@@ -99,7 +100,7 @@ export function buildInvoicePdf(row) {
   let y = 329
   const items = row.items || []
   const combined = row.pricingMode === 'combined'
-  const fullBase = combined ? Number(row.combinedBasicAmount ?? row.subtotal ?? 0) : items.reduce((sum, item) => sum + (Number(item.unit) || 1) * Number(item.basicAmount || 0), 0)
+  const fullBase = combined ? Number(row.combinedBasicAmount ?? row.subtotal ?? 0) : items.reduce((sum, item) => sum + itemMultiplier(item) * Number(item.basicAmount || 0), 0)
   const base = Math.round(fullBase * percentage) / 100
   const tax = Math.round(base * 18) / 100
   items.forEach((item, index) => {
@@ -124,7 +125,7 @@ export function buildInvoicePdf(row) {
     font(8.5, 'bold')
     const titleLines = pdf.splitTextToSize(displayTitle, 302)
     const businessCategoryLines = businessCategory ? pdf.splitTextToSize(businessCategory, 302) : []
-    font(8, 'italic')
+    font(specialService ? 8.5 : 8, specialService ? 'bold' : 'italic')
     const serviceDescriptionLines = serviceDescription ? pdf.splitTextToSize(serviceDescription, 292) : []
     const serviceYearLines = serviceYears.filter(Boolean).flatMap((value) => pdf.splitTextToSize(String(value), 292))
     const offeredLines = offered ? pdf.splitTextToSize(`FOR ${offered}${subApplicantType ? ' - ' + subApplicantType : ''}`, 292) : []
@@ -161,9 +162,9 @@ export function buildInvoicePdf(row) {
         text(details.hsn, 353, y, { size: 7 })
         if (!combined) {
           text(item.unit || '1', 417, y, { align: 'center', size: 7 })
-          fitted(cash(Number(item.basicAmount) * percentage / 100), 442, y - 8, 41, 12, 'normal', 7)
+          fitted(cash(Number(item.basicAmount) * percentage / 100 / (businessCategoryKey === 'eprcredit' && Number(item.unit) > 0 ? Number(item.unit) : 1)), 442, y - 8, 41, 12, 'normal', 7)
         }
-        const value = combined ? (index === 0 ? cash(base) : '') : cash(Math.round((Number(item.unit) || 1) * Number(item.basicAmount || 0) * percentage) / 100)
+        const value = combined ? (index === 0 ? cash(base) : '') : cash(Math.round(itemMultiplier(item) * Number(item.basicAmount || 0) * percentage) / 100)
         text(value, 566, y, { style: 'bold', size: 8, align: 'right' })
         first = false
       }

@@ -66,6 +66,7 @@ test('Proforma Invoice view can be reopened and both download actions save a PDF
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     await page.waitForSelector('button[title="View details"]');
 
+    await page.evaluate(() => [...document.querySelectorAll('button')].find(button => button.textContent.trim().startsWith('Saved Proforma Invoices'))?.click());
     await page.click('button[title="View details"]');
     await page.waitForSelector('iframe[title="Proforma Invoice PDF preview"][src^="blob:"]');
     const firstUrl = await page.$eval('iframe[title="Proforma Invoice PDF preview"]', frame => frame.src);
