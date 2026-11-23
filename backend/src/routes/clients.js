@@ -25,6 +25,8 @@ router.use('/:id', requireAuth, deactivation.guard);
 router.use('/', requireAuth, deactivation.guard);
 
 router.get('/', requireAuth, cacheRead, clientCtrl.listClients);
+router.get('/registration-reviews', requireAuth, require('../controllers/registrationTrackerController').list);
+router.post('/:id/registration-tracker/:trackerId/decision', requireAuth, require('../controllers/registrationTrackerController').decide);
 router.get('/ar-compliance', requireAuth, requireRoles(AR_REVIEW_ROLES), arReviewCtrl.list);
 router.get('/:id/ar-compliance', requireAuth, requireRoles(AR_REVIEW_ROLES), arReviewCtrl.get);
 router.put('/:id/ar-compliance/field', requireAuth, requireRoles(AR_REVIEW_ROLES), arReviewCtrl.saveField);
@@ -36,6 +38,7 @@ router.get('/discovery/services', requireAuth, clientCtrl.listClientMasterServic
 router.get('/discovery/catalog', requireAuth, clientCtrl.listClientMasterCatalog);
 router.get('/pending-approvals/clients/:id/applicants', requireAuth, requireRoles(CLIENT_APPROVAL_ROLES), clientCtrl.listClientReviewApplicants);
 router.get('/pending-approvals', requireAuth, cacheRead, clientCtrl.listPendingApprovals);
+router.get('/:id/annual-return-summary', requireAuth, require('../controllers/clientAnnualSummaryController').get);
 router.get('/:id/registration-tracker', requireAuth, require('../controllers/registrationTrackerController').get);
 router.put('/:id/registration-tracker', requireAuth, require('../controllers/registrationTrackerController').save);
 router.patch('/pending-approvals/clients/approve-all', requireAuth, requireRoles(CLIENT_APPROVAL_ROLES), clientCtrl.approveAllPendingClients);

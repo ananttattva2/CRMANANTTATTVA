@@ -10,7 +10,6 @@ import { API_ENDPOINTS } from '../../services/apiEndpoints';
 import { adminRoles } from '../../constants/dashboard';
 import { quotationServiceCategoryOptions, selectOptions } from './clientMaster.constants';
 import { UploadButton } from './ClientMasterFormSections';
-import PurchaseDataWorkspace from './PurchaseDataWorkspace';
 import serviceYearAccess from '../../../../shared/serviceYearAccess.cjs';
 import { uploadMedia, uploadMediaBatch } from '../../services/mediaUpload';
 import { formatDisplayDate as formatProjectDate } from '../../utils/dateFormat';
@@ -2233,7 +2232,7 @@ export function AnnualReturnHistory({ client, quotations = [], proformaInvoices 
                   />
                 )}
                 {activeProcessingTab === 'data' && (
-                  <PurchaseDataWorkspace clientId={client?._id || client?.id || uniqueId} financialYear={selected.label} currentUser={currentUser} />
+                  <div className="rounded-2xl border bg-teal-50 p-6"><h3 className="text-lg font-bold">Client Data Upload Tracker</h3><p className="mt-2 text-sm text-slate-600">Manage Purchase Data, Sales Data and Annual Return completion in the dedicated workspace.</p><button type="button" onClick={() => navigate(`/sales/client-data/${encodeURIComponent(client?._id || client?.id || uniqueId)}?financialYear=${encodeURIComponent(selected.label)}`)} className="mt-4 rounded-xl bg-teal-700 px-5 py-3 font-bold text-white">Open Client Data Workspace</button></div>
                 )}
               </div>
               {saveNotice && <ToastMessage type="success" className="mx-4 mb-3">{saveNotice}</ToastMessage>}

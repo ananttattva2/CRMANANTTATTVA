@@ -5,15 +5,15 @@ import { API_ENDPOINTS } from '../../services/apiEndpoints';
 import { normalizeDocumentUrl } from './ClientMasterAnnualReturn';
 import serviceAccess from '../../../../shared/serviceYearAccess.cjs';
 import ToastMessage from '../../components/ToastMessage';
-import RegistrationTracker from './RegistrationTracker';
+import { useNavigate } from 'react-router-dom';
 
 export default function ClientServiceHistory({ client, onContinue }) {
   const [state, setState] = useState({ loading: true, error: '', rows: [] });
   const [refresh, setRefresh] = useState(0);
   const [toast, setToast] = useState('');
-  const [registration, setRegistration] = useState(null);
+  const navigate = useNavigate();
   const clientId = client?._id || client?.id;
-  useEffect(() => { setRegistration(null); setToast(''); }, [clientId]);
+  useEffect(() => { setToast(''); }, [clientId]);
   useEffect(() => {
     if (!clientId) { setState({ loading: false, error: '', rows: [] }); return; }
     let cancelled = false;
@@ -41,10 +41,9 @@ export default function ClientServiceHistory({ client, onContinue }) {
       const access = serviceAccess.annualYearAccess(row.annualYear);
       if (!access.allowed) { setToast(access.message); return; }
     }
-    if (serviceAccess.isRegistration(row.service)) { setRegistration(row); return; }
+    if (serviceAccess.isRegistration(row.service)) { navigate('/sales/registration/' + clientId + '?' + new URLSearchParams({ assignedServiceId:row.assignedServiceId,poNumber:row.number,registrationYear:row.registrationYear || '',service:row.service }).toString()); return; }
     onContinue(row);
   }
-  if (registration) return <RegistrationTracker key={`${clientId}-${registration.assignedServiceId}-${registration.number}`} client={client} service={registration} onBack={() => setRegistration(null)} />;
   return <section className="mt-5 overflow-hidden rounded-xl border border-teal-100 bg-white">
     {toast && <div className="fixed right-5 top-20 z-[10050] max-w-md"><ToastMessage type="warning" actionLabel="Close" onAction={() => setToast('')}>{toast}</ToastMessage></div>}
     <div className="border-b border-teal-100 bg-teal-50/60 p-5"><p className="text-sm font-bold text-slate-700">Closed purchase orders for all services offered to the selected applicant</p></div>

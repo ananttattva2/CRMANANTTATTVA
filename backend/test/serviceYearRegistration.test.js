@@ -12,10 +12,13 @@ test('Annual Return year unlocks only in the following financial year using IST'
 });
 test('registration tracker accepts exactly Yes/No stages and requires completion proof', () => {
   assert.equal(isRegistration('New Registration'), true); assert.equal(isRegistration('Registration'), true); assert.equal(isRegistration('Annual Return Filling'), false);
-  const input = { dataReceived: 'yes', complianceCheck: 'yes', registrationCompleted: 'yes' };
+  const proof = { name: 'data.pdf', secureUrl: 'https://example.test/data.pdf' };
+  const input = { dataExplained: 'yes', dataReceived: 'yes', explainedProof: proof, receivedProof: proof, registrationCompleted: 'yes' };
+  const approved = { managerStatus: 'APPROVED', complianceStatus: 'APPROVED' };
   assert.throws(() => validate(input), /proof/);
   assert.throws(() => validate({ ...input, dataReceived: 'maybe' }), /Yes or No/);
-  const result = validate({ ...input, proof: { name: 'certificate.pdf', secureUrl: 'https://example.test/certificate.pdf' } });
+  assert.throws(() => validate({ ...input, proof }), /Manager and Compliance approval/);
+  const result = validate({ ...input, proof: { name: 'certificate.pdf', secureUrl: 'https://example.test/certificate.pdf' } }, approved);
   assert.equal(result.registrationCompleted, 'yes'); assert.equal(result.proof.name, 'certificate.pdf');
   assert.throws(() => validate({ ...input, proof: { url: 'javascript:alert(1)' } }), /proof/);
 });

@@ -14,7 +14,7 @@ test('invoice email validates recipients and rejects header injection', () => {
 });
 
 test('server attaches saved invoice PDF and enforces creator, sender, admin and Finance CC', async t => {
-  const row = { _id: '507f1f77bcf86cd799439099', status: 'issued', proformaNumber: 'PI/26-27/203', poNumber: 'ATPL/Nov/01', companyName: 'Demo Company', createdBy: { email: 'creator@example.test' }, invoiceDate: '2026-11-21', items: [{ serviceCategory: 'Consultancy', unit: 1, basicAmount: 1000 }] };
+  const row = { _id: '507f1f77bcf86cd799439099', status: 'issued', proformaNumber: 'PI/26-27/203', poNumber: 'ATPL/Nov/01', companyName: 'Demo Company', leadDetails: { gstNumber: '27ABCDE1234F1Z5' }, createdBy: { email: 'creator@example.test' }, invoiceDate: '2026-11-21', items: [{ serviceCategory: 'Consultancy', unit: 1, basicAmount: 1000 }] };
   const people = [
     { email: 'admin@example.test', role: 'admin' },
     { email: 'super@example.test', role: 'operation', roles: ['Super Admin'] },
@@ -53,4 +53,13 @@ test('email endpoint rejects inaccessible invoices before PDF generation or send
   let failure;
   await controller.sendEmail({ params: { id: 'missing' }, user: { _id: 'sales-id', role: 'sales' }, body: { to: 'client@example.test', subject: 'Invoice', body: 'Hello' } }, {}, error => { failure = error; });
   assert.equal(failure.status, 404);
+});
+
+test('invoice email refuses a missing client GSTIN instead of sending a blank GST block',async t=>{
+ const Client=require('../src/models/Client');
+ t.mock.method(Invoice,'findOne',()=>({populate(){return this;},lean:async()=>({_id:'507f1f77bcf86cd799439099',status:'issued',companyName:'Missing GST'})}));
+ t.mock.method(Client,'findOne',()=>({select(){return this;},lean:async()=>null}));
+ t.mock.method(mailer,'sendMail',()=>assert.fail('Missing GST invoice must not be sent'));
+ let failure;await controller.sendEmail({params:{id:'507f1f77bcf86cd799439099'},user:{_id:'admin',role:'superadmin'},body:{to:'client@example.test',subject:'PI',body:'Invoice'}},{},error=>{failure=error;});
+ assert.equal(failure.status,400);assert.match(failure.message,/GSTIN/);
 });

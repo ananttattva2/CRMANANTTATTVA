@@ -1,3 +1,4 @@
+import RegistrationReviews from './RegistrationReviews';
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Eye, FileCheck2, Loader2, LockKeyhole, RefreshCw } from 'lucide-react';
@@ -151,7 +152,7 @@ export function ArComplianceWorkspace({
 }
 export default function ArComplianceList() {
   const [currentUser] = useState(() => JSON.parse(localStorage.getItem('user') || 'null'));
-  const [queueTab, setQueueTab] = useState('ar'),
+  const [queueTab, setQueueTab] = useState(() => new URLSearchParams(window.location.search).get('tab') === 'registration' ? 'registration' : 'ar'),
     [rows, setRows] = useState([]),
     [loading, setLoading] = useState(true),
     [error, setError] = useState('');
@@ -194,9 +195,9 @@ export default function ArComplianceList() {
   const filtered = rows.filter(row => matches(row, status) && `${row.clientName} ${row.assignedUserName || ''} ${row.applicantType || ''} ${row.financialYear} ${row.stageLabel}`.toLowerCase().includes(search.toLowerCase()));
   const pages = Math.max(1, Math.ceil(filtered.length / 10));
   return <DashboardShell currentUser={currentUser}><div className="ar-list ar-review">
-    <header className="ar-heading ar-card"><div><p className="ar-eyebrow">Compliance</p><h1>{queueTab === 'company' ? 'Company Compliance' : 'AR Compliance'}</h1><p className="ar-muted">Company verification and annual-return review in one workspace.</p></div>{queueTab === 'ar' && <button className="ar-save flex items-center gap-2" onClick={load} disabled={loading}><RefreshCw size={15} />Refresh</button>}</header>
-    <div className="ar-tabs" role="tablist" aria-label="Compliance queues"><button role="tab" aria-selected={queueTab === 'company'} disabled={!canCompany} title={!canCompany ? 'Company reviews are available to Compliance and Admin' : ''} onClick={() => setQueueTab('company')}>Company Compliance</button><button role="tab" aria-selected={queueTab === 'ar'} onClick={() => setQueueTab('ar')}>AR Compliance</button></div>
-    {queueTab === 'company' ? <div className="ar-company-queue"><PendingApproval embedded companyOnly /></div> : <>
+    <header className="ar-heading ar-card"><div><p className="ar-eyebrow">Compliance</p><h1>{queueTab === 'company' ? 'Company Compliance' : queueTab === 'registration' ? 'Registration' : 'AR Compliance'}</h1><p className="ar-muted">Company verification and annual-return review in one workspace.</p></div>{queueTab === 'ar' && <button className="ar-save flex items-center gap-2" onClick={load} disabled={loading}><RefreshCw size={15} />Refresh</button>}</header>
+    <div className="ar-tabs" role="tablist" aria-label="Compliance queues"><button role="tab" aria-selected={queueTab === 'company'} disabled={!canCompany} title={!canCompany ? 'Company reviews are available to Compliance and Admin' : ''} onClick={() => setQueueTab('company')}>Company Compliance</button><button role="tab" aria-selected={queueTab === 'ar'} onClick={() => setQueueTab('ar')}>AR Compliance</button><button role="tab" aria-selected={queueTab === 'registration'} onClick={() => setQueueTab('registration')}>Registration</button></div>
+    {queueTab === 'registration' ? <RegistrationReviews currentUser={currentUser} /> : queueTab === 'company' ? <div className="ar-company-queue"><PendingApproval embedded companyOnly /></div> : <>
       {error && <div role="alert" className="ar-alert">{error}</div>}<section className="ar-card"><div className="ar-filter"><label className="max-w-sm flex-1"><span className="sr-only">Search clients, financial year or stage</span><input placeholder="Search client, year or stage…" value={search} onChange={event => {
                 setSearch(event.target.value);
                 setPage(1);

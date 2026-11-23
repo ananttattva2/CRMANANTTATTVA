@@ -1,3 +1,5 @@
+const Client = require('../models/Client');
+const { validGst, invoicePartyDetails } = require('../services/invoicePartyDetails');
 const ProformaInvoice = require('../models/ProformaInvoice');
 const { resolvePoProof } = require('../services/poProofResolver');
 const Lead = require('../models/Lead');
@@ -139,6 +141,15 @@ exports.list = async (req, res) => {
       if (!item.financialYear) item.financialYear = source.financialYear || source.servicesForYear;
     }
   }
+  const missingGst = rows.filter(row => !validGst(row.leadDetails?.gstNumber));
+  if (missingGst.length) {
+    const ids = values => [...new Set(values.map(value => String(value || '')).filter(value => /^[a-f0-9]{24}$/i.test(value)))];
+    const clients = await Client.find({ $or: [{ _id: { $in: ids(missingGst.map(row => row.clientRef)) } }, { selectedLead: { $in: ids(missingGst.map(row => row.leadRef)) } }, { 'data.basic.clientLegalName': { $in: missingGst.map(row => row.companyName).filter(Boolean) } }] }).select('data.basic data.compliance data.selectedLeadSnapshot selectedLead').lean();
+    for (const row of missingGst) {
+      const client = clients.find(client => String(client._id) === String(row.clientRef) || (row.leadRef && String(client.selectedLead) === String(row.leadRef)) || client.data?.basic?.clientLegalName === row.companyName);
+      row.leadDetails = invoicePartyDetails(row.leadDetails, client || {});
+    }
+  }
   return res.json({ ok: true, proformaInvoices: rows });
 };
 
@@ -147,6 +158,14 @@ async function visibleEmailInvoice(req) {
   const invoice = await ProformaInvoice.findOne({ _id: req.params.id, ...(scope === null ? {} : { createdBy: { $in: scope.ids } }) }).populate('createdBy', 'name email').lean();
   if (!invoice) throw Object.assign(new Error('Invoice not found or not accessible.'), { status: 404 });
   if (invoice.status === 'cancelled') throw Object.assign(new Error('Cancelled invoices cannot be emailed.'), { status: 400 });
+  if (!validGst(invoice.leadDetails?.gstNumber)) {
+    const clauses = [{ 'data.basic.clientLegalName': invoice.companyName }];
+    if (invoice.clientRef) clauses.unshift({ _id: invoice.clientRef });
+    if (invoice.leadRef) clauses.unshift({ selectedLead: invoice.leadRef });
+    const client = await Client.findOne({ $or: clauses }).select('data.basic data.compliance data.selectedLeadSnapshot').lean();
+    invoice.leadDetails = invoicePartyDetails(invoice.leadDetails, client || {});
+    if (!validGst(invoice.leadDetails.gstNumber)) throw Object.assign(new Error('Client GSTIN/UIN is missing. Edit and save the GSTIN before sending this PI.'), { status: 400 });
+  }
   return invoice;
 }
 exports.emailOptions = async (req, res, next) => {
@@ -180,6 +199,7 @@ exports.create = async (req, res) => {
   if (!payload.items.length) return res.status(400).json({ error: 'At least one invoice item is required.' });
   const validationError = await validateInvoice(payload, null, req.user);
   if (validationError) return res.status(400).json({ error: validationError });
+  if (!validGst(payload.leadDetails.gstNumber)) return res.status(400).json({ error: 'Client GSTIN/UIN is required. Enter the valid 15-character GSTIN before saving the PI.' });
   const row = await ProformaInvoice.create({ ...payload, proformaNumber: await nextProformaNumber(), createdBy: req.user?._id });
   await row.populate('createdBy', 'name email');
   return res.status(201).json({ ok: true, proformaInvoice: row });
@@ -229,21 +249,25 @@ async function quotationContext(id) {
       orders.set(key, row);
     }
   }
-  return { quote, lead, items, poYearRows: [...orders.values()] };
+  const clientId = quote.clientRef || refs.clientRef;
+  const clientFilter = clientId ? { _id: clientId } : lead?._id ? { selectedLead: lead._id } : null;
+  const client = clientFilter ? await Client.findOne(clientFilter).select('data.basic data.compliance data.selectedLeadSnapshot').lean() : null;
+  const leadDetails = invoicePartyDetails(quote.leadDetails, client || {}, lead || {});
+  return { quote, lead, items, leadDetails, poYearRows: [...orders.values()] };
 }
 exports.eligibleQuotation = async (req, res) => {
   const scope = await getVisibleUserScope(req.user);
   const visible = await Quotation.exists({ _id: req.params.id, ...(scope === null ? {} : { createdBy: { $in: scope.ids } }) });
   if (!visible) return res.status(404).json({ error: 'Quotation not found or not accessible.' });
   const context = await quotationContext(req.params.id);
-  return res.json({ ok: true, items: context.items || [], poYearRows: context.poYearRows || [] });
+  return res.json({ ok: true, items: context.items || [], leadDetails: context.leadDetails, poYearRows: context.poYearRows || [] });
 };
 async function validateInvoice(payload, editingId, user) {
   if (!(payload.paymentPercentage > 0 && payload.paymentPercentage <= 100)) return 'Select a payment percentage greater than 0 and up to 100.';
   if (!payload.quotationId) return 'Select a quotation.';
   const scope = await getVisibleUserScope(user);
   if (!await Quotation.exists({ _id: payload.quotationId, ...(scope === null ? {} : { createdBy: { $in: scope.ids } }) })) return 'Quotation not found or not accessible.';
-  const { quote, items, poYearRows } = await quotationContext(payload.quotationId);
+  const { quote, items, poYearRows, leadDetails } = await quotationContext(payload.quotationId);
   if (!quote) return 'Selected quotation was not found.';
   if (text(payload.poNumber) && text(payload.poNumber).toUpperCase() === text(quote.quotationNumber).toUpperCase()) {
     return 'PO Number must be different from the quotation number.';
@@ -261,6 +285,7 @@ async function validateInvoice(payload, editingId, user) {
     const billed = previous.filter(row => row.items.some(old => old.sourceItemIndex === item.sourceItemIndex || (old.sourceItemIndex == null && old.serviceCategory === item.serviceCategory && old.piboCategory === item.piboCategory))).reduce((sum, row) => sum + (row.paymentPercentage ?? 100), 0);
     if (billed + payload.paymentPercentage > 100.001) return `Only ${Math.max(0, 100 - billed)}% remains for ${item.serviceCategory}.`;
   }
+  payload.leadDetails = invoicePartyDetails(payload.leadDetails, { data: { basic: leadDetails } });
   payload.quotationNumber = quote.quotationNumber;
   Object.assign(payload, await resolveCrmRelationships(payload));
   return '';

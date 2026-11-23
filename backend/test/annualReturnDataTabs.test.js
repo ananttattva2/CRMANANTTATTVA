@@ -23,6 +23,8 @@ test('Data opens the Purchase Data Compliance workspace without exposing Portal 
   assert.match(source, /useState\('compliance'\)/);
   assert.doesNotMatch(source, /activeDataSubTab === 'portal'/);
   assert.doesNotMatch(source, /createProcessingField\('annual\.portalData', 'Portal Data'/);
-  assert.match(source, /<PurchaseDataWorkspace/);
-  assert.match(source, /financialYear=\{selected\.label\}/);
+  assert.match(source, /Open Client Data Workspace/);
+  const page = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/ClientDataWorkspace.jsx'), 'utf8');
+  assert.match(page, /<PurchaseDataWorkspace/);
+  assert.match(source, /financialYear=\$\{encodeURIComponent\(selected\.label\)/);
 });

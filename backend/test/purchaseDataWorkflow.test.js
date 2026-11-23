@@ -220,7 +220,8 @@ test('the second valid Excel import automatically submits once and emails the as
 test('frontend mounts Purchase Data inside Data Compliance and exposes all requested tabs', () => {
   const annual = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/ClientMasterAnnualReturn.jsx'), 'utf8');
   const workspace = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/features/clientMaster/PurchaseDataWorkspace.jsx'), 'utf8');
-  assert.match(annual, /<PurchaseDataWorkspace/);
+  assert.match(annual, /Open Client Data Workspace/);
+  assert.match(fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/ClientDataWorkspace.jsx'), 'utf8'), /<PurchaseDataWorkspace/);
   ['Purchase Data','Sales Data','Client Console Data','Pre Consumer / State / Annual','EPR Target','EPR CREDIT'].forEach((tab) => assert.match(workspace, new RegExp(tab.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
   assert.doesNotMatch(workspace, /Upload All Screenshot/);
 });

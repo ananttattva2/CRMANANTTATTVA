@@ -1,3 +1,4 @@
+import AnnualReturnCompletion from './AnnualReturnCompletion';
 import { withExplanationStages } from './uploadChecklist.utils.mjs';
 import SalesUploadChecklist from './SalesUploadChecklist';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -11,7 +12,7 @@ import SalesDataPanel from './SalesDataPanel';
 import ClientConsoleData from './ClientConsoleData';
 import { emailProofWithoutAttachments } from './emailProofSanitizer.mjs';
 
-const WORKSPACE_TABS = ['Purchase Data', 'Sales Data', 'Client Console Data', 'Pre Consumer / State / Annual', 'EPR Target', 'EPR CREDIT'];
+const WORKSPACE_TABS = ['Purchase Data', 'Sales Data', 'Annual Return Completion', 'Client Console Data', 'Pre Consumer / State / Annual', 'EPR Target', 'EPR CREDIT'];
 const REQUIRED_NORMAL_ROWS = new Set(['Received from client', 'Ready to upload', 'Client Approval on data', 'Upload Complete']);
 const EMPTY_PAGINATION = { page: 1, pages: 1, total: 0 };
 const statusTone = (value) => {
@@ -258,9 +259,10 @@ export default function PurchaseDataWorkspace({ clientId, financialYear, current
     </div>}
 
 
+    {activeTab === 'Annual Return Completion' && <AnnualReturnCompletion clientId={clientId} />}
     {activeTab === 'Sales Data' && <SalesDataPanel clientId={clientId} financialYear={financialYear} />}
     {activeTab === 'Client Console Data' && <ClientConsoleData clientId={clientId} financialYear={financialYear} />}
-    {!['Purchase Data','Sales Data','Client Console Data'].includes(activeTab) && <div className="grid min-h-72 place-items-center bg-[linear-gradient(135deg,#f0fdfa,#fff,#fff7ed)] p-8 text-center"><div><span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-white text-[#30737B] shadow ring-1 ring-teal-100"><FileSpreadsheet className="h-7 w-7" /></span><h5 className="mt-4 text-lg font-black">{activeTab}</h5><p className="mt-2 text-sm font-bold text-slate-500">This Data Compliance module will be configured in the next phase.</p></div></div>}
+    {!['Purchase Data','Sales Data','Annual Return Completion','Client Console Data'].includes(activeTab) && <div className="grid min-h-72 place-items-center bg-[linear-gradient(135deg,#f0fdfa,#fff,#fff7ed)] p-8 text-center"><div><span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-white text-[#30737B] shadow ring-1 ring-teal-100"><FileSpreadsheet className="h-7 w-7" /></span><h5 className="mt-4 text-lg font-black">{activeTab}</h5><p className="mt-2 text-sm font-bold text-slate-500">This Data Compliance module will be configured in the next phase.</p></div></div>}
     <ImportPreview pending={pendingImport} busy={busy === 'import'} onClose={() => setPendingImport(null)} onConfirm={confirmImport} />
     {mailPreview && <OutlookMsgViewer file={mailPreview} onClose={() => setMailPreview(null)} />}
   </section>;

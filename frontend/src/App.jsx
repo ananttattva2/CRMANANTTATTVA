@@ -1,3 +1,5 @@
+const ClientDataWorkspace = lazy(() => import('./pages/ClientDataWorkspace'))
+const RegistrationWorkspace = lazy(() => import('./pages/RegistrationWorkspace'))
 import React, { Suspense, lazy, useEffect } from 'react'
 const ArComplianceList = lazy(() => import('./pages/ArCompliance'))
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
@@ -175,6 +177,8 @@ function App(){
         <Route path="/sales/compliance-health-report/:leadId" element={<ProtectedRoute><LeadGeneration/></ProtectedRoute>} />
         <Route path="/compliance/health-report" element={<ProtectedRoute><ComplianceHealthDashboard/></ProtectedRoute>} />
         <Route path="/client-data-uploads" element={<ProtectedRoute><ClientDataUploads/></ProtectedRoute>} />
+        <Route path="/sales/client-data/:clientId" element={<ProtectedRoute><ClientDataWorkspace/></ProtectedRoute>} />
+        <Route path="/sales/registration/:clientId" element={<ProtectedRoute><RegistrationWorkspace/></ProtectedRoute>} />
         <Route path="/sales/client-master" element={<ProtectedRoute><ClientMaster/></ProtectedRoute>} />
         <Route path="/sales/cto-cte" element={<ProtectedRoute><CteCtoDirectory/></ProtectedRoute>} />
         <Route path="/sales/client-master-allocate" element={<ProtectedRoute><ClientMasterAllocate/></ProtectedRoute>} />
