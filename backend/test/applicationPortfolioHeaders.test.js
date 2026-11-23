@@ -23,12 +23,15 @@ test('Annual Return status summary restores grouped headers and approved-year co
         }]
       },
       data: {
-        basic: { piboCategory: 'Producer', servicesOffered: 'Annual Return Filling' },
+        basic: { eprCategory: 'EPR - Plastic Waste', piboCategory: 'Producer', servicesOffered: 'Annual Return Filling' },
         cpcb: { status: 'Approved' },
         importMeta: { visibilityStatus: 'LIVE' }
       }
     }]
   };
+  for (const [id,name,category,status] of [['battery','Battery Client','EPR - Battery Waste','Under Review'],['ewaste','Electronic Client','EPR - E-Waste','Approved']]) {
+    const record=structuredClone(data.assignments[0]);record._id=id;record.assignedServiceId=id;record.selectedLead.company=name;record.selectedLead.assignments[0].assignedServiceId=id;record.data.basic.eprCategory=category;record.data.cpcb.status=status;data.assignments.push(record);
+  }
   const mocks = {
     pageReadSnapshot: 'export const readPageSnapshot = () => null; export const savePageSnapshot = () => {};',
     api: `const data = ${JSON.stringify(data)}; export default { get: async () => ({ data }) };`
@@ -56,7 +59,7 @@ test('Annual Return status summary restores grouped headers and approved-year co
     }]
   });
   const puppeteer = require('puppeteer');
-  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
+  const browser = await puppeteer.launch({ headless: true, ...(process.env.QUOTATION_CHROME_PATH ? {executablePath:process.env.QUOTATION_CHROME_PATH} : {}), args: ['--no-sandbox'] });
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1536, height: 768 });
@@ -81,6 +84,27 @@ test('Annual Return status summary restores grouped headers and approved-year co
     ]);
     const pendingCounts = await page.$$eval('#pending .portfolio-matrix tfoot td button', buttons => buttons.map(button => button.textContent.trim()));
     assert.deepEqual(pendingCounts, ['0', '0', '0', '0', '0']);
+    assert.deepEqual(await page.$$eval('#dashboard .portfolio-waste-tabs strong',nodes=>nodes.map(node=>node.textContent)),['1','1','1']);
+    await page.click('#dashboard .portfolio-waste-tabs button[aria-label^="Battery:"]');
+    await page.waitForFunction(()=>document.querySelector('#dashboard .portfolio-waste-tabs button[aria-selected=true]')?.textContent.includes('Battery'));
+    assert.equal(await page.$eval('#dashboard .portfolio-matrix tfoot td button',button=>button.textContent),'1');
+    await page.click('#dashboard .portfolio-person');await page.waitForSelector('dialog[open]');
+    const details=await page.$eval('dialog[open]',dialog=>dialog.textContent);
+    assert.ok(details.includes('Battery Client'));assert.ok(!details.includes('Annual Client'));assert.ok(!details.includes('Electronic Client'));
+    await page.click('dialog[open] button[aria-label="Close client details"]');
+    await page.click('#dashboard .portfolio-waste-tabs button[aria-label^="E-Waste:"]');
+    await page.click('#dashboard .portfolio-person');await page.waitForSelector('dialog[open]');assert.ok(await page.$eval('dialog[open]',dialog=>dialog.textContent.includes('Electronic Client')));
+    await page.click('dialog[open] button[aria-label="Close client details"]');
+    await page.focus('#dashboard .portfolio-waste-tabs button[aria-selected=true]');await page.keyboard.press('Home');
+    await page.waitForFunction(()=>document.querySelector('#dashboard .portfolio-waste-tabs button[aria-selected=true]')?.textContent.includes('Plastic'));
+    if(process.env.PORTFOLIO_SCREENSHOT) {
+      await page.addStyleTag({path:path.resolve(frontendRoot,'src/components/dashboard/applicationPortfolio.css')});
+      await page.screenshot({path:process.env.PORTFOLIO_SCREENSHOT,fullPage:true});
+      await page.setViewport({width:390,height:844});
+      await page.screenshot({path:process.env.PORTFOLIO_SCREENSHOT.replace('.png','-mobile.png'),fullPage:true});
+    }
+    await page.type('#dashboard input[aria-label="Search SPOC or client"]','Battery Client');
+    assert.deepEqual(await page.$$eval('#dashboard .portfolio-waste-tabs strong',nodes=>nodes.map(node=>node.textContent)),['0','1','0']);
   } finally {
     await browser.close();
   }
