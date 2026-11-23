@@ -170,13 +170,14 @@ function buildRecords({ clients = [], users = [], filings = new Map(), teams = [
     const uniqueId = clientMasterUniqueId(client.data?.importMeta?.uniqueId || client.uniqueId || client.data?.importMeta?.leadNumber);
     const dueDate = isoDate(service.dueDate || service.serviceEndDate || poRows.map(row => row.poEndDate).filter(Boolean).sort().at(0));
     const unit = text(service.plantUnit || lead.plantUnit || client.data?.basic?.plantUnit || 'Not specified');
+    const accountId = text(service.accountsRecordId || lead.accountsRecordId) || '';
     const recordKey = [owner ? text(owner) : key(assignment.assignedStaffText || assignment.assignedStaffEmail), normalizedCompanyKey(lead, company), key(subType), key(unit), 'annualreturn'].join(':');
     const yearStates = Object.fromEntries(years.map(year => {
       const filing = clientId && typeof filings?.get === 'function' ? filings.get(`${clientId}:${year}`) : null;
       return [year, workflowState(filing)];
     }));
     const nextRecord = {
-      id: recordKey, clientId, sourceClientIds: clientId ? [clientId] : [], company, uniqueId, leadId, category, applicantType, subType, plantUnit: unit, serviceName, years,
+      id: recordKey, clientId, sourceClientIds: clientId ? [clientId] : [], company, uniqueId, leadId, accountId, category, applicantType, subType, plantUnit: unit, serviceName, years,
       slaReceived: client?.sla?.status === 'Yes',
       assignedUserId: owner ? text(owner) : '', assignedUser: owner?.name || owner?.email || assignment.assignedStaffText || 'Unassigned',
       staffAssignmentPending: !workflowReady,
@@ -189,6 +190,7 @@ function buildRecords({ clients = [], users = [], filings = new Map(), teams = [
     else {
       existing.sourceClientIds = [...new Set([...array(existing.sourceClientIds), ...array(nextRecord.sourceClientIds)])];
       existing.slaReceived = existing.slaReceived || nextRecord.slaReceived;
+      existing.accountId = existing.accountId || nextRecord.accountId;
       existing.years = [...new Set([...existing.years, ...nextRecord.years])].sort();
       existing.yearStates = { ...existing.yearStates, ...nextRecord.yearStates };
       if (existing.serviceName !== 'Annual Return Filling' && nextRecord.serviceName === 'Annual Return Filling') existing.serviceName = nextRecord.serviceName;
@@ -249,7 +251,7 @@ function purchaseSalesSummary(records, year, query = {}, purchases = [], sales =
     const purchaseComplete = purchase.every((state, index) => STAGES[index] === 'Nil Upload' || state === 'complete');
     const salesComplete = sales.every((state, index) => STAGES[index] === 'Nil Upload' || state === 'complete');
     return {
-      id: record.id, clientId: record.clientId, company: record.company, uniqueId: record.uniqueId, leadId: record.leadId, plantUnit: record.plantUnit,
+      id: record.id, clientId: record.clientId, company: record.company, uniqueId: record.uniqueId, leadId: record.leadId, accountId: record.accountId, plantUnit: record.plantUnit,
       assignedUserId: record.assignedUserId, assignedUser: record.assignedUser, slaReceived: Boolean(record.slaReceived),
       purchase, sales,
       purchaseComplete, salesComplete, fullyComplete: purchaseComplete && salesComplete
