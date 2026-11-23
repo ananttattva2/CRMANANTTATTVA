@@ -15,6 +15,16 @@ export default function RegistrationTracker({ client, service, onBack }) {
   }, [clientId, service.assignedServiceId, service.number, service.registrationYear]);
   const approved = tracker.managerStatus === 'APPROVED' && tracker.complianceStatus === 'APPROVED';
   const locked = tracker.submittedAt && ![tracker.managerStatus, tracker.complianceStatus].includes('REJECTED');
+  useEffect(() => {
+    if (!tracker.submittedAt || approved || [tracker.managerStatus, tracker.complianceStatus].includes('REJECTED')) return;
+    const controller = new AbortController();
+    const timer = setInterval(() => {
+      api.get('/clients/' + clientId + '/registration-tracker', { params: { assignedServiceId: service.assignedServiceId, poNumber: service.number, registrationYear: service.registrationYear || '' }, signal: controller.signal }).then(({ data }) => {
+        if (!controller.signal.aborted) { setTracker(current => ({ ...current, ...data.tracker })); setCompletionSaved(data.tracker.registrationCompleted === 'yes'); }
+      }).catch(() => {});
+    }, 30000);
+    return () => { clearInterval(timer); controller.abort(); };
+  }, [clientId, service.assignedServiceId, service.number, service.registrationYear, tracker.submittedAt, tracker.managerStatus, tracker.complianceStatus, approved]);
   async function upload(field, file) {
     if (!file) return; setBusy(true); setError('');
     try { const proof = await uploadMedia(file, 'crm/client-master/registration-proof'); setTracker(current => ({ ...current, [field]: proof })); }
