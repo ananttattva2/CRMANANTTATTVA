@@ -60,7 +60,7 @@ jobs:
         run: node --test frontend/test/proformaPdf.test.cjs
 
       - name: Test requested Proforma correction
-        run: node --test backend/test/proformaRequestedCorrection.test.js
+        run: node --test backend/test/proformaRequestedCorrection.test.js backend/test/proformaPrefixMigration.test.js
 
       - name: Test targeted Mystical PO amount correction
         run: node --test backend/test/mysticalPoAmountCorrection.test.js

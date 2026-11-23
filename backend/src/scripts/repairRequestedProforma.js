@@ -9,10 +9,11 @@ function isRequestedCompany(row) {
 
 async function repairRequestedProforma(Model, backup) {
   const old = await Model.findOne({ proformaNumber: OLD_NUMBER }).lean();
-  const target = await Model.findOne({ proformaNumber: NEW_NUMBER }).lean();
+  const target = await Model.findOne({ proformaNumber: NEW_NUMBER }).lean()
+    || await Model.findOne({ proformaNumber: NEW_NUMBER.replace(/^PI\//, 'ATPI/') }).lean();
   if (!old) {
     if (target && isRequestedCompany(target) && target.poNumber === NEW_PO) {
-      return { status: 'already-correct', invoice: NEW_NUMBER, poNumber: NEW_PO };
+      return { status: 'already-correct', invoice: target.proformaNumber, poNumber: NEW_PO };
     }
     throw new Error('Requested source invoice missing; manual review required.');
   }

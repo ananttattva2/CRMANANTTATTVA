@@ -26,7 +26,7 @@ async function nextProformaNumber() {
   const start = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
   const fy = `${String(start).slice(-2)}-${String(start + 1).slice(-2)}`;
   const [latest] = await ProformaInvoice.aggregate([
-    { $match: { proformaNumber: new RegExp(`^PI/${fy}/\\d+$`, 'i') } },
+    { $match: { proformaNumber: new RegExp(`^(?:ATPI|PI)/${fy}/\\d+$`, 'i') } },
     {
       $project: {
         sequence: {
@@ -43,7 +43,7 @@ async function nextProformaNumber() {
     { $limit: 1 }
   ]);
   const sequence = Math.max(203, (Number(latest?.sequence) || 0) + 1);
-  return `PI/${fy}/${String(sequence).padStart(3, '0')}`;
+  return `ATPI/${fy}/${String(sequence).padStart(3, '0')}`;
 }
 function authoritativePoRows(rows = [], quotationNumber = '') {
   const quotationKey = text(quotationNumber).toUpperCase();

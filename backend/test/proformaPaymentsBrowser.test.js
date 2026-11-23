@@ -61,6 +61,10 @@ test('invoice page loads only eligible services and submits the selected payment
     await clickText('Individual Price');
     await page.evaluate(() => { const input = [...document.querySelectorAll('input')].find(i => i.max === '100' && i.step === '0.01'); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(input, '50'); input.dispatchEvent(new Event('input', { bubbles: true })); });
     await page.waitForFunction(() => document.body.textContent.includes('₹62,500'));
+    await page.$eval('input[aria-label="Services Offered 1"]', input => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'New Registration - Importer of Raw Material');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
     await clickText('Save Proforma Invoice');
     await page.waitForFunction(() => window.savedPayload);
     const payload = await page.evaluate(() => window.savedPayload);
@@ -69,6 +73,7 @@ test('invoice page loads only eligible services and submits the selected payment
     assert.equal(payload.grandTotal, 73750);
     assert.equal(payload.items.length, 1);
     assert.equal(payload.items[0].sourceItemIndex, 1);
+    assert.equal(payload.items[0].servicesOffered, 'New Registration - Importer of Raw Material');
     assert.equal(payload.poNumber, 'CUSTOMER-PO-EDITED');
     await page.waitForFunction(() => document.body.textContent.includes('saved successfully'));
     await clickText('Saved Proforma Invoices');

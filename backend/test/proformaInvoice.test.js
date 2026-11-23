@@ -92,14 +92,15 @@ test('new Proforma invoice numbers start at 203 and continue after the highest n
   ProformaInvoice.aggregate = async (pipeline) => {
     assert.ok(pipeline[0].$match.proformaNumber.test(`PI/${fy}/123`));
     assert.equal(pipeline[0].$match.proformaNumber.flags, 'i');
+    assert.ok(pipeline[0].$match.proformaNumber.test(`ATPI/${fy}/123`));
     return [{ sequence: highestSequence }];
   };
   try {
-    assert.equal(await _test.nextProformaNumber(), `PI/${fy}/203`);
+    assert.equal(await _test.nextProformaNumber(), `ATPI/${fy}/203`);
     highestSequence = 203;
-    assert.equal(await _test.nextProformaNumber(), `PI/${fy}/204`);
+    assert.equal(await _test.nextProformaNumber(), `ATPI/${fy}/204`);
     highestSequence = 525;
-    assert.equal(await _test.nextProformaNumber(), `PI/${fy}/526`);
+    assert.equal(await _test.nextProformaNumber(), `ATPI/${fy}/526`);
   } finally {
     ProformaInvoice.aggregate = originalAggregate;
   }

@@ -1,12 +1,11 @@
 import { jsPDF } from 'jspdf'
 import proformaStamp from '../assets/proforma-authorized-stamp.png?inline'
 export const proformaBankDetails = [
-  'AnantTattva Private Limited',
-  'BANK NAME- IDFC FIRST BANK',
-  'ACCOUNT NO.- 10160512998',
-  'IFS CODE- IDFB0040111',
-  'TYPE OF A/C.- CURRENT',
-  'BRANCH MUMBAI-BORIVALI-WEST'
+  'Bank Name : IDFC FIRST BANK',
+  'Account Name: AnantTattva Private Limited',
+  'Account No. 10160512998',
+  'IFSC code: IDFB0040111',
+  "Company's PAN : AAZCA6657R"
 ].join('\n')
 const CONSULTANCY_BUSINESS_CATEGORIES = new Set(['eprconsultancy', 'eprwastewater', 'otherconsultancy'])
 function actualPoNumber(row = {}) {
@@ -69,7 +68,7 @@ export function buildInvoicePdf(row) {
     text('PROFORMA INVOICE', (left + right) / 2, 20, { style: 'bold', size: 11, align: 'center' })
     box(left, 26, split - left, 96)
     text('ANANTTATTVA PRIVATE LIMITED', left + 3, 37, { style: 'bold', size: 9 })
-    fitted('A 25, Technocraft Building,\nRoad No. 3, Mulgaon, Andheri East,\nMumbai, Maharashtra 400093\nUDYAM : UDYAM-MH-19-0252978 (Micro/Services)\nGSTIN/UIN: 27AAZCA6657R1ZB\nState Name: Maharashtra, Code: 27\nCIN: U39000MH2023PTC413566\nE-Mail: info@ananttattva.com', left + 3, 39, split - left - 6, 80)
+    fitted('1st Floor, Technocraft House,\nA-25, Marol Industrial Estate,\nMIDC, Andheri (East)\nMumbai - 400093\nUDYAM : UDYAM-MH-19-0252978 (Micro/Services)\nGSTIN/UIN: 27AAZCA6657R1ZB\nState Name: Maharashtra, Code: 27\nCIN: U39000MH2023PTC413566\nE-Mail: info@ananttattva.com', left + 3, 39, split - left - 6, 80)
     party('Consignee (Ship To)', lead.companyName || row.companyName, buyerAddress, lead.gstNumber, buyerState, 122, 87)
     party('Buyer (Bill To)', lead.companyName || row.companyName, buyerAddress, lead.gstNumber, buyerState, 209, 87)
     const pairs = [
@@ -107,20 +106,20 @@ export function buildInvoicePdf(row) {
     const title = item.serviceCategory || item.piboCategory || 'Service'
     const businessCategory = String(item.businessCategory || '').trim()
     const businessCategoryKey = businessCategory.toLowerCase().replace(/[^a-z0-9]+/g, '')
-    const isCustomService = businessCategoryKey === 'eprcredit' || CONSULTANCY_BUSINESS_CATEGORIES.has(businessCategoryKey)
     const subApplicantType = String(item.subApplicantType || item.piboCategory || '').trim()
     const specialService = businessCategoryKey === 'eprcredit'
       ? 'Service Charge for Waste Collection & Treatment of Non Hazardous Waste (AMC)'
       : CONSULTANCY_BUSINESS_CATEGORIES.has(businessCategoryKey)
         ? 'CONSULTANCY FEES FOR WASTE COLLECTION AND MANAGEMENT\nUNDER EPR'
         : ''
-    const annualReturnService = !isCustomService && /\bannual\s*returns?\b/i.test([item.servicesOffered, item.applicableService].filter(Boolean).join(' '))
+    const annualReturnService = /\bannual\s*returns?\b|\bAR\b/i.test([item.servicesOffered, item.applicableService].filter(Boolean).join(' '))
     const annualReturnYears = annualReturnService ? [...new Set((item.annualReturnYears || []).filter(Boolean))] : []
     const serviceYears = annualReturnYears.length
       ? annualReturnYears.map((value) => 'Annual Return: ' + value)
       : [item.servicesForYear]
     const hideBusinessCategory = CONSULTANCY_BUSINESS_CATEGORIES.has(businessCategoryKey)
-    const serviceDescription = specialService || item.servicesOffered
+    const offered = String(item.servicesOffered || item.applicableService || '').trim()
+    const serviceDescription = specialService || offered
     const displayTitle = specialService && subApplicantType ? `${title} for ${subApplicantType}` : title
     font(8.5, 'bold')
     const titleLines = pdf.splitTextToSize(displayTitle, 302)
@@ -128,12 +127,15 @@ export function buildInvoicePdf(row) {
     font(8, 'italic')
     const serviceDescriptionLines = serviceDescription ? pdf.splitTextToSize(serviceDescription, 292) : []
     const serviceYearLines = serviceYears.filter(Boolean).flatMap((value) => pdf.splitTextToSize(String(value), 292))
+    const offeredLines = offered ? pdf.splitTextToSize(`FOR ${offered}${subApplicantType ? ' - ' + subApplicantType : ''}`, 292) : []
     const lines = specialService
       ? [
           ...serviceDescriptionLines.map((value) => ({ value, bold: true })),
           ...(hideBusinessCategory ? [] : businessCategoryLines.map((value) => ({ value, bold: true }))),
-          ...titleLines.map((value) => ({ value, bold: true })),
-          ...serviceYearLines.map((value) => ({ value, bold: false }))
+          ...(hideBusinessCategory && offered ? [] : titleLines.map((value) => ({ value, bold: true }))),
+          ...offeredLines.map((value) => ({ value, bold: false })),
+          ...serviceYearLines.map((value) => ({ value, bold: false })),
+          { value: `${percentage}% OF PO VALUE`, bold: false }
         ]
       : [
           ...businessCategoryLines.map((value) => ({ value, bold: true })),
@@ -141,9 +143,15 @@ export function buildInvoicePdf(row) {
           ...serviceDescriptionLines.map((value) => ({ value, bold: false })),
           ...serviceYearLines.map((value) => ({ value, bold: false }))
         ]
+    // Keep normal service blocks together instead of orphaning their heading.
+    if (y > 329 && lines.length * 9 + 2 <= 229 && y + lines.length * 9 + 2 > 558) {
+      bodyBorders(600)
+      text('Continued on next page', 566, 594, { size: 7, align: 'right' })
+      pdf.addPage(); header(); tableHeader(); y = 329
+    }
     let first = true
     for (const entry of lines) {
-      if (y > 552) {
+      if (y > 558) {
         bodyBorders(600)
         text('Continued on next page', 566, 594, { size: 7, align: 'right' })
         pdf.addPage(); header(); tableHeader(); y = 329
@@ -187,26 +195,37 @@ export function buildInvoicePdf(row) {
   text('Amount Chargeable (in words)', 29, 620, { size: 7 })
   text('E. & O.E.', 566, 620, { size: 7, style: 'italic', align: 'right' })
   fitted('INR ' + currencyWords(base + tax), 29, 622, width - 8, 13, 'bold', 8)
-  const tx = [26, 350, 410, 465, 510, 569]
-  box(left, 636, width, 38)
-  tx.slice(1, -1).forEach(x => line(x, 636, x, 674))
-  line(left, 648, right, 648)
-  ;['HSN/SAC', 'Taxable Value', 'Tax', 'Rate', 'Tax Amount'].forEach((label, i) => text(label, (tx[i] + tx[i + 1]) / 2, 645, { size: 7, align: 'center' }))
-  text(details.hsn, 29, 659, { size: 7 })
-  text(cash(base), 407, 659, { size: 7, align: 'right' })
+  // Group tax rate and amount beneath IGST, or separate CGST / SGST groups.
+  const taxStart = intraState ? 358 : 410
+  const groupWidth = intraState ? 77 : 100
+  const taxableX = intraState ? 305 : 350
+  box(left, 636, width, 48)
+  line(taxableX, 636, taxableX, 684); line(taxStart, 636, taxStart, 684)
+  text('HSN/SAC', (left + taxableX) / 2, 646, { size: 7, align: 'center' })
+  text('Taxable', (taxableX + taxStart) / 2, 645, { size: 7, align: 'center' }); text('Value', (taxableX + taxStart) / 2, 655, { size: 7, align: 'center' })
   taxes.forEach(([label, rate, value], index) => {
-    const yy = 659 + index * 11
-    text(label.split(' ')[0], 438, yy, { size: 7, align: 'center' })
-    text(rate + '%', 487, yy, { size: 7, align: 'center' })
-    text(cash(value), 566, yy, { size: 7, align: 'right' })
+    const start = taxStart + index * groupWidth, end = start + groupWidth
+    line(end, 636, end, 684); line(start + 30, 648, start + 30, 672)
+    line(start, 648, end, 648)
+    text(label.split(' ')[0], (start + end) / 2, 645, { size: 7, align: 'center' })
+    text('Rate', start + 15, 657, { size: 7, align: 'center' }); text('Amount', (start + 30 + end) / 2, 657, { size: 7, align: 'center' })
+    text(`${rate}%`, start + 15, 669, { size: 7, align: 'center' })
+    text(cash(value), end - 3, 669, { size: 7, align: 'right' })
+    text(cash(value), end - 3, 681, { size: 7, style: 'bold', align: 'right' })
   })
-  box(left, 674, width, 113)
-  text('Tax Amount (in words):', 29, 687, { size: 7 })
-  fitted('INR ' + currencyWords(tax), 117, 678, 445, 14, 'bold', 8)
-  text('Remarks:', 29, 696, { size: 7 })
-  fitted(proformaBankDetails, 29, 698, 330, 51, 'normal', 8)
-  text('Declaration', 29, 756, { size: 7 })
-  fitted(details.declaration, 29, 759, 268, 25, 'normal', 7)
+  const totalTaxX = taxStart + taxes.length * groupWidth
+  text('Total', (totalTaxX + right) / 2, 644, { size: 7, align: 'center' }); text('Tax Amount', (totalTaxX + right) / 2, 655, { size: 7, align: 'center' })
+  line(left, 660, right, 660); line(left, 672, right, 672)
+  text(details.hsn, 29, 669, { size: 7 }); text(cash(base), taxStart - 3, 669, { size: 7, align: 'right' })
+  text('Total', taxableX - 3, 681, { size: 7, style: 'bold', align: 'right' }); text(cash(base), taxStart - 3, 681, { size: 7, style: 'bold', align: 'right' })
+  text(cash(tax), right - 3, 669, { size: 7, align: 'right' }); text(cash(tax), right - 3, 681, { size: 7, style: 'bold', align: 'right' })
+  box(left, 684, width, 103)
+  text('Tax Amount (in words):', 29, 695, { size: 7 })
+  fitted('INR ' + currencyWords(tax), 117, 688, 445, 14, 'bold', 8)
+  text('Remarks:', 29, 706, { size: 7 })
+  proformaBankDetails.split('\n').forEach((value, index) => text(value, 29, 716 + index * 9, { size: 8, style: index === 4 ? 'bold' : 'normal' }))
+  text('Declaration', 29, 763, { size: 7 })
+  fitted(details.declaration, 29, 765, 268, 20, 'normal', 7)
   box(298, 750, 271, 37)
   pdf.addImage(proformaStamp, 'PNG', 510, 755, 28, 28)
   text('for ANANTTATTVA PRIVATE LIMITED', 566, 759, { size: 7, style: 'bold', align: 'right' })

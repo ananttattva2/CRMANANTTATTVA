@@ -25,9 +25,10 @@ test('proforma reference layout fits one page, calculates totals and omits scope
   assert.ok(!content.includes('HIDDEN_SCOPE_MARKER'));
   assert.ok(!content.includes('Invalid Date'));
   assert.ok(content.includes('31-Jul-26'));
-  assert.ok(content.includes('A 25, Technocraft Building'));
-  assert.ok(content.includes('Road No. 3, Mulgaon, Andheri East'));
-  assert.ok(content.includes('Mumbai, Maharashtra 400093'));
+  assert.ok(content.includes('1st Floor, Technocraft House'));
+  assert.ok(content.includes('A-25, Marol Industrial Estate'));
+  assert.ok(content.includes('MIDC, Andheri'));
+  assert.ok(content.includes('Mumbai - 400093'));
   assert.ok(!content.includes('Midas Building'));
   assert.ok(build({ ...sample, poNumber: 'AT/26-27/525' }).output().includes('AT/26-27/525'));
   assert.ok(build({ ...sample, poYearRows: [{ poNumber: 'AT/26-27/525' }] }).output().includes('AT/26-27/525'));
@@ -102,21 +103,21 @@ test('proforma prints fee text, business category, service and year in order', a
     assert.equal(content.includes(businessCategory), !hideBusinessCategory);
     assert.ok(!content.includes('Business Category:'));
     assert.ok(content.includes(descriptionMarker));
-    assert.ok(content.includes('for PWP'));
+    assert.ok(content.includes('FOR New Registration - PWP'));
     assert.ok(content.includes('2026-27'));
-    assert.ok(!content.includes('New Registration'));
+    assert.ok(content.includes('New Registration'));
+    assert.ok(content.includes('100% OF PO VALUE'));
     assert.ok(!content.includes('2024-25'));
     if (!hideBusinessCategory) {
       assert.ok(content.indexOf(descriptionMarker) < content.indexOf(businessCategory));
       assert.ok(content.indexOf(businessCategory) < content.indexOf('EPR - Plastic Waste'));
     }
-    assert.ok(content.indexOf('EPR - Plastic Waste') < content.indexOf('for PWP'));
     if (descriptionTailMarker) {
       assert.ok(content.indexOf(descriptionMarker) < content.indexOf(descriptionTailMarker));
-      const nextLineMarker = hideBusinessCategory ? 'EPR - Plastic Waste' : businessCategory;
+      const nextLineMarker = hideBusinessCategory ? 'FOR New Registration' : businessCategory;
       assert.ok(content.indexOf(descriptionTailMarker) < content.indexOf(nextLineMarker));
     }
-    assert.ok(content.indexOf('for PWP') < content.indexOf('2026-27'));
+    assert.ok(content.indexOf('FOR New Registration') < content.indexOf('2026-27'));
     assert.ok(content.includes('/Subtype /Image'));
   }
 });
@@ -125,7 +126,17 @@ test('PI view and download use the approved bank block instead of stale saved ba
   const build = await renderer();
   const pdf = build({ ...sample, invoiceDetails: { bankName: 'OLD_BANK_MARKER', accountName: 'OLD_ACCOUNT_MARKER', accountNumber: 'OLD_NUMBER_MARKER', ifsc: 'OLD_IFSC_MARKER', pan: 'OLD_PAN_MARKER' } });
   const content = pdf.output();
-  for (const line of ['AnantTattva Private Limited', 'BANK NAME- IDFC FIRST BANK', 'ACCOUNT NO.- 10160512998', 'IFS CODE- IDFB0040111', 'TYPE OF A/C.- CURRENT', 'BRANCH MUMBAI-BORIVALI-WEST']) assert.ok(content.includes(line), line);
+  for (const line of ['Bank Name : IDFC FIRST BANK', 'Account Name: AnantTattva Private Limited', 'Account No. 10160512998', 'IFSC code: IDFB0040111', "Company's PAN : AAZCA6657R"]) assert.ok(content.includes(line), line);
   for (const marker of ['OLD_BANK_MARKER', 'OLD_ACCOUNT_MARKER', 'OLD_NUMBER_MARKER', 'OLD_IFSC_MARKER', 'OLD_PAN_MARKER', "Company's PAN:"]) assert.ok(!content.includes(marker), marker);
   assert.equal(pdf.getNumberOfPages(), 1);
+});
+
+test('reference payment percentage, Services Offered and tax totals render together', async () => {
+  const build = await renderer();
+  const row = { ...sample, proformaNumber: 'ATPI/26-27/203', paymentPercentage: 50, items: [{ businessCategory: 'EPR Consultancy', serviceCategory: 'EPR - Plastic Waste', servicesOffered: 'Annual Return Filing', annualReturnYears: ['2025-26'], unit: 1, basicAmount: 47500 }] };
+  const pdf = build(row), content = pdf.output();
+  for (const value of ['ATPI/26-27/203', 'FOR Annual Return Filing', 'Annual Return: 2025-26', '50% OF PO VALUE', '23,750.00', '4,275.00', '28,025.00', 'IGST', '18%']) assert.ok(content.includes(value), value);
+  assert.equal(pdf.getNumberOfPages(), 1);
+  const local = build({ ...row, leadDetails: { companyName: 'Example Ltd', gstNumber: '27AAZCA6657R1ZB' } }).output();
+  assert.ok(local.includes('CGST')); assert.ok(local.includes('SGST')); assert.ok(local.includes('2,137.50'));
 });
