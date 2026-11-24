@@ -1,5 +1,6 @@
 const { createHash } = require('node:crypto');
 const { buildServiceHistory } = require('./annualReturnPoResolver');
+const { provisionalState } = require('./provisionalFreeze');
 const text = value => String(value || '').trim();
 function serviceWorkspaces(lead = {}) {
   const services = lead.serviceSelections?.length ? lead.serviceSelections : [lead];
@@ -17,7 +18,9 @@ function serviceWorkspaces(lead = {}) {
   return history.map(row => {
     const context = { assignedServiceId: row.assignedServiceId, applicantType: row.applicantType, servicesOffered: row.service, annualReturnYear: row.annual ? row.annualYear : '', registrationYear: row.registrationYear || '', poYear: row.poYear || '', poNumber: row.number || '' };
     const serviceKey = createHash('sha256').update(JSON.stringify([text(lead._id), ...Object.values(context)])).digest('hex');
-    return { ...context, serviceKey, fileUrl: row.fileUrl, fileName: row.fileName };
+    const assignment = (lead.assignments || []).find(item => context.assignedServiceId && text(item.assignedServiceId || item.serviceAssignmentId) === context.assignedServiceId) || ((lead.assignments || []).length === 1 ? lead.assignments[0] : {});
+    const state = provisionalState(assignment);
+    return { ...context, frozen: state.frozen, freezeMessage: state.message, poDeadline: state.deadline, serviceKey, fileUrl: row.fileUrl, fileName: row.fileName };
   }).filter((row, index, all) => all.findIndex(other => other.serviceKey === row.serviceKey) === index);
 }
 module.exports = { serviceWorkspaces };

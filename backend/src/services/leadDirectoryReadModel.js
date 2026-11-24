@@ -7,7 +7,7 @@ function directoryProjection(projection) {
   result.assignments = { $map: {
     input: { $cond: [{ $isArray: '$assignments' }, '$assignments', []] }, as: 'assignment',
     in: {
-      ...fields('$$assignment', 'assignedServiceId serviceAssignmentId assignmentId assignedToCrmUserId assignedStaffCrmUserId assignedTo assignedToText assignedToEmail assignedStaff assignedStaffText assignedStaffEmail assignedBy closedAt closedBy closedByText closedByEmail closedOnBehalfOfName poApprovalStatus poStatus servicesOffered permanentClosedAt provisionalClosedAt isProvisional'),
+      ...fields('$$assignment', 'assignedServiceId serviceAssignmentId assignmentId assignedToCrmUserId assignedStaffCrmUserId assignedTo assignedToText assignedToEmail assignedStaff assignedStaffText assignedStaffEmail assignedBy closedAt closedBy closedByText closedByEmail closedOnBehalfOfName poApprovalStatus poStatus servicesOffered permanentClosedAt provisionalClosedAt isProvisional provisionalCloseExpiresAt poDeadlineFrozenAt poDeadlineFreezeReason clientPoReceivedAt'),
       poYearRows: { $map: {
         input: { $cond: [{ $isArray: '$$assignment.poYearRows' }, '$$assignment.poYearRows', []] }, as: 'po',
         in: { ...fields('$$po', 'poNumber poNo poDate poAmount fy poFinancialYear financialYear poFileName'),

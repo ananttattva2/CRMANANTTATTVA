@@ -15,6 +15,8 @@ function addBusinessDaysInIst(start, days = BUSINESS_DAYS) {
 }
 
 function normalizeProvisionalClosure(row, previous = {}, now = new Date()) {
+  const retained = Object.fromEntries(['provisionalFinanceApproval', 'poDeadlineFrozenAt', 'poDeadlineFreezeReason', 'clientPoReceivedAt', 'clientPoFileUrl'].filter(key => previous[key] !== undefined).map(key => [key, previous[key]]));
+  row = { ...row, ...retained };
   if (row?.poStatus !== 'provisional') return row;
   let expiresAt;
   const previousExpiry = new Date(previous.provisionalCloseExpiresAt);

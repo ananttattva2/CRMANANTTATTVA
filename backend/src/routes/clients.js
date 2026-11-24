@@ -22,6 +22,7 @@ router.post('/deactivation-requests/:requestId/decision', requireAuth, deactivat
 router.post('/:id/deactivation', requireAuth, deactivation.request);
 router.get('/allocation/assigned-leads', requireAuth, requireRoles(CLIENT_ALLOCATION_ROLES), clientCtrl.listStaffAssignedLeadsForAllocation);
 router.use('/:id', requireAuth, deactivation.guard);
+router.use('/:id', requireAuth, require('../services/provisionalFreeze').guard);
 router.use('/', requireAuth, deactivation.guard);
 
 router.get('/', requireAuth, cacheRead, clientCtrl.listClients);

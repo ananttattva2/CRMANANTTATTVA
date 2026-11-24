@@ -1995,6 +1995,8 @@ exports.getClient = async (req, res) => {
 
   if (!client) return res.status(404).json({ error: 'Client Master record not found' });
   const requestedAssignedServiceId = String(req.query.assignedServiceId || '').trim();
+  const freeze = await require('../services/provisionalFreeze').clientFreezeState(client, requestedAssignedServiceId);
+  if (freeze.frozen) return res.status(423).json({ error: freeze.message, code: 'SPECIAL_APPROVAL_PO_OVERDUE', deadline: freeze.deadline });
   const identityError = validateClientMasterIdentity(client, { assignedServiceId: requestedAssignedServiceId });
   if (identityError) return res.status(409).json({ error: identityError });
   return res.json({
@@ -2501,6 +2503,8 @@ exports.updateClient = async (req, res) => {
   let client = await Client.findOne(combineAccessFilters({ _id: req.params.id }, await clientAccessFilter(req.user)));
   if (!client) return res.status(404).json({ error: 'Client not found or not accessible' });
   const effectiveAssignedServiceId = assignedServiceId || readClientAssignedServiceId(client, client.data || {});
+  const freeze = await require('../services/provisionalFreeze').clientFreezeState(client, effectiveAssignedServiceId);
+  if (freeze.frozen) return res.status(423).json({ error: freeze.message, code: 'SPECIAL_APPROVAL_PO_OVERDUE' });
   const existingData = isPlainObject(client.data) ? client.data : {};
   const resolvedExistingData = resolveClientMasterData(client, effectiveAssignedServiceId);
   const restrictedUpdateError = validateRestrictedCpcbUpdate(resolvedExistingData, data);

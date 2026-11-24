@@ -143,6 +143,8 @@ async function inTransaction(id, work) {
         approval.payload = { ...approval.payload, assignmentIndex: index };
         approval.markModified('payload');
       }
+      const freeze = require('../services/provisionalFreeze').provisionalState(lead.assignments[index]);
+      if (freeze.frozen) fail(423, freeze.message);
       result = await work({ approval, lead, index, session });
       approval.markModified('poReview');
       await approval.save({ session });
@@ -235,6 +237,7 @@ exports.initialApproval = async (req, res) => {
   } catch (error) { return report(res, error); }
 };
 exports.act = async (req, res) => {
+  if (req.params.action === 'approve-special-closure') return exports.approveSpecialClosure(req, res);
   if (req.params.action === 'payment-status') return exports.paymentStatus(req, res);
   const event = req.params.action === 'approve' ? 'FINANCE_APPROVE'
     : req.params.action === 'refer' ? 'FINANCE_REFER'
@@ -411,3 +414,32 @@ exports.resendOwnerNotification = async (req, res) => {
   } catch (error) { return report(res, error); }
 };
 exports._test = { clearRejectedPoClosure, isAssignedLeadOwner, isAssignedStaff, filterAssignedLeadOwnerApprovals, resolveAssignmentIndex, ownerService };
+
+exports.approveSpecialClosure = async (req, res) => {
+  try {
+    if (!userHasAnyRole(req.user, ['finance', 'accounts'])) fail(403, 'Only a Finance or Accounts user can approve a special closure.');
+    const match = String(req.params.id || '').match(/^special:([a-f0-9]{24}):(.+)$/i);
+    if (!match) fail(400, 'Invalid special closure reference.');
+    const remarks = String(req.body?.remarks || '').trim();
+    if (!remarks || remarks.length > 2500) fail(400, 'Enter approval remarks between 1 and 2,500 characters.');
+    const lead = await Lead.findById(match[1]).select('assignments').lean();
+    if (!lead) fail(404, 'Lead not found.');
+    let index = (lead.assignments || []).findIndex(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === match[2]);
+    if (index < 0 && /^\d+$/.test(match[2]) && !lead.assignments?.[Number(match[2])]?.assignedServiceId) index = Number(match[2]);
+    const assignment = lead.assignments?.[index];
+    if (!assignment || assignment.poStatus !== 'provisional') fail(409, 'This service is no longer awaiting a special closure approval. Refresh the list.');
+    const state = require('../services/provisionalFreeze').provisionalState(assignment);
+    if (!state.deadline) fail(409, 'The original PO deadline is unavailable. Contact Admin before approving this special closure.');
+    if (state.frozen) fail(423, state.message);
+    if (assignment.provisionalFinanceApproval) fail(409, 'Finance has already approved this special closure.');
+    const entry = { by: String(req.user._id), name: req.user.name || req.user.email, remarks, at: new Date().toISOString() };
+    const prefix = `assignments.${index}`;
+    const filter = { _id: lead._id, [`${prefix}.poStatus`]: 'provisional', [`${prefix}.provisionalFinanceApproval`]: { $exists: false } };
+    if (assignment.assignedServiceId) filter[`${prefix}.assignedServiceId`] = assignment.assignedServiceId;
+    if (state.deadline && !state.receivedInTime) filter[`${prefix}.provisionalCloseExpiresAt`] = { $gt: entry.at };
+    const saved = await Lead.updateOne(filter, { $set: { [`${prefix}.provisionalFinanceApproval`]: entry } });
+    if (!saved.modifiedCount) fail(409, 'This service changed. Refresh and try again.');
+    await require('../services/crmCache').invalidateCrmCache();
+    return res.json({ ok: true, message: 'Special closure approved by Finance. The original 7-working-day PO deadline remains unchanged.' });
+  } catch (error) { return report(res, error); }
+};

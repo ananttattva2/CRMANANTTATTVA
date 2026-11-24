@@ -37,6 +37,7 @@ exports.create = async (req, res) => {
       context = source && serviceWorkspaces(source).find(item => item.serviceKey === serviceKey && item.applicantType === applicantType);
       if (!context) return res.status(422).json({ error: 'Choose a valid service, annual return year and purchase order before uploading.' });
     }
+    if (kind === 'excel' && context?.frozen) return res.status(423).json({ error: context.freezeMessage, code: 'SPECIAL_APPROVAL_PO_OVERDUE' });
     const file = req.file;
     const ext = String(file?.originalname || '').split('.').pop().toLowerCase();
     const types = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xls: 'application/vnd.ms-excel' };
@@ -46,6 +47,9 @@ exports.create = async (req, res) => {
     if (!file || !allowed.includes(ext) || !signature) return res.status(422).json({ error: 'Choose a valid file in one of the supported formats.' });
     stored = await uploadBuffer(b, file.originalname, types[ext], `crm/client-portal/${lead._id}/${kind}`);
     const row = await Upload.create({ lead: lead._id, kind, serviceKey: context?.serviceKey, serviceContext: context ? { assignedServiceId: context.assignedServiceId, servicesOffered: context.servicesOffered, annualReturnYear: context.annualReturnYear, registrationYear: context.registrationYear, poYear: context.poYear, poNumber: context.poNumber } : undefined, dataType: kind === 'excel' ? dataType || undefined : undefined, applicantType: kind === 'excel' || context ? applicantType : undefined, notificationStatus: kind === 'excel' || kind === 'po' ? 'pending' : 'not_required', name: file.originalname.slice(0,255), url: stored.url, storageKey: stored.storageKey, size: file.size, uploadedBy: req.clientEmail });
+    if (kind === 'po' && context?.assignedServiceId) {
+      await Lead.updateOne({ _id: lead._id, assignments: { $elemMatch: { assignedServiceId: context.assignedServiceId, poStatus: 'provisional', clientPoReceivedAt: { $exists: false } } } }, { $set: { 'assignments.$.clientPoReceivedAt': new Date().toISOString(), 'assignments.$.clientPoFileUrl': row.url } }).catch(() => {});
+    }
     stored = null; // A saved upload must survive email or status update failures.
     if (kind === 'excel' || kind === 'po') {
       try {

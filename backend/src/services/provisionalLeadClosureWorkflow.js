@@ -38,7 +38,7 @@ async function sendProvisionalClosureEmail({ lead, assignment, index, actorEmail
       <tr><td style="padding:9px;border:1px solid #e2e8f0;font-weight:700">Service</td><td style="padding:9px;border:1px solid #e2e8f0">${escapeHtml(service)}</td></tr>
       <tr><td style="padding:9px;border:1px solid #e2e8f0;font-weight:700">PO deadline</td><td style="padding:9px;border:1px solid #e2e8f0">${escapeHtml(deadline)} IST</td></tr>
     </table>
-    <p>Please upload the Purchase Order from the review action before the 7-business-day deadline. If it is not uploaded, only this provisional service will reopen automatically. Services whose POs have already been received will remain closed.</p>
+    <p>Please upload the Purchase Order from the review action before the 7-business-day deadline. If it is not uploaded, only this provisional service will be frozen automatically. Services whose POs have already been received will remain closed.</p>
   </div>`;
   await Promise.allSettled(recipients.map((email) => sendMail(email, `Special Approval Closure - ${company}`, html, { branded: false })));
 }
@@ -58,15 +58,16 @@ async function notifyNewProvisionalClosures({ beforeLead = {}, afterLead = {}, a
 async function processExpiredProvisionalClosures() {
   const now = new Date();
   const leads = await Lead.find({ assignments: { $elemMatch: {
-    poStatus: 'provisional',
+    poStatus: 'provisional', poDeadlineFrozenAt: { $exists: false },
     $or: [
       { provisionalCloseExpiresAt: { $lte: now.toISOString() } },
       { provisionalCloseDeadlineBusinessDays: { $ne: BUSINESS_DAYS } }
     ]
   } } });
-  let reopenedServices = 0;
+  let frozenServices = 0;
 
   for (const lead of leads) {
+    const previousAssignments = lead.assignments;
     const expired = [];
     let deadlineUpdated = false;
     lead.assignments = (lead.assignments || []).map((assignment, index) => {
@@ -75,43 +76,39 @@ async function processExpiredProvisionalClosures() {
       if (assignment.provisionalCloseExpiresAt !== normalized.provisionalCloseExpiresAt
         || assignment.provisionalCloseDeadlineBusinessDays !== normalized.provisionalCloseDeadlineBusinessDays) deadlineUpdated = true;
       assignment = normalized;
-      if (new Date(assignment.provisionalCloseExpiresAt) > now) return assignment;
+      if (new Date(assignment.provisionalCloseExpiresAt) > now || require('./provisionalFreeze').provisionalState(assignment, now).receivedInTime || assignment.poDeadlineFrozenAt) return assignment;
       expired.push({ assignment: { ...assignment }, index, service: serviceName(lead, assignment, index) });
-      return { ...assignment, closedBy: '', closedByText: '', closedByEmail: '', assignedTo: '', assignedToText: '', assignedToEmail: '', assignedStaff: '', assignedStaffText: '', assignedStaffEmail: '', poStatus: '', provisionalCloseExpiresAt: '', provisionalCloseDeadlineBusinessDays: 0 };
+      return { ...assignment, poDeadlineFrozenAt: now.toISOString(), poDeadlineFreezeReason: require('./provisionalFreeze').FREEZE_MESSAGE };
     });
     if (!expired.length) {
       if (deadlineUpdated) await lead.save();
       continue;
     }
 
-    const primary = lead.assignments[0] || {};
-    lead.closedBy = primary.closedBy || undefined;
-    lead.closedByText = primary.closedByText || '';
-    lead.closedByEmail = primary.closedByEmail || '';
-    lead.assignedTo = primary.assignedTo || undefined;
-    lead.assignedToText = primary.assignedToText || '';
+    lead.$where = { ...(lead.$where || {}), assignments: previousAssignments };
     await lead.save();
-    reopenedServices += expired.length;
+    await require('./crmCache').invalidateCrmCache();
+    frozenServices += expired.length;
 
     await LeadActivity.create({
       lead: lead._id,
-      type: 'lead_reopened_po_expired',
-      title: 'Lead service reopened',
-      description: `${expired.length} provisional service closure(s) reopened after 7 business days because no Purchase Order was uploaded. Services with received POs remain closed.`
+      type: 'lead_frozen_po_expired',
+      title: 'Client service frozen — PO deadline expired',
+      description: `${expired.length} provisional service closure(s) frozen after 7 business days because no Purchase Order was uploaded. Services with received POs remain closed.`
     });
 
     const recipients = uniqueEmails([...expired.map(({ assignment }) => assignment.closedByEmail), ...(await superAdminEmails())]);
     const company = lead.company || lead.leadCode || 'Lead';
     const serviceList = expired.map(({ service }) => `<li>${escapeHtml(service)}</li>`).join('');
     const html = `<div style="max-width:680px;font-family:Arial,sans-serif;color:#334155;line-height:1.6">
-      <h2 style="color:#b91c1c">Lead reopened because the PO was not uploaded</h2>
+      <h2 style="color:#b91c1c">Client service frozen because the PO was not uploaded</h2>
       <p>The following service closure for <strong>${escapeHtml(company)}</strong> was provisional under special approval. The 7-business-day deadline has expired and the Purchase Order is still missing.</p>
       <ul>${serviceList}</ul>
-      <p>Therefore, only the affected service has been reopened for user onboarding follow-up. Other services with uploaded POs remain closed.</p>
+      <p>Therefore, only the affected service has been frozen until the missing PO is reviewed. Other services with uploaded POs remain closed.</p>
     </div>`;
-    await Promise.allSettled(recipients.map((email) => sendMail(email, `Lead Reopened - PO Not Uploaded - ${company}`, html, { branded: false })));
+    await Promise.allSettled(recipients.map((email) => sendMail(email, `Client Frozen - PO Not Uploaded - ${company}`, html, { branded: false })));
   }
-  return { leads: leads.length, reopenedServices };
+  return { leads: leads.length, frozenServices, reopenedServices: 0 };
 }
 
 function startProvisionalLeadClosureScheduler() {

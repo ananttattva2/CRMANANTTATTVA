@@ -80,7 +80,7 @@ test('The scheduler extends a legacy ten-minute deadline without reopening the s
   assert.ok(new Date(lead.assignments[0].provisionalCloseExpiresAt) > new Date());
 });
 
-test('Only expired provisional services reopen; permanent closures, received POs, and future deadlines stay closed', async () => {
+test('Only expired provisional services freeze; ownership, received POs and other services remain intact', async () => {
   sent.length = 0;
   const now = Date.now();
   const received = { poStatus: 'received', closedBy: 'received-closer', provisionalCloseExpiresAt: new Date(now - 60000).toISOString() };
@@ -93,8 +93,10 @@ test('Only expired provisional services reopen; permanent closures, received POs
   LeadActivity.create = async () => {};
   User.find = () => ({ select: () => ({ lean: async () => [] }) });
   const result = await processExpiredProvisionalClosures();
-  assert.equal(result.reopenedServices, 1);
-  assert.equal(lead.assignments[0].closedBy, '');
+  assert.equal(result.frozenServices, 1);
+  assert.equal(result.reopenedServices, 0);
+  assert.equal(lead.assignments[0].closedBy, 'expired-closer');
+  assert.ok(lead.assignments[0].poDeadlineFrozenAt);
   assert.equal(lead.assignments[1], received);
   assert.equal(lead.assignments[2].closedBy, future.closedBy);
   assert.equal(lead.assignments[3], permanent);

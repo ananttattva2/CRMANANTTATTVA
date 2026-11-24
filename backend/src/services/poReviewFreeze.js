@@ -2,6 +2,14 @@ const Approval = require('../models/PendingApproval');
 const { ACTIVE_STAGES, sourceSignature, fail } = require('./poApprovalWorkflow');
 async function assertLeadPoEditable(leadId, before, next) {
   if (!Array.isArray(next.assignments) && !Array.isArray(next.serviceSelections)) return;
+  for (const [index, original] of (before.assignments || []).entries()) {
+    const state = require('./provisionalFreeze').provisionalState(original);
+    if (!state.frozen) continue;
+    const id = String(original.assignedServiceId || '');
+    const candidate = next.assignments ? (id ? next.assignments.find(row => String(row.assignedServiceId || '') === id) : next.assignments[index]) : original;
+    const hasRecoveryPo = candidate?.poStatus === 'received' && candidate.poYearRows?.length && candidate.poYearRows.every(row => row.poNumber && row.poFileUrl);
+    if (!hasRecoveryPo && (!candidate || sourceSignature(original, before.serviceSelections?.[index]) !== sourceSignature(candidate, next.serviceSelections?.[index] || before.serviceSelections?.[index]))) fail(423, state.message);
+  }
   const reviews = await Approval.find({ type: 'purchase_order', 'payload.leadId': String(leadId), 'poReview.stage': { $in: ACTIVE_STAGES } })
     .select('payload.assignmentIndex payload.assignedServiceId poReview.stage').lean();
   for (const review of reviews) {
