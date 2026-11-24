@@ -23,6 +23,22 @@ function response() {
 
 afterEach(() => require('node:test').mock.restoreAll());
 
+test('credit email totals include 18% GST on all credit rows and show the final payable amount', async () => {
+  const items = [[1.25, 244], [1.25, 367], [0.95, 332], [2.4, 222], [0.6, 47], [5, 30]].map(([basicAmount, eprCreditTargetMt]) => ({ businessCategory: 'EPR Credit', basicAmount, eprCreditTargetMt }));
+  const html = await delivery.eprCreditCalculationTable({ items });
+  assert.match(html, /Subtotal \(before GST\)/);
+  assert.match(html, /₹17,90,150\.00/);
+  assert.match(html, /GST \(18%\)/);
+  assert.match(html, /₹3,22,227\.00/);
+  assert.match(html, /Final Amount \(including GST\)/);
+  assert.match(html, /₹21,12,377\.00/);
+  const { eprCreditCalculationTotals } = await import('../../frontend/src/utils/eprCreditCalculation.mjs');
+  assert.deepEqual(eprCreditCalculationTotals([{ totalAmount: 0.03 }]), { subtotal: 0.03, gst: 0.01, finalAmount: 0.04 });
+  assert.deepEqual(eprCreditCalculationTotals([{ totalAmount: 0 }]), { subtotal: 0, gst: 0, finalAmount: 0 });
+  assert.equal(eprCreditCalculationTotals([{ totalAmount: null }]), null);
+  assert.equal(await delivery.eprCreditCalculationTable({ items: [{ businessCategory: 'Consultancy', basicAmount: 100 }] }), '');
+});
+
 test('EPR Credit Target values are validated for every EPR Credit quotation item', () => {
   const { normalizeEprCreditTargetUpdates } = controller._test;
   const items = [

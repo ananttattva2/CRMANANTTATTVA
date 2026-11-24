@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import api, { readApiError } from '../services/api'
-import { eprCreditTotalAmount, quotationEprCreditCalculationRows } from '../utils/eprCreditCalculation.mjs'
+import { eprCreditTotalAmount, quotationEprCreditCalculationRows, eprCreditCalculationTotals } from '../utils/eprCreditCalculation.mjs'
 
 const MAX_EMAIL_ATTACHMENTS = 5
 const MAX_EMAIL_ATTACHMENT_SIZE = 5 * 1024 * 1024
@@ -27,6 +27,7 @@ export default function QuotationEmailDialog({ quotation, onClose }) {
   const [imageAttachments, setImageAttachments] = useState([])
   const [attachmentError, setAttachmentError] = useState('')
   const [sent, setSent] = useState(false)
+  const creditTotals = eprCreditCalculationTotals(creditRows.map(row => ({ totalAmount: eprCreditTotalAmount(row.basicAmount, creditTargets[row.itemIndex] ?? '') })))
   useEffect(() => { ref.current.showModal() }, [])
 
   function addAttachments(event) {
@@ -165,6 +166,7 @@ export default function QuotationEmailDialog({ quotation, onClose }) {
             </tbody>
           </table>
         </div>
+        {creditTotals ? <dl className="rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm">{[['Subtotal (before GST)', creditTotals.subtotal], ['GST (18%)', creditTotals.gst], ['Final Amount (including GST)', creditTotals.finalAmount]].map(([label, amount], index) => <div key={label} className={`flex justify-between gap-4 py-2 ${index === 2 ? 'border-t border-teal-200 font-black text-teal-900' : 'text-slate-700'}`}><dt>{label}</dt><dd className="whitespace-nowrap font-bold">₹{amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd></div>)}</dl> : <p className="text-xs text-slate-500">Enter all targets to see the final amount including 18% GST.</p>}
         {calculationSaved && <p role="status" className="text-sm font-bold text-emerald-700">EPR Credit targets saved to this quotation.</p>}
         {calculationError && <p role="alert" className="text-sm font-bold text-red-700">{calculationError}</p>}
       </section>}

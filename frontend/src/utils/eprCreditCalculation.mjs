@@ -23,6 +23,13 @@ export function eprCreditTotalAmount(basicAmountPerMt, targetMt) {
   return roundMoney(Number(basicAmountPerMt) * target);
 }
 
+export function eprCreditCalculationTotals(rows = []) {
+  if (!rows.length || rows.some(row => row.totalAmount === null || row.totalAmount === undefined || !Number.isFinite(Number(row.totalAmount)))) return null;
+  const subtotal = roundMoney(rows.reduce((sum, row) => sum + Number(row.totalAmount), 0));
+  const gst = roundMoney(subtotal * 0.18);
+  return { subtotal, gst, finalAmount: roundMoney(subtotal + gst) };
+}
+
 export function quotationEprCreditCalculationRows(quotation = {}) {
   return (Array.isArray(quotation.items) ? quotation.items : [])
     .map((item, itemIndex) => ({ item, itemIndex }))
