@@ -168,3 +168,14 @@ test('email provider failure does not block an audited in-app administrator noti
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(res.code, 200); assert.equal(record.status, 'authorized'); assert.equal(record.emailStatus, 'failed');
 });
+test('quotation send automatically copies the configured CTO and Solid Waste owners without duplicate client CC', async t => {
+  t.mock.method(Lead, 'find', () => query([]));
+  t.mock.method(Quotation, 'findOne', () => query({ ...quote, items: [{ serviceCategory: 'Solid Waste Management', servicesOffered: 'CTO' }] }));
+  t.mock.method(User, 'find', () => query([{ name: 'KSHITIJ TRIMUKHE', email: 'kshitij@example.test' }, { name: 'Suraj Shetty', email: 'suraj@example.test' }]));
+  t.mock.method(delivery, 'createApprovedQuotationPdf', async () => Buffer.from('%PDF-1.7'));
+  t.mock.method(Quotation, 'updateOne', async () => {});
+  let options;
+  t.mock.method(mailer, 'sendMail', async (_to, _subject, _html, value) => { options = value; });
+  const res = response(); await controller.emailQuotation({ user: actor, params: { id: quote._id }, body: { email: 'client@example.test', cc: 'kshitij@example.test', subject: 'Quote', body: 'Please review' } }, res, error => { throw error; });
+  assert.equal(res.code, 200); assert.ok(options.cc.includes('kshitij@example.test')); assert.ok(options.cc.includes('suraj@example.test')); assert.equal(options.cc.filter(email => email === 'kshitij@example.test').length, 1);
+});

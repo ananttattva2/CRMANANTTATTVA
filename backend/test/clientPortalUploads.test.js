@@ -32,8 +32,10 @@ test('valid PDF upload persists company metadata and cleans storage when persist
   const originalModule = require.cache[storagePath];
   const storage = {};
   require.cache[storagePath] = { id: storagePath, filename: storagePath, loaded: true, exports: storage };
-  const originals = { exists: Lead.exists, create: Upload.create, upload: storage.uploadBuffer, remove: storage.deleteObject };
+  const originals = { exists: Lead.exists, byId: Lead.findById, update: Upload.updateOne, create: Upload.create, upload: storage.uploadBuffer, remove: storage.deleteObject };
   let deleted = false;
+  Lead.findById = () => ({ lean: async () => null });
+  Upload.updateOne = async () => {};
   Lead.exists = async () => ({ _id: '012345678901234567890123' });
   storage.uploadBuffer = async () => ({ url: 'https://files.example/order.pdf', storageKey: 'spaces:test-file' });
   storage.deleteObject = async () => { deleted = true; };
@@ -46,5 +48,5 @@ test('valid PDF upload persists company metadata and cleans storage when persist
     Upload.create = async () => { throw new Error('database unavailable'); };
     res = response(); await ctrl.create(req, res);
     assert.equal(res.code, 503); assert.equal(deleted, true);
-  } finally { Lead.exists = originals.exists; Upload.create = originals.create; storage.uploadBuffer = originals.upload; storage.deleteObject = originals.remove; if (originalModule) require.cache[storagePath] = originalModule; else delete require.cache[storagePath]; }
+  } finally { Lead.exists = originals.exists; Lead.findById = originals.byId; Upload.updateOne = originals.update; Upload.create = originals.create; storage.uploadBuffer = originals.upload; storage.deleteObject = originals.remove; if (originalModule) require.cache[storagePath] = originalModule; else delete require.cache[storagePath]; }
 });

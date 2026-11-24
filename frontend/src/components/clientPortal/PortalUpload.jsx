@@ -64,11 +64,11 @@ export default function PortalUpload({ clients, kind, api, token, fixedApplicant
     event.preventDefault();
     if (!file || busy || (kind === 'excel' && !applicantType)) return;
     setBusy(true); setError(''); setMessage(''); setProgress(0);
-    const body = new FormData(); if (kind === 'excel') body.append('applicantType', applicantType); if (dataType) body.append('dataType', dataType); if (serviceContext?.serviceKey) body.append('serviceKey', serviceContext.serviceKey); body.append('file', file);
+    const body = new FormData(); if (kind === 'excel' || serviceContext) body.append('applicantType', applicantType); if (dataType) body.append('dataType', dataType); if (serviceContext?.serviceKey) body.append('serviceKey', serviceContext.serviceKey); body.append('file', file);
     try {
       const { data } = await api.post(`/uploads/${lead}/${kind}`, body, { headers, onUploadProgress: event => setProgress(Math.round(event.loaded * 100 / (event.total || file.size))) });
       setRows(current => [data, ...current]); setFile(null); setApplicantType(fixedApplicantType); input.current.value = '';
-      setMessage(kind === 'excel' ? (data.notificationStatus === 'sent' ? 'Excel file uploaded. Your account team has been notified by email.' : 'Excel file saved. Email notification could not reach every recipient; please contact your account team.') : 'File uploaded successfully and saved to your company account.');
+      setMessage(kind === 'excel' ? (data.notificationStatus === 'sent' ? 'Excel file uploaded. Your account team has been notified by email.' : 'Excel file saved. Email notification could not reach every recipient; please contact your account team.') : (data.notificationStatus === 'sent' ? 'Purchase order uploaded. Your account team has been notified to review the PO and close the lead.' : data.notificationStatus === 'failed' || data.notificationStatus === 'partial' ? 'Purchase order saved. Some email notifications failed; please contact your account team.' : 'File uploaded successfully and saved to your company account.'));
     } catch (err) { setError(err.response?.data?.error || 'Upload failed. Please try again.'); }
     finally { setBusy(false); }
   }

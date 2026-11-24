@@ -32,7 +32,7 @@ exports.create = async (req, res) => {
     if (kind === 'excel' && dataType && (!['purchase', 'sales'].includes(dataType) || (dataType === 'sales' && !/producer|importer/i.test(applicantType)))) return res.status(422).json({ error: 'Choose a valid data category for this applicant.' });
     let context;
     const serviceKey = String(req.body?.serviceKey || '').trim();
-    if (kind === 'excel' && (serviceKey || dataType)) {
+    if ((kind === 'excel' && dataType) || serviceKey) {
       const source = await Lead.findById(req.params.lead).select('serviceSelections assignments applicantType subApplicantType piboCategory servicesOffered status poYearRows originalPoDetails closedAt closedBy closedByText').lean();
       context = source && serviceWorkspaces(source).find(item => item.serviceKey === serviceKey && item.applicantType === applicantType);
       if (!context) return res.status(422).json({ error: 'Choose a valid service, annual return year and purchase order before uploading.' });
@@ -45,9 +45,9 @@ exports.create = async (req, res) => {
     const signature = b && ({ pdf: b.subarray(0, 5).toString() === '%PDF-', png: b.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])), jpg: b[0] === 255 && b[1] === 216 && b[2] === 255, jpeg: b[0] === 255 && b[1] === 216 && b[2] === 255, webp: b.subarray(0,4).toString() === 'RIFF' && b.subarray(8,12).toString() === 'WEBP', xlsx: b.subarray(0,4).equals(Buffer.from([80,75,3,4])), xls: b.subarray(0,8).equals(Buffer.from([208,207,17,224,161,177,26,225])) })[ext];
     if (!file || !allowed.includes(ext) || !signature) return res.status(422).json({ error: 'Choose a valid file in one of the supported formats.' });
     stored = await uploadBuffer(b, file.originalname, types[ext], `crm/client-portal/${lead._id}/${kind}`);
-    const row = await Upload.create({ lead: lead._id, kind, serviceKey: context?.serviceKey, serviceContext: context ? { assignedServiceId: context.assignedServiceId, servicesOffered: context.servicesOffered, annualReturnYear: context.annualReturnYear, registrationYear: context.registrationYear, poYear: context.poYear, poNumber: context.poNumber } : undefined, dataType: kind === 'excel' ? dataType || undefined : undefined, applicantType: kind === 'excel' ? applicantType : undefined, notificationStatus: kind === 'excel' ? 'pending' : 'not_required', name: file.originalname.slice(0,255), url: stored.url, storageKey: stored.storageKey, size: file.size, uploadedBy: req.clientEmail });
+    const row = await Upload.create({ lead: lead._id, kind, serviceKey: context?.serviceKey, serviceContext: context ? { assignedServiceId: context.assignedServiceId, servicesOffered: context.servicesOffered, annualReturnYear: context.annualReturnYear, registrationYear: context.registrationYear, poYear: context.poYear, poNumber: context.poNumber } : undefined, dataType: kind === 'excel' ? dataType || undefined : undefined, applicantType: kind === 'excel' || context ? applicantType : undefined, notificationStatus: kind === 'excel' || kind === 'po' ? 'pending' : 'not_required', name: file.originalname.slice(0,255), url: stored.url, storageKey: stored.storageKey, size: file.size, uploadedBy: req.clientEmail });
     stored = null; // A saved upload must survive email or status update failures.
-    if (kind === 'excel') {
+    if (kind === 'excel' || kind === 'po') {
       try {
         const result = await notifyUpload(row);
         row.notificationStatus = result.failed ? (result.sent ? 'partial' : 'failed') : 'sent';

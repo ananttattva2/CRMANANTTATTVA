@@ -1027,6 +1027,8 @@ exports.emailQuotation = async (req, res, next) => {
     // Always copy the authenticated sender, independently of client-entered recipients.
     const senderEmail = String(req.user.email || '').trim().toLowerCase();
     if (senderEmail && senderEmail !== email && !cc.includes(senderEmail)) cc.push(senderEmail);
+    const serviceRecipients = await require('../services/quotationServiceRecipients').quotationServiceRecipients(quotation);
+    for (const recipient of serviceRecipients) if (recipient !== email && !cc.includes(recipient)) cc.push(recipient);
     const pdf = await createApprovedQuotationPdf(quotation);
     const content = await clientEmailContent(subject, body, quotation);
     await sendMail(email, subject, content.html, {

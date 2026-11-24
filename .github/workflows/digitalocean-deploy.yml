@@ -96,7 +96,7 @@ jobs:
         run: node --test backend/test/pendingApprovalLeadClosureRender.test.js backend/test/pendingApprovalClosedPoClients.test.js backend/test/pendingQuotationReconciliation.test.js
 
       - name: Test client portal service workspaces
-        run: node --test backend/test/clientPortalWorkspaces.test.js backend/test/clientPortalWorkspacesBrowser.test.js backend/test/clientPortalUploadNotifications.test.js backend/test/clientPortalUploadStages.test.js backend/test/clientPortalApplicantTypes.test.js backend/test/clientPortalUploads.test.js backend/test/clientPortal.test.js
+        run: node --test backend/test/portalPoAndQuotationRouting.test.js backend/test/clientPortalPoUpload.test.js backend/test/clientPortalWorkspaces.test.js backend/test/clientPortalWorkspacesBrowser.test.js backend/test/clientPortalUploadNotifications.test.js backend/test/clientPortalUploadStages.test.js backend/test/clientPortalApplicantTypes.test.js backend/test/clientPortalUploads.test.js backend/test/clientPortal.test.js
 
       - name: Build frontend
         env:

@@ -6,7 +6,7 @@ const messages = require('../controllers/clientPortalMessageController');
 const staff = require('../controllers/clientPortalStaffController');
 const { requireAuth } = require('../middleware/auth');
 const multer = require('multer');
-const receive = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 1, fields: 1, fieldSize: 256 } }).single('file');
+const receive = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 1, fields: 4, fieldSize: 256 } }).single('file');
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store');
   next();

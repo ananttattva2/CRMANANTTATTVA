@@ -32,7 +32,7 @@ test('service-scoped purchase and sales receipts reach lead generator, selected 
   const sent = [];
   Lead.findById = () => ({ lean: async () => ({ company: 'Company', createdBy: 'creator-id', serviceSelections: [{ assignedServiceId: 'one', subApplicantType: 'Producer', closedAt: new Date() }] }) });
   User.find = filter => ({ select: () => ({ lean: async () => {
-    if (filter.$or) { assert.ok(filter.$or[0].role.test('admin')); assert.ok(filter.$or[0].role.test('super_admin')); assert.equal(filter.isActive.$ne, false); return [{ email: 'admin@example.com' }, { email: 'super@example.com' }]; }
+    if (filter.$or) { assert.ok(filter.$or[0].role.test('admin')); assert.ok(filter.$or[0].role.test('super_admin')); assert.equal(filter.isActive.$ne, false); return [{ email: 'admin@example.com' }, { email: 'super@example.com' }, ...(filter.$or[0].role.test('manager') ? [{ email: 'manager@example.com' }] : [])]; }
     assert.ok(filter._id.$in.includes('creator-id')); return [{ email: 'creator@example.com' }];
   } }) });
   portal.loadPortalData = async () => ({ clients: [{ _id: 'lead1', spoc: { email: 'wrong@example.com' }, assignments: [{ assignedServiceId: 'one', spoc: { email: 'spoc@example.com' } }, { assignedServiceId: 'two', spoc: { email: 'unrelated@example.com' } }] }] });
@@ -40,11 +40,12 @@ test('service-scoped purchase and sales receipts reach lead generator, selected 
   const servicePath = require.resolve('../src/services/clientPortalUploadNotifications'); delete require.cache[servicePath];
   try {
     const { notifyUpload } = require(servicePath);
-    for (const dataType of ['purchase', 'sales']) {
+    for (const dataType of ['purchase', 'sales', 'po']) {
       sent.length = 0;
-      const result = await notifyUpload({ lead: 'lead1', applicantType: 'Producer', dataType, serviceContext: { assignedServiceId: 'one', servicesOffered: 'Annual Return Filling', annualReturnYear: '2025-26', poNumber: '003' }, uploadedBy: 'client@example.com', name: 'data.xlsx', url: 'https://files.test/data.xlsx' });
-      assert.deepEqual(new Set(sent.map(row => row.to)), new Set(['creator@example.com', 'spoc@example.com', 'admin@example.com', 'super@example.com']));
-      assert.deepEqual(result, { sent: 4, failed: 0 });
+      const result = await notifyUpload({ lead: 'lead1', kind: dataType === 'po' ? 'po' : 'excel', applicantType: 'Producer', dataType: dataType === 'po' ? undefined : dataType, serviceContext: { assignedServiceId: 'one', servicesOffered: 'Annual Return Filling', annualReturnYear: '2025-26', poNumber: '003' }, uploadedBy: 'client@example.com', name: 'data.xlsx', url: 'https://files.test/data.xlsx' });
+      assert.deepEqual(new Set(sent.map(row => row.to)), new Set(['creator@example.com', 'spoc@example.com', 'admin@example.com', 'super@example.com', ...(dataType === 'po' ? ['manager@example.com'] : [])]));
+      assert.deepEqual(result, { sent: dataType === 'po' ? 5 : 4, failed: 0 });
+      if (dataType === 'po') { assert.match(sent[0].html, /close the corresponding lead/); assert.doesNotMatch(sent[0].html, /an Excel file/); }
       assert.match(sent[0].subject.toLowerCase(), new RegExp(dataType));
       assert.match(sent[0].html, /2025-26/); assert.match(sent[0].html, /003/); assert.match(sent[0].html, /Annual Return Filling/);
     }

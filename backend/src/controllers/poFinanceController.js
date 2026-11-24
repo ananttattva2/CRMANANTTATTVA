@@ -344,13 +344,15 @@ exports.list = async (req, res) => {
   try {
     const baseFilter = { type: 'purchase_order', 'poReview.stage': { $in: ['FINANCE_READY', 'LEAD_OWNER_PENDING', 'LEAD_CLOSURE_PENDING', 'FINANCE_RELEASED', 'FINALIZED'] } };
     const approvals = await Approval.find(baseFilter)
-      .select('clientName uniqueId approvalStatus createdByName createdAt actionAt poReview payload.leadId payload.assignedServiceId payload.assignmentIndex payload.leadCode payload.poSubmittedByName payload.poSubmittedAt payload.service payload.poYearRows.poNumber payload.poYearRows.poAmount payload.poYearRows.quotationBasicAmount payload.poYearRows.quotationNumber payload.poYearRows.quotationItems.unit payload.poYearRows.quotationItems.basicAmount payload.poYearRows.fy')
+      .select('clientName uniqueId approvalStatus createdByName createdAt actionAt poReview payload.specialApprovalOrigin payload.leadId payload.assignedServiceId payload.assignmentIndex payload.leadCode payload.poSubmittedByName payload.poSubmittedAt payload.service payload.poYearRows.poNumber payload.poYearRows.poAmount payload.poYearRows.quotationBasicAmount payload.poYearRows.quotationNumber payload.poYearRows.quotationItems.unit payload.poYearRows.quotationItems.basicAmount payload.poYearRows.fy')
       .sort({ updatedAt: -1 }).maxTimeMS(15000).lean();
     if (staffView) {
       const visible = await filterAssignedLeadOwnerApprovals(approvals, req.user);
       return res.json({ ok: true, approvals: visible });
     }
-    return res.json({ ok: true, approvals });
+    for (const approval of approvals) if (approval.payload?.specialApprovalOrigin || approval.poReview?.managementGoAhead || approval.poReview?.financeReferral) approval.approvalSource = 'Special Approval';
+    const specialClosures = await require('../services/specialClosureFinance').loadSpecialClosures(approvals);
+    return res.json({ ok: true, approvals: [...approvals, ...specialClosures] });
   } catch (error) { return report(res, error); }
 };
 exports.detail = async (req, res) => {

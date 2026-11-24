@@ -47,3 +47,8 @@ test('uploads validate company service keys and persist server-owned year and PO
     assert.equal(persisted.length, 2); assert.notEqual(persisted[0].serviceKey, persisted[1].serviceKey);
   } finally { Lead.exists = saved.exists; Lead.find = saved.find; Lead.findById = saved.byId; Upload.create = saved.create; Upload.updateOne = saved.update; notifications.notifyUpload = saved.notify; require.cache[storagePath] = saved.storage; require.cache[controllerPath] = saved.controller; }
 });
+
+test('special approval without a PO still exposes a scoped workspace for client PO upload', () => {
+ const lead = source(); lead.assignments[0].poStatus = 'provisional'; lead.assignments[0].poYearRows = [];
+ const rows = serviceWorkspaces(lead); assert.equal(rows.length, 1); assert.equal(rows[0].applicantType, 'Producer'); assert.equal(rows[0].poNumber, ''); assert.ok(rows[0].serviceKey);
+});
