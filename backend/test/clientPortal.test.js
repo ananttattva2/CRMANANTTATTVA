@@ -148,3 +148,7 @@ test('temporary email login opens only registered contact sessions and never sen
     if (previous === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = previous;
   }
 });
+test('client portal invoice retains business categories for service-specific SAC rendering', () => {
+  const result = buildPortalData('client@example.com', [], [], [], [{ items: [{ businessCategory: 'EPR Consultancy', basicAmount: 17500 }, { businessCategory: 'EPR Credit', basicAmount: 10000 }] }]);
+  assert.deepEqual(result.invoices[0].items.map(item => item.businessCategory), ['EPR Consultancy', 'EPR Credit']);
+});

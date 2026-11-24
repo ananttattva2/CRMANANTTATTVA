@@ -58,7 +58,7 @@ function toDocument(row, kind) {
     ...pick(row, '_id companyName leadId leadCode quotationNumber proformaNumber quotationDate invoiceDate validUntil pricingMode combinedBasicAmount subtotal grandTotal gstRate gstAmount status terms paymentTerm invoiceDetails'),
     kind,
     leadDetails: pick(row.leadDetails, 'companyName contactPerson designation addressLine1 addressLine2 addressLine3 state city pinCode gstNumber'),
-    items: array(row.items).map(item => pick(item, 'serviceCategory eprCategory servicesOffered servicesForYear financialYear registrationYear annualReturnYears unit basicAmount applicantType subApplicantType piboCategory periodUnit servicePeriod serviceStartDate serviceEndDate'))
+    items: array(row.items).map(item => pick(item, 'businessCategory serviceCategory eprCategory servicesOffered servicesForYear financialYear registrationYear annualReturnYears unit basicAmount applicantType subApplicantType piboCategory periodUnit servicePeriod serviceStartDate serviceEndDate'))
   };
 }
 function publicDetails(value, depth = 0) {
