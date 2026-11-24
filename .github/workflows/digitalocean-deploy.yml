@@ -19,7 +19,8 @@ jobs:
     name: Verify release
     outputs:
       artifact-id: ${{ steps.upload-frontend.outputs.artifact-id }}
-    runs-on: ubuntu-latest
+    # Keep browser verification on a stable OS instead of following runner OS migrations.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Checkout
