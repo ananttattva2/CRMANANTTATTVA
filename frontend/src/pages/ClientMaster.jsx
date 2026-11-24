@@ -1190,7 +1190,8 @@ function legacyServiceFingerprintCompatible(lhsRaw, rhsRaw) {
   const applicantIndex = 3;
   const plantIndex = 7;
   if (lhs[piboIndex] && rhs[piboIndex] && lhs[piboIndex] !== rhs[piboIndex]) return false;
-  if (lhs[eprIndex] && rhs[eprIndex] && lhs[eprIndex] !== rhs[eprIndex]) return false;
+  const category = value => { const token = normalize(value); return token.includes('plastic') ? 'plastic' : token.includes('ewaste') || token.includes('electronic') ? 'ewaste' : token.includes('battery') ? 'battery' : token.includes('tyre') || token.includes('tire') ? 'tyre' : token.includes('usedoil') ? 'usedoil' : token; };
+  if (lhs[eprIndex] && rhs[eprIndex] && category(lhs[eprIndex]) !== category(rhs[eprIndex])) return false;
   if (lhs[applicantIndex] && rhs[applicantIndex] && lhs[applicantIndex] !== rhs[applicantIndex]) return false;
   if (lhs[industryIndex] && rhs[industryIndex] && lhs[industryIndex] !== rhs[industryIndex]) return false;
   if (lhs[plantIndex] && rhs[plantIndex] && lhs[plantIndex] !== rhs[plantIndex]) return false;
@@ -1273,7 +1274,7 @@ function activateAssignedService(data = {}, service = {}, serviceCount = 1) {
   const hasDataCpcb = data.cpcb ? Object.keys(data.cpcb).filter((k) => k !== 'linkedToCommonPortal').length > 0 : false;
   const hasDataScreenshots = Array.isArray(data.cpcbScreenshots) && data.cpcbScreenshots.length > 0;
   const useFallback = (scoped, hasScoped, hasData, dataFallback, leadFallback) => {
-    if (scoped && hasScoped) return scoped;
+    if (scoped && hasScoped) return allowLegacy ? mergeClientData(scoped, dataFallback || {}) : scoped;
     if (allowLegacy && hasData) return dataFallback;
     return leadFallback;
   };
@@ -1328,7 +1329,7 @@ function activateAssignedService(data = {}, service = {}, serviceCount = 1) {
       ? scopedDetails.coordinatingPersons
       : (allowLegacy && Array.isArray(data.coordinatingPersons) && data.coordinatingPersons.length ? data.coordinatingPersons : []),
     cpcb: hasScopedCpcb
-      ? { linkedToCommonPortal: '', ...(scoped.cpcb || scoped.details || {}) }
+      ? { linkedToCommonPortal: '', ...(allowLegacy ? mergeClientData(scoped.cpcb || scoped.details || {}, data.cpcb || {}) : scoped.cpcb || scoped.details || {}) }
       : allowLegacy && hasDataCpcb
         ? { linkedToCommonPortal: '', ...(data.cpcb || {}) }
         : { linkedToCommonPortal: '' },
@@ -1795,6 +1796,14 @@ export default function ClientMaster() {
               || ((!assignedServiceId || !readAssignedServiceId(stored)) && legacyServiceFingerprintCompatible(stored, currentService)))
           ));
         }
+        // A newly bootstrapped exact-id draft must not hide the company's
+        // existing submitted master when there is only one applicant/unit.
+        if (groupedLeadServices.length === 1 && (storedIndex < 0 || String(storedServices[storedIndex]?.workflowStatus || '').toLowerCase() !== 'submitted')) {
+          const savedIndex = storedServices.findIndex((stored, index) => !usedStoredIndexes.has(index)
+            && String(stored.workflowStatus || '').toLowerCase() === 'submitted'
+            && legacyServiceFingerprintCompatible(stored, currentService));
+          if (savedIndex >= 0) storedIndex = savedIndex;
+        }
         if (storedIndex < 0) return currentService;
         usedStoredIndexes.add(storedIndex);
         const stored = storedServices[storedIndex];
@@ -1953,7 +1962,7 @@ export default function ClientMaster() {
       setError('Lead is not closed for this service. Close its PO before creating the Client Master.');
       return;
     }
-    if (service.cpcbPortalRegistered === true) {
+    if (service.cpcbPortalRegistered === true || (service.clientMasterId && service.cpcbPortalRegistered !== false)) {
       setPendingLeadServices(null);
       handleLeadSelect(pending.value, service, pending.lead);
       return;

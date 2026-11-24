@@ -111,10 +111,10 @@ function normalizeClientMaster(record = {}) {
 }
 
 const SCOPED_OBJECT_SECTIONS = [
-  'cpcb', 'registeredAddress', 'communicationAddress', 'otp', 'authorised', 'coordinating'
+  'companyOverview', 'basic', 'compliance', 'cte', 'cpcb', 'registeredAddress', 'communicationAddress', 'otp', 'authorised', 'coordinating'
 ];
 const SCOPED_ARRAY_SECTIONS = [
-  'cpcbScreenshots', 'otpContacts', 'authorisedPersons', 'coordinatingPersons'
+  'msmeRows', 'processDiagrams', 'cpcbScreenshots', 'otpContacts', 'authorisedPersons', 'coordinatingPersons'
 ];
 
 function resolveClientMasterData(record = {}, requestedAssignedServiceId = '') {

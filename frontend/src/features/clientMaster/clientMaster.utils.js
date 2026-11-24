@@ -256,8 +256,16 @@ function mergeClientData(primary = {}, fallback = {}) {
 }
 
 function readClientData(item) {
-  const flatData = mapFlatClientData(item || {});
-  return mergeClientData(item?.data || {}, flatData);
+  const source = item || {};
+  const sections = ['companyOverview', 'basic', 'registeredAddress', 'communicationAddress', 'compliance', 'msmeRows', 'cte', 'cpcb', 'cpcbScreenshots', 'processDiagrams', 'otp', 'otpContacts', 'authorised', 'authorisedPersons', 'coordinating', 'coordinatingPersons', 'importMeta', 'selectedLeadSnapshot', 'cpcbOnboarding', 'cpcbDataByAssignedServiceId', 'serviceDetailsByAssignedServiceId', 'assignedServiceId'];
+  const legacy = Object.fromEntries(sections.filter(key => source[key] !== undefined).map(key => [key, source[key]]));
+  // Only actual spreadsheet columns are flat fallbacks. Traversing every
+  // nested service can pull another applicant's credentials into this form.
+  const flatFields = value => Object.fromEntries(Object.entries(value || {}).filter(([, entry]) => entry === null || typeof entry !== 'object' || entry instanceof Date));
+  const flatSource = { ...flatFields(source.data), ...flatFields(source) };
+  const flatData = mapFlatClientData(flatSource);
+  const stored = mergeClientData(source.data || {}, mergeClientData(legacy, flatData));
+  return source.resolvedData && typeof source.resolvedData === 'object' ? mergeClientData(source.resolvedData, stored) : stored;
 }
 
 function normalizeClientIdentity(value) {
