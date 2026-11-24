@@ -1,0 +1,1 @@
+const fs=require('fs'); const c=require('../backend/src/services/quotationDelivery');const html=c.clientEmailContent('Sample','Dear Client,\n\nPlease find the approved quotation attached.').html;fs.writeFileSync('tmp/pdfs/quotation-email-preview.html',html);

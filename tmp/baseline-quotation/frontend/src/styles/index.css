@@ -1,0 +1,7 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Feature CSS lives in ./modules and is imported in src/main.jsx to preserve cascade order. */
+/* Vercel redeploy marker: keep production synced with the current dashboard theme. */

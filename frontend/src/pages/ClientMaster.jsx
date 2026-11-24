@@ -657,24 +657,60 @@ function normalizeChooserServiceCategory(value = '') {
 }
 
 function dedupeClientServiceChooserOptions(services = []) {
-  const optionsByApplicantAndCategory = new Map();
-  services.forEach((service, index) => {
+  const normalize = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const profiles = services.map((service) => {
     const data = readClientData(service);
-    const groupedIdentity = clientMasterGroupingIdentity({
-      applicantType: data.selectedLeadSnapshot?.applicantType || data.selectedLeadSnapshot?.piboParent || data.selectedLeadSnapshot?.piboCategoryParent,
-      subApplicantType: data.basic?.piboCategory || data.selectedLeadSnapshot?.subApplicantType || data.selectedLeadSnapshot?.piboCategory,
-      plantUnit: data.basic?.plantUnit || data.selectedLeadSnapshot?.plantUnit || service.plantUnit
-    });
-    const applicant = String(data.basic?.piboCategory || data.selectedLeadSnapshot?.subApplicantType || data.selectedLeadSnapshot?.piboCategory || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    const category = data.basic?.eprCategory || data.selectedLeadSnapshot?.eprCategory || '';
-    const categoryKey = normalizeChooserServiceCategory(category);
-    const semanticKey = groupedIdentity || (applicant && categoryKey ? `${applicant}:${categoryKey}` : `record:${getClientServiceViewKey(service) || index}`);
-    const canonicalCategory = /^EPR\s*-\s*(?:Plastic|E-Waste|Battery|Tyre|Used Oil)\s+Waste$/i.test(String(category).trim());
+    return {
+      service,
+      applicantType: data.selectedLeadSnapshot?.applicantType || data.selectedLeadSnapshot?.piboParent || data.selectedLeadSnapshot?.piboCategoryParent || service.applicantType || service.piboParent || service.piboCategoryParent || '',
+      subApplicantType: data.basic?.piboCategory || data.selectedLeadSnapshot?.subApplicantType || data.selectedLeadSnapshot?.piboCategory || service.subApplicantType || service.piboCategory || '',
+      plantUnit: data.basic?.plantUnit || data.selectedLeadSnapshot?.plantUnit || service.plantUnit || '',
+      category: data.basic?.eprCategory || data.selectedLeadSnapshot?.eprCategory || service.eprCategory || service.serviceCategory || ''
+    };
+  });
+  const optionsByApplicantAndCategory = new Map();
+  profiles.forEach((profile, index) => {
+    const { service } = profile;
+    const data = readClientData(service);
+    const applicant = normalize(profile.subApplicantType);
+    const categoryKey = normalizeChooserServiceCategory(profile.category);
+    // Infer absent legacy metadata only from one unambiguous applicant/unit
+    // context. A blank unit must never collapse two genuinely different units.
+    const matches = applicant && categoryKey ? profiles.filter(candidate => (
+      normalize(candidate.subApplicantType) === applicant
+      && normalizeChooserServiceCategory(candidate.category) === categoryKey
+      && (!profile.applicantType || !candidate.applicantType || normalize(profile.applicantType) === normalize(candidate.applicantType))
+      && (!profile.plantUnit || !candidate.plantUnit || normalize(profile.plantUnit) === normalize(candidate.plantUnit))
+    )) : [];
+    const candidates = matches.map(candidate => ({
+      ...profile,
+      applicantType: profile.applicantType || candidate.applicantType,
+      plantUnit: profile.plantUnit || candidate.plantUnit
+    }));
+    const specificity = candidate => Number(Boolean(candidate.applicantType)) + Number(Boolean(candidate.plantUnit));
+    const bestSpecificity = Math.max(specificity(profile), ...candidates.map(specificity));
+    const contexts = new Map(candidates.filter(candidate => specificity(candidate) === bestSpecificity)
+      .map(candidate => [clientMasterGroupingIdentity(candidate), candidate]));
+    const resolved = contexts.size === 1 ? [...contexts.values()][0] : profile;
+    const groupedIdentity = clientMasterGroupingIdentity(resolved);
+    const semanticKey = groupedIdentity ? `${groupedIdentity}:${categoryKey}` : applicant && categoryKey
+      ? `${applicant}:${categoryKey}:${normalize(resolved.plantUnit)}` : `record:${getClientServiceViewKey(service) || index}`;
+    const canonicalCategory = /^EPR\s*-\s*(?:Plastic|E-Waste|Battery|Tyre|Used Oil)\s+Waste$/i.test(String(profile.category).trim());
     const score = (String(service.workflowStatus || '').toLowerCase() === 'submitted' ? 10000 : 0)
+      + (service._clientMasterAvailable !== false && (service.clientMasterId || service._id || service.id) ? 1000 : 0)
+      + (data.cpcb?.registrationNumber || data.cpcb?.ceprUserId || data.cpcb?.ceprPassword ? 500 : 0)
       + (canonicalCategory ? 100 : 0)
       + [data.basic?.clientLegalName, data.basic?.tradeName, data.importMeta?.uniqueId, data.cpcb?.status].filter((value) => String(value || '').trim()).length;
     const current = optionsByApplicantAndCategory.get(semanticKey);
-    if (!current || score > current.score) optionsByApplicantAndCategory.set(semanticKey, { service, score });
+    const enriched = {
+      ...service,
+      data: {
+        ...data,
+        selectedLeadSnapshot: { ...(data.selectedLeadSnapshot || {}), applicantType: resolved.applicantType, plantUnit: resolved.plantUnit },
+        basic: { ...(data.basic || {}), piboCategory: resolved.subApplicantType, plantUnit: resolved.plantUnit }
+      }
+    };
+    if (!current || score > current.score) optionsByApplicantAndCategory.set(semanticKey, { service: enriched, score });
   });
   return [...optionsByApplicantAndCategory.values()].map(({ service }) => service);
 }

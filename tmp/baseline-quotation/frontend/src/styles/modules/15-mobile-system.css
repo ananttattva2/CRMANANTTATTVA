@@ -1,0 +1,140 @@
+/* Shared mobile layout guardrails for every dashboard workspace. */
+.activity-kpi-card { display: grid; grid-template-columns: 42px minmax(0, 1fr); align-items: center; gap: 10px; min-height: 78px; }
+.activity-kpi-icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 12px; }
+.activity-kpi-icon.is-emerald, .activity-kpi-icon.is-green { background: #ecfdf5; color: #10b981; }
+.activity-kpi-icon.is-blue, .activity-kpi-icon.is-sky { background: #eff6ff; color: #2563eb; }
+.activity-kpi-icon.is-violet { background: #f5f3ff; color: #7c3aed; }
+.activity-kpi-icon.is-orange { background: #fff7ed; color: #f97316; }
+.activity-kpi-icon.is-amber { background: #fffbeb; color: #f59e0b; }
+.activity-kpi-icon.is-cyan { background: #ecfeff; color: #0891b2; }
+.activity-log-pagination button { font-weight: 900; transition: background-color 160ms ease, color 160ms ease; }
+
+@media (max-width: 767px) {
+  html, body, #root { max-width: 100%; overflow-x: hidden; }
+  .auth-page-grid { display: block !important; width: 100% !important; min-width: 0 !important; }
+  .auth-page-grid > section:last-child { display: block !important; width: 100% !important; min-width: 0 !important; padding: 14px 12px !important; }
+  .auth-page-grid > section:last-child > div { width: 100% !important; min-width: 0 !important; border-radius: 22px !important; padding: 20px 16px !important; }
+  .auth-page-grid h1 { font-size: 28px !important; }
+  .auth-page-grid form { margin-top: 24px !important; }
+  .auth-page-grid form .grid-cols-2 { grid-template-columns: 1fr !important; }
+  .crm-topbar > div { min-height: 64px !important; padding-inline: 10px !important; }
+  main.min-h-screen { padding-top: 64px !important; }
+  main.min-h-screen > .flex { min-height: calc(100vh - 64px) !important; }
+  main.min-h-screen > .flex > aside { top: 64px !important; }
+  main.min-h-screen > .flex > button.fixed { top: 64px !important; }
+  .crm-topbar .h-16 { height: 48px !important; }
+  .crm-topbar .h-12 { height: 34px !important; width: 34px !important; }
+  .crm-topbar .h-11 { height: 40px !important; width: 40px !important; }
+  .crm-topbar strong.text-lg { font-size: 12px !important; }
+  .crm-topbar small { font-size: 9px !important; }
+  .crm-topbar button[aria-label="Anant Tattva Website"] { display: none !important; }
+  .topbar-reminder-panel { position: fixed !important; inset: 66px 10px auto !important; width: auto !important; max-height: calc(100vh - 76px); }
+
+  button, a, input, select, textarea { max-width: 100%; }
+  input, select, textarea { font-size: 16px !important; }
+  [class*="grid-cols-4"], [class*="grid-cols-5"], [class*="grid-cols-6"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  [class*="max-w-"] { min-width: 0; }
+  .fixed.inset-0 > aside { max-width: 94vw; }
+
+  /* A mobile drawer is always an expanded navigation, regardless of desktop preference. */
+  main.min-h-screen > .flex > aside nav { overflow-x: hidden !important; overflow-y: auto !important; padding: 18px 14px 24px !important; }
+  main.min-h-screen > .flex > aside nav .sidebar-menu-button { justify-content: space-between !important; padding-inline: 14px !important; }
+  main.min-h-screen > .flex > aside nav .sidebar-menu-button > span { justify-content: flex-start !important; }
+  main.min-h-screen > .flex > aside nav .sidebar-menu-button .sr-only { position: static !important; width: auto !important; height: auto !important; margin: 0 !important; overflow: visible !important; clip: auto !important; white-space: normal !important; }
+}
+
+/* Activity audit becomes a readable card feed instead of a desktop table squeezed on mobile. */
+@media (max-width: 767px) {
+  .activity-logs-page > section:nth-of-type(2) { padding: 12px; }
+  .activity-logs-page > section:nth-of-type(2) .mb-3 { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .activity-logs-page > section:nth-of-type(2) button { padding-inline: 6px; }
+  .activity-logs-page > section:nth-of-type(3) { overflow: visible; border: 0; background: transparent; box-shadow: none; }
+  .activity-logs-page > section:nth-of-type(3) > div { overflow: visible; }
+  .activity-logs-page > section:nth-of-type(3) table,
+  .activity-logs-page > section:nth-of-type(3) tbody { display: grid; min-width: 0 !important; gap: 12px; width: 100%; }
+  .activity-logs-page > section:nth-of-type(3) thead { display: none; }
+  .activity-logs-page > section:nth-of-type(3) tbody tr { display: grid; grid-template-columns: 1fr auto; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 18px; background: #fff; box-shadow: 0 6px 20px rgba(15,23,42,.06); }
+  .activity-logs-page > section:nth-of-type(3) tbody td { display: block; max-width: none; padding: 9px 14px; font-size: 12px; }
+  .activity-logs-page > section:nth-of-type(3) tbody td:first-child { grid-column: 1 / -1; padding-top: 14px; color: #64748b; }
+  .activity-logs-page > section:nth-of-type(3) tbody td:nth-child(2) { grid-column: 1; font-size: 14px; }
+  .activity-logs-page > section:nth-of-type(3) tbody td:nth-child(3) { grid-column: 2; grid-row: 2; }
+  .activity-logs-page > section:nth-of-type(3) tbody td:nth-child(4),
+  .activity-logs-page > section:nth-of-type(3) tbody td:nth-child(5) { display: inline-flex; align-items: center; }
+  .activity-logs-page > section:nth-of-type(3) tbody td:nth-child(6),
+  .activity-logs-page > section:nth-of-type(3) tbody td:nth-child(7) { display: none; }
+  .activity-logs-page > section:nth-of-type(3) tbody td:nth-child(8) { grid-column: 1 / -1; padding-block: 12px; line-height: 1.55; }
+  .activity-logs-page > section:nth-of-type(3) tbody td:nth-child(9) { grid-column: 1; border-top: 1px solid #f1f5f9; }
+  .activity-logs-page > section:nth-of-type(3) tbody td:nth-child(10) { grid-column: 2; border-top: 1px solid #f1f5f9; }
+  .activity-logs-page > section:nth-of-type(3) footer { align-items: stretch; flex-direction: column; border: 0; padding-inline: 0; }
+  .activity-logs-page > section:nth-of-type(3) footer > div { justify-content: space-between; border-radius: 14px; background: #fff; padding: 8px; }
+  .activity-logs-page .fixed aside section.grid-cols-2 { grid-template-columns: 1fr; }
+  .activity-kpi-card { grid-template-columns: 34px minmax(0, 1fr); min-height: 70px; padding: 10px; }
+  .activity-kpi-icon { width: 34px; height: 34px; border-radius: 10px; }
+  .activity-kpi-icon svg { width: 17px; height: 17px; }
+  .activity-log-pagination { align-items: stretch !important; }
+  .activity-log-pagination > span { width: 100%; }
+  .activity-log-pagination > div { max-width: 100%; overflow-x: auto; }
+}
+
+/* Sales red-flag audit: every row is a complete card on phones, with no sideways scrolling. */
+@media (max-width: 760px) {
+  .sales-dashboard-page #sales-red-flag-details { overflow: visible !important; }
+  .sales-dashboard-page #sales-red-flag-details .red-flag-audit { overflow: visible !important; border-radius: 16px !important; }
+  .sales-dashboard-page #sales-red-flag-details .red-flag-audit > header { padding: 16px 12px !important; }
+  .sales-dashboard-page #sales-red-flag-details .red-flag-audit-title { min-width: 0; align-items: flex-start; }
+  .sales-dashboard-page #sales-red-flag-details .red-flag-audit-title h2 { white-space: normal !important; line-height: 1.35; }
+  .sales-dashboard-page #sales-red-flag-details .red-flag-audit-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px !important; }
+  .sales-dashboard-page #sales-red-flag-details .red-flag-audit-summary b { min-width: 0 !important; border: 1px solid #fecaca !important; border-radius: 12px !important; padding: 9px 6px !important; }
+  .sales-dashboard-page #sales-red-flag-details .red-flag-table-wrap { max-height: none !important; overflow: visible !important; border-top: 1px solid #fee2e2; padding: 10px; }
+  .sales-dashboard-page #sales-red-flag-details table,
+  .sales-dashboard-page #sales-red-flag-details tbody { display: grid; width: 100%; min-width: 0 !important; gap: 10px; }
+  .sales-dashboard-page #sales-red-flag-details thead { display: none; }
+  .sales-dashboard-page #sales-red-flag-details tbody tr { display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; border: 1px solid #fecaca; border-radius: 14px; background: #fff; box-shadow: 0 7px 20px rgba(190,18,60,.06); }
+  .sales-dashboard-page #sales-red-flag-details tbody td { display: block; min-width: 0; padding: 10px 12px !important; border-top: 1px solid #fff1f2; font-size: 11px !important; }
+  .sales-dashboard-page #sales-red-flag-details tbody td::before { display: block; margin-bottom: 5px; color: #94a3b8; font-size: 8px; font-weight: 950; letter-spacing: .08em; text-transform: uppercase; }
+  .sales-dashboard-page #sales-red-flag-details tbody td:nth-child(1) { grid-column: 1 / -1; border-top: 0; background: #fff7f7; }
+  .sales-dashboard-page #sales-red-flag-details tbody td:nth-child(1)::before { content: "Stage"; }
+  .sales-dashboard-page #sales-red-flag-details tbody td:nth-child(2) { grid-column: 1 / -1; }
+  .sales-dashboard-page #sales-red-flag-details tbody td:nth-child(2)::before { content: "Lead / Follow-up"; }
+  .sales-dashboard-page #sales-red-flag-details tbody td:nth-child(3) { grid-column: 1 / -1; }
+  .sales-dashboard-page #sales-red-flag-details tbody td:nth-child(3)::before { content: "Assigned user"; }
+  .sales-dashboard-page #sales-red-flag-details tbody td:nth-child(4)::before { content: "Due at"; }
+  .sales-dashboard-page #sales-red-flag-details tbody td:nth-child(5)::before { content: "No-action reason"; }
+  .sales-dashboard-page #sales-red-flag-details tbody td:nth-child(5) { overflow-wrap: anywhere; }
+  .sales-dashboard-page #sales-red-flag-details tbody td:nth-child(6) { display: flex; grid-column: 1 / -1; align-items: center; justify-content: flex-end; }
+  .sales-dashboard-page #sales-red-flag-details .red-flag-user { align-items: flex-start; }
+  .sales-dashboard-page #sales-red-flag-details .red-flag-user > span { min-width: 0; overflow-wrap: anywhere; }
+  .sales-dashboard-page #sales-red-flag-details .red-flag-pagination { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 12px; }
+  .sales-dashboard-page #sales-red-flag-details .red-flag-pagination-center { display: none; }
+  .sales-dashboard-page #sales-red-flag-details .red-flag-pagination-actions button { min-width: 62px; }
+}
+
+/* Keep the complete audit columns swipeable on narrow dashboards. */
+@media (max-width: 760px) {
+  .sales-dashboard-page,
+  .sales-dashboard-page .sales-dashboard,
+  .sales-dashboard-page .sales-red-flag-expand,
+  .sales-dashboard-page #sales-red-flag-details,
+  .sales-dashboard-page .red-flag-audit { box-sizing: border-box !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; overflow-x: hidden !important; }
+  .red-flag-table-wrap,
+  .sales-dashboard-page #sales-red-flag-details .red-flag-table-wrap { position: relative; display: block !important; box-sizing: border-box !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; overflow-x: scroll !important; overflow-y: hidden !important; padding: 0 0 8px !important; touch-action: pan-x !important; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scrollbar-width: auto; scrollbar-color: #0f766e #dbe7e5; contain: inline-size; cursor: grab; }
+  .red-flag-table-wrap:active { cursor: grabbing; }
+  .red-flag-table-wrap::-webkit-scrollbar { display: block; height: 9px; }
+  .red-flag-table-wrap::-webkit-scrollbar-track { border-radius: 99px; background: #dbe7e5; }
+  .red-flag-table-wrap::-webkit-scrollbar-thumb { border: 2px solid #dbe7e5; border-radius: 99px; background: #0f766e; }
+  .red-flag-audit table,
+  .sales-dashboard-page #sales-red-flag-details table { display: table !important; width: max-content !important; min-width: 1040px !important; table-layout: auto; }
+  .red-flag-audit thead,
+  .sales-dashboard-page #sales-red-flag-details thead { display: table-header-group !important; }
+  .red-flag-audit tbody,
+  .sales-dashboard-page #sales-red-flag-details tbody { display: table-row-group !important; }
+  .red-flag-audit tbody tr,
+  .sales-dashboard-page #sales-red-flag-details tbody tr { display: table-row !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+  .red-flag-audit tbody td,
+  .sales-dashboard-page #sales-red-flag-details tbody td { display: table-cell !important; min-width: 140px; padding: 9px 10px !important; border-top: 1px solid #f1f5f9 !important; background: #fff !important; white-space: normal; vertical-align: middle; }
+  .red-flag-audit tbody td:first-child { position: sticky; left: 0; z-index: 2; min-width: 150px; background: #fff !important; box-shadow: 8px 0 14px rgba(15,23,42,.05); }
+  .red-flag-audit tbody td::before,
+  .sales-dashboard-page #sales-red-flag-details tbody td::before { display: none !important; content: none !important; }
+  .sales-dashboard-page #sales-red-flag-details + *,
+  .sales-dashboard-page .sales-red-flag-expand + * { width: 100% !important; min-width: 0 !important; max-width: 100% !important; }
+}

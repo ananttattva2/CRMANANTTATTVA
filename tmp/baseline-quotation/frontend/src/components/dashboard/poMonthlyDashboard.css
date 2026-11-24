@@ -1,0 +1,40 @@
+.po-monthly-table-shell { overflow: auto; border: 1px solid #fed7aa; border-radius: 16px; background: white; }
+.po-monthly-table { width: 100%; min-width: 1500px; border-collapse: separate; border-spacing: 0; font-size: 11px; text-align: center; color: #0f172a; }
+.po-monthly-table th, .po-monthly-table td { border-right: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9; }
+.po-monthly-table thead th { padding: 12px 6px; font-weight: 800; }
+.po-monthly-table th span { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.po-user-header { position: sticky; left: 0; z-index: 3; min-width: 190px; background: #fff3e6; text-align: left; padding-left: 16px !important; }
+.po-user-header svg, .po-month-header svg { color: #ff6508; }
+.po-month-header { background: linear-gradient(#ffedd5, #fff7ed); border-right-color: #fed7aa !important; }
+.po-subheader { background: #fff7ed; font-size: 9px; white-space: nowrap; }
+.po-fy-header, .po-fy-subheader { background: #ff6508; color: white; border-color: #ff8538 !important; }
+.po-fy-subheader { font-size: 9px; white-space: nowrap; }
+.po-monthly-table tbody td { height: 56px; padding: 6px 3px; }
+.po-monthly-table tbody tr:nth-child(even) { background: #f8fafc; }
+.po-user-cell { position: sticky; left: 0; z-index: 2; background: white; padding: 10px 12px; text-align: left; }
+.po-monthly-table tbody tr:nth-child(even) .po-user-cell { background: #f8fafc; }
+.po-user-cell button { display: flex; align-items: center; gap: 10px; text-align: left; font-weight: 800; }
+.po-user-avatar { width: 32px; height: 32px; border-radius: 50%; font-size: 10px; flex-shrink: 0; }
+.po-avatar-0 { background: #ffedd5; color: #ea580c; }
+.po-avatar-1 { background: #dbeafe; color: #0284c7; }
+.po-avatar-2 { background: #dcfce7; color: #16a34a; }
+.po-avatar-3 { background: #ede9fe; color: #7c3aed; }
+.po-avatar-4 { background: #fce7f3; color: #db2777; }
+.po-value-button { width: 100%; padding: 7px 3px; border-radius: 6px; font-weight: 800; white-space: nowrap; }
+.po-value-button:hover { background: #ffedd5; }
+.po-value-button:focus-visible, .po-user-cell button:focus-visible { outline: 2px solid #f97316; outline-offset: 2px; }
+.po-amount { color: #059669; }
+.po-empty-cell { color: #94a3b8; }
+.po-count-cell { min-width: 32px; }
+.po-amount-cell { min-width: 65px; }
+.po-fy-cell { min-width: 48px; background: #fff7ed; }
+.po-month-total { background: #fff3e6; padding: 7px 3px; }
+.po-month-total div:first-child { color: #ea580c; font-size: 15px; }
+.po-month-total div:last-child { color: #059669; font-size: 12px; }
+.po-total-label { position: sticky; left: 0; z-index: 2; background: #ff6508; color: white; padding: 16px; font-size: 18px; text-align: left; }
+.po-fy-grand-total { background: #ff6508; color: white; padding: 7px 3px; }
+.po-fy-grand-total .po-amount { color: white; }
+.po-fy-grand-total .po-value-button:hover { background: #ea580c; }
+.po-fy-grand-total div:first-child { font-size: 15px; }
+.po-zero-total { display: inline-block; padding: 7px 3px; font-weight: 800; }
+.po-no-results { padding: 40px !important; color: #64748b; }

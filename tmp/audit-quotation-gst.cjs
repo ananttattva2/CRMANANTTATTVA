@@ -1,0 +1,4 @@
+require('./src/config/loadEnv')();
+const {mongoConfig,safeMongoError}=require('./src/config/mongoConfig');
+const {MongoClient}=require('mongodb');
+(async()=>{const c=mongoConfig();const client=new MongoClient(c.uri,{authSource:c.authSource,serverSelectionTimeoutMS:10000});try{await client.connect();const db=client.db(c.dbName);const q=await db.collection('quotations').findOne({quotationNumber:'AT/26-27/475'},{projection:{quotationNumber:1,'leadDetails.gstNumber':1,leadId:1,leadRef:1,status:1,updatedAt:1}});console.log(JSON.stringify({quotation:q}));if(q){const {ObjectId}=require('mongodb');const id=q.leadRef||q.leadId; if(ObjectId.isValid(String(id))){const l=await db.collection('leads').findOne({_id:new ObjectId(String(id))},{projection:{gstNumber:1,gstin:1,gst:1}});console.log(JSON.stringify({linkedLead:l}));}}}finally{await client.close();}})().catch(e=>{console.error(safeMongoError(e));process.exitCode=1});

@@ -1,0 +1,3 @@
+.sidebar-section-reveal{animation:sidebar-section-reveal 180ms ease-out both}
+@keyframes sidebar-section-reveal{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.sidebar-section-reveal{animation:none}}

@@ -1,0 +1,330 @@
+diff --git a/backend/src/config/db.js b/backend/src/config/db.js
+index a4a7663..82ed699 100644
+--- a/backend/src/config/db.js
++++ b/backend/src/config/db.js
+@@ -5,24 +5,7 @@ const ReminderDelivery = require('../models/ReminderDelivery');
+ 
+ mongoose.set('bufferCommands', false);
+ 
+-function buildMongoUri() {
+-  const srvUri = process.env.MONGO_ATLAS_URI || process.env.MONGO_URI;
+-  const directHosts = String(process.env.MONGO_DIRECT_HOSTS || '').trim();
+-  if (!srvUri || !directHosts || !srvUri.startsWith('mongodb+srv://')) return srvUri;
+-
+-  const parsed = new URL(srvUri);
+-  const credentials = parsed.username
+-    ? `${parsed.username}${parsed.password ? `:${parsed.password}` : ''}@`
+-    : '';
+-  const params = new URLSearchParams(parsed.search);
+-  params.set('tls', 'true');
+-  params.set('authSource', process.env.MONGO_AUTH_SOURCE || params.get('authSource') || 'admin');
+-  if (process.env.MONGO_REPLICA_SET) params.set('replicaSet', process.env.MONGO_REPLICA_SET);
+-  params.set('retryWrites', params.get('retryWrites') || 'true');
+-  params.set('w', params.get('w') || 'majority');
+-  const dbName = process.env.DB_NAME || parsed.pathname.replace(/^\//, '') || 'registerd_types';
+-  return `mongodb://${credentials}${directHosts}/${encodeURIComponent(dbName)}?${params.toString()}`;
+-}
++const { buildMongoUri, mongoConfig, safeMongoError } = require('./mongoConfig');
+ 
+ async function ensureQuotationIndexes() {
+   const collection = mongoose.connection.collection('quotations');
+@@ -64,9 +47,11 @@ async function ensurePiboCategoryIndexes() {
+ const connectDB = async () => {
+   try {
+     const uri = buildMongoUri();
+-    if (!uri) throw new Error('MongoDB Atlas is not configured. Set MONGO_ATLAS_URI or MONGO_URI.');
++    const config = mongoConfig();
++    console.info('MongoDB connecting', config.diagnostics);
+     await mongoose.connect(uri, {
+-      dbName: process.env.DB_NAME || 'registerd_types',
++      dbName: config.dbName,
++      authSource: config.authSource,
+       serverSelectionTimeoutMS: 10000,
+       compressors: ['zlib'],
+       zlibCompressionLevel: 1
+@@ -97,7 +82,7 @@ const connectDB = async () => {
+     ]).catch(error => console.error('CRM read index setup failed', { name: error.name, code: error.code }));
+     console.log('MongoDB connected');
+   } catch (err) {
+-    console.error('MongoDB connection error', err);
++    console.error('MongoDB connection error', safeMongoError(err));
+     throw err;
+   }
+ };
+diff --git a/backend/src/index.js b/backend/src/index.js
+index 5b5fd6c..ecd81b8 100644
+--- a/backend/src/index.js
++++ b/backend/src/index.js
+@@ -1,4 +1,6 @@
+-require('dotenv').config({ override: true });
++require('./config/loadEnv')();
++const { safeMongoError } = require('./config/mongoConfig');
++const { singleFlight } = require('./config/databaseReadiness');
+ const express = require('express');
+ const cors = require('cors');
+ const compression = require('compression');
+@@ -87,10 +89,12 @@ app.use('/api', (req, res, next) => {
+ 
+ let schedulerStarted = false;
+ let dbReady;
++let dbInitialized = false;
+ const isServerlessRuntime = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+ 
+-function connectAndStartServices() {
+-  dbReady = connectDB();
++const connectAndStartServices = singleFlight(function () {
++  dbInitialized = false;
++  dbReady = connectDB().then(() => { dbInitialized = true; });
+   dbReady.then(async () => {
+     await applyKnownDataCorrections().catch((error) => console.error('Known CRM data correction failed', error));
+     await pauseExistingPendingClientApprovalTimers().catch((error) => console.error('Pending client reminder reconciliation failed', error));
+@@ -113,24 +117,23 @@ function connectAndStartServices() {
+       startTemporaryAssignmentReminderScheduler();
+       schedulerStarted = true;
+     }
+-  }).catch(error => console.error('CRM startup services failed', error));
++  }).catch(error => console.error('CRM startup services failed', safeMongoError(error)));
+   return dbReady;
+-}
++});
+ 
+ connectAndStartServices().catch((err) => {
+-  console.error('Database startup failed', err);
++  console.error('Database startup failed', safeMongoError(err));
+ });
+ 
+ app.use('/api', async (req, res, next) => {
+   try {
+-    if (mongoose.connection.readyState !== 1) {
+-      if (mongoose.connection.readyState !== 2) connectAndStartServices();
+-      await dbReady;
++    if (!dbInitialized || mongoose.connection.readyState !== 1 || connectAndStartServices.isPending()) {
++      await connectAndStartServices();
+     }
+   } catch (err) {
+     return res.status(503).json({
+       error: 'Database unavailable. Please check MongoDB Atlas connection.',
+-      message: process.env.NODE_ENV === 'production' ? undefined : err.message
++      code: 'DATABASE_UNAVAILABLE'
+     });
+   }
+   return next();
+diff --git a/backend/src/seed/adminSeed.js b/backend/src/seed/adminSeed.js
+index 5dc3fe6..c038bea 100644
+--- a/backend/src/seed/adminSeed.js
++++ b/backend/src/seed/adminSeed.js
+@@ -1,4 +1,5 @@
+-require('dotenv').config();
++require('../config/loadEnv')();
++const { mongoConfig, safeMongoError } = require('../config/mongoConfig');
+ const mongoose = require('mongoose');
+ const bcrypt = require('bcryptjs');
+ const User = require('../models/User');
+@@ -6,9 +7,8 @@ const Role = require('../models/Role');
+ const { ROLES } = require('../constants/roles');
+ 
+ async function seed() {
+-  const uri = process.env.MONGO_ATLAS_URI || process.env.MONGO_URI;
+-  if (!uri) throw new Error('MongoDB Atlas is not configured. Set MONGO_ATLAS_URI or MONGO_URI.');
+-  await mongoose.connect(uri, { dbName: process.env.DB_NAME || 'registerd_types' });
++  const config = mongoConfig();
++  await mongoose.connect(config.uri, { dbName: config.dbName, authSource: config.authSource });
+   console.log('Connected to DB for seeding');
+ 
+   for (const r of ROLES) {
+@@ -43,4 +43,4 @@ async function seed() {
+   process.exit(0);
+ }
+ 
+-seed().catch(err => { console.error(err); process.exit(1); });
++seed().catch(err => { console.error(safeMongoError(err)); process.exit(1); });
+diff --git a/backend/test/dbConfig.test.js b/backend/test/dbConfig.test.js
+index 427a653..87fcd9f 100644
+--- a/backend/test/dbConfig.test.js
++++ b/backend/test/dbConfig.test.js
+@@ -1,25 +1,50 @@
+ const test = require('node:test');
+ const assert = require('node:assert/strict');
+-const { buildMongoUri } = require('../src/config/db').__test;
+-
+-test('MongoDB direct-host fallback preserves credentials without requiring SRV DNS', () => {
+-  const previous = {
+-    MONGO_URI: process.env.MONGO_URI,
+-    MONGO_DIRECT_HOSTS: process.env.MONGO_DIRECT_HOSTS,
+-    MONGO_REPLICA_SET: process.env.MONGO_REPLICA_SET,
+-    MONGO_AUTH_SOURCE: process.env.MONGO_AUTH_SOURCE,
+-    DB_NAME: process.env.DB_NAME
+-  };
+-  Object.assign(process.env, {
+-    MONGO_URI: 'mongodb+srv://crm-user:p%40ss@cluster.example.net/?appName=CRM',
+-    MONGO_DIRECT_HOSTS: 'shard-00.example.net:27017,shard-01.example.net:27017',
+-    MONGO_REPLICA_SET: 'atlas-example-shard-0',
+-    MONGO_AUTH_SOURCE: 'admin',
+-    DB_NAME: 'crm'
+-  });
+-  const uri = buildMongoUri();
+-  assert.match(uri, /^mongodb:\/\/crm-user:p%40ss@shard-00\.example\.net:27017,shard-01\.example\.net:27017\/crm\?/);
+-  assert.match(uri, /replicaSet=atlas-example-shard-0/);
+-  assert.match(uri, /authSource=admin/);
+-  Object.entries(previous).forEach(([key, value]) => value === undefined ? delete process.env[key] : process.env[key] = value);
++const { mongoConfig, safeMongoError } = require('../src/config/mongoConfig');
++const { singleFlight } = require('../src/config/databaseReadiness');
++const uri = 'mongodb+srv://ananttattva2_db_user:p%40ss@cluster0.qslasmc.mongodb.net/crm';
++test('new SRV credentials and topology survive stale legacy configuration', () => {
++  const config = mongoConfig({ MONGO_URI: uri, MONGO_ATLAS_URI: 'mongodb://old/old', MONGO_DIRECT_HOSTS: 'old.cvawhfr.mongodb.net', MONGO_REPLICA_SET: 'old-set' });
++  assert.equal(config.uri, uri);
++  assert.equal(config.dbName, 'crm');
++  assert.equal(config.authSource, 'admin');
++  assert.equal(config.diagnostics.legacyDirectHostsIgnored, true);
++  assert.equal(config.diagnostics.alternateUriIgnored, true);
++  assert.ok(!JSON.stringify(config.diagnostics).includes('p%40ss'));
++});
++test('explicit database and URI auth source are respected', () => {
++  assert.equal(mongoConfig({ MONGO_URI: uri, DB_NAME: 'other' }).dbName, 'other');
++  assert.equal(mongoConfig({ MONGO_URI: uri + '?authSource=admin', MONGO_AUTH_SOURCE: 'old' }).authSource, 'admin');
++  assert.equal(mongoConfig({ MONGO_URI: 'mongodb://user:pass@a:27017,b:27017/crm' }).dbName, 'crm');
++  assert.throws(() => mongoConfig({}), /MONGO_URI/);
++});
++test('connection errors never expose raw messages or nested driver data', () => {
++  const error = Object.assign(new Error(uri), { code: 18, cause: { uri } });
++  assert.deepEqual(safeMongoError(error), { category: 'authentication', code: 18 });
++});
++test('concurrent database requests wait for one attempt and retry after rejection', async () => {
++  let calls = 0, reject;
++  const ready = singleFlight(() => { calls++; return new Promise((_resolve, fail) => { reject = fail; }); });
++  const a = ready(), b = ready();
++  assert.equal(a, b);
++  await Promise.resolve();
++  assert.equal(calls, 1);
++  reject(new Error('offline'));
++  await assert.rejects(a);
++  const retry = ready();
++  await Promise.resolve();
++  assert.equal(calls, 2);
++  reject(new Error('offline'));
++  await assert.rejects(retry);
++});
++test('backend .env overrides stale PM2 values independent of cwd', () => {
++  const vm = require('node:vm'), fs = require('node:fs'), path = require('node:path');
++  let options;
++  const context = { __dirname: path.resolve(__dirname, '../src/config'), module: { exports: {} }, require(name) {
++    return name === 'dotenv' ? { config(value) { options = value; return {}; } } : require(name);
++  } };
++  vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/config/loadEnv.js'), 'utf8'), context);
++  context.module.exports();
++  assert.equal(options.override, true);
++  assert.equal(options.path, path.resolve(__dirname, '../.env'));
+ });
+diff --git a/backend/src/config/mongoConfig.js b/backend/src/config/mongoConfig.js
+new file mode 100644
+index 0000000..94a93f8
+--- /dev/null
++++ b/backend/src/config/mongoConfig.js
+@@ -0,0 +1,30 @@
++// Never rewrite SRV discovery with hosts/replica sets from a previous cluster.
++function mongoConfig(env = process.env) {
++  const source = env.MONGO_URI ? 'MONGO_URI' : 'MONGO_ATLAS_URI';
++  const uri = String(env[source] || '').trim();
++  if (!/^mongodb(?:\+srv)?:\/\//.test(uri)) throw new Error('Set a valid MONGO_URI');
++  // Parse metadata only; pass the original encoded credentials to the driver.
++  const withoutCredentials = uri.replace(/^(mongodb(?:\+srv)?:\/\/)(?:[^/]*@)/, '$1');
++  const [authorityAndPath, query = ''] = withoutCredentials.split('?');
++  const location = authorityAndPath.replace(/^mongodb(?:\+srv)?:\/\//, '');
++  const slash = location.indexOf('/');
++  const params = new URLSearchParams(query);
++  const uriDb = slash < 0 ? '' : decodeURIComponent(location.slice(slash + 1));
++  const dbName = String(env.DB_NAME || uriDb || 'crm').trim();
++  const authSource = params.get('authSource') || env.MONGO_AUTH_SOURCE || 'admin';
++  return { uri, dbName, authSource, diagnostics: {
++    source, database: dbName, authSource,
++    srv: uri.startsWith('mongodb+srv://'),
++    legacyDirectHostsIgnored: Boolean(env.MONGO_DIRECT_HOSTS),
++    legacyReplicaSetIgnored: Boolean(env.MONGO_REPLICA_SET),
++    alternateUriIgnored: source === 'MONGO_URI' && Boolean(env.MONGO_ATLAS_URI)
++  } };
++}
++
++function safeMongoError(error) {
++  // Driver messages/topology/cause may include credentials. Allowlist metadata.
++  return { category: error?.code === 18 ? 'authentication' : 'connection-or-initialization',
++    code: typeof error?.code === 'number' ? error.code : undefined };
++}
++
++module.exports = { mongoConfig, buildMongoUri: () => mongoConfig().uri, safeMongoError };
+diff --git a/backend/src/config/loadEnv.js b/backend/src/config/loadEnv.js
+new file mode 100644
+index 0000000..f311435
+--- /dev/null
++++ b/backend/src/config/loadEnv.js
+@@ -0,0 +1,8 @@
++const path = require('node:path');
++const dotenv = require('dotenv');
++
++module.exports = function loadEnv() {
++  const result = dotenv.config({ path: path.resolve(__dirname, '../../.env'), override: true });
++  if (result.error && result.error.code !== 'ENOENT') throw new Error('Backend .env could not be loaded');
++  return result;
++};
+diff --git a/backend/src/config/databaseReadiness.js b/backend/src/config/databaseReadiness.js
+new file mode 100644
+index 0000000..9b4eb0b
+--- /dev/null
++++ b/backend/src/config/databaseReadiness.js
+@@ -0,0 +1,13 @@
++// Share concurrent initial/retry attempts, but permit a later retry after failure.
++function singleFlight(connect) {
++  let pending;
++  function ready() {
++    if (!pending) {
++      pending = Promise.resolve().then(connect).finally(() => { pending = undefined; });
++    }
++    return pending;
++  }
++  ready.isPending = () => Boolean(pending);
++  return ready;
++}
++module.exports = { singleFlight };
+diff --git a/backend/src/scripts/checkMongoConnection.js b/backend/src/scripts/checkMongoConnection.js
+new file mode 100644
+index 0000000..8aaf3b1
+--- /dev/null
++++ b/backend/src/scripts/checkMongoConnection.js
+@@ -0,0 +1,38 @@
++// Read-only: no models, indexes, seeding, startup services, or document writes.
++const fs = require('node:fs');
++const inherited = { ...process.env };
++const loaded = require('../config/loadEnv')();
++const { mongoConfig, safeMongoError } = require('../config/mongoConfig');
++const { MongoClient } = require('mongodb');
++async function main() {
++  const config = mongoConfig();
++  const keys = ['MONGO_URI', 'MONGO_ATLAS_URI', 'DB_NAME', 'MONGO_AUTH_SOURCE', 'MONGO_DIRECT_HOSTS', 'MONGO_REPLICA_SET'];
++  const pid = process.argv.find(arg => /^--pid=\d+$/.test(arg))?.slice(6);
++  let running;
++  if (pid) running = Object.fromEntries(fs.readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0').filter(Boolean).map(entry => {
++    const at = entry.indexOf('='); return [entry.slice(0, at), entry.slice(at + 1)];
++  }));
++  console.log(JSON.stringify({ ...config.diagnostics, envFileLoaded: Boolean(loaded.parsed), environment: keys.map(key => ({
++    key, filePresent: loaded.parsed?.[key] !== undefined,
++    shellDiffersFromFile: loaded.parsed?.[key] !== undefined && inherited[key] !== undefined && inherited[key] !== loaded.parsed[key],
++    pm2DiffersFromFile: running && loaded.parsed?.[key] !== undefined ? running[key] !== loaded.parsed[key] : undefined
++  })) }, null, 2));
++  const host = config.uri.replace(/^mongodb\+srv:\/\/(?:[^/]*@)?/, '').split(/[/?]/)[0];
++  if (!config.uri.startsWith('mongodb+srv://') || host !== 'cluster0.qslasmc.mongodb.net' || config.dbName !== 'crm' || config.authSource !== 'admin') {
++    throw new Error('Unexpected migration target; refusing diagnostic connection');
++  }
++  const client = new MongoClient(config.uri, { authSource: config.authSource, serverSelectionTimeoutMS: 10000 });
++  try {
++    await client.connect();
++    const db = client.db(config.dbName);
++    await db.command({ ping: 1 });
++    const collections = await db.listCollections({}, { nameOnly: true }).toArray();
++    console.log(JSON.stringify({ ping: 'ok', database: db.databaseName, collections: collections.map(c => c.name).sort() }));
++    for (const name of ['clients', 'leads', 'quotations', 'users', 'roles', 'pendingapprovals']) {
++      const exists = collections.some(c => c.name === name);
++      const hasDocuments = exists && Boolean(await db.collection(name).findOne({}, { projection: { _id: 1 }, maxTimeMS: 10000 }));
++      console.log(JSON.stringify({ collection: name, exists, readable: true, hasDocuments }));
++    }
++  } finally { await client.close(); }
++}
++main().catch(error => { console.error('Read-only MongoDB diagnostic failed', safeMongoError(error)); process.exitCode = 1; });

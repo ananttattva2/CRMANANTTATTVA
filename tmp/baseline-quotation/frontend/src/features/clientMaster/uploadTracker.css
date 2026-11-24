@@ -1,0 +1,80 @@
+
+.upload-tracker { overflow: hidden; border: 1px solid #e5eaf0; border-radius: 20px; background: #fff; padding: 22px; color: #10172e; box-shadow: 0 4px 24px #20345008; font-family: inherit; }
+.upload-tracker .ut-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
+.upload-tracker .ut-heading-copy { display: flex; align-items: center; gap: 15px; }
+.upload-tracker .ut-logo { display: grid; place-items: center; width: 58px; height: 58px; flex-shrink: 0; border-radius: 15px; background: linear-gradient(140deg,#ff9200,#ff4c00); color: white; box-shadow: 0 4px 10px #ff69001a; }
+.upload-tracker .ut-heading h2 { margin: 0; font-size: clamp(19px,1.65vw,28px); line-height: 1.25; letter-spacing: -.6px; font-weight: 750; color: #0e1530; }
+.upload-tracker .ut-heading p { margin: 6px 0 0; font-size: 13px; line-height: 1.5; color: #60718e; }
+.upload-tracker .ut-counters { display: flex; gap: 10px; }
+.upload-tracker .ut-counter { display: flex; align-items: center; gap: 12px; padding: 12px 17px; border: 1px solid; border-radius: 12px; min-width: 120px; }
+.upload-tracker .ut-counter > span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: #fff; }
+.upload-tracker .ut-counter strong { display: block; font-size: 25px; line-height: 1.1; color: #0e1530; font-weight: 750; }
+.upload-tracker .ut-counter small { display: block; font-size: 12px; margin-top: 3px; }
+.upload-tracker .ut-counter-pending { background: #fff8f1; border-color: #ffe1c6; color: #c6530a; }
+.upload-tracker .ut-counter-pending > span { background: #ff9400; }
+.upload-tracker .ut-counter-complete { background: #f3fcf7; border-color: #d8f1e4; color: #42654f; }
+.upload-tracker .ut-counter-complete > span { background: #14b84e; }
+.upload-tracker .ut-counter-total { background: #f2f7ff; border-color: #d7e5ff; color: #46618c; }
+.upload-tracker .ut-counter-total > span { background: #0879ff; }
+.upload-tracker .ut-table-scroll { overflow-x: auto; border: 1px solid #e7ecf2; border-radius: 13px; }
+.upload-tracker .ut-table { width: 100%; min-width: 1010px; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 13px; }
+.upload-tracker .ut-table thead { background: linear-gradient(100deg,#ff9500,#ff5100); }
+.upload-tracker .ut-table thead th { padding: 17px 14px; text-align: left; color: #fff; font-size: 13px; font-weight: 700; white-space: nowrap; border-right: 1px solid #ffffff35; }
+.upload-tracker .ut-table tbody td, .upload-tracker .ut-table tbody th { padding: 14px; vertical-align: middle; border-top: 1px solid #e9edf3; border-right: 1px solid #eef1f6; background: #fff; text-align: left; font-size: 13px; line-height: 1.5; }
+.upload-tracker .ut-table tbody th strong { font-size: 14px; font-weight: 650; color: #10172e; }
+.upload-tracker .ut-table tbody tr:first-child > * { border-top: 0; }
+.upload-tracker .ut-table tr > :last-child { border-right: 0; }
+.upload-tracker .ut-table .ut-number { text-align: center; font-weight: 700; font-size: 15px; }
+.upload-tracker .ut-select { width: 100%; max-width: 112px; min-height: 40px; border: 1px solid #dae3ee; border-radius: 8px; padding: 8px 10px; font-size: 13px; font-weight: 650; color: #586a85; background: #f7f9fc; }
+.upload-tracker .ut-select-yes { border-color: #dbeeff; color: #0879ff; background: #eef7ff; }
+.upload-tracker .ut-select-no { color: #bd4252; background: #fff2f3; border-color: #ffe0e4; }
+.upload-tracker .ut-proof { width: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; text-align: center; }
+.upload-tracker .ut-proof > span { display: block; border-radius: 7px; padding: 7px; font-size: 13px; font-weight: 650; }
+.upload-tracker .ut-proof-pending > span { background: #fff0f1; color: #da4055; }
+.upload-tracker .ut-proof-done > span { background: #ecfbf1; color: #13824d; }
+.upload-tracker .ut-proof small { display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 5px; font-size: 11px; color: #5c718e; }
+.upload-tracker .ut-date { width: 100%; min-height: 40px; padding: 8px 9px; border: 1px solid #dce3ef; border-radius: 8px; background: white; color: #526780; font-size: 12px; }
+.upload-tracker .ut-data-status { display: grid; gap: 7px; margin: 0; padding: 10px 12px; border: 1px dashed #ffc0a4; border-radius: 9px; background: #fff7f2; min-width: 0; }
+.upload-tracker .ut-data-status label { display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 1.4; color: #283954; font-weight: 550; cursor: pointer; }
+.upload-tracker .ut-data-status input { width: 15px; height: 15px; margin: 0; accent-color: #fb650b; flex-shrink: 0; }
+.upload-tracker .ut-data-complete { background: #f1fcf5; border-color: #a7dfbd; }
+.upload-tracker .ut-data-complete input { accent-color: #159b54; }
+.upload-tracker .ut-applicability { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 10px 12px; border-radius: 8px; font-size: 12px; color: #5a6d87; background: #f0f3f8; }
+.upload-tracker .ut-applicability-done { background: #ecfbf1; color: #13824d; }
+.upload-tracker .ut-view { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 10px; min-height: 38px; border: 1px solid #dce3ef; border-radius: 8px; background: white; font-size: 12px; font-weight: 650; color: #15213a; cursor: pointer; }
+.upload-tracker .ut-view:hover { background: #fff7ef; border-color: #ffbe88; }
+.upload-tracker .ut-rotate { transform: rotate(180deg); }
+.upload-tracker .ut-na { color: #a1adbd; }
+.upload-tracker .ut-row-open > td, .upload-tracker .ut-row-open > th { background: #fffcf8; }
+.upload-tracker .ut-detail-row > td { padding: 16px 20px; background: #f8fafc; }
+.upload-tracker .ut-details { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1fr); gap: 20px; }
+.upload-tracker .ut-detail-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; font-size: 12px; color: #415571; }
+.upload-tracker .ut-detail-title button { border: 0; background: transparent; padding: 3px; cursor: pointer; }
+.upload-tracker .ut-remarks { display: block; font-size: 12px; font-weight: 600; color: #415571; }
+.upload-tracker .ut-remarks textarea { display: block; margin-top: 9px; width: 100%; padding: 12px; min-height: 104px; border: 1px solid #dce3ef; border-radius: 9px; resize: vertical; font-size: 13px; background: #fff; font-weight: 400; }
+.upload-tracker .ut-remarks small { display: block; margin-top: 7px; color: #b05c16; font-size: 11px; }
+.upload-tracker .ut-footer { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-top: 14px; }
+.upload-tracker .ut-footer > div { display: flex; align-items: center; gap: 10px; padding: 10px 13px; border-radius: 9px; background: #f3f7ff; color: #4271b1; }
+.upload-tracker .ut-footer p { margin: 0; font-size: 11px; line-height: 1.7; }
+.upload-tracker .ut-footer strong { font-weight: 650; color: #253653; }
+.upload-tracker .ut-row-count { flex-shrink: 0; font-size: 12px; color: #64748b; }
+.upload-tracker :is(button,select,input,textarea):focus-visible { outline: 2px solid #fc8d35; outline-offset: 3px; }
+.upload-tracker :is(button,select,input,textarea):disabled { opacity: .5; cursor: not-allowed; }
+.upload-tracker .ut-data-status:disabled { background: #f4f6f9; border-color: #dce3ed; opacity: .6; }
+@media (max-width: 700px) {
+  .upload-tracker { padding: 14px; border-radius: 14px; }
+  .upload-tracker .ut-heading { gap: 15px; margin-bottom: 16px; }
+  .upload-tracker .ut-logo { width: 45px; height: 45px; border-radius: 11px; }
+  .upload-tracker .ut-heading-copy { gap: 10px; }
+  .upload-tracker .ut-heading p { font-size: 11px; }
+  .upload-tracker .ut-counters { width: 100%; gap: 7px; }
+  .upload-tracker .ut-counter { flex: 1; min-width: 0; gap: 8px; padding: 10px; }
+  .upload-tracker .ut-counter > span { width: 27px; height: 27px; }
+  .upload-tracker .ut-counter strong { font-size: 21px; }
+  .upload-tracker .ut-counter small { font-size: 10px; }
+  .upload-tracker .ut-footer { align-items: flex-start; gap: 10px; }
+  .upload-tracker .ut-footer > div { padding: 9px; }
+  .upload-tracker .ut-row-count { font-size: 10px; padding-top: 10px; }
+}
+
+.upload-tracker .ut-footer > div > svg { flex-shrink: 0; }

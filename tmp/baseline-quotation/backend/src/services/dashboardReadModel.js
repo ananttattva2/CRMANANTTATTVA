@@ -1,0 +1,145 @@
+// Dashboard reads need status and ownership, never embedded proof documents.
+const { createOverallCache } = require('./overallDashboardData');
+const compactFields = (prefix, fields) => Object.fromEntries(fields.split(' ').map(field => [field, `${prefix}.${field}`]));
+const poFields = 'fy poFinancialYear annualReturnYear poNumber poNo poDate poReceivedDate poEndDate poAmount paymentTerm services';
+function compactPo(prefix) {
+  const url = { $ifNull: [`${prefix}.poFileUrl`, ''] };
+  return {
+    ...compactFields(prefix, poFields),
+    // Retain ordinary links; base64 proofs can be several megabytes each.
+    poFileUrl: { $cond: [{ $lte: [{ $strLenBytes: url }, 4096] }, url, ''] },
+    poFileName: { $cond: [
+      { $ne: [{ $ifNull: [`${prefix}.poFileName`, ''] }, ''] }, `${prefix}.poFileName`,
+      { $cond: [{ $ne: [url, ''] }, 'Purchase Order', ''] }
+    ] }
+  };
+}
+function assignmentProjection(prefix) {
+  return {
+    ...compactFields(prefix, 'assignedServiceId serviceAssignmentId assignedTo assignedToText assignedToEmail assignedStaff assignedStaffText assignedStaffEmail closedAt closedBy closedByText closedByEmail permanentClosedAt servicesOffered poStatus'),
+    poYearRows: { $map: { input: { $ifNull: [`${prefix}.poYearRows`, []] }, as: 'po', in: compactPo('$$po') } },
+    originalPoDetails: compactPo(`${prefix}.originalPoDetails`)
+  };
+}
+const leadProjection = {
+  ...Object.fromEntries('_id company companyName clientName companyIdentity leadCode sourceLeadId status closedAt closedBy closedByText closedByEmail assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail firstAnnualReturnYearApplicable servicesOffered applicableService applicantType subApplicantType piboCategory industryType eprCategory plantUnit'.split(' ').map(field => [field, 1])),
+  assignments: { $map: { input: { $ifNull: ['$assignments', []] }, as: 'assignment', in: assignmentProjection('$$assignment') } },
+  serviceSelections: { $map: { input: { $ifNull: ['$serviceSelections', []] }, as: 'service', in: compactFields('$$service', 'assignedServiceId serviceAssignmentId subApplicantType piboCategory applicantType piboParent firstAnnualReturnYearApplicable financialYear servicesForYear annualReturnYears servicesOffered applicableService industryType eprCategory plantUnit serviceStartDate serviceEndDate dueDate') } }
+};
+const statusFields = prefix => compactFields(prefix, 'status approvalStatus applicationStatus');
+function scopedStatus(path) {
+  return { $arrayToObject: { $map: { input: { $objectToArray: { $ifNull: [path, {}] } }, as: 'scope', in: {
+    k: '$$scope.k', v: { ...statusFields('$$scope.v'), cpcb: Object.fromEntries('status approvalStatus applicationStatus'.split(' ').map(field => [field, { $ifNull: [`$$scope.v.cpcb.${field}`, `$$scope.v.${field}`] }])), registeredAddress: { state: '$$scope.v.registeredAddress.state' } }
+  } } } };
+}
+const clientProjection = Object.fromEntries([
+  '_id', 'createdBy', 'workflowStatus', 'assignedServiceId', 'assignedStaff', 'assignedStaffText', 'assignedStaffEmail',
+  'assignedTo', 'assignedUser', 'userName', 'user', 'adminControls', 'serviceAllocations', 'selectedLead',
+  'createdAt', 'updatedAt', 'submittedAt', 'sla.status', 'firstAnnualReturnYear', 'financialYear',
+  ...'clientLegalName tradeName piboCategory subApplicantType applicantType servicesOffered applicableService cpcbStatus plantUnit companyIndustry industryType eprCategory state firstAnnualReturnYear servicesForYear'.split(' ').map(field => `data.basic.${field}`),
+  ...'companyName assignedTo user userName leadNumber clientCode uniqueId clientStatus visibilityStatus cpcbStatus state approvalOverride'.split(' ').map(field => `data.importMeta.${field}`),
+  'data.cpcb.status', 'data.cpcb.approvalStatus', 'data.cpcb.applicationStatus', 'data.assignedServiceId',
+  'data.selectedLead',
+  ...'id sourceLeadId leadCode assignedServiceId company plantUnit servicesOffered applicableService piboCategory subApplicantType applicantType industryType eprCategory assignedStaff assignedStaffText assignedStaffEmail closedAt closedBy closedByText closedByEmail permanentClosedAt'.split(' ').map(field => `data.selectedLeadSnapshot.${field}`),
+  'data.address.state', 'data.addresses.state', 'data.registeredAddress.state', 'data.serviceAllocations', 'data.firstAnnualReturnYearApplicable',
+  ...'compliancePoNo poNo poNumber compliancePoDate poDate compliancePoFileName poFileName poFinancialYear'.split(' ').map(field => `data.financials.${field}`),
+  ...'poNumber poNo poDate poFileName poFinancialYear'.split(' ').map(field => `data.validation.${field}`),
+  ...['otp', 'authorised', 'coordinating'].flatMap(section => ['email', 'mobile', 'mobileNo'].map(field => `data.${section}.${field}`))
+].map(field => [field, 1]));
+clientProjection['data.cpcbDataByAssignedServiceId'] = scopedStatus('$data.cpcbDataByAssignedServiceId');
+clientProjection['data.serviceDetailsByAssignedServiceId'] = scopedStatus('$data.serviceDetailsByAssignedServiceId');
+clientProjection['data.selectedLeadSnapshot.assignments'] = {
+  $map: { input: { $ifNull: ['$data.selectedLeadSnapshot.assignments', []] }, as: 'assignment', in: assignmentProjection('$$assignment') }
+};
+clientProjection['data.selectedLeadSnapshot.serviceSelections'] = {
+  $map: { input: { $ifNull: ['$data.selectedLeadSnapshot.serviceSelections', []] }, as: 'service', in: leadProjection.serviceSelections.$map.in }
+};
+
+const caches = new Set();
+function createDashboardCache(options = {}) {
+  if (options.name) {
+    return (key, load) => require('./crmCache').getCrmCache().remember(`${options.name}:${key}`, load);
+  }
+  let read = createOverallCache({ ttl: 0, ...options });
+  const invalidate = () => { read = createOverallCache({ ttl: 0, ...options }); };
+  caches.add(invalidate);
+  return (key, load) => read(key, load);
+}
+function invalidateDashboardReads() { for (const invalidate of caches) invalidate(); }
+// Version the shared snapshot whenever its identity/join semantics change so a
+// deployment cannot serve the previous Redis payload for otherwise-correct data.
+// v4 discards snapshots captured before permanent service-staff ownership was
+// made authoritative (for example ATUL LTD retaining Nitin import metadata
+// after its live service was assigned to Tushar).
+const cachedAssignments = createDashboardCache({ name: 'dashboard-assignments-v5', maxEntries: 2 });
+const staffFields = ['assignedStaff', 'assignedStaffText', 'assignedStaffEmail'];
+const legacyClosedOwnerFields = ['closedBy', 'closedByText', 'closedByEmail'];
+const present = field => ({ [field]: { $exists: true, $nin: [null, ''] } });
+const permanentStaffFilter = {
+  $or: [
+    ...staffFields.map(present),
+    { assignments: { $elemMatch: { $or: staffFields.map(present) } } },
+    // Legacy closed services sometimes saved only the Operations closer. The
+    // user-role check still happens after loading, so sales/admin closers do
+    // not become Operations owners.
+    ...legacyClosedOwnerFields.map(present),
+    { assignments: { $elemMatch: { $or: legacyClosedOwnerFields.map(present) } } }
+  ]
+};
+function hasPermanentOwner(record, includeLegacy = true) {
+  if (!record || typeof record !== 'object') return false;
+  const fields = includeLegacy ? [...staffFields, ...legacyClosedOwnerFields] : staffFields;
+  const presentOwner = row => fields.some(field => row?.[field] != null && row[field] !== '');
+  return presentOwner(record) || (includeLegacy && (Array.isArray(record.assignments) && record.assignments.some(presentOwner)));
+}
+const identity = value => {
+  if (value == null) return '';
+  if (typeof value === 'object') value = value._id || value.id || value.leadId || '';
+  return String(value).trim().toLowerCase();
+};
+const leadReferences = lead => [lead?._id, lead?.sourceLeadId, lead?.leadCode].map(identity).filter(Boolean);
+const clientLeadReferences = client => {
+  const data = client?.data || {};
+  const snapshot = data.selectedLeadSnapshot || {};
+  return [
+    client?.selectedLead, data.selectedLead, snapshot.id, snapshot.sourceLeadId,
+    snapshot.leadCode, data.importMeta?.leadNumber, data.importMeta?.uniqueId
+  ].map(identity).filter(Boolean);
+};
+async function loadDashboardAssignments({ Client, Lead }, clientFilter, leadFilter) {
+  // The same compact snapshot serves all users; role filtering still happens
+  // after loading it and no response is shared between authorization scopes.
+  return cachedAssignments(JSON.stringify({ clientFilter, leadFilter }), async () => {
+    const [clients, leads] = await Promise.all([
+      Client.aggregate([
+        { $match: clientFilter },
+        { $project: clientProjection }
+      ]).option({ maxTimeMS: 12000 }),
+      Lead.aggregate([{ $match: { $and: [leadFilter, permanentStaffFilter] } }, { $project: leadProjection }]).option({ maxTimeMS: 12000 })
+    ]);
+    const byId = new Map(leads.map(lead => [String(lead._id), lead]));
+    // A legacy Client Master may have its own permanent owner even when its
+    // linked lead does not. Keep that lead's service/status context intact.
+    const missingIds = [...new Map(clients.filter(client => client.selectedLead && !byId.has(String(client.selectedLead))).map(client => [String(client.selectedLead), client.selectedLead])).values()];
+    if (missingIds.length) {
+      const linked = await Lead.aggregate([{ $match: { _id: { $in: missingIds } } }, { $project: leadProjection }]).option({ maxTimeMS: 12000 });
+      for (const lead of linked) {
+        byId.set(String(lead._id), lead);
+        leads.push(lead);
+      }
+    }
+    // Migrated Client Master drafts do not always retain the Mongo lead id.
+    // Index every stable identity so statuses saved against a lead code or
+    // source id survive the compact dashboard read and reach service matching.
+    const byReference = new Map();
+    for (const lead of leads) for (const reference of leadReferences(lead)) byReference.set(reference, lead);
+    const linkedLead = client => clientLeadReferences(client).map(reference => byReference.get(reference)).find(Boolean);
+    const retained = clients.filter(client => {
+      const snapshot = client.data?.selectedLeadSnapshot || {};
+      return hasPermanentOwner(client, false) || hasPermanentOwner(snapshot)
+        || hasPermanentOwner(linkedLead(client));
+    });
+    return { clients: retained.map(client => ({ ...client, selectedLead: linkedLead(client) || client.selectedLead })), leads };
+  });
+}
+module.exports = { leadProjection, clientProjection, compactPo, loadDashboardAssignments, createDashboardCache, invalidateDashboardReads, hasPermanentOwner };
