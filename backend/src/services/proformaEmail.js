@@ -19,9 +19,12 @@ async function requiredCopies(invoice, actor) {
   return emails([...internal.map(user => user.email), invoice.createdBy?.email, actor.email].filter(Boolean), 200);
 }
 let renderer;
+let rendererVersion;
 async function invoicePdf(invoice) {
-  if (!renderer) {
-    const file = path.resolve(__dirname, '../../../frontend/src/utils/proformaPdf.js');
+  const file = path.resolve(__dirname, '../../../frontend/src/utils/proformaPdf.js');
+  const version = fs.statSync(file).mtimeMs;
+  if (!renderer || rendererVersion !== version) {
+    rendererVersion = version;
     const stamp = `data:image/png;base64,${fs.readFileSync(path.resolve(__dirname, '../../../frontend/src/assets/proforma-authorized-stamp.png'), 'base64')}`;
     const stampModule = `data:text/javascript,export%20default%20${encodeURIComponent(JSON.stringify(stamp))}`;
     const source = fs.readFileSync(file, 'utf8')

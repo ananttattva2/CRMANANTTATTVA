@@ -161,3 +161,16 @@ test('EPR Credit PI matches reference kilograms, rate, category and preceding cr
   assert.match(content, /8,19,600.00/);
   if (process.env.PROFORMA_PREVIEW_DIR) fs.writeFileSync(path.join(process.env.PROFORMA_PREVIEW_DIR, 'credit-format.pdf'), Buffer.from(pdf.output('arraybuffer')));
 });
+
+
+test('Consultancy and AMC descriptions print their own SAC codes, including saved and mixed invoices', async () => {
+  const build = await renderer();
+  for (const businessCategory of ['EPR Consultancy', 'EPR - Waste Water', 'Other Consultancy']) {
+    const content = build({ ...sample, invoiceDetails: { hsn: '999422' }, items: [{ businessCategory, servicesOffered: 'Annual Return Filling', unit: 1, basicAmount: 17500 }] }).output();
+    assert.match(content, /998311/); assert.doesNotMatch(content, /999422/);
+  }
+  const amc = build({ ...sample, invoiceDetails: { hsn: '998311' }, items: [{ businessCategory: 'EPR Credit', servicesOffered: 'Category 1 Recycling', unit: 1, basicAmount: 17500 }] }).output();
+  assert.match(amc, /999422/); assert.doesNotMatch(amc, /998311/);
+  const mixed = build({ ...sample, items: [{ businessCategory: 'EPR Consultancy', unit: 1, basicAmount: 10000 }, { businessCategory: 'EPR Credit', unit: 1, basicAmount: 5000 }] });
+  const content = mixed.output(); assert.match(content, /998311/); assert.match(content, /999422/); assert.match(content, /998311 \/ 999422/); assert.match(content, /17,700.00/); assert.equal(mixed.getNumberOfPages(), 1);
+});

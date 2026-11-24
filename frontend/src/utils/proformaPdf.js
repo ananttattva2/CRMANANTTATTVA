@@ -8,6 +8,13 @@ export const proformaBankDetails = [
   "Company's PAN : AAZCA6657R"
 ].join('\n')
 const CONSULTANCY_BUSINESS_CATEGORIES = new Set(['eprconsultancy', 'eprwastewater', 'otherconsultancy'])
+export function invoiceSacForItem(item = {}) {
+  const category = String(item.businessCategory || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  if (CONSULTANCY_BUSINESS_CATEGORIES.has(category)) return '998311'
+  if (category === 'eprcredit') return '999422'
+  const description = [item.description, item.servicesOffered, item.applicableService, item.serviceCategory].filter(Boolean).join(' ').toLowerCase().replace(/[^a-z0-9]/g, '')
+  return description.includes('consultancyfeesforwastecollectionandmanagementunderepr') ? '998311' : '999422'
+}
 function actualPoNumber(row = {}) {
   const quotationNumber = String(row.quotationNumber || '').trim().toUpperCase()
   const values = [row.poNumber, ...(Array.isArray(row.poYearRows) ? row.poYearRows.map((po) => po?.poNumber || po?.poNo) : [])]
@@ -23,7 +30,8 @@ const itemMultiplier = item => String(item.businessCategory || '').toLowerCase()
 export function buildInvoicePdf(row) {
   const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
   const details = { ...Object.fromEntries(invoiceFields.map(([key, , value]) => [key, value || ''])), ...(row.invoiceDetails || {}) }
-  details.hsn = '999422'
+  const sacCodes = [...new Set((row.items || []).map(invoiceSacForItem))]
+  details.hsn = sacCodes.join(' / ') || '999422'
   const lead = row.leadDetails || {}
   const left = 26, right = 569, width = right - left, split = 342
   const cash = (value) => Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -176,7 +184,7 @@ export function buildInvoicePdf(row) {
       }
       if (first) {
         text(index + 1, 30, y)
-        text(details.hsn, 353, y, { size: 7 })
+        text(invoiceSacForItem(item), 353, y, { size: 7 })
         if (!combined) {
           const rawQuantity = Number(String(item.unit || '1').replace(/,/g, '').replace(/[^0-9.]/g, ''))
           const quantityMt = /kg/i.test(String(item.unit)) ? rawQuantity / 1000 : rawQuantity
