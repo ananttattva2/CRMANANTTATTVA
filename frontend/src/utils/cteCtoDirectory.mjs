@@ -46,8 +46,9 @@ export function describeCteCtoRecord(record = {}) {
     leadCode: text(data.importMeta?.uniqueId || data.importMeta?.leadNumber || lead.leadCode, '-'),
     applicantType,
     subApplicantType,
-    eprCategory: text(data.basic?.eprCategory || service.eprCategory, '-'),
+    eprCategory: text(data.basic?.eprCategory || service.eprCategory || snapshot.eprCategory, '-'),
     assignedServiceId,
+    plantUnit: text(data.basic?.plantUnit || service.plantUnit || snapshot.plantUnit),
     cte: data.cte || {},
     otpContacts,
     authorisedPersons,
@@ -66,7 +67,44 @@ export function groupCteCtoClients(records = []) {
     if (current.leadCode === '-' && record.leadCode !== '-') current.leadCode = record.leadCode
     groups.set(key, current)
   })
+  for (const group of groups.values()) group.records = dedupeApplicantRecords(group.records)
   return [...groups.values()].sort((a, b) => a.companyName.localeCompare(b.companyName))
+}
+
+// Client Masters can contain both an imported legacy record and a newer
+// assignment draft. PO/assignment IDs do not represent a different applicant.
+function dedupeApplicantRecords(records) {
+  const normalize = value => text(value).toLowerCase().replace(/[^a-z0-9]/g, '')
+  const known = value => !['', 'notprovided', 'notapplicable'].includes(normalize(value)) ? normalize(value) : ''
+  const category = value => {
+    const token = normalize(value).replace(/^epr/, '')
+    return token.includes('plastic') ? 'plastic' : token.includes('ewaste') || token.includes('electronic') ? 'ewaste' : token.includes('battery') ? 'battery' : token.includes('tyre') || token.includes('tire') ? 'tyre' : token.includes('usedoil') ? 'usedoil' : token
+  }
+  const profile = row => [known(row.applicantType), known(row.subApplicantType), category(row.eprCategory), known(row.plantUnit)]
+  const profiles = records.map(profile)
+  const resolved = profiles.map(fields => fields.map((field, index) => {
+    if (field) return field
+    const candidates = profiles.filter(other => fields.every((value, position) => !value || !other[position] || value === other[position]))
+    const values = [...new Set(candidates.map(other => other[index]).filter(Boolean))]
+    return values.length === 1 ? values[0] : ''
+  }))
+  const richness = value => value && typeof value === 'object' ? Object.values(value).reduce((total, item) => total + richness(item), 0) : text(value) ? 1 : 0
+  const merge = (primary, fallback) => {
+    if (Array.isArray(primary) && Array.isArray(fallback)) return [...new Map([...primary, ...fallback].map(item => [JSON.stringify(item), item])).values()]
+    if (primary && fallback && typeof primary === 'object' && typeof fallback === 'object') return Object.fromEntries([...new Set([...Object.keys(fallback), ...Object.keys(primary)])].map(key => [key, merge(primary[key], fallback[key])]))
+    return primary !== undefined && primary !== null && primary !== '' ? primary : fallback
+  }
+  const grouped = new Map()
+  records.forEach((record, index) => {
+    // No applicant identity is insufficient evidence to collapse records.
+    const key = resolved[index][0] || resolved[index][1] ? resolved[index].join('|') : `unknown:${record.id || index}`
+    const prior = grouped.get(key)
+    if (!prior) { grouped.set(key, record); return }
+    const primary = richness(record.cte) > richness(prior.cte) ? record : prior
+    const fallback = primary === record ? prior : record
+    grouped.set(key, merge(primary, fallback))
+  })
+  return [...grouped.values()]
 }
 
 export function cteCtoExportRows(groups = []) {

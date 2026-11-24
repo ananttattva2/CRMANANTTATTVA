@@ -1286,7 +1286,8 @@ exports.listClients = async (req, res) => {
           'data.importMeta.uniqueId', 'data.importMeta.leadNumber',
           'data.selectedLeadSnapshot.applicantType', 'data.selectedLeadSnapshot.piboParent',
           'data.selectedLeadSnapshot.piboCategoryParent', 'data.selectedLeadSnapshot.subApplicantType',
-          'data.selectedLeadSnapshot.piboCategory', 'data.selectedLeadSnapshot.assignedServiceId'
+          'data.selectedLeadSnapshot.piboCategory', 'data.selectedLeadSnapshot.assignedServiceId',
+          'data.selectedLeadSnapshot.plantUnit', 'data.selectedLeadSnapshot.eprCategory'
         ].join(' '))
         .populate('selectedLead', 'leadCode company applicantType subApplicantType piboCategory piboParent serviceSelections')
         .sort({ 'data.basic.clientLegalName': 1, updatedAt: -1 })

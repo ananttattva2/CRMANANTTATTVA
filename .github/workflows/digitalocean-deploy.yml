@@ -75,6 +75,9 @@ jobs:
       - name: Test service year access and registration tracker
         run: node --test backend/test/serviceYearRegistration.test.js backend/test/registrationTrackerAccess.test.js backend/test/registrationWorkflow.test.js backend/test/registrationWorkflowBrowser.test.js backend/test/clientAnnualSummary.test.js backend/test/invoicePartyDetails.test.js backend/test/requestedClientCreators.test.js
 
+      - name: Test consent directory applicant deduplication
+        run: node --test frontend/test/cteCtoDirectory.test.mjs
+
       - name: Test multi-user calendar assignments
         run: node --test backend/test/calendarItemController.test.js backend/test/calendarMultiAssignment.test.js backend/test/calendarMultiAssignmentBrowser.test.js
 
