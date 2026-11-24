@@ -98,6 +98,9 @@ jobs:
       - name: Test client portal service workspaces
         run: node --test backend/test/specialClosureFinanceApproval.test.js backend/test/provisionalLeadClosureDeadline.test.js backend/test/portalPoAndQuotationRouting.test.js backend/test/clientPortalPoUpload.test.js backend/test/clientPortalWorkspaces.test.js backend/test/clientPortalWorkspacesBrowser.test.js backend/test/clientPortalUploadNotifications.test.js backend/test/clientPortalUploadStages.test.js backend/test/clientPortalApplicantTypes.test.js backend/test/clientPortalUploads.test.js backend/test/clientPortal.test.js
 
+      - name: Test Annual Return reconciliation and Finance quotation access
+        run: node --test backend/test/annualReturnCategoryAliases.test.js backend/test/quotationSharedCompanyAccess.test.js
+
       - name: Build frontend
         env:
           NODE_OPTIONS: --max-old-space-size=4096

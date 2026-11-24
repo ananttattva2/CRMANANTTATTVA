@@ -94,3 +94,6 @@ test('quotation save refresh can resolve a lead allocated to the current editor'
   assert.equal(result.companyName, lead.company);
   assert.equal(result.leadDetails.companyName, lead.company);
 });
+test('Finance and Accounts primary or secondary roles can read the complete quotation list', async () => {
+  for (const user of [{ role: 'finance' }, { role: 'accounts' }, { role: 'sales', roles: ['Finance'] }]) assert.deepEqual(await controller._test.quotationAccessFilter(user, { allowFinanceRead: true }), {});
+});

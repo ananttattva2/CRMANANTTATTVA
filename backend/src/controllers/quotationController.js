@@ -93,7 +93,8 @@ function quotationLeadVisibilityFilter(scope) {
   return { $or: [ownedLeads, noOwnerWorkspaceFilter()] };
 }
 
-async function quotationAccessFilter(user) {
+async function quotationAccessFilter(user, { allowFinanceRead = false } = {}) {
+  if (allowFinanceRead && userHasAnyRole(user, ['finance', 'accounts'])) return {};
   const scope = await getVisibleUserScope(user);
   if (scope === null) return {};
   if (!scope.ids.length && !scope.identities.length) return { _id: { $exists: false } };
@@ -930,7 +931,7 @@ exports.listQuotations = async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const snapshot = req.query.dashboard === 'true' && req.query.snapshot === 'true';
   const limit = !snapshot && req.query.limit ? Math.min(100, Math.max(1, Number(req.query.limit) || 20)) : 0;
-  const accessFilter = await quotationAccessFilter(req.user);
+  const accessFilter = await quotationAccessFilter(req.user, { allowFinanceRead: true });
   const testLeadReferences = req.query.dashboard === 'true'
     ? await getAdminCreatedLeadReferences()
     : null;
@@ -963,7 +964,7 @@ exports.listQuotations = async (req, res) => {
 };
 
 exports.getQuotation = async (req, res) => {
-  const quotation = await Quotation.findOne(combineFilters({ _id: req.params.id }, await quotationAccessFilter(req.user)))
+  const quotation = await Quotation.findOne(combineFilters({ _id: req.params.id }, await quotationAccessFilter(req.user, { allowFinanceRead: true })))
     .populate('createdBy', 'name email').populate('approvalDecision.actionBy', 'name email role').lean();
   if (!quotation) return res.status(404).json({ error: 'Quotation not found' });
   return res.json({ ok: true, quotation });
@@ -1047,7 +1048,7 @@ exports.emailQuotation = async (req, res, next) => {
 
 exports.listLeadQuotations = async (req, res) => {
   const leadId = cleanString(req.params.leadId);
-  const quotations = await Quotation.find(combineFilters({ leadId }, await quotationAccessFilter(req.user)))
+  const quotations = await Quotation.find(combineFilters({ leadId }, await quotationAccessFilter(req.user, { allowFinanceRead: true })))
     .populate('createdBy', 'name email').populate('approvalDecision.actionBy', 'name email role').sort({ quotationDate: -1, createdAt: -1 }).lean();
   return res.json({ ok: true, quotations });
 };

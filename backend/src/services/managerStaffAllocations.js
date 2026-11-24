@@ -1,5 +1,13 @@
 const { resolveClientMasterData } = require('./clientMasterResolver');
 const normalize = input => String(input || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const cpcbCategory = input => {
+  const label = normalize(input).replace(/^epr/, '');
+  if (/^plastic(?:waste|management|wastemanagement)?$/.test(label)) return 'plastic';
+  if (/^(?:ewaste|electronicwaste)(?:management)?$/.test(label)) return 'ewaste';
+  if (/^(?:tyre|tire)(?:waste|wastemanagement)?$/.test(label)) return 'tyre';
+  if (/^batter(?:y|ies)(?:waste|wastemanagement|management)?$/.test(label)) return 'battery';
+  return label;
+};
 const offering = input => (Array.isArray(input) ? input : [input]).map(v => /annual(?:return(?:fill?ing)?|fill?ing)/.test(normalize(v)) ? 'annualreturn' : normalize(v)).sort().join('|');
 const value = input => String(input?._id || input || '');
 const applicant = input => {
@@ -22,14 +30,14 @@ function clientMatchesService(client, services, service, serviceId) {
   const profile = {
     category: applicant(selectedService?.subApplicantType || selectedService?.piboCategory || snapshot.subApplicantType || snapshot.piboCategory || basic.piboCategory || basic.subApplicantType),
     unit: normalize(selectedService?.plantUnit || snapshot.plantUnit || basic.plantUnit),
-    epr: normalize(selectedService?.eprCategory || snapshot.eprCategory || basic.eprCategory),
+    epr: cpcbCategory(selectedService?.eprCategory || snapshot.eprCategory || basic.eprCategory),
     offered: offering(selectedService?.servicesOffered || selectedService?.applicableService || snapshot.servicesOffered || snapshot.applicableService || basic.servicesOffered || basic.applicableService)
   };
   const compatible = candidate => {
     const candidateProfile = {
       category: applicant(candidate.subApplicantType || candidate.piboCategory),
       unit: normalize(candidate.plantUnit),
-      epr: normalize(candidate.eprCategory),
+      epr: cpcbCategory(candidate.eprCategory),
       offered: offering(candidate.servicesOffered || candidate.applicableService)
     };
     let compared = 0;
@@ -61,12 +69,12 @@ function clientMatchesCpcbContext(client, services, service, serviceId) {
   const profile = {
     category: applicant(selectedService?.subApplicantType || selectedService?.piboCategory || snapshot.subApplicantType || snapshot.piboCategory || basic.piboCategory || basic.subApplicantType),
     unit: normalize(selectedService?.plantUnit || snapshot.plantUnit || basic.plantUnit),
-    epr: normalize(selectedService?.eprCategory || snapshot.eprCategory || basic.eprCategory)
+    epr: cpcbCategory(selectedService?.eprCategory || snapshot.eprCategory || basic.eprCategory)
   };
   const candidate = {
     category: applicant(service.subApplicantType || service.piboCategory),
     unit: normalize(service.plantUnit),
-    epr: normalize(service.eprCategory)
+    epr: cpcbCategory(service.eprCategory)
   };
   let compared = 0;
   for (const field of ['category', 'unit', 'epr']) {

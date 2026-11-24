@@ -32,6 +32,7 @@ test('Annual Return status summary restores grouped headers and approved-year co
   for (const [id,name,category,status] of [['battery','Battery Client','EPR - Battery Waste','Under Review'],['ewaste','Electronic Client','EPR - E-Waste','Approved']]) {
     const record=structuredClone(data.assignments[0]);record._id=id;record.assignedServiceId=id;record.selectedLead.company=name;record.selectedLead.assignments[0].assignedServiceId=id;record.data.basic.eprCategory=category;record.data.cpcb.status=status;data.assignments.push(record);
   }
+  const actionRequired = structuredClone(data.assignments[0]); actionRequired._id = 'action-required'; actionRequired.selectedLead.company = 'Action Required Client'; actionRequired.selectedLead.assignments[0].poYearRows = []; actionRequired.selectedLead.assignments[0].poStatus = ''; data.assignments.push(actionRequired);
   const mocks = {
     pageReadSnapshot: 'export const readPageSnapshot = () => null; export const savePageSnapshot = () => {};',
     api: `const data = ${JSON.stringify(data)}; export default { get: async () => ({ data }) };`
@@ -74,7 +75,7 @@ test('Annual Return status summary restores grouped headers and approved-year co
     ]);
     const counts = await page.$$eval('#dashboard .portfolio-matrix tfoot td button', buttons => buttons.map(button => button.textContent.trim()));
     assert.deepEqual(counts, [
-      '1', '1', '0', '0', '0', '0', '0', '0', '0', '0', '0'
+      '2', '1', '0', '0', '0', '0', '1', '0', '0', '0', '0'
     ]);
     assert.equal(await page.$eval('#dashboard .portfolio-matrix tbody .portfolio-person strong', node => node.textContent), 'Sonal');
 
@@ -83,7 +84,7 @@ test('Annual Return status summary restores grouped headers and approved-year co
       ['AnantTattva SPOC', 'AR Action Required', 'Applied', 'Under Review', 'Not Started', 'Rejected']
     ]);
     const pendingCounts = await page.$$eval('#pending .portfolio-matrix tfoot td button', buttons => buttons.map(button => button.textContent.trim()));
-    assert.deepEqual(pendingCounts, ['0', '0', '0', '0', '0']);
+    assert.deepEqual(pendingCounts, ['1', '0', '0', '0', '0']);
     assert.deepEqual(await page.$$eval('#dashboard .portfolio-waste-tabs strong',nodes=>nodes.map(node=>node.textContent)),['1','1','1']);
     await page.click('#dashboard .portfolio-waste-tabs button[aria-label^="Battery:"]');
     await page.waitForFunction(()=>document.querySelector('#dashboard .portfolio-waste-tabs button[aria-selected=true]')?.textContent.includes('Battery'));
