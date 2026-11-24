@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { UploadCloud, FileText, CheckCircle2, X } from 'lucide-react';
 
-export default function PortalUpload({ clients, kind, api, token, fixedApplicantType = '', dataType = '' }) {
+export default function PortalUpload({ clients, kind, api, token, fixedApplicantType = '', dataType = '', serviceContext = null }) {
   const [applicantType, setApplicantType] = useState(fixedApplicantType), [draftType, setDraftType] = useState('');
   const [options, setOptions] = useState([]), [loadingTypes, setLoadingTypes] = useState(false);
   const [lead, setLead] = useState(String(clients[0]?._id || ''));
@@ -64,7 +64,7 @@ export default function PortalUpload({ clients, kind, api, token, fixedApplicant
     event.preventDefault();
     if (!file || busy || (kind === 'excel' && !applicantType)) return;
     setBusy(true); setError(''); setMessage(''); setProgress(0);
-    const body = new FormData(); if (kind === 'excel') body.append('applicantType', applicantType); if (dataType) body.append('dataType', dataType); body.append('file', file);
+    const body = new FormData(); if (kind === 'excel') body.append('applicantType', applicantType); if (dataType) body.append('dataType', dataType); if (serviceContext?.serviceKey) body.append('serviceKey', serviceContext.serviceKey); body.append('file', file);
     try {
       const { data } = await api.post(`/uploads/${lead}/${kind}`, body, { headers, onUploadProgress: event => setProgress(Math.round(event.loaded * 100 / (event.total || file.size))) });
       setRows(current => [data, ...current]); setFile(null); setApplicantType(fixedApplicantType); input.current.value = '';
@@ -72,7 +72,7 @@ export default function PortalUpload({ clients, kind, api, token, fixedApplicant
     } catch (err) { setError(err.response?.data?.error || 'Upload failed. Please try again.'); }
     finally { setBusy(false); }
   }
-  const history = rows.filter(row => row.kind === kind && String(row.lead) === lead && (!fixedApplicantType || row.applicantType === fixedApplicantType) && (!dataType || row.dataType === dataType));
+  const history = rows.filter(row => row.kind === kind && String(row.lead) === lead && (!fixedApplicantType || row.applicantType === fixedApplicantType) && (!dataType || row.dataType === dataType) && (!serviceContext || row.serviceKey === serviceContext.serviceKey));
   return <section className="cp-panel cp-upload-panel"><header className="cp-panel-heading"><div><h2>{kind === 'excel' ? (dataType ? `${dataType === 'sales' ? 'Sales' : 'Purchase'} data` : 'Share your company Excel file') : 'Upload a purchase order'}</h2><p>{kind === 'excel' ? 'Send company information to your account team for review.' : 'Share your purchase order as a PDF or image.'}</p></div><span className="cp-stat-icon"><UploadCloud /></span></header>
     <form onSubmit={submit} className="cp-upload-form cp-upload-compact">
       <label className="cp-upload-company">Company<select value={lead} disabled={busy} onChange={event => { setLead(event.target.value); setMessage(''); setApplicantType(''); setFile(null); }}>{clients.map(client => <option key={client._id} value={client._id}>{client.company}</option>)}</select></label>

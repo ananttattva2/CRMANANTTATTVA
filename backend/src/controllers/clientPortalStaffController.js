@@ -22,9 +22,9 @@ exports.list = async (req, res) => {
     const filter = { kind: 'excel', lead: { $in: visible.map(row => row._id) } };
     if (term) {
       const regex = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      filter.$or = [{ lead: { $in: visible.filter(row => regex.test(row.company || '') || regex.test(row.leadCode || '')).map(row => row._id) } }, { applicantType: regex }, { name: regex }];
+      filter.$or = [{ lead: { $in: visible.filter(row => regex.test(row.company || '') || regex.test(row.leadCode || '')).map(row => row._id) } }, { applicantType: regex }, { name: regex }, { 'serviceContext.poNumber': regex }, { 'serviceContext.annualReturnYear': regex }, { 'serviceContext.servicesOffered': regex }];
     }
-    const [total, rows] = await Promise.all([Upload.countDocuments(filter), Upload.find(filter).sort({ createdAt: -1 }).skip((page - 1) * 25).limit(25).select('lead applicantType name url size uploadedBy createdAt notificationStatus').lean()]);
+    const [total, rows] = await Promise.all([Upload.countDocuments(filter), Upload.find(filter).sort({ createdAt: -1 }).skip((page - 1) * 25).limit(25).select('lead applicantType dataType serviceKey serviceContext name url size uploadedBy createdAt notificationStatus').lean()]);
     const workflows = await uploadWorkflows(rows, visible);
     const companies = new Map(visible.map(row => [String(row._id), row]));
     return res.json({ total, page, pages: Math.max(1, Math.ceil(total / 25)), rows: rows.map(row => ({ ...row, workflows: workflows.get(String(row._id)) || [], company: companies.get(String(row.lead))?.company || 'Client company', leadCode: companies.get(String(row.lead))?.leadCode || '' })) });

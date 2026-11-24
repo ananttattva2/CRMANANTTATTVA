@@ -25,5 +25,7 @@ test('workflow enrichment matches the submission Applicant Type and keeps financ
     assert.deepEqual(result.get('u1').map(row => row.financialYear), ['2025-26','2026-27']);
     assert.ok(result.get('u1').every(row => row.clientId === 'c-importer'));
     assert.deepEqual(result.get('u2'), []);
+    const scoped = await uploadWorkflows([{ _id: 'scoped', lead: 'lead1', applicantType: 'Importer', dataType: 'purchase', serviceContext: { assignedServiceId: 's1', annualReturnYear: '2025-26' } }], [{ _id: 'lead1', serviceSelections: [{ assignedServiceId: 's1', subApplicantType: 'Importer' }] }]);
+    assert.deepEqual(scoped.get('scoped').map(row => [row.module, row.financialYear]), [['purchase', '2025-26']]);
   } finally { Client.find = original.client; Purchase.find = original.purchase; Sales.find = original.sales; }
 });

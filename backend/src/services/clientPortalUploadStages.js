@@ -24,8 +24,8 @@ async function uploadWorkflows(rows, leads) {
   const [purchase, sales] = await Promise.all([Purchase.find(filter).select(projection).sort({ updatedAt: -1 }).lean(), Sales.find(filter).select(projection).sort({ updatedAt: -1 }).lean()]);
   const result = new Map();
   for (const row of rows) {
-    const matches = clients.filter(client => String(client.selectedLead) === String(row.lead) && normalize(applicationDescriptor({ ...client, selectedLead: leadMap.get(String(row.lead)) }).category) === normalize(row.applicantType));
-    const workflows = matches.flatMap(client => ['purchase','sales'].flatMap(module => (module === 'purchase' ? purchase : sales).filter(record => String(record.clientId) === String(client._id)).map(record => describeWorkflow(record, module, client))));
+    const matches = clients.filter(client => String(client.selectedLead) === String(row.lead) && normalize(applicationDescriptor({ ...client, selectedLead: leadMap.get(String(row.lead)) }).category) === normalize(row.applicantType) && (!row.serviceContext?.assignedServiceId || String(client.assignedServiceId || client.data?.assignedServiceId || client.data?.selectedLeadSnapshot?.assignedServiceId || '') === row.serviceContext.assignedServiceId));
+    const workflows = matches.flatMap(client => ['purchase','sales'].filter(module => !row.dataType || module === row.dataType).flatMap(module => (module === 'purchase' ? purchase : sales).filter(record => String(record.clientId) === String(client._id) && (!row.serviceContext?.annualReturnYear || normalize(record.financialYear) === normalize(row.serviceContext.annualReturnYear))).map(record => describeWorkflow(record, module, client))));
     result.set(String(row._id), workflows);
   }
   return result;

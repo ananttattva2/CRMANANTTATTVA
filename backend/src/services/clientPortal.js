@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { serviceWorkspaces } = require('./clientPortalWorkspaces');
 const Lead = require('../models/Lead');
 const Client = require('../models/Client');
 const Quotation = require('../models/Quotation');
@@ -96,6 +97,7 @@ function buildPortalData(email, leads, clients, quotations, invoices, users = []
     contacts: (array(lead.contacts).length ? lead.contacts : [lead]).map(contact => pick(contact, 'plantUnit salutation contactPerson designation emails email mobileNo1 mobileNo2 whatsappNo linkedinUrl')),
     addresses: array(lead.addresses).map(address => pick(address, 'plantUnit unit unitName addressLine1 addressLine2 addressLine3 landmark state city pinCode gstNumber')),
     services: (array(lead.serviceSelections).length ? lead.serviceSelections : [lead]).map(service => pick(service, 'plantUnit assignedServiceId serviceCategory eprCategory applicantType subApplicantType servicesOffered financialYear')),
+    serviceWorkspaces: serviceWorkspaces(lead),
     spoc: spoc({}, lead),
     assignments: [...array(lead.assignments), ...clients.filter(client => id(client.selectedLead) === id(lead)).flatMap(allocationRows)].map(assignment => ({
       ...pick(assignment, 'plantUnit assignedServiceId serviceCategory eprCategory servicesOffered applicantType subApplicantType poStatus'),
@@ -153,7 +155,7 @@ function buildPortalData(email, leads, clients, quotations, invoices, users = []
   };
 }
 async function loadPortalData(email) {
-  const leads = await Lead.find(contactEmailFilter(email)).select('leadCode sourceLeadId externalLeadId company emails salutation contactPerson designation mobileNo1 mobileNo2 whatsappNo linkedinUrl industryType eprCategory applicantType subApplicantType servicesOffered addressLine1 addressLine2 addressLine3 landmark state city pinCode website contacts addresses serviceSelections assignments assignedTo assignedStaff assignedToText assignedStaffText assignedStaffEmail generatedForUser generatedForName generatedForEmail createdBy createdByName createdByEmail').lean();
+  const leads = await Lead.find(contactEmailFilter(email)).select('leadCode sourceLeadId externalLeadId company emails salutation contactPerson designation mobileNo1 mobileNo2 whatsappNo linkedinUrl industryType eprCategory applicantType subApplicantType servicesOffered addressLine1 addressLine2 addressLine3 landmark state city pinCode website contacts addresses serviceSelections assignments status poYearRows originalPoDetails piboCategory closedAt closedBy closedByText assignedTo assignedStaff assignedToText assignedStaffText assignedStaffEmail generatedForUser generatedForName generatedForEmail createdBy createdByName createdByEmail').lean();
   if (!leads.length) return buildPortalData(email, [], [], [], []);
   const clients = await Client.find({
     selectedLead: {

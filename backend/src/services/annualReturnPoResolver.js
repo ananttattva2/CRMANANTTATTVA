@@ -261,6 +261,10 @@ async function resolveAnnualReturnPO({ clientMaster, financialYears = [], LeadMo
 async function resolveServiceHistory({ clientMaster, LeadModel = Lead } = {}) {
   const lead = await findSourceLead(clientMaster, LeadModel);
   if (!lead) return [];
+  return buildServiceHistory(lead, clientMaster);
+}
+
+function buildServiceHistory(lead, clientMaster = {}) {
   const scope = readClientServiceScope(clientMaster);
   const services = Array.isArray(lead.serviceSelections) && lead.serviceSelections.length ? lead.serviceSelections : [lead];
   const assignments = Array.isArray(lead.assignments) && lead.assignments.length ? lead.assignments : [lead];
@@ -297,6 +301,7 @@ async function resolveServiceHistory({ clientMaster, LeadModel = Lead } = {}) {
 
 module.exports = {
   resolveServiceHistory,
+  buildServiceHistory,
   normalizeFinancialYear,
   normalizeServiceName,
   normalizeApplicantType,
