@@ -5,7 +5,7 @@ const { contactEmailFilter } = require('../services/clientPortal');
 const { uploadBuffer, deleteStored } = require('../services/purchaseEmailProofService');
 const { applicantTypes } = require('../services/clientPortalApplicantTypes');
 const { notifyUpload } = require('../services/clientPortalUploadNotifications');
-const publicFile = row => ({ _id: row._id, lead: row.lead, kind: row.kind, applicantType: row.applicantType, notificationStatus: row.notificationStatus, name: row.name, url: row.url, size: row.size, uploadedAt: row.createdAt });
+const publicFile = row => ({ _id: row._id, lead: row.lead, kind: row.kind, applicantType: row.applicantType, dataType: row.dataType, notificationStatus: row.notificationStatus, name: row.name, url: row.url, size: row.size, uploadedAt: row.createdAt });
 exports.options = async (req, res) => {
   try { if (!mongoose.isValidObjectId(req.query.lead)) return res.status(400).json({ error: 'Choose a valid company.' });
     res.json(await applicantTypes(req.clientEmail, req.query.lead)); }
@@ -27,6 +27,8 @@ exports.create = async (req, res) => {
     const kind = req.params.kind;
     const applicantType = String(req.body?.applicantType || '').trim();
     if (kind === 'excel' && !(await applicantTypes(req.clientEmail, req.params.lead)).includes(applicantType)) return res.status(422).json({ error: 'Select a valid Applicant Type before uploading your Excel file.' });
+    const dataType = String(req.body?.dataType || '').trim();
+    if (kind === 'excel' && dataType && (!['purchase', 'sales'].includes(dataType) || (dataType === 'sales' && !/producer|importer/i.test(applicantType)))) return res.status(422).json({ error: 'Choose a valid data category for this applicant.' });
     const file = req.file;
     const ext = String(file?.originalname || '').split('.').pop().toLowerCase();
     const types = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xls: 'application/vnd.ms-excel' };
@@ -35,7 +37,7 @@ exports.create = async (req, res) => {
     const signature = b && ({ pdf: b.subarray(0, 5).toString() === '%PDF-', png: b.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])), jpg: b[0] === 255 && b[1] === 216 && b[2] === 255, jpeg: b[0] === 255 && b[1] === 216 && b[2] === 255, webp: b.subarray(0,4).toString() === 'RIFF' && b.subarray(8,12).toString() === 'WEBP', xlsx: b.subarray(0,4).equals(Buffer.from([80,75,3,4])), xls: b.subarray(0,8).equals(Buffer.from([208,207,17,224,161,177,26,225])) })[ext];
     if (!file || !allowed.includes(ext) || !signature) return res.status(422).json({ error: 'Choose a valid file in one of the supported formats.' });
     stored = await uploadBuffer(b, file.originalname, types[ext], `crm/client-portal/${lead._id}/${kind}`);
-    const row = await Upload.create({ lead: lead._id, kind, applicantType: kind === 'excel' ? applicantType : undefined, notificationStatus: kind === 'excel' ? 'pending' : 'not_required', name: file.originalname.slice(0,255), url: stored.url, storageKey: stored.storageKey, size: file.size, uploadedBy: req.clientEmail });
+    const row = await Upload.create({ lead: lead._id, kind, dataType: kind === 'excel' ? dataType || undefined : undefined, applicantType: kind === 'excel' ? applicantType : undefined, notificationStatus: kind === 'excel' ? 'pending' : 'not_required', name: file.originalname.slice(0,255), url: stored.url, storageKey: stored.storageKey, size: file.size, uploadedBy: req.clientEmail });
     stored = null; // A saved upload must survive email or status update failures.
     if (kind === 'excel') {
       try {

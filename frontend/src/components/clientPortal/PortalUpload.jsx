@@ -2,8 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { UploadCloud, FileText, CheckCircle2, X } from 'lucide-react';
 
-export default function PortalUpload({ clients, kind, api, token }) {
-  const [applicantType, setApplicantType] = useState(''), [draftType, setDraftType] = useState('');
+export default function PortalUpload({ clients, kind, api, token, fixedApplicantType = '', dataType = '' }) {
+  const [applicantType, setApplicantType] = useState(fixedApplicantType), [draftType, setDraftType] = useState('');
   const [options, setOptions] = useState([]), [loadingTypes, setLoadingTypes] = useState(false);
   const [lead, setLead] = useState(String(clients[0]?._id || ''));
   const [file, setFile] = useState(null), [rows, setRows] = useState([]);
@@ -17,12 +17,12 @@ export default function PortalUpload({ clients, kind, api, token }) {
     return () => { active = false; };
   }, [api, token]);
   useEffect(() => {
-    if (kind !== 'excel') return;
+    if (kind !== 'excel' || fixedApplicantType) return;
     let active = true;
     setOptions([]); setLoadingTypes(true);
     api.get('/applicant-types', { headers, params: { lead } }).then(({ data }) => { if (active) setOptions(data); }).catch(() => { if (active) setError('Applicant types could not be loaded. Refresh to retry.'); }).finally(() => { if (active) setLoadingTypes(false); });
     return () => { active = false; };
-  }, [api, token, kind, lead]);
+  }, [api, token, kind, lead, fixedApplicantType]);
   useEffect(() => {
     if (!modal) return;
     const previous = document.body.style.overflow;
@@ -50,7 +50,8 @@ export default function PortalUpload({ clients, kind, api, token }) {
   function openPicker(dropped) {
     if (busy) return;
     setError(''); setMessage('');
-    if (kind === 'excel') { setPendingFile(dropped || null); setDraftType(''); setModal(true); }
+    if (kind === 'excel' && fixedApplicantType) { setApplicantType(fixedApplicantType); if (dropped) choose(dropped); else { input.current.value = ''; input.current.click(); } }
+    else if (kind === 'excel') { setPendingFile(dropped || null); setDraftType(''); setModal(true); }
     else if (dropped) choose(dropped); else { input.current.value = ''; input.current.click(); }
   }
   function confirmType() {
@@ -63,16 +64,16 @@ export default function PortalUpload({ clients, kind, api, token }) {
     event.preventDefault();
     if (!file || busy || (kind === 'excel' && !applicantType)) return;
     setBusy(true); setError(''); setMessage(''); setProgress(0);
-    const body = new FormData(); if (kind === 'excel') body.append('applicantType', applicantType); body.append('file', file);
+    const body = new FormData(); if (kind === 'excel') body.append('applicantType', applicantType); if (dataType) body.append('dataType', dataType); body.append('file', file);
     try {
       const { data } = await api.post(`/uploads/${lead}/${kind}`, body, { headers, onUploadProgress: event => setProgress(Math.round(event.loaded * 100 / (event.total || file.size))) });
-      setRows(current => [data, ...current]); setFile(null); setApplicantType(''); input.current.value = '';
+      setRows(current => [data, ...current]); setFile(null); setApplicantType(fixedApplicantType); input.current.value = '';
       setMessage(kind === 'excel' ? (data.notificationStatus === 'sent' ? 'Excel file uploaded. Your account team has been notified by email.' : 'Excel file saved. Email notification could not reach every recipient; please contact your account team.') : 'File uploaded successfully and saved to your company account.');
     } catch (err) { setError(err.response?.data?.error || 'Upload failed. Please try again.'); }
     finally { setBusy(false); }
   }
-  const history = rows.filter(row => row.kind === kind && String(row.lead) === lead);
-  return <section className="cp-panel cp-upload-panel"><header className="cp-panel-heading"><div><h2>{kind === 'excel' ? 'Share your company Excel file' : 'Upload a purchase order'}</h2><p>{kind === 'excel' ? 'Send company information to your account team for review.' : 'Share your purchase order as a PDF or image.'}</p></div><span className="cp-stat-icon"><UploadCloud /></span></header>
+  const history = rows.filter(row => row.kind === kind && String(row.lead) === lead && (!fixedApplicantType || row.applicantType === fixedApplicantType) && (!dataType || row.dataType === dataType));
+  return <section className="cp-panel cp-upload-panel"><header className="cp-panel-heading"><div><h2>{kind === 'excel' ? (dataType ? `${dataType === 'sales' ? 'Sales' : 'Purchase'} data` : 'Share your company Excel file') : 'Upload a purchase order'}</h2><p>{kind === 'excel' ? 'Send company information to your account team for review.' : 'Share your purchase order as a PDF or image.'}</p></div><span className="cp-stat-icon"><UploadCloud /></span></header>
     <form onSubmit={submit} className="cp-upload-form cp-upload-compact">
       <label className="cp-upload-company">Company<select value={lead} disabled={busy} onChange={event => { setLead(event.target.value); setMessage(''); setApplicantType(''); setFile(null); }}>{clients.map(client => <option key={client._id} value={client._id}>{client.company}</option>)}</select></label>
       <button ref={trigger} type="button" aria-haspopup={kind === 'excel' ? 'dialog' : undefined} disabled={busy} className="cp-dropzone" onClick={() => openPicker()} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); openPicker(event.dataTransfer.files[0]); }}><UploadCloud size={20} /><strong>{file ? file.name : 'Choose a file or drop here'}</strong><span>{applicantType ? `${applicantType} · ` : ''}{kind === 'excel' ? 'Excel (.xlsx, .xls)' : 'PDF, PNG, JPG or WebP'} · Up to 15 MB</span></button>
