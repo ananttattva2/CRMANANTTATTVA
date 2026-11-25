@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import productQuantity from '../../../../shared/productQuantity.cjs';
-const { splitProductQuantity } = productQuantity;
+const { splitProductQuantity, needsPieceWeight, formatMtPerYear } = productQuantity;
 import { Building2, CheckCircle2, ChevronDown, Copy, Eye, FileCheck2, FileText, MapPin, Pencil, Plus, Smartphone, Trash2, Upload, UserRound, UsersRound } from 'lucide-react';
 import SearchableSelect from '../../components/form/SearchableSelect';
 import PremiumDatePicker from '../../components/form/PremiumDatePicker';
@@ -114,7 +114,7 @@ const emptyPlantConsent = {
   ctoProductRows: []
 };
 
-function TableInput({ value, onChange, label, placeholder = '', type = 'text', options }) {
+function TableInput({ value, onChange, label, disabled = false, placeholder = '', type = 'text', options }) {
   if (type === 'date') {
     return (
       <div className="min-w-52">
@@ -135,6 +135,7 @@ function TableInput({ value, onChange, label, placeholder = '', type = 'text', o
     <input
       type={type}
       aria-label={label}
+      disabled={disabled}
       value={value ?? ''}
       inputMode={type === 'number' ? 'decimal' : undefined}
       min={type === 'number' ? '0' : undefined}
@@ -251,7 +252,11 @@ function PlantQuantityTable({ title, plants, quantityKey, columns, rowTemplate, 
                     {columns.map(([field], columnIndex) => (
                       <React.Fragment key={field}>
                         <td className="px-4 py-3">
-                          {field === 'period' ? <select aria-label={`Month/Year row ${index + 1}`} className="form-input min-w-36" value={row.period || ''} onChange={(event) => onUpdateRow(plantIndex, quantityKey, rowIndex, field, event.target.value)}><option value="">Select</option><option value="month">Month</option><option value="year">Year</option></select> : <TableInput label={`${field} row ${index + 1}`} type={field === 'quantity' ? 'number' : 'text'} value={row[field]} onChange={(value) => onUpdateRow(plantIndex, quantityKey, rowIndex, field, value)} />}
+                          {field === 'mtPerYear' ? (
+                            <output aria-label={`MT per Year row ${index + 1}`} className="block min-w-36 rounded-xl bg-teal-50 px-4 py-3 font-bold text-teal-900" title="Monthly quantities × 12; kg ÷ 1,000; pieces × weight in kg ÷ 1,000">{formatMtPerYear(row) || '—'}</output>
+                          ) : field === 'pieceWeightUom' ? (
+                            <select aria-label={`PPW UOM row ${index + 1}`} disabled={!needsPieceWeight(row)} className="form-input min-w-28 disabled:opacity-50" value={needsPieceWeight(row) ? row.pieceWeightUom || '' : ''} onChange={(event) => onUpdateRow(plantIndex, quantityKey, rowIndex, field, event.target.value)}><option value="">Select</option><option value="kg">kg</option><option value="g">g</option></select>
+                          ) : field === 'period' ? <select aria-label={`Month/Year row ${index + 1}`} className="form-input min-w-36" value={row.period || ''} onChange={(event) => onUpdateRow(plantIndex, quantityKey, rowIndex, field, event.target.value)}><option value="">Select</option><option value="month">Month</option><option value="year">Year</option></select> : <TableInput label={`${field} row ${index + 1}`} disabled={field === 'pieceWeight' && !needsPieceWeight(row)} type={['quantity', 'pieceWeight'].includes(field) ? 'number' : 'text'} value={field === 'pieceWeight' && !needsPieceWeight(row) ? '' : row[field]} onChange={(value) => onUpdateRow(plantIndex, quantityKey, rowIndex, field, value)} />}
                         </td>
                         {columnIndex === 0 && (
                           <td className="px-4 py-3">
@@ -393,8 +398,8 @@ function CteTab({ client, setValue, selectOptions }) {
               title="CTO/CCA Product Quantity"
               plants={plants}
               quantityKey="ctoProductRows"
-              columns={[['productName', 'Name Of The Product'], ['quantity', 'Quantity'], ['uom', 'UOM'], ['period', 'Month/Year']]}
-              rowTemplate={{ productName: '', quantity: '', uom: '', period: '' }}
+              columns={[['productName', 'Name Of The Product'], ['quantity', 'Quantity'], ['uom', 'UOM'], ['period', 'Month/Year'], ['pieceWeight', 'Per Piece Weight'], ['pieceWeightUom', 'PPW UOM'], ['mtPerYear', 'MT per Year']]}
+              rowTemplate={{ productName: '', quantity: '', uom: '', period: '', pieceWeight: '', pieceWeightUom: '' }}
               onAddRow={addPlantRow}
               onUpdateRow={updatePlantRow}
               onRemoveRow={removePlantRow}

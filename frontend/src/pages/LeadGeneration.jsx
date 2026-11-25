@@ -5031,7 +5031,7 @@ function LeadDetailView({ lead, quotations = [], staff = [], currentUser = null,
       onLeadUpdated?.(updatedLead);
       setPermanentCloseStep('');
       setOriginalPoRows([]);
-      setDetailToast({ id: Date.now(), type: 'success', message: 'All original PO details were saved and the lead was permanently closed. It will not reopen automatically.' });
+      setDetailToast({ id: Date.now(), type: 'success', message: response.data?.message || 'Original PO submitted for Admin approval. After Admin approval it will go to Finance.' });
     } catch (error) {
       setPermanentCloseError(error?.response?.data?.error || error.message || 'Unable to permanently close the lead.');
     } finally {

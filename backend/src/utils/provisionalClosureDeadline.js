@@ -43,6 +43,7 @@ function permanentlyCloseProvisionalAssignments(assignments = [], actor = {}, or
       ...row,
       poStatus: PERMANENT_PO_STATUS,
       originalPoConfirmed: true,
+      poApprovalStatus: 'PENDING',
       permanentClosedAt: closedAt,
       permanentClosedBy: String(actor?._id || actor?.id || '').trim(),
       permanentClosedByText: String(actor?.name || actor?.email || '').trim(),
@@ -63,6 +64,7 @@ function permanentlyCloseProvisionalAssignments(assignments = [], actor = {}, or
         poUploadedAt: String(po.poUploadedAt || closedAt).trim(),
         recordedAt: closedAt
       },
+      poYearRows: [{ ...po, currency: 'INR' }],
       originalPoFileUrl: String(po.poFileUrl || '').trim(),
       originalPoFileName: String(po.poFileName || '').trim(),
       originalPoFileType: String(po.poFileType || '').trim(),
@@ -76,4 +78,8 @@ function permanentlyCloseProvisionalAssignments(assignments = [], actor = {}, or
   return { assignments: rows, changedCount };
 }
 
-module.exports = { BUSINESS_DAYS, PERMANENT_PO_STATUS, addBusinessDaysInIst, normalizeProvisionalClosure, permanentlyCloseProvisionalAssignments };
+function hasReceivedOriginalPo(row = {}) {
+  return row.poStatus === 'received' || (row.poStatus === PERMANENT_PO_STATUS && row.originalPoConfirmed === true);
+}
+
+module.exports = { hasReceivedOriginalPo, BUSINESS_DAYS, PERMANENT_PO_STATUS, addBusinessDaysInIst, normalizeProvisionalClosure, permanentlyCloseProvisionalAssignments };

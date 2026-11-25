@@ -1,3 +1,4 @@
+const { hasReceivedOriginalPo } = require('../utils/provisionalClosureDeadline');
 const mongoose = require('mongoose');
 const Approval = require('../models/PendingApproval');
 const Lead = require('../models/Lead');
@@ -199,7 +200,7 @@ exports.initialApproval = async (req, res) => {
         return { ok: true, message: 'Admin initial decision saved.' };
       }
       const review = transition(approval.poReview, 'ADMIN_APPROVE', req.user, req.body.remarks);
-      if (lead.assignments[index].poStatus !== 'received') fail(409, 'The submitted PO is no longer marked as received. Resubmit its current details for review.');
+      if (!hasReceivedOriginalPo(lead.assignments[index])) fail(409, 'The submitted PO is no longer marked as received. Resubmit its current details for review.');
       const rows = lead.assignments[index].poYearRows || [];
       if (!rows.length || rows.some(row => !String(row.poNumber || row.poNo || '').trim() || !(Number(row.poAmount) > 0))) fail(409, 'Record a valid PO number and positive amount before initial approval.');
       const ids = rows.map(row => row.quotationId).filter(id => mongoose.isValidObjectId(id));

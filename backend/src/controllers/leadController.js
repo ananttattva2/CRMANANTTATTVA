@@ -20,7 +20,7 @@ const { notifyNewProvisionalClosures } = require('../services/provisionalLeadClo
 const { DAY: NO_OWNER_DAY, lastLeadActivityAt, noOwnerWorkspaceFilter } = require('../services/leadOwnershipAndEmailWorkflow');
 const { resolvePoProof, resolveApprovalPoProof } = require('../services/poProofResolver');
 const { managerAssignmentTimestamp } = require('../utils/poWorkflow');
-const { normalizeProvisionalClosure, permanentlyCloseProvisionalAssignments } = require('../utils/provisionalClosureDeadline');
+const { normalizeProvisionalClosure, permanentlyCloseProvisionalAssignments, hasReceivedOriginalPo } = require('../utils/provisionalClosureDeadline');
 const { normalizeCommunicationSelection } = require('../utils/communicationModes');
 const LeadDropdownOption = require('../models/LeadDropdownOption');
 const { sendLeadIntroductionEmail } = require('../services/leadIntroductionEmail');
@@ -965,10 +965,11 @@ function canDirectlyApprovePoEdit(actor, modifyPoDetails, before = {}) {
   return modifyPoDetails === true && userHasAnyRole(actor, ADMIN_ROLES) && before.poStatus === 'received' && Array.isArray(before.poYearRows) && before.poYearRows.length > 0;
 }
 
-async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, submittedAssignments = [], poDebugId = '', modifyPoDetails = false }) {
+async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, submittedAssignments = [], poDebugId = '', modifyPoDetails = false, originalPoAssignmentIndexes = null }) {
   const beforeRows = Array.isArray(beforeLead.assignments) ? beforeLead.assignments : [];
   const rows = Array.isArray(lead.assignments) ? lead.assignments : [];
   const savedApprovals = await Promise.all(rows.map(async (row, index) => {
+    if (originalPoAssignmentIndexes && !originalPoAssignmentIndexes.includes(index)) return null;
     const before = findExistingAssignment(beforeRows, row, index) || beforeRows[index] || {};
     const hasPoRows = Array.isArray(row.poYearRows) && row.poYearRows.length > 0;
     const hasClosureEvidence = Boolean(
@@ -978,7 +979,7 @@ async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, subm
     );
     // Existing legacy leads often saved closure at lead level only. An explicit
     // Modify PO submission with complete PO rows must still create Admin review.
-    if (row.poStatus !== 'received' || (!hasClosureEvidence && !(modifyPoDetails && hasPoRows))) return null;
+    if (!hasReceivedOriginalPo(row) || (!hasClosureEvidence && !((modifyPoDetails || originalPoAssignmentIndexes) && hasPoRows))) return null;
     const changed = String(before.poStatus || '') !== String(row.poStatus || '')
       || JSON.stringify(normalizedPoClosureRows(before)) !== JSON.stringify(normalizedPoClosureRows(row));
     const directlyApproved = canDirectlyApprovePoEdit(actor, modifyPoDetails, before);
@@ -986,12 +987,12 @@ async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, subm
     // stale PENDING flag as proof that the corresponding approval document still
     // exists: older/failed submissions can leave the flag behind and the UI would
     // otherwise report success while Admin receives neither a row nor an email.
-    if (!changed && row.poApprovalStatus && !modifyPoDetails) return null;
+    if (!changed && row.poApprovalStatus && !modifyPoDetails && !originalPoAssignmentIndexes) return null;
     row.poApprovalStatus = directlyApproved ? 'APPROVED' : 'PENDING';
     if (directlyApproved) {
       for (const key of ['closedBy', 'closedByText', 'closedAt', 'closureRequestedBy', 'closureRequestedByText']) row[key] = before[key] || row[key];
     }
-    const service = (lead.serviceSelections || [])[index] || {};
+    const service = (lead.serviceSelections || []).find(service => row.assignedServiceId && String(service.assignedServiceId || service.serviceAssignmentId || '') === String(row.assignedServiceId)) || (lead.serviceSelections || [])[index] || {};
     const sourceClientId = `${lead._id}:po:${row.assignedServiceId || index}`;
     // Build the approval snapshot from the validated request rows. Using the
     // hydrated Mongoose array here could retain the numeric PO fields while
@@ -2312,7 +2313,8 @@ exports.permanentlyCloseProvisionalLead = async (req, res) => {
     const submittedRows = Array.isArray(req.body?.originalPoRows) ? req.body.originalPoRows.slice(0, 25) : [];
     const originalPoRows = provisionalIndexes.map((assignmentIndex) => {
       const submitted = submittedRows.find((row) => Number(row?.assignmentIndex) === assignmentIndex) || {};
-      const serviceRow = lead.serviceSelections?.[assignmentIndex] || {};
+      const assignmentServiceId = lead.assignments?.[assignmentIndex]?.assignedServiceId;
+      const serviceRow = (lead.serviceSelections || []).find(row => assignmentServiceId && String(row.assignedServiceId || row.serviceAssignmentId || '') === String(assignmentServiceId)) || lead.serviceSelections?.[assignmentIndex] || {};
       const proofType = String(submitted.poFileType || '').trim().slice(0, 100);
       return {
         assignmentIndex,
@@ -2341,7 +2343,9 @@ exports.permanentlyCloseProvisionalLead = async (req, res) => {
       return res.status(400).json({ error: 'Complete PO Number, PO Date, PO Amount, PO Proof, Service Period, and Service for every provisional service.' });
     }
 
-    const result = permanentlyCloseProvisionalAssignments(lead.assignments || [], req.user, originalPoRows);
+    const beforeLead = lead.toObject();
+    const result = permanentlyCloseProvisionalAssignments(beforeLead.assignments || [], req.user, originalPoRows);
+    await require('../services/poReviewFreeze').assertLeadPoEditable(lead._id, beforeLead, { assignments: result.assignments });
 
     lead.assignments = result.assignments;
     const primary = result.assignments[0] || {};
@@ -2350,6 +2354,7 @@ exports.permanentlyCloseProvisionalLead = async (req, res) => {
     lead.closedByEmail = primary.closedByEmail || lead.closedByEmail || '';
     lead.updatedBy = req.user?.name || req.user?.email || String(req.user?._id || '');
     lead.markModified('assignments');
+    const poApprovalSubmissions = await upsertPurchaseOrderApprovals({ beforeLead, lead, actor: req.user, submittedAssignments: result.assignments, originalPoAssignmentIndexes: provisionalIndexes });
     await lead.save();
 
     await LeadActivity.create({
@@ -2361,9 +2366,9 @@ exports.permanentlyCloseProvisionalLead = async (req, res) => {
       metadata: { serviceCount: result.changedCount, originalPoConfirmed: true, originalPoNumbers: originalPoRows.map((row) => row.poNumber), originalPoFileUrls: originalPoRows.map((row) => row.poFileUrl) }
     }).catch((error) => console.error('Permanent lead closure audit failed', error));
 
-    res.json({ ok: true, message: 'Lead permanently closed. It will not reopen after 7 business days.', lead: lead.toObject() });
+    res.json({ ok: true, message: 'Original PO submitted for Admin approval. After Admin approval it will go to Finance. Automatic reopening is disabled.', poApprovalSubmissions, lead: lead.toObject() });
   } catch (err) {
-    res.status(500).json({ error: err.message || 'Unable to permanently close the lead.' });
+    res.status(err.statusCode || err.status || 500).json({ error: err.message || 'Unable to permanently close the lead.' });
   }
 };
 
