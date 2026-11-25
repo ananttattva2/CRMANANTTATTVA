@@ -48,7 +48,7 @@ jobs:
         run: node backend/node_modules/puppeteer/lib/cjs/puppeteer/node/cli.js browsers install chrome
 
       - name: Test shared client visibility and Finance assignment rules
-        run: node --test backend/test/clientMasterHydration.test.js backend/test/clientMasterResolver.test.js backend/test/clientComplianceReview.test.js backend/test/deploymentCheckoutCollision.test.js backend/test/clientDirectoryEligibility.test.js backend/test/financeApprovedClients.test.js backend/test/missingCtoReminders.test.js backend/test/pendingApprovalClosedPoClients.test.js
+        run: node --test backend/test/portalPoAndQuotationRouting.test.js backend/test/clientMasterHydration.test.js backend/test/clientMasterResolver.test.js backend/test/clientComplianceReview.test.js backend/test/deploymentCheckoutCollision.test.js backend/test/clientDirectoryEligibility.test.js backend/test/financeApprovedClients.test.js backend/test/missingCtoReminders.test.js backend/test/pendingApprovalClosedPoClients.test.js
 
       - name: Test paginated directory APIs
         working-directory: backend

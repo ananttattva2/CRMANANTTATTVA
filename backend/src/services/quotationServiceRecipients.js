@@ -1,10 +1,15 @@
 const User = require('../models/User');
 function requiredServiceOwners(quotation = {}) {
-  const text = (quotation.items || []).flatMap(item => [item.servicesOffered, item.serviceCategory, item.eprCategory, item.applicableService]).flat().filter(Boolean).join(' ');
-  const names = [];
-  if (/\bct[oe]\b|solid[\s-]*waste/i.test(text)) names.push('KSHITIJ TRIMUKHE');
-  if (/solid[\s-]*waste/i.test(text)) names.push('Suraj Shetty');
-  return names;
+  const owners = new Set();
+  for (const item of quotation.items || []) {
+    const text = [item.businessCategory, item.servicesOffered, item.serviceCategory, item.eprCategory, item.applicableService].flat().filter(Boolean).join(' ').replace(/[\u2010-\u2015_-]+/g, ' ');
+    if (/\bsolid\s*waste\b/i.test(text)) owners.add('Suraj Shetty');
+    else {
+      if (/\bplastic\s*waste\b/i.test(text)) owners.add('TUSHAR GAWAS');
+      if (/\bct[oe]\b/i.test(text)) owners.add('KSHITIJ TRIMUKHE');
+    }
+  }
+  return ['KSHITIJ TRIMUKHE', 'TUSHAR GAWAS', 'Suraj Shetty'].filter(name => owners.has(name));
 }
 async function quotationServiceRecipients(quotation) {
   const names = requiredServiceOwners(quotation);
