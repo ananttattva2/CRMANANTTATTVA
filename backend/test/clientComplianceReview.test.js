@@ -89,7 +89,7 @@ test('dashboard brand identifies the e-connect workspace', () => {
 test('compliance review resolves the same assigned-service data used by Client Master', () => {
   const reviewController = fs.readFileSync(path.join(__dirname, '../src/controllers/clientComplianceReviewController.js'), 'utf8');
   const workspace = fs.readFileSync(path.join(__dirname, '../../frontend/src/pages/ClientComplianceReview.jsx'), 'utf8');
-  assert.match(reviewController, /resolveClientMasterData\(client, getAssignedServiceId\(client\)\)/);
+  assert.match(reviewController, /resolveHydratedClientData\(client, getAssignedServiceId\(client\)\)/);
   assert.match(reviewController, /completionBySection: completionByReviewSection\(client\.data\)/);
   assert.match(reviewController, /analyzeClientMasterData\(data\)/);
   assert.match(workspace, /payload\?\.completionBySection\?\.\[section\.key\]/);

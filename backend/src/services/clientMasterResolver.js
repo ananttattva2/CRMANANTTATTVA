@@ -154,6 +154,7 @@ function resolveClientMasterData(record = {}, requestedAssignedServiceId = '') {
 }
 
 module.exports = {
+  mergePopulated,
   getAssignedServiceId,
   getClientMasterId,
   getCompanyName,

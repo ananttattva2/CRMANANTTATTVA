@@ -1,3 +1,4 @@
+const { resolveHydratedClientData } = require('../services/clientMasterHydration');
 const { normalizeProductQuantities, validateProductQuantities } = require('../../../shared/productQuantity.cjs');
 const { readPreviousClientDecisions } = require('../services/clientDecisionHistory');
 const mongoose = require('mongoose');
@@ -2007,7 +2008,7 @@ exports.getClient = async (req, res) => {
     ok: true,
     client,
     identity: normalizeClientMaster(client),
-    resolvedData: resolveClientMasterData(client, requestedAssignedServiceId)
+    resolvedData: await resolveHydratedClientData(client, requestedAssignedServiceId || readClientAssignedServiceId(client, client.data || {}), { accessFilter: await clientAccessFilter(req.user) })
   });
 };
 

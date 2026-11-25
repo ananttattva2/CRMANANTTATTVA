@@ -1533,10 +1533,16 @@ export default function ClientMaster() {
     () => buildSearchableClientMasterLeads(leads, clientMasterCatalog),
     [leads, clientMasterCatalog]
   );
-  const leadOptions = useMemo(() => remoteClientOptions.map((item) => ({
-    value: item.selectionKey,
-    label: `${item.leadCode || 'Client'} - ${item.companyName || 'Untitled client'}${Number.isFinite(item.closedServiceCount) && item.totalServiceCount ? ` - ${item.closedServiceCount} of ${item.totalServiceCount} services closed` : item.clientMasterCount ? ` - ${item.clientMasterCount} service${item.clientMasterCount === 1 ? '' : 's'}` : ''}`
-  })), [remoteClientOptions]);
+  const leadOptions = useMemo(() => {
+    const options = remoteClientOptions.map((item) => ({
+      value: item.selectionKey,
+      label: `${item.leadCode || 'Client'} - ${item.companyName || 'Untitled client'}${Number.isFinite(item.closedServiceCount) && item.totalServiceCount ? ` - ${item.closedServiceCount} of ${item.totalServiceCount} services closed` : item.clientMasterCount ? ` - ${item.clientMasterCount} service${item.clientMasterCount === 1 ? '' : 's'}` : ''}`
+    }));
+    const selected = String(client.selectedLead?._id || client.selectedLead || '');
+    const company = client.companyOverview?.companyName || client.basic?.clientLegalName;
+    if (selected && company && !options.some(option => String(option.value) === selected)) options.unshift({ value: selected, label: `${client.selectedLeadSnapshot?.leadCode || client.importMeta?.leadNumber || 'Saved lead'} - ${company}` });
+    return options;
+  }, [remoteClientOptions, client.selectedLead, client.companyOverview?.companyName, client.basic?.clientLegalName, client.selectedLeadSnapshot?.leadCode, client.importMeta?.leadNumber]);
   const staffOptions = useMemo(() => staff.map((user) => ({ value: user._id || user.id, label: `${user.name || user.email} (${user.role})` })), [staff]);
 
   useEffect(() => {

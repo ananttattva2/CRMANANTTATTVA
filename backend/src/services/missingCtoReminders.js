@@ -1,3 +1,4 @@
+const {hydrateClientData}=require('./clientMasterHydration');
 const {createHash,randomUUID}=require('node:crypto');
 const Client=require('../models/Client');
 const User=require('../models/User');
@@ -34,7 +35,8 @@ function buildMissingCtoRows(services,clients,users) {
     if(!assignment.assignedTo&&!assignment.assignedToText&&!assignment.assignedToEmail)continue;
     const matches=clients.filter(client=>(getSelectedLeadId(client)===id(lead._id)||client.data?.importMeta?.leadNumber===lead.leadCode||client.data?.selectedLeadSnapshot?.leadCode===lead.leadCode)&&(getAssignedServiceId(client)===serviceId||(!getAssignedServiceId(client)&&lead.assignments?.length===1)));
     const client=matches.sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt))[0];
-    const missing=missingCtoFields(client?resolveClientMasterData(client,serviceId):{});
+    const target=client||{selectedLead:lead._id,assignedServiceId:serviceId,data:{basic:{piboCategory:service.subApplicantType||service.piboCategory,eprCategory:service.eprCategory}}};
+    const missing=missingCtoFields(hydrateClientData(target,clients,serviceId));
     if(!missing.length)continue;
     const staff=findUser(assignment.assignedStaff,assignment.assignedStaffEmail,assignment.assignedStaffText,client?.createdBy);
     const manager=findUser(assignment.assignedTo,assignment.assignedToEmail,assignment.assignedToText,staff?.managerId);
@@ -57,7 +59,8 @@ async function runMissingCtoReminders(options={}) {
  if(running)return {skipped:'already_running'};running=true;
  try{
   const services=options.services||await financeApprovedServices();
-  const clients=options.clients||await Client.find({$and:[clientMasterSourceRecordFilter(),servicesClientFilter(services)]}).select('selectedLead assignedServiceId data createdBy updatedAt').lean();
+  const leadIds=services.map(item=>item.lead._id),leadCodes=services.map(item=>item.lead.leadCode).filter(Boolean);
+  const clients=options.clients||await Client.find({$and:[clientMasterSourceRecordFilter(),{$or:[{selectedLead:{$in:leadIds}},{'data.selectedLead':{$in:leadIds.map(String)}},{'data.selectedLeadSnapshot.id':{$in:leadIds.map(String)}},{'data.importMeta.leadNumber':{$in:leadCodes}}]}]}).select('selectedLead assignedServiceId data createdBy updatedAt').lean();
   const users=options.users||await User.find({isActive:{$ne:false}}).select('_id crmUserId name email role roles managerId').lean();
   const rows=buildMissingCtoRows(services,clients,users),buckets=new Map();
   for(const user of users){if(!user.email||user.isActive===false)continue;const mine=userHasAnyRole(user,['admin','superadmin'])?rows:rows.filter(row=>row.recipientIds.includes(id(user._id)));if(mine.length){const email=user.email.trim().toLowerCase();const existing=buckets.get(email)||[];buckets.set(email,[...new Map([...existing,...mine].map(row=>[row.key,row])).values()]);}}
