@@ -2487,8 +2487,10 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
     <tr><td style="padding:12px 14px;border-bottom:1px solid #ccfbf1;color:#475569;font-size:13px">Payment status</td><td align="right" style="padding:12px 14px;border-bottom:1px solid #ccfbf1;color:#115e59;font-size:13px;font-weight:700">${paymentStatus?.status === 'COMPLETE_RECEIVED' ? 'Complete received' : 'Advance received'}</td></tr>
     <tr><td style="padding:12px 14px;border-bottom:1px solid #ccfbf1;color:#475569;font-size:13px">PO amount</td><td align="right" style="padding:12px 14px;border-bottom:1px solid #ccfbf1;color:#0f172a;font-size:14px;font-weight:700">${totalPoAmount}</td></tr>
     <tr><td style="padding:12px 14px;color:#475569;font-size:13px">Amount received</td><td align="right" style="padding:12px 14px;color:#0f766e;font-size:16px;font-weight:800">${receivedAmount}</td></tr>
-    ${paymentStatus?.paymentDate ? `<tr><td style="padding:12px 14px;color:#475569;font-size:13px">Payment date</td><td align="right" style="padding:12px 14px;font-size:13px">${escapeHtml(paymentStatus.paymentDate)}</td></tr>` : ''}
-    ${paymentStatus?.bank ? `<tr><td style="padding:12px 14px;color:#475569;font-size:13px">Bank receiving payment</td><td align="right" style="padding:12px 14px;font-size:13px">${escapeHtml(paymentStatus.bank)}</td></tr>` : ''}
+    ${paymentStatus?.paymentDate ? `<tr><td style="padding:12px 14px;color:#475569;font-size:13px">Payment receipt date</td><td align="right" style="padding:12px 14px;font-size:13px">${escapeHtml(paymentStatus.paymentDate)}</td></tr>` : ''}
+    ${paymentStatus?.bank ? `<tr><td style="padding:12px 14px;color:#475569;font-size:13px">Bank name</td><td align="right" style="padding:12px 14px;font-size:13px">${escapeHtml(paymentStatus.bank)}</td></tr>` : ''}
+    ${paymentStatus?.paymentMode ? `<tr><td style="padding:12px 14px;color:#475569;font-size:13px">Mode of payment</td><td align="right" style="padding:12px 14px;font-size:13px">${escapeHtml(paymentStatus.paymentMode)}</td></tr>` : ''}
+    ${paymentStatus?.referenceNumber ? `<tr><td style="padding:12px 14px;color:#475569;font-size:13px">Cheque / UTR No.</td><td align="right" style="padding:12px 14px;font-size:13px">${escapeHtml(paymentStatus.referenceNumber)}</td></tr>` : ''}
     ${paymentStatus?.confirmed ? '<tr><td colspan="2" style="padding:0 14px 12px;color:#0f766e;font-size:12px">Amount confirmed against the PO total.</td></tr>' : ''}
     <tr><td style="padding:12px 14px;border-top:1px solid #ccfbf1;color:#475569;font-size:13px">Recorded by</td><td align="right" style="padding:12px 14px;border-top:1px solid #ccfbf1;font-size:13px;font-weight:700">${escapeHtml(paymentStatus?.name || 'Finance team')}</td></tr>
     <tr><td style="padding:12px 14px;color:#475569;font-size:13px">Updated at</td><td align="right" style="padding:12px 14px;font-size:13px">${paymentStatus?.at ? escapeHtml(new Date(paymentStatus.at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })) + ' IST' : 'Not recorded'}</td></tr>
@@ -2510,7 +2512,7 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
     leadCode: lead.leadCode,
     rows: decisionRows,
     remarks,
-    remarksLabel: paymentReceived ? 'Payment remarks' : specialApproval ? 'Finance remarks' : leadClosure ? 'Approval remarks' : 'Decision remarks',
+    remarksLabel: paymentReceived ? 'Narration' : specialApproval ? 'Finance remarks' : leadClosure ? 'Approval remarks' : 'Decision remarks',
     status,
     summaryHtml: paymentSummaryHtml,
     actionUrl: `${String(process.env.FRONTEND_URL || process.env.APP_URL || 'https://crmananttattva.com').replace(/\/$/, '')}${paymentReceived || specialApproval ? '/finance-approval' : '/pending-approval'}`,

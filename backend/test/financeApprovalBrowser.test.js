@@ -11,25 +11,30 @@ test('Finance Special Approval routes to lead owner, then Lead Closure Approval 
  await render('accounts','FINANCE_RELEASED');await page.waitForFunction(()=>document.querySelectorAll('tbody td:last-child button').length===3);assert.deepEqual(await actions(),['Approve','Reject','Revise']);await page.click('tbody td:last-child button');await page.waitForSelector('dialog[open]');assert.ok((await page.$eval('dialog',el=>el.textContent)).includes('Admin approves lead closure'));await page.type('dialog textarea','Final Finance approval');await page.click('dialog button[type=submit]');await page.waitForFunction(()=>window.posts.length===1&&window.record.poReview.stage==='FINALIZED'&&!document.querySelector('dialog'));assert.equal(await page.evaluate(()=>window.posts[0].body.status),'APPROVED');assert.equal(await page.evaluate(()=>window.posts[0].body.version),4);assert.deepEqual(await actions(),[]);
  for (const confirmAmount of [true, false]) {
    const status = confirmAmount ? 'COMPLETE_RECEIVED' : 'ADVANCE_RECEIVED';
-   const bank = confirmAmount ? 'IDFC Bank' : 'HDFC Bank';
+   const bank = confirmAmount ? 'IDFC First' : 'ICICI Bank';
+   const paymentMode = confirmAmount ? 'Cheque' : 'Bank Transfer';
    await render('finance', 'FINANCE_READY');
    await page.select('tbody select[aria-label^="Update payment status"]', status);
    await page.waitForSelector('dialog[open]');
    await page.click(`dialog div.flex.gap-3 button:nth-child(${confirmAmount ? 1 : 2})`);
    assert.equal(await page.$eval('dialog button[type=submit]', el => el.disabled), true);
-   assert.deepEqual(await page.$$eval('dialog select option', options => options.map(option => option.value)), ['', 'IDFC Bank', 'HDFC Bank']);
+   assert.deepEqual(await page.$$eval('dialog select[name="bank"] option', options => options.map(option => option.value)), ['', 'IDFC First', 'ICICI Bank']);
    if (!confirmAmount) await page.type('dialog input[type=number]', '250');
    await page.$eval('dialog input[type=date]', el => {
      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, '2026-11-20');
      el.dispatchEvent(new Event('input', { bubbles: true }));
    });
    assert.equal(await page.$eval('dialog button[type=submit]', el => el.disabled), true);
-   await page.select('dialog select', bank);
+   await page.select('dialog select[name="bank"]', bank);
+   await page.select('dialog select[name="paymentMode"]', paymentMode);
+   await page.type('dialog input[name="referenceNumber"]', '001234');
+   assert.equal(await page.$eval('dialog button[type=submit]', el => el.disabled), true);
+   await page.type('dialog textarea', 'Receipt verified');
    await page.click('dialog button[type=submit]');
    await page.waitForFunction(() => window.posts.length === 1 && !document.querySelector('dialog'));
    const { url, body } = await page.evaluate(() => window.posts[0]);
    assert.ok(url.endsWith('/payment-status'));
-   assert.deepEqual(body, { status, confirmAmount, paymentDate: '2026-11-20', bank, remarks: '', ...(confirmAmount ? {} : { amount: 250 }) });
+   assert.deepEqual(body, { status, confirmAmount, paymentDate: '2026-11-20', paymentMode, bank, referenceNumber: '001234', remarks: 'Receipt verified', ...(confirmAmount ? {} : { amount: 250 }) });
  }
  await render('admin','PO_AWAITED');assert.ok(await page.$eval('thead',el=>el.textContent.includes('Approval source')));assert.ok(await page.$eval('tbody',el=>el.textContent.includes('Special Approval')&&el.textContent.includes('Awaiting client PO')));assert.deepEqual(await actions(),[]);await page.click('tbody td:first-child button');await page.waitForSelector('dialog[open]');assert.ok(await page.$eval('dialog',el=>el.textContent.includes('Closed through Special Approval')));await page.click('dialog footer button');
  await render('finance','PO_AWAITED');assert.deepEqual(await actions(),['Approve']);await page.click('tbody td:last-child button');await page.waitForSelector('dialog[open]');await page.type('dialog textarea','Special closure approved, PO still due');await page.click('dialog button[type=submit]');await page.waitForFunction(()=>window.posts.length===1&&!document.querySelector('dialog'));assert.ok((await page.evaluate(()=>window.posts[0].url)).endsWith('/approve-special-closure'));

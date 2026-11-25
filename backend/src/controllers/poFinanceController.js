@@ -312,13 +312,19 @@ exports.paymentStatus = async (req, res) => {
     const status = String(req.body.status || '').toUpperCase();
     if (!['ADVANCE_RECEIVED', 'COMPLETE_RECEIVED'].includes(status)) fail(400, 'Select a valid payment status.');
     const confirmAmount = req.body.confirmAmount === true;
-    const { paymentDate, bank } = req.body;
+    const { paymentDate, paymentMode, bank } = req.body;
+    const referenceNumber = typeof req.body.referenceNumber === 'string' ? req.body.referenceNumber.trim() : '';
+    const narration = typeof req.body.remarks === 'string' ? req.body.remarks.trim() : '';
     const parsedDate = typeof paymentDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(paymentDate)
       ? new Date(paymentDate) : null;
     if (!parsedDate || !Number.isFinite(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== paymentDate) {
-      fail(400, 'Enter a valid payment date.');
+      fail(400, 'Enter a valid payment receipt date.');
     }
-    if (!['IDFC Bank', 'HDFC Bank'].includes(bank)) fail(400, 'Select IDFC Bank or HDFC Bank.');
+    if (!['Cheque', 'Bank Transfer'].includes(paymentMode)) fail(400, 'Select Cheque or Bank Transfer.');
+    if (!['IDFC First', 'ICICI Bank'].includes(bank)) fail(400, 'Select IDFC First or ICICI Bank.');
+    if (!referenceNumber || referenceNumber.length > 100) fail(400, 'Enter a cheque or UTR number of up to 100 characters.');
+    if (!narration || narration.length > 500) fail(400, 'Enter a payment narration of up to 500 characters.');
+    const receiptDetails = { paymentDate, paymentMode, bank, referenceNumber };
     let notification;
     const result = await inTransaction(req.params.id, async ({ approval, lead, index }) => {
       if (!approval.poReview) fail(409, 'This PO is not under Finance review.');
@@ -326,8 +332,8 @@ exports.paymentStatus = async (req, res) => {
       const poAmount = pos.reduce((sum, row) => sum + Number(row.poAmount || 0), 0);
       const amount = confirmAmount ? poAmount : Number(req.body.amount);
       if (!Number.isFinite(amount) || amount <= 0) fail(400, 'Enter a valid received amount.');
-      const entry = { status, amount, paymentDate, bank, confirmed: confirmAmount, remarks: String(req.body.remarks || '').trim(), by: String(req.user._id), name: req.user.name || req.user.email || '', at: new Date().toISOString() };
-      approval.poReview = { ...approval.poReview, paymentStatus: entry, history: [...(approval.poReview.history || []), { event: `PAYMENT_${status}`, paymentDate, bank, remarks: `${status}: ${amount}${confirmAmount ? ' (confirmed as PO amount)' : ''}`, by: entry.by, name: entry.name, at: entry.at }] };
+      const entry = { status, amount, ...receiptDetails, confirmed: confirmAmount, remarks: narration, by: String(req.user._id), name: req.user.name || req.user.email || '', at: new Date().toISOString() };
+      approval.poReview = { ...approval.poReview, paymentStatus: entry, history: [...(approval.poReview.history || []), { event: `PAYMENT_${status}`, ...receiptDetails, narration, remarks: `${status}: ${amount}${confirmAmount ? ' (confirmed as PO amount)' : ''}`, by: entry.by, name: entry.name, at: entry.at }] };
       approval.markModified('poReview');
       notification = { approval, lead, index, status: 'PAYMENT', remarks: entry.remarks, screenshotUrl: '', paymentStatus: entry, poAmount };
       return { ok: true, review: approval.poReview, message: `Payment status recorded: ${status.replace('_', ' ').toLowerCase()} (${amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}).` };

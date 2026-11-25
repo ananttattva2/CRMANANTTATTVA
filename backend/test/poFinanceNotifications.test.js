@@ -100,14 +100,14 @@ test('PO referral and payment notifications reach the owner, managers, admins, a
       generatedForEmail: 'gaurav@example.test',
       assignments: [{ assignedStaff: 'anand-id', assignedStaffEmail: 'anand@example.test', poYearRows: [{ poNumber: 'PO-1', poAmount: 1000 }] }]
     },
-    index: 0, status: 'PAYMENT', remarks: '', paymentReceived: true,
-    paymentStatus: { status: 'ADVANCE_RECEIVED', amount: 250, paymentDate: '2026-11-20', bank: 'HDFC Bank', confirmed: false, name: 'Finance User', at: '2026-11-21T10:00:00Z' }, poAmount: 1000
+    index: 0, status: 'PAYMENT', remarks: 'Receipt verified', paymentReceived: true,
+    paymentStatus: { status: 'ADVANCE_RECEIVED', amount: 250, paymentDate: '2026-11-20', bank: 'ICICI Bank', paymentMode: 'Bank Transfer', referenceNumber: 'UTR123456', confirmed: false, name: 'Finance User', at: '2026-11-21T10:00:00Z' }, poAmount: 1000
   });
   assert.equal(payment.sent, 5);
   assert.deepEqual(new Set(sent.map((mail) => mail.to)), new Set([
     'gaurav@example.test', 'superadmin@example.test', 'admin@example.test', 'manager@example.test', 'finance@example.test'
   ]));
-  assert.ok(sent.every(mail => mail.html.includes('2026-11-20') && mail.html.includes('HDFC Bank')));
+  assert.ok(sent.every(mail => mail.html.includes('2026-11-20') && ['ICICI Bank', 'Bank Transfer', 'UTR123456', 'Receipt verified'].every(value => mail.html.includes(value))));
   assert.ok(sent.every((mail) => /payment received/i.test(mail.subject)));
   assert.ok(sent.every((mail) => mail.html.includes('Amount received')));
   assert.ok(sent.every((mail) => mail.html.includes('Recorded by') && mail.html.includes('Finance User') && mail.html.includes('Updated at')));

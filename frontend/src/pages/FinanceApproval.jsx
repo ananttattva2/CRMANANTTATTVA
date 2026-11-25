@@ -95,10 +95,11 @@ export default function FinanceApproval() {
   function openPaymentStatus(row, status) {
     const pos = poRows(row);
     const poAmount = pos.reduce((sum, po) => sum + Number(po.poAmount || 0), 0);
-    setPaymentModal({ row, status, confirmAmount: null, amount: '', paymentDate: '', bank: '', remarks: '', saving: false, error: '', poAmount });
+    setPaymentModal({ row, status, confirmAmount: null, amount: '', paymentDate: '', paymentMode: '', bank: '', referenceNumber: '', remarks: '', saving: false, error: '', poAmount });
   }
   const canSubmitPayment = paymentModal && paymentModal.confirmAmount !== null &&
-    paymentModal.paymentDate && paymentModal.bank &&
+    paymentModal.paymentDate && paymentModal.paymentMode && paymentModal.bank &&
+    paymentModal.referenceNumber.trim() && paymentModal.remarks.trim() &&
     (paymentModal.confirmAmount || Number(paymentModal.amount) > 0);
 
   async function submitPaymentStatus(event) {
@@ -111,7 +112,9 @@ export default function FinanceApproval() {
         status: paymentModal.status,
         confirmAmount: paymentModal.confirmAmount,
         paymentDate: paymentModal.paymentDate,
+        paymentMode: paymentModal.paymentMode,
         bank: paymentModal.bank,
+        referenceNumber: paymentModal.referenceNumber.trim(),
         remarks: String(paymentModal.remarks || '').trim()
       };
       if (!paymentModal.confirmAmount) payload.amount = Number(paymentModal.amount);
@@ -144,21 +147,35 @@ export default function FinanceApproval() {
       </div><footer className="sticky bottom-0 flex justify-end gap-2 border-t bg-white p-4"><button type="button" disabled={saving} onClick={close} className="rounded-lg border px-4 py-2 text-sm font-bold">{modal.action === 'detail' ? 'Close' : 'Cancel'}</button>{modal.action !== 'detail' && <button type="submit" disabled={saving || !remarks.trim() || (modal.action === 'request-approval' && !paymentDate)} className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-40">{saving ? 'Saving…' : modal.action === 'approve-special-closure' ? 'Approve Special Closure' : modal.action === 'approve' ? 'Approve & Unlock Closure' : modal.action === 'refer' ? 'Send for Special Approval' : modal.action === 'request-approval' ? 'Request for Management Approval' : modal.action === 'lead-closure-approve' ? 'Approve with Remarks' : 'Save final decision'}</button>}</footer></form></dialog>}
     {paymentModal && <dialog ref={paymentDialog} aria-labelledby="payment-status-title" className="max-h-[90vh] w-[min(560px,94vw)] overflow-auto rounded-2xl border p-0 shadow-2xl backdrop:bg-slate-950/50" onCancel={event => { if (paymentModal.saving) event.preventDefault(); else setPaymentModal(null); }}><form onSubmit={submitPaymentStatus}><header className="flex items-center justify-between border-b p-5"><div><h2 id="payment-status-title" className="text-xl font-bold">{paymentModal.status === 'COMPLETE_RECEIVED' ? 'Complete Payment Received' : 'Advance Payment Received'}</h2><p className="mt-1 text-sm text-slate-500">{paymentModal.row.clientName} · {paymentModal.row.uniqueId}</p></div><button type="button" aria-label="Close" onClick={() => !paymentModal.saving && setPaymentModal(null)} className="rounded-lg p-2 disabled:opacity-40"><X/></button></header><div className="space-y-4 p-5">{paymentModal.error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{paymentModal.error}</p>}<div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4"><p className="text-sm text-slate-700">Kindly confirm the received amount as per PO amount.</p><p className="mt-2 text-2xl font-bold text-slate-900">{money(paymentModal.poAmount)}</p><small className="text-slate-500">Total PO amount</small></div>{paymentModal.confirmAmount === null ? <div className="flex gap-3"><button type="button" onClick={() => setPaymentModal(current => current ? { ...current, confirmAmount: true } : current)} className="flex-1 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-bold text-white">Yes</button><button type="button" onClick={() => setPaymentModal(current => current ? { ...current, confirmAmount: false } : current)} className="flex-1 rounded-lg border border-rose-200 px-4 py-3 text-sm font-bold text-rose-700">No</button></div> : paymentModal.confirmAmount === true ? <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">Confirmed: received amount equals PO amount ({money(paymentModal.poAmount)}).</p> : <label className="block text-sm font-bold">Received amount *<input type="number" min="0" step="0.01" autoFocus required value={paymentModal.amount} onChange={event => setPaymentModal(current => current ? { ...current, amount: event.target.value } : current)} disabled={paymentModal.saving} placeholder="Enter the amount received" className="mt-2 w-full rounded-lg border p-3 font-normal"/></label>}
       {paymentModal.confirmAmount !== null && <div className="grid gap-4 sm:grid-cols-2">
-        <label className="block text-sm font-bold">Payment date *
+        <label className="block text-sm font-bold">Payment receipt date *
           <input type="date" required value={paymentModal.paymentDate}
             onChange={event => setPaymentModal(current => ({ ...current, paymentDate: event.target.value }))}
             disabled={paymentModal.saving} className="mt-2 w-full rounded-lg border p-3 font-normal"/>
         </label>
-        <label className="block text-sm font-bold">Bank receiving payment *
-          <select required value={paymentModal.bank}
+        <label className="block text-sm font-bold">Mode of payment *
+          <select name="paymentMode" required value={paymentModal.paymentMode}
+            onChange={event => setPaymentModal(current => ({ ...current, paymentMode: event.target.value }))}
+            disabled={paymentModal.saving} className="mt-2 w-full rounded-lg border p-3 font-normal">
+            <option value="">Select payment mode</option>
+            <option>Cheque</option>
+            <option>Bank Transfer</option>
+          </select>
+        </label>
+        <label className="block text-sm font-bold">Bank name *
+          <select name="bank" required value={paymentModal.bank}
             onChange={event => setPaymentModal(current => ({ ...current, bank: event.target.value }))}
             disabled={paymentModal.saving} className="mt-2 w-full rounded-lg border p-3 font-normal">
             <option value="">Select bank</option>
-            <option>IDFC Bank</option>
-            <option>HDFC Bank</option>
+            <option>IDFC First</option>
+            <option>ICICI Bank</option>
           </select>
         </label>
+        <label className="block text-sm font-bold">Cheque / UTR No. *
+          <input name="referenceNumber" type="text" required maxLength={100} value={paymentModal.referenceNumber}
+            onChange={event => setPaymentModal(current => ({ ...current, referenceNumber: event.target.value }))}
+            disabled={paymentModal.saving} className="mt-2 w-full rounded-lg border p-3 font-normal"/>
+        </label>
       </div>}
-      {paymentModal.confirmAmount !== null && <label className="block text-sm font-bold">Remarks<textarea rows={3} maxLength={500} value={paymentModal.remarks} onChange={event => setPaymentModal(current => current ? { ...current, remarks: event.target.value } : current)} disabled={paymentModal.saving} placeholder="Optional remarks…" className="mt-2 w-full rounded-lg border p-3 font-normal"/></label>}</div><footer className="sticky bottom-0 flex justify-end gap-2 border-t bg-white p-4"><button type="button" disabled={paymentModal.saving} onClick={() => setPaymentModal(null)} className="rounded-lg border px-4 py-2 text-sm font-bold">Cancel</button>{paymentModal.confirmAmount !== null && <button type="submit" disabled={paymentModal.saving || !canSubmitPayment} className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-40">{paymentModal.saving ? 'Saving…' : 'Submit'}</button>}</footer></form></dialog>}
+      {paymentModal.confirmAmount !== null && <label className="block text-sm font-bold">Narration *<textarea required rows={3} maxLength={500} value={paymentModal.remarks} onChange={event => setPaymentModal(current => current ? { ...current, remarks: event.target.value } : current)} disabled={paymentModal.saving} placeholder="Enter payment narration" className="mt-2 w-full rounded-lg border p-3 font-normal"/></label>}</div><footer className="sticky bottom-0 flex justify-end gap-2 border-t bg-white p-4"><button type="button" disabled={paymentModal.saving} onClick={() => setPaymentModal(null)} className="rounded-lg border px-4 py-2 text-sm font-bold">Cancel</button>{paymentModal.confirmAmount !== null && <button type="submit" disabled={paymentModal.saving || !canSubmitPayment} className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-40">{paymentModal.saving ? 'Saving…' : 'Submit'}</button>}</footer></form></dialog>}
   </main></DashboardShell>;
 }

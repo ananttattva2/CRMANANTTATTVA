@@ -8,7 +8,9 @@ export default function PaymentStatusCell({ payment, canUpdate, onUpdate, compan
     {payment ? <div className={`rounded-xl border p-3 ${complete ? 'border-emerald-100 bg-emerald-50' : 'border-blue-100 bg-blue-50'}`}>
       <span className={`flex items-center gap-1.5 text-[11px] font-bold ${complete ? 'text-emerald-800' : 'text-blue-800'}`}><Icon size={14} />{complete ? 'Complete received' : 'Advance received'}</span>
       <strong className="mt-1 block text-base text-slate-900">{Number(payment.amount || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</strong>
-      {payment.paymentDate && <small className="mt-1 block text-slate-600">Payment date {payment.paymentDate}</small>}
+      {payment.paymentDate && <small className="mt-1 block text-slate-600">Receipt date {payment.paymentDate}</small>}
+      {payment.paymentMode && <small className="block text-slate-600">{payment.paymentMode}</small>}
+      {payment.referenceNumber && <small className="block break-words text-slate-600">Cheque / UTR No. {payment.referenceNumber}</small>}
       {payment.bank && <small className="block text-slate-600">{payment.bank}</small>}
       {payment.name && <small className="mt-1 block text-slate-600">By {payment.name}</small>}
       {payment.at && <small className="block text-[10px] text-slate-500">{new Date(payment.at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST</small>}
