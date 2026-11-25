@@ -1,3 +1,4 @@
+const { startMissingCtoReminderScheduler } = require('./services/missingCtoReminders');
 const { startLeadOwnershipAndEmailScheduler } = require('./services/leadOwnershipAndEmailWorkflow');
 const { runConsentExpiryReminders, startConsentExpiryReminderScheduler } = require('./services/consentExpiryReminders');
 require('./config/loadEnv')();
@@ -128,6 +129,7 @@ const connectAndStartServices = singleFlight(function () {
       startStaffLicenseScheduler();
       startLeadOwnershipAndEmailScheduler();
       startConsentExpiryReminderScheduler();
+      startMissingCtoReminderScheduler();
       startPendingApprovalReminderScheduler();
       startClientComplianceCorrectionReminderScheduler();
       startClientOnboardingReminderScheduler();

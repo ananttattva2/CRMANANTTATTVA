@@ -1117,6 +1117,7 @@ async function getNextLeadCode() {
 
 async function createLeadRecord(rawBody, user) {
   const data = setProvisionalClosureDeadlines(cleanBody(rawBody));
+  if (data.assignedTo || (data.assignments || []).some(row => row.assignedTo)) { const error = new Error('Finance must finally approve the service Purchase Order before assigning a manager.'); error.statusCode = 409; throw error; }
   const commercialError = (data.assignments || []).flatMap((row) => row.poYearRows || []).map(validatePoCommercialDetails).find(Boolean);
   if (commercialError) { const error = new Error(commercialError); error.statusCode = 400; throw error; }
   const duplicateServiceError = validateDuplicateServiceSelections(data);
@@ -2009,6 +2010,11 @@ exports.updateLead = async (req, res) => {
       data.subApplicantType = selection.piboCategory;
     }
 
+    const { managerAssignmentError, financeApprovedServices } = require('../services/financeApprovedClients');
+    if(managerAssignmentError(beforeLead,data,[])) {
+      const managerError=managerAssignmentError(beforeLead,data,await financeApprovedServices());
+      if(managerError)return res.status(409).json({error:managerError});
+    }
     const poCommercialError = (data.assignments || []).flatMap((row) => row.poYearRows || []).map(validatePoCommercialDetails).find(Boolean);
     if (poCommercialError) return res.status(400).json({ error: poCommercialError });
     if (Array.isArray(data.assignments)) {
@@ -2026,7 +2032,7 @@ exports.updateLead = async (req, res) => {
       data.assignments = data.assignments.map((row, index) => {
         const previousAssignment = beforeLead.assignments?.[index] || {};
         const managerAssignedAt = managerAssignmentTimestamp(previousAssignment, row);
-        const adminApproved = ['FINANCE_PENDING', 'APPROVED'].includes(String(row?.poApprovalStatus || '').toUpperCase());
+        const adminApproved = isPoFinanceApproved(row);
         if (!adminApproved || !row?.assignedTo || !row?.closureRequestedBy || row?.closedBy) return { ...row, managerAssignedAt };
         return { ...row, managerAssignedAt, closedBy: row.closureRequestedBy, closedByText: row.closureRequestedByText || '', closedAt: new Date().toISOString(), closureFinalizedByManager: true };
       });

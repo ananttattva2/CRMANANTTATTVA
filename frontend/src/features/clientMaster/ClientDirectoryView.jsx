@@ -187,7 +187,7 @@ function ClientDirectoryView({ clients, pagination, summary, staff, loading, err
   const staffFilterOptions = useMemo(() => buildStaffFilterOptions(staff, directoryClients), [directoryClients, staff]);
   const metricStats = useMemo(() => {
     return [
-      { label: 'Live Applications', value: Number(summary?.total || totalClientCount || 0), note: 'Accessible client records', icon: Building2, tone: 'emerald', filter: 'live' },
+      { label: 'Live Applications', value: Number(summary?.total ?? totalClientCount ?? 0), note: 'Accessible client records', icon: Building2, tone: 'emerald', filter: 'live' },
       { label: 'Annual Return', value: Number(summary?.annual || 0), note: 'Return year mapped', icon: FileText, tone: 'violet', filter: 'annual' },
       { label: 'Processed Apps', value: Number(summary?.processed || 0), note: 'CPCB approved', icon: CheckCircle2, tone: 'teal', filter: 'processed' },
       { label: 'Pending Apps', value: Number(summary?.pending || 0), note: 'ATPL pending', icon: FileCheck2, tone: 'amber', filter: 'pending' },

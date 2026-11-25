@@ -65,8 +65,8 @@ test('Approval Center reconciles only closed-PO clients and removes stale indexe
     clientMasterSourceRecordFilter: () => ({ sourceRecord: true }),
     combineAccessFilters: (...filters) => ({ $and: filters }),
     require: (name) => {
-      assert.equal(name, '../services/clientClosedPoDirectory');
-      return { closedPoClientFilter: async () => closedPoFilter };
+      assert.equal(name, '../services/financeApprovedClients');
+      return { financeApprovedClientFilter: async () => closedPoFilter };
     },
     Client: { find(filter) {
       observedFilter = filter;

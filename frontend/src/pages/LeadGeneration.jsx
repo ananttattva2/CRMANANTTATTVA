@@ -3024,7 +3024,7 @@ export default function LeadGeneration() {
                     const rowFrozen = serviceOnlyMode && index < frozenAssignmentRowCount && !ownsService;
                     const leadClosed = Boolean(row.closedBy);
                     const poApprovalStatus = String(row.poApprovalStatus || '').toUpperCase();
-                    const managerAssignmentReady = leadClosed || (['FINANCE_PENDING', 'APPROVED'].includes(poApprovalStatus) && Boolean(row.closureRequestedBy));
+                    const managerAssignmentReady = poApprovalStatus === 'APPROVED';
                     const canAssignStaff = poApprovalStatus === 'APPROVED' && String(currentUser?.role || '').toLowerCase() === 'manager' && currentUserIds.includes(String(row.assignedTo || ''));
                     const assignedManagerOptions = row.assignedTo && !managerOptions.some((option) => String(option.value) === String(row.assignedTo))
                       ? [{ value: String(row.assignedTo), label: row.assignedToText || lead.assignedToText || 'Previously assigned manager' }, ...managerOptions]
@@ -3049,7 +3049,7 @@ export default function LeadGeneration() {
                     <div className="form-input flex min-h-11 items-center bg-violet-50 font-black text-violet-800">{/plastic\s+waste/i.test(String(matchingService.eprCategory || '')) ? (matchingService.piboCategory || '-') : (matchingService.applicantType || '-')}</div>
                     <div className="form-input flex min-h-11 items-center bg-slate-50 font-black text-slate-700">{matchingService.servicesOffered || '-'}</div>
                     <div className="flex items-center gap-2"><div className="min-w-0 flex-1"><SearchableSelect disabled={rowFrozen} value={row.closedBy} options={closedByOptions} placeholder="Select user who closed the lead" onChange={(value) => requestLeadClosure(index, value)} /></div>{row.poStatus === 'provisional' && <button type="button" onClick={() => requestLeadClosure(index, row.closedBy)} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-amber-200 bg-amber-50 text-amber-700" title="Review provisional closure and upload PO"><RefreshCw className="h-4 w-4" /></button>}</div>
-                    <SearchableSelect disabled={rowFrozen || !managerAssignmentReady} value={row.assignedTo} options={assignedManagerOptions} placeholder={managerAssignmentReady ? 'Select manager to close service' : 'PO approval required'} onChange={(value) => updateAssignmentRow(index, 'assignedTo', value)} />
+                    <SearchableSelect disabled={rowFrozen || !managerAssignmentReady} value={row.assignedTo} options={assignedManagerOptions} placeholder={managerAssignmentReady ? 'Select manager to close service' : 'Finance final approval required'} onChange={(value) => updateAssignmentRow(index, 'assignedTo', value)} />
                     <SearchableSelect disabled={!canAssignStaff} value={row.assignedStaff} options={assignedStaffOptions} placeholder={poApprovalStatus !== 'APPROVED' ? 'Finance approval required' : canAssignStaff ? 'Select staff member' : 'Assigned manager only'} onChange={(value) => requestStaffAssignment(index, value)} />
                     <div className="flex justify-center">
                       {approvedRoyalty && index === royaltyClaimRowIndex ? (

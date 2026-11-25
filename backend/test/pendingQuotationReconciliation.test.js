@@ -26,7 +26,7 @@ test('pending approval reads active rows separately from bounded decision histor
 test('stored approvals and live client and quotation reconciliation run in parallel', () => {
   assert.match(controllerSource, /const storedApprovalsPromise = readStoredPendingApprovals\(listOnly\)/);
   assert.match(controllerSource, /const liveClientsPromise = isClientReviewer/);
-  assert.match(controllerSource.match(/const liveClientsPromise[\s\S]*?: Promise\.resolve\(\[\]\);/)?.[0] || '', /closedPoClientFilter/);
+  assert.match(controllerSource.match(/const liveClientsPromise[\s\S]*?: Promise\.resolve\(\[\]\);/)?.[0] || '', /financeApprovedClientFilter/);
   assert.match(controllerSource, /const \[storedFallback, liveClients, liveQuotations\] = await Promise\.all/);
   assert.match(controllerSource, /responseClients = mergePendingClients\(indexedLiveRows, liveClientRows\)/);
 });
