@@ -16,7 +16,7 @@ function serviceIdentity(source = {}) {
     category: first('eprCategory', 'serviceCategory'),
     offering: first('servicesOffered', 'applicableService'),
     business: first('businessCategory'),
-    year: first('servicesForYear', 'financialYear', 'firstAnnualReturnYearApplicable')
+    year: first('annualReturnYear', 'financialYear', 'firstAnnualReturnYearApplicable', 'servicesForYear')
   };
 }
 
@@ -75,4 +75,15 @@ function enrichPoRowsWithLatestQuotation(rows = [], quotations = [], payload = {
   });
 }
 
-module.exports = { quotationTime, amountForQuotation, selectLatestPoQuotation, enrichPoRowsWithLatestQuotation };
+function enrichOriginalPoRowsWithQuotation(rows = [], quotations = [], payload = {}) {
+  const quotation = [...quotations].sort((a, b) => quotationTime(b) - quotationTime(a))[0];
+  if (!quotation) return rows;
+  return rows.map(row => {
+    const service = { ...(payload.service || {}), financialYear: row.annualReturnYear || row.registrationYear || row.fy || payload.service?.firstAnnualReturnYearApplicable };
+    const id = text(payload.assignedServiceId || row.assignedServiceId);
+    const items = (quotation.items || []).filter(item => (id && text(item.assignedServiceId) === id) || compatibleItem(item, service));
+    if (!items.length) return row; // Never borrow another service's amount or the lead total.
+    return { ...row, quotationSent: 'yes', quotationId: text(quotation._id), quotationNumber: quotation.quotationNumber || '', quotationItems: items, quotationBasicAmount: amountForQuotation(quotation, items) };
+  });
+}
+module.exports = { enrichOriginalPoRowsWithQuotation, quotationTime, amountForQuotation, selectLatestPoQuotation, enrichPoRowsWithLatestQuotation };

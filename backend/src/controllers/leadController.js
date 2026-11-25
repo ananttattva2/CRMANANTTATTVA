@@ -195,7 +195,7 @@ const { userHasAnyRole } = require('../utils/userRoles');
 const { normalizeParent, inferPiboParent, validatePiboSelection } = require('../utils/piboCategories');
 const { ADMIN_ROLES } = require('../constants/roles');
 const { reassignPurchaseOrderAssignments, poProofManifest } = require('../services/purchaseOrderReassignment');
-const { enrichPoRowsWithLatestQuotation } = require('../services/poQuotationResolver');
+const { enrichPoRowsWithLatestQuotation, enrichOriginalPoRowsWithQuotation } = require('../services/poQuotationResolver');
 
 async function leadAccessFilter(user, { includeShared = false } = {}) {
   const scope = await getVisibleUserScope(user);
@@ -968,6 +968,7 @@ function canDirectlyApprovePoEdit(actor, modifyPoDetails, before = {}) {
 async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, submittedAssignments = [], poDebugId = '', modifyPoDetails = false, originalPoAssignmentIndexes = null }) {
   const beforeRows = Array.isArray(beforeLead.assignments) ? beforeLead.assignments : [];
   const rows = Array.isArray(lead.assignments) ? lead.assignments : [];
+  const originalQuotations = originalPoAssignmentIndexes ? await Quotation.find({ status: { $ne: 'rejected' }, $or: [{ leadRef: lead._id }, { leadId: String(lead._id) }, ...(lead.leadCode ? [{ leadCode: lead.leadCode }, { businessLeadCode: lead.leadCode }] : [])] }).select('_id quotationNumber pricingMode combinedBasicAmount subtotal grandTotal items quotationDate createdAt updatedAt').lean() : [];
   const savedApprovals = await Promise.all(rows.map(async (row, index) => {
     if (originalPoAssignmentIndexes && !originalPoAssignmentIndexes.includes(index)) return null;
     const before = findExistingAssignment(beforeRows, row, index) || beforeRows[index] || {};
@@ -998,9 +999,13 @@ async function upsertPurchaseOrderApprovals({ beforeLead = {}, lead, actor, subm
     // hydrated Mongoose array here could retain the numeric PO fields while
     // losing newly uploaded proof metadata before the approval was persisted.
     const submittedRow = Array.isArray(submittedAssignments) ? submittedAssignments[index] : null;
-    const snapshotSource = Array.isArray(submittedRow?.poYearRows) && submittedRow.poYearRows.length
+    let snapshotSource = Array.isArray(submittedRow?.poYearRows) && submittedRow.poYearRows.length
       ? submittedRow.poYearRows
       : (Array.isArray(row.poYearRows) ? row.poYearRows : []);
+    if (originalPoAssignmentIndexes) {
+      snapshotSource = enrichOriginalPoRowsWithQuotation(snapshotSource, originalQuotations, { assignedServiceId: row.assignedServiceId, service });
+      row.poYearRows = snapshotSource;
+    }
     const poRowsSnapshot = snapshotSource.map((po) => {
       const proof = resolvePoProof(po);
       return { ...po, poFileUrl: proof.url, poFileName: proof.name || String(po?.poFileName || '').trim() };

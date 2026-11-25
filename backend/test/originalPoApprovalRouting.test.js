@@ -18,6 +18,7 @@ const response = () => ({ statusCode:200, status(code){this.statusCode=code;retu
 
 test('original PO endpoint creates separate pending approvals for both Annual Return years and preserves registration', async t => {
  const requests = [];
+ t.mock.method(require('../src/models/Quotation'),'find',()=>query([]));
  const services = [
   {assignedServiceId:'registration',servicesOffered:'New Registration',firstAnnualReturnYearApplicable:'2026-27'},
   {assignedServiceId:'annual-26',servicesOffered:'Annual Return Filling',firstAnnualReturnYearApplicable:'2026-27'},

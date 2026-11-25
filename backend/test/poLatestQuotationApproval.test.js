@@ -71,3 +71,27 @@ test('PO review detail endpoint returns the latest live quotation amount instead
     Quotation.find = originalQuotationFind;
   }
 });
+
+
+test('original PO restores quotation basic amount for the correct annual-return financial year', () => {
+ const { enrichOriginalPoRowsWithQuotation } = require('../src/services/poQuotationResolver');
+ const quotation={_id:'quote',quotationNumber:'AT/26-27/528',subtotal:90000,items:[
+ {servicesOffered:'New Registration',financialYear:'2026-27',basicAmount:30000,unit:1},
+ {servicesOffered:'Annual Return Filling',financialYear:'2026-27',servicesForYear:'2027-28',basicAmount:30000,unit:1},
+ {servicesOffered:'Annual Return Filling',financialYear:'2027-28',servicesForYear:'2028-29',basicAmount:35000,unit:1}
+ ]};
+ for(const [year,expected] of [['2026-27',30000],['2027-28',35000]]) {
+  const payload={assignedServiceId:'legacy-service',service:{servicesOffered:'Annual Return Filling',financialYear:year,firstAnnualReturnYearApplicable:year}};
+  const row={fy:year,annualReturnYear:year,poNumber:'PO',poAmount:30000};
+  // Include a second identity field, as real quotation items do.
+  payload.service.eprCategory='Plastic';quotation.items.forEach(item=>item.eprCategory='Plastic');
+  const result=enrichOriginalPoRowsWithQuotation([row],[quotation],payload)[0];
+  assert.equal(result.quotationBasicAmount,expected);
+  assert.equal(result.quotationItems.length,1);
+  assert.equal(result.quotationSent,'yes');
+  assert.equal(result.poAmount,30000);
+  assert.equal(enrichPoRowsWithLatestQuotation([result],[quotation],payload)[0].quotationBasicAmount,expected);
+ }
+ const row={fy:'2029-30'};
+ assert.deepEqual(enrichOriginalPoRowsWithQuotation([row],[quotation],{service:{servicesOffered:'Unknown',financialYear:'2029-30'}}),[row]);
+});
