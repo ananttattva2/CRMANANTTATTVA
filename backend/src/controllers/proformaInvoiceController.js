@@ -1,4 +1,6 @@
 const Client = require('../models/Client');
+const { userHasAnyRole } = require('../utils/userRoles');
+const { parseHistoricalProformas, historicalSequence } = require('../services/historicalProformaImport');
 const { validGst, invoicePartyDetails } = require('../services/invoicePartyDetails');
 const ProformaInvoice = require('../models/ProformaInvoice');
 const { resolvePoProof } = require('../services/poProofResolver');
@@ -141,7 +143,7 @@ exports.list = async (req, res) => {
       if (!item.financialYear) item.financialYear = source.financialYear || source.servicesForYear;
     }
   }
-  const missingGst = rows.filter(row => !validGst(row.leadDetails?.gstNumber));
+  const missingGst = rows.filter(row => !row.historicalImport && !validGst(row.leadDetails?.gstNumber));
   if (missingGst.length) {
     const ids = values => [...new Set(values.map(value => String(value || '')).filter(value => /^[a-f0-9]{24}$/i.test(value)))];
     const clients = await Client.find({ $or: [{ _id: { $in: ids(missingGst.map(row => row.clientRef)) } }, { selectedLead: { $in: ids(missingGst.map(row => row.leadRef)) } }, { 'data.basic.clientLegalName': { $in: missingGst.map(row => row.companyName).filter(Boolean) } }] }).select('data.basic data.compliance data.selectedLeadSnapshot selectedLead').lean();
@@ -192,6 +194,34 @@ exports.sendEmail = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
+exports.importHistorical = async (req, res, next) => {
+  if (!userHasAnyRole(req.user, ['admin', 'superadmin', 'finance', 'accounts'])) {
+    return res.status(403).json({ error: 'Historical PI import requires Finance, Accounts, or Admin access.' });
+  }
+  try {
+    const invoices = parseHistoricalProformas(req.body?.rows, cleanPayload);
+    const existing = await ProformaInvoice.find({ proformaNumber: /^(?:ATPI|PI)\/26-27\/\d+$/i })
+      .select('proformaNumber').lean();
+    const occupied = new Set(existing.map(row => historicalSequence(row.proformaNumber)));
+    const pending = invoices.filter(invoice => !occupied.has(historicalSequence(invoice.proformaNumber)));
+    const now = new Date();
+    const writes = pending.map(invoice => ({
+      updateOne: {
+        filter: { proformaNumber: invoice.proformaNumber },
+        update: { $setOnInsert: { ...invoice, createdBy: req.user._id, createdAt: now, updatedAt: now } },
+        upsert: true,
+        timestamps: false
+      }
+    }));
+    const created = writes.length ? (await ProformaInvoice.bulkWrite(writes, { ordered: false })).upsertedCount : 0;
+    return res.status(201).json({ ok: true, created, skipped: invoices.length - created });
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
+    if (error.code === 11000) return res.status(409).json({ error: 'Another import saved a matching PI number. Upload the same workbook again to save any remaining invoices.' });
+    return next(error);
+  }
+};
+
 exports.create = async (req, res) => {
   const payload = cleanPayload(req.body);
   if (!payload.companyName) return res.status(400).json({ error: 'Company Name is required.' });
@@ -209,6 +239,7 @@ exports.update = async (req, res) => {
   const scope = await getVisibleUserScope(req.user);
   const row = await ProformaInvoice.findOne({ _id: req.params.id, ...(scope === null ? {} : { createdBy: { $in: scope.ids } }) });
   if (!row) return res.status(404).json({ error: 'Proforma Invoice not found or not accessible.' });
+  if (row.historicalImport) return res.status(409).json({ error: 'Imported historical invoices are read-only.' });
   const payload = cleanPayload(req.body);
   if (!payload.companyName || !payload.quotationNumber || !payload.items.length) {
     return res.status(400).json({ error: 'Company, Quotation Number and at least one item are required.' });

@@ -111,7 +111,8 @@ export function buildInvoicePdf(row) {
   const combined = row.pricingMode === 'combined'
   const fullBase = combined ? Number(row.combinedBasicAmount ?? row.subtotal ?? 0) : items.reduce((sum, item) => sum + itemMultiplier(item) * Number(item.basicAmount || 0), 0)
   const base = Math.round(fullBase * percentage) / 100
-  const tax = Math.round(base * 18) / 100
+  const gstRate = row.historicalImport ? Number(row.gstRate ?? 18) : 18
+  const tax = Math.round(base * gstRate) / 100
   items.forEach((item, index) => {
     const title = item.serviceCategory || item.piboCategory || 'Service'
     const businessCategory = String(item.businessCategory || '').trim()
@@ -204,7 +205,11 @@ export function buildInvoicePdf(row) {
     y += 2
   })
   bodyBorders(600)
-  const taxes = intraState ? [['CGST OUTPUT 9%', 9, Math.round(base * 9) / 100], ['SGST OUTPUT 9%', 9, Math.round((tax - Math.round(base * 9) / 100) * 100) / 100]] : [['IGST OUTPUT 18%', 18, tax]]
+  const halfRate = gstRate / 2
+  const centralTax = Math.round(base * halfRate) / 100
+  const taxes = intraState
+    ? [[`CGST OUTPUT ${halfRate}%`, halfRate, centralTax], [`SGST OUTPUT ${halfRate}%`, halfRate, Math.round((tax - centralTax) * 100) / 100]]
+    : [[`IGST OUTPUT ${gstRate}%`, gstRate, tax]]
   taxes.forEach(([label, rate, value], index) => {
     const yy = Math.min(567, y + 23) + index * 14
     text(label, 346, yy, { style: 'bolditalic', size: 8, align: 'right' })

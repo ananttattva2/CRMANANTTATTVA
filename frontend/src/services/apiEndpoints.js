@@ -130,6 +130,7 @@ const API_ENDPOINTS = {
   proformaInvoices: {
     list: '/proforma-invoices',
     create: '/proforma-invoices',
+    importHistorical: '/proforma-invoices/import-historical',
     detail: (id) => `/proforma-invoices/${encodePathValue(id)}`
   },
   annualReturns: {

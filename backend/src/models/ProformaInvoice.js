@@ -38,6 +38,7 @@ const PurchaseOrderYearSchema = new mongoose.Schema({
 
 const ProformaInvoiceSchema = new mongoose.Schema({
   proformaNumber: { type: String, required: true, unique: true, index: true, trim: true },
+  historicalImport: { type: Boolean, default: false },
   quotationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Quotation', index: true },
   leadRef: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead', index: true },
   clientRef: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', index: true },
