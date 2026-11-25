@@ -77,6 +77,12 @@ function stageState(record, stage, annualReview = null) {
   if (row?.yesNo === 'Yes') return row.partialDataReceived && !row.completeDataReceived ? 'progress' : 'complete';
   return row?.date || row?.files?.length || row?.remarks ? 'progress' : 'pending';
 }
+const nilBypassedStages = new Set(['Data Explained', 'Data Format Sent', 'Received from client', 'Ready to upload', 'Upload Complete']);
+function trackerStageState(record, stage, review) {
+  if (nilBypassedStages.has(stage) && stageState(record, 'Nil Upload') === 'complete') return 'notApplicable';
+  return stageState(record, stage, review);
+}
+
 function hasWorkflowProgress(record, financialYear) {
   if (!record || financialYear && normalizeYear(record.financialYear) !== normalizeYear(financialYear)) return false;
   return STAGES.some(stage => stageState(record, stage) !== 'pending')
@@ -187,7 +193,7 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
     const group = groups.get(ownerId);
     const reviewYear = normalizeYear(options.financialYear || purchaseRecord?.financialYear || salesRecord?.financialYear);
     const annualReview = reviewIndex.get(`${clientId}:${reviewYear}`);
-    const detail = { clientId: id(client._id), clientName: client.selectedLead?.company || client.selectedLead?.companyName || client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || client.data?.importMeta?.companyName || 'Untitled client', slaReceived: client.sla?.status === 'Yes', purchase: STAGES.map(stage => stageState(purchaseRecord, stage, annualReview)), sales: STAGES.map(stage => stageState(salesRecord, stage, annualReview)) };
+    const detail = { clientId: id(client._id), clientName: client.selectedLead?.company || client.selectedLead?.companyName || client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || client.data?.importMeta?.companyName || 'Untitled client', slaReceived: client.sla?.status === 'Yes', purchase: STAGES.map(stage => trackerStageState(purchaseRecord, stage, annualReview)), sales: STAGES.map(stage => trackerStageState(salesRecord, stage, annualReview)) };
     detail.companyKey = assignedCompanyKey(client);
     detail.clientIds = [clientId];
     if (options.groupBy === 'application') {
@@ -206,6 +212,8 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
       existing.slaReceived = existing.slaReceived || detail.slaReceived;
       for (const module of ['purchase', 'sales']) existing[module] = existing[module].map((state, position) => {
         const next = detail[module][position];
+        if (state === 'notApplicable') return next;
+        if (next === 'notApplicable') return state;
         if (position >= 7 && (state === 'rejected' || next === 'rejected')) return 'rejected';
         return state === 'complete' && next === 'complete' ? 'complete' : position >= 7 || state === 'pending' && next === 'pending' ? 'pending' : 'progress';
       });
@@ -232,7 +240,9 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
           ? sources.filter(source => source[module + 'Recorded'])
           : sources;
         detail[module] = STAGES.map((_, position) => {
-          const states = workflowSources.map(source => source[module][position]);
+          const applicable = workflowSources.map(source => source[module][position]);
+          const states = applicable.filter(state => state !== 'notApplicable');
+          if (!states.length && applicable.length) return 'notApplicable';
           if (position >= 7 && states.some(state => state === 'rejected')) return 'rejected';
           if (states.length && states.every(state => state === 'complete')) return 'complete';
           return position >= 7 || states.every(state => state === 'pending') ? 'pending' : 'progress';
@@ -244,7 +254,9 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
   }
   for (const group of groups.values()) for (const detail of group.clients) {
     group[detail.slaReceived ? 'slaReceived' : 'slaNotReceived']++;
-    for (const module of ['purchase', 'sales']) detail[module].forEach((state, position) => group[module][position][state]++);
+    for (const module of ['purchase', 'sales']) detail[module].forEach((state, position) => {
+      if (state !== 'notApplicable') group[module][position][state]++;
+    });
   }
   return [...groups.values()].sort((a, b) => a.userName.localeCompare(b.userName));
 }

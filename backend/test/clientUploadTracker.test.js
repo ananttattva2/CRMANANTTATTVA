@@ -155,8 +155,16 @@ test('Nil Upload counts only Yes and follows Ready to upload in both dashboard m
   for (const yesNo of ['No', '', undefined]) assert.equal(stageState({ checklist: [{ particular: 'Nil Upload', yesNo, date: '2026-11-16', remarks: 'old evidence' }] }, 'Nil Upload'), 'pending');
   assert.equal(stageState({ checklist: [{ particular: 'Nil Upload', yesNo: 'Yes' }] }, 'Nil Upload'), 'complete');
   const clients = [{ _id: 'nil-client', selectedLead: { assignedStaff: 'nil-user', company: 'Nil Example' } }];
-  const records = [{ clientId: 'nil-client', checklist: [{ particular: 'Nil Upload', yesNo: 'Yes' }] }];
+  const records = [{ clientId: 'nil-client', checklist: [
+    { particular: 'Nil Upload', yesNo: 'Yes' },
+    { particular: 'Data Explained', yesNo: 'No', remarks: 'Old evidence' },
+    { particular: 'Client Approval on data', yesNo: 'Yes' }
+  ] }];
   const [group] = buildUploadTracker(clients, [{ _id: 'nil-user', name: 'Nil User', role: 'operation' }], records, []);
   assert.equal(group.purchase[nilIndex].complete, 1);
   assert.equal(group.sales[nilIndex].complete, 0);
+  assert.equal(group.purchase[0].progress, 0);
+  assert.equal(group.clients[0].purchase[0], 'notApplicable');
+  assert.equal(group.clients[0].sales[0], 'pending');
+  assert.equal(group.purchase[STAGES.indexOf('Client Approval on data')].complete, 1);
 });

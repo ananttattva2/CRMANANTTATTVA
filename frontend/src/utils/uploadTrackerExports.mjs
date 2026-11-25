@@ -2,7 +2,7 @@ import { exportWithReason } from './dataExport.mjs'
 import { countProgressedUploadTrackerClients, hasUploadTrackerClientProgress } from './uploadTrackerCompletion.mjs'
 export const UPLOAD_TRACKER_STAGES = ['Data Explained', 'Data Format Sent', 'Data Received from Client', 'Ready to Upload', 'Nil Upload', 'Client Approval Received', 'Upload Complete', 'Manager Review', 'Compliance Review']
 const modules = ['purchase', 'sales']
-const stateLabel = (state, index) => state === 'complete' ? index >= 7 ? 'Approved' : 'Completed' : state === 'progress' ? 'In progress' : state === 'rejected' ? 'Rejected' : 'Pending'
+const stateLabel = (state, index) => state === 'complete' ? index >= 7 ? 'Approved' : 'Completed' : state === 'progress' ? 'In progress' : state === 'rejected' ? 'Rejected' : state === 'notApplicable' ? 'Not applicable' : 'Pending'
 const safe = value => /^[=+@-]/.test(String(value || '')) ? `'${value}` : String(value || '')
 const ratio = (clients, module, index) => {
   const completed = clients.filter(client => client[module]?.[index] === 'complete').length
