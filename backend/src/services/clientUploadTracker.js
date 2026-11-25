@@ -78,8 +78,12 @@ function stageState(record, stage, annualReview = null) {
   return row?.date || row?.files?.length || row?.remarks ? 'progress' : 'pending';
 }
 const nilBypassedStages = new Set(['Data Explained', 'Data Format Sent', 'Received from client', 'Ready to upload', 'Upload Complete']);
+const checklistStatusStages = new Set(['Received from client', 'Ready to upload', 'Client Approval on data', 'Upload Complete']);
 function trackerStageState(record, stage, review) {
   if (nilBypassedStages.has(stage) && stageState(record, 'Nil Upload') === 'complete') return 'notApplicable';
+  if (checklistStatusStages.has(stage)) {
+    return record?.checklist?.some(row => row.particular === stage && row.yesNo === 'Yes') ? 'complete' : 'pending';
+  }
   return stageState(record, stage, review);
 }
 
@@ -214,6 +218,7 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
         const next = detail[module][position];
         if (state === 'notApplicable') return next;
         if (next === 'notApplicable') return state;
+        if (checklistStatusStages.has(STAGES[position])) return state === 'complete' || next === 'complete' ? 'complete' : 'pending';
         if (position >= 7 && (state === 'rejected' || next === 'rejected')) return 'rejected';
         return state === 'complete' && next === 'complete' ? 'complete' : position >= 7 || state === 'pending' && next === 'pending' ? 'pending' : 'progress';
       });
@@ -243,6 +248,7 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
           const applicable = workflowSources.map(source => source[module][position]);
           const states = applicable.filter(state => state !== 'notApplicable');
           if (!states.length && applicable.length) return 'notApplicable';
+          if (checklistStatusStages.has(STAGES[position])) return states.includes('complete') ? 'complete' : 'pending';
           if (position >= 7 && states.some(state => state === 'rejected')) return 'rejected';
           if (states.length && states.every(state => state === 'complete')) return 'complete';
           return position >= 7 || states.every(state => state === 'pending') ? 'pending' : 'progress';

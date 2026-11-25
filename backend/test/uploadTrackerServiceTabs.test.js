@@ -173,6 +173,7 @@ test('blank grouped AR workflows do not downgrade completed Purchase or Sales st
     ...blank, checklist: [{ particular: 'Received from client', yesNo: 'Yes', partialDataReceived: true }]
   };
   const [withPartial] = buildUploadTracker(clients, [user], [completed, partial], [completed], options);
-  assert.equal(withPartial.purchase[2].progress, 1);
+  assert.equal(withPartial.purchase[2].complete, 1);
+  assert.equal(withPartial.purchase[2].progress, 0);
   assert.equal(withPartial.sales[2].complete, 1);
 });

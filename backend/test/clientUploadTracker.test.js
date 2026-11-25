@@ -75,13 +75,20 @@ const { buildDataWorkflowEmail } = require('../src/services/dataWorkflowEmail');
 test('tracker counts allocated clients once and separates Purchase and Sales stages', () => {
   const clients = [{ _id:'c1', selectedLead:{assignedStaff:'u1'}, createdBy:'admin', adminControls:{assignedTo:'u1'}, sla:{status:'Yes'}, data:{basic:{clientLegalName:'Alpha'}} },{ _id:'c2', selectedLead:{assignedStaffText:'First User'}, createdBy:'u2', data:{importMeta:{assignedTo:'First User'}} }];
   const users = [{_id:'u1',name:'First User',role:'operations'}, {_id:'u2',name:'Second User',role:'operations'}];
-  const purchases = [{clientId:'c1',checklist:[{particular:'Data Explained',yesNo:'Yes'}],baseUpload:{importStatus:'Imported'},portalUpload:{importStatus:'Imported'}}];
+  const stages = ['Received from client', 'Ready to upload', 'Client Approval on data', 'Upload Complete'];
+  const purchases = [{ clientId: 'c1', checklist: ['Data Explained', ...stages].map(particular => ({
+    particular, yesNo: 'Yes', partialDataReceived: true, completeDataReceived: false
+  })) }];
   const result = buildUploadTracker(clients,users,purchases,[]);
   const firstUser = result.find(row => row.userId === 'u1');
   const secondUser = result.find(row => row.userId === 'u2');
   assert.equal(result.length,2); assert.equal(firstUser.clients.length,2);
   assert.equal(firstUser.slaReceived,1); assert.equal(firstUser.slaNotReceived,1);
-  assert.equal(firstUser.purchase[0].complete,1); assert.equal(firstUser.purchase[6].complete,1);
+  for (const index of [2, 3, 5, 6]) {
+    assert.equal(firstUser.purchase[index].complete, 1);
+    assert.equal(firstUser.purchase[index].progress, 0);
+  }
+  assert.equal(firstUser.purchase[0].progress, 1);
   assert.equal(firstUser.sales[6].pending,2);
   assert.equal(firstUser.purchase[0].pending,1);
   assert.equal(secondUser.clients.length,0);
