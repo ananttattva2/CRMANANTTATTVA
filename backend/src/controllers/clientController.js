@@ -1263,7 +1263,7 @@ exports.listClients = async (req, res) => {
     testLeadReferences ? dashboardClientExclusionFilter(testLeadReferences) : {}
   );
   if (req.query.directory === 'true') {
-    baseFilter = combineAccessFilters(baseFilter, await require('../services/financeApprovedClients').financeApprovedClientFilter());
+    baseFilter = combineAccessFilters(baseFilter, await require('../services/clientDirectoryEligibility').clientDirectoryEligibilityFilter());
   }
   const paginated = req.query.page !== undefined || req.query.limit !== undefined || req.query.paginated === 'true';
 
@@ -2155,7 +2155,7 @@ exports.listPendingApprovals = async (req, res) => {
   const liveClientsPromise = isClientReviewer
     ? Promise.all([
         clientApprovalAccessFilter(req.user),
-        require('../services/financeApprovedClients').financeApprovedClientFilter()
+        require('../services/clientDirectoryEligibility').clientDirectoryEligibilityFilter()
       ]).then(([accessFilter, closedPoFilter]) => Client.find(combineAccessFilters(
         clientMasterSourceRecordFilter(),
         accessFilter,

@@ -22,6 +22,8 @@ BACKEND_CHANGED=false
 BACKEND_DEPS_CHANGED=false
 PM2_TOUCHED=false
 SERVER_STASH_SHA=""
+UNTRACKED_RECOVERY_DIR=""
+UNTRACKED_RECOVERY_FILES=()
 
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then
@@ -39,6 +41,23 @@ cleanup_build_directory() {
   if [[ "$DEPLOY_DRIVER_PATH" =~ ^/tmp/crm-deploy-[0-9]+-[0-9]+\.sh$ && -f "$DEPLOY_DRIVER_PATH" ]]; then
     rm -f -- "$DEPLOY_DRIVER_PATH"
   fi
+}
+
+preserve_untracked_checkout_collisions() {
+  local relative_path destination
+  while IFS= read -r -d '' relative_path; do
+    if ! git cat-file -e "$EXPECTED_SHA:$relative_path" 2>/dev/null; then
+      continue
+    fi
+    if [[ -z "$UNTRACKED_RECOVERY_DIR" ]]; then
+      UNTRACKED_RECOVERY_DIR="$(mktemp -d "$APP_DIR/.deployment-recovery.XXXXXX")"
+    fi
+    destination="$UNTRACKED_RECOVERY_DIR/$relative_path"
+    mkdir -p -- "$(dirname -- "$destination")"
+    mv -- "$APP_DIR/$relative_path" "$destination"
+    UNTRACKED_RECOVERY_FILES+=("$relative_path")
+    echo "Preserved server-only checkout collision: $relative_path"
+  done < <(git ls-files --others --exclude-standard -z)
 }
 
 rollback_deployment() {
@@ -71,6 +90,12 @@ rollback_deployment() {
     fi
   fi
 
+  for relative_path in "${UNTRACKED_RECOVERY_FILES[@]}"; do
+    if [[ ! -e "$APP_DIR/$relative_path" ]]; then
+      mkdir -p -- "$(dirname -- "$APP_DIR/$relative_path")"
+      cp -- "$UNTRACKED_RECOVERY_DIR/$relative_path" "$APP_DIR/$relative_path"
+    fi
+  done
   exit "$exit_code"
 }
 
@@ -144,6 +169,7 @@ if ! git diff --quiet "$PREVIOUS_SHA" "$EXPECTED_SHA" -- backend/package.json ba
   BACKEND_DEPS_CHANGED=true
 fi
 
+preserve_untracked_checkout_collisions
 git checkout --detach "$EXPECTED_SHA"
 CODE_UPDATED=true
 

@@ -22,3 +22,12 @@ backend/storage-migration-output/
 
 /.storage-migration/
 /.invoice-correction-backups/
+
+# Production rollback snapshots and uploaded migration backups.
+/.deployment-recovery.*/
+/.cto-digest-backups/
+/.original-po-approval-backups/
+/.po-basic-amount-backups/
+/.client-quantity-backups/
+/backend/.env.*backup*
+/frontend/.dist-next.*/
