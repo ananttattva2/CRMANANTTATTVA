@@ -1,3 +1,5 @@
+import productQuantity from '../../../../shared/productQuantity.cjs';
+const { normalizeProductQuantities } = productQuantity;
 import * as XLSX from 'xlsx';
 
 const annualDraftLegacyKeys = {
@@ -252,7 +254,7 @@ function mergeClientData(primary = {}, fallback = {}) {
   // and assigned-service snapshots. Hydration must cover every current tab,
   // including document arrays and additional contacts, without allowing an
   // empty source value to erase a populated saved value.
-  return mergeHydratedClientValue(primary || {}, fallback || {}) || {};
+  return normalizeProductQuantities(mergeHydratedClientValue(primary || {}, fallback || {}) || {});
 }
 
 function readClientData(item) {

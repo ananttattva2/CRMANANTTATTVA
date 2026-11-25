@@ -1,3 +1,5 @@
+import productQuantity from '../../../shared/productQuantity.cjs'
+const { splitProductQuantity } = productQuantity
 import { exportWithReason } from './dataExport.mjs'
 function text(value, fallback = '') {
   const result = String(value ?? '').trim()
@@ -132,7 +134,7 @@ export function cteCtoExportRows(groups = []) {
       'CTO/CCA Order No.': text(plant.ctoOrderNo, '-'),
       'CTO/CCA Issue Date': text(plant.ctoIssueDate, '-'),
       'CTO/CCA Valid Upto': text(plant.ctoValidDate, '-'),
-      'CTO/CCA Product Quantity': (plant.ctoProductRows || []).map((row) => `${text(row.productName, 'Product')}: ${text(row.quantity, '-')}`).join('; ') || '-',
+      'CTO/CCA Product Quantity': (plant.ctoProductRows || []).map((row) => `${text(row.productName, 'Product')}: ${[splitProductQuantity(row).quantity, splitProductQuantity(row).uom, splitProductQuantity(row).period].filter(Boolean).join(' ') || '-'}`).join('; ') || '-',
       'CTO/CCA Document': documentUrl(plant.ctoDocument) || '-',
       'OTP Person Name': peopleValues(record.otpContacts || [], 'personName'),
       'OTP Mobile No.': peopleValues(record.otpContacts || [], 'mobile'),

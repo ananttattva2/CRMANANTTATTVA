@@ -1,3 +1,4 @@
+const { normalizeProductQuantities, validateProductQuantities } = require('../../../shared/productQuantity.cjs');
 const { readPreviousClientDecisions } = require('../services/clientDecisionHistory');
 const mongoose = require('mongoose');
 const { inclusionProjection } = require('../utils/inclusionProjection');
@@ -466,7 +467,9 @@ function normalizeAdminControls(adminControls = {}) {
 }
 
 function normalizeClientRequestPayload(body = {}) {
-  const data = isPlainObject(body.data) ? { ...body.data } : {};
+  const data = normalizeProductQuantities(isPlainObject(body.data) ? { ...body.data } : {});
+  const quantityError = validateProductQuantities(data);
+  if (quantityError) { const error = new Error(quantityError); error.status = 400; error.statusCode = 400; throw error; }
   const adminControls = normalizeAdminControls(body.adminControls);
   const assignedToLabel = readAssignedToLabel(body.adminControls?.assignedTo);
 
@@ -1260,7 +1263,7 @@ exports.listClients = async (req, res) => {
     testLeadReferences ? dashboardClientExclusionFilter(testLeadReferences) : {}
   );
   if (req.query.directory === 'true') {
-    baseFilter = combineAccessFilters(baseFilter, await require('../services/clientClosedPoDirectory').closedPoClientFilter());
+    baseFilter = combineAccessFilters(baseFilter, { $or: [await require('../services/clientClosedPoDirectory').closedPoClientFilter(), ...require('../services/clientMasterVisibility').savedClientDirectoryBranches()] });
   }
   const paginated = req.query.page !== undefined || req.query.limit !== undefined || req.query.paginated === 'true';
 

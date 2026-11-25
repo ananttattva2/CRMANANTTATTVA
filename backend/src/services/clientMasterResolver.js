@@ -1,3 +1,4 @@
+const { normalizeProductQuantities } = require('../../../shared/productQuantity.cjs');
 function isObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -134,7 +135,7 @@ function resolveClientMasterData(record = {}, requestedAssignedServiceId = '') {
     if (data[key] === undefined && raw[key] !== undefined) data[key] = raw[key];
   });
 
-  if (!assignedServiceId) return data;
+  if (!assignedServiceId) return normalizeProductQuantities(data);
   const cpcbScope = data.cpcbDataByAssignedServiceId?.[assignedServiceId];
   const serviceScope = data.serviceDetailsByAssignedServiceId?.[assignedServiceId];
 
@@ -149,7 +150,7 @@ function resolveClientMasterData(record = {}, requestedAssignedServiceId = '') {
     const specific = serviceScope?.[section] || cpcbScope?.[section];
     if (Array.isArray(specific)) data[section] = specific.length ? specific : (Array.isArray(data[section]) ? data[section] : specific);
   });
-  return data;
+  return normalizeProductQuantities(data);
 }
 
 module.exports = {

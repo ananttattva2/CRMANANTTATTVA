@@ -12,3 +12,13 @@ test('directory includes a real linked Client Master even when an old approval o
     ]
   });
 });
+
+
+test('saved client records are visible before PO closure without adding empty placeholders', () => {
+ const { savedClientDirectoryBranches } = require('../src/services/clientMasterVisibility');
+ assert.deepEqual(savedClientDirectoryBranches(), [
+  { workflowStatus: 'submitted' },
+  { 'data.cte.plantWiseDetails.0': { $exists: true } },
+  { 'data.compliance.pan': { $exists: true, $nin: ['', null] } }
+ ]);
+});
