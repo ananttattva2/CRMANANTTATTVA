@@ -192,9 +192,11 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
     detail.clientIds = [clientId];
     if (options.groupBy === 'application') {
       Object.assign(detail, descriptor);
-      detail.workflowRecorded = hasWorkflowProgress(purchaseIndex.get(clientId), options.financialYear) || hasWorkflowProgress(salesIndex.get(clientId), options.financialYear);
+      const purchaseRecorded = hasWorkflowProgress(purchaseRecord, options.financialYear);
+      const salesRecorded = hasWorkflowProgress(salesRecord, options.financialYear);
+      detail.workflowRecorded = purchaseRecorded || salesRecorded;
       detail.companyKey += ':' + descriptor.category.toLowerCase().replace(/[^a-z0-9]/g, '') + ':' + descriptor.unit.toLowerCase().replace(/[^a-z0-9]/g, '');
-      detail.sources = [{ ...descriptor, workflowRecorded: detail.workflowRecorded, clientId, slaReceived: detail.slaReceived, purchase: detail.purchase, sales: detail.sales }];
+      detail.sources = [{ ...descriptor, workflowRecorded: detail.workflowRecorded, purchaseRecorded, salesRecorded, clientId, slaReceived: detail.slaReceived, purchase: detail.purchase, sales: detail.sales }];
     }
     const existing = group.clients.find(row => row.companyKey === detail.companyKey);
     if (existing) {
@@ -225,11 +227,17 @@ function buildUploadTracker(clients, users, purchases, sales, options = {}) {
       detail.offered = representative.offered;
       detail.clientIds = sources.map(source => source.clientId);
       detail.slaReceived = sources.some(source => source.slaReceived);
-      for (const module of ['purchase', 'sales']) detail[module] = STAGES.map((_, position) => {
-        const states = sources.map(source => source[module][position]);
-        if (position >= 7 && states.some(state => state === 'rejected')) return 'rejected';
-        return states.every(state => state === 'complete') ? 'complete' : position >= 7 || states.every(state => state === 'pending') ? 'pending' : 'progress';
-      });
+      for (const module of ['purchase', 'sales']) {
+        const workflowSources = representative.serviceType === 'annual'
+          ? sources.filter(source => source[module + 'Recorded'])
+          : sources;
+        detail[module] = STAGES.map((_, position) => {
+          const states = workflowSources.map(source => source[module][position]);
+          if (position >= 7 && states.some(state => state === 'rejected')) return 'rejected';
+          if (states.length && states.every(state => state === 'complete')) return 'complete';
+          return position >= 7 || states.every(state => state === 'pending') ? 'pending' : 'progress';
+        });
+      }
       delete detail.sources;
       return [detail];
     });

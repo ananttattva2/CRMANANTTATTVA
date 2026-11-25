@@ -145,3 +145,34 @@ test('AR tracker keeps both legacy multi-service rows when assignments are linke
     assert.deepEqual(group.clients.map((row) => row.category).sort(), ['Brand Owner', 'Importer']);
   }
 });
+
+test('blank grouped AR workflows do not downgrade completed Purchase or Sales steps', () => {
+  const clients = [client('completed', 'Annual Return'), client('duplicate', 'Annual Return')];
+  const financialYear = '2025-26';
+  clients[1].data.cpcb = { status: 'Approved' };
+  clients[1].selectedLead.assignments[0].poStatus = 'received';
+  clients[1].selectedLead.assignments[0].poYearRows = [{ annualReturnYear: financialYear, poNumber: 'PO-1' }];
+  const options = { groupBy: 'application', serviceType: 'annual', financialYear };
+  const completed = {
+    clientId: 'completed', financialYear,
+    checklist: [
+      { particular: 'Received from client', yesNo: 'Yes', completeDataReceived: true },
+      { particular: 'Ready to upload', yesNo: 'Yes', completeDataReceived: true }
+    ]
+  };
+  const blank = { clientId: 'duplicate', financialYear, checklist: [] };
+  const [group] = buildUploadTracker(clients, [user], [completed, blank], [], options);
+  assert.equal(group.clients.length, 1);
+  assert.deepEqual(group.clients[0].clientIds, ['completed', 'duplicate']);
+  assert.equal(group.purchase[2].complete, 1);
+  assert.equal(group.purchase[2].progress, 0);
+  assert.equal(group.purchase[3].complete, 1);
+  assert.equal(group.sales[2].pending, 1);
+
+  const partial = {
+    ...blank, checklist: [{ particular: 'Received from client', yesNo: 'Yes', partialDataReceived: true }]
+  };
+  const [withPartial] = buildUploadTracker(clients, [user], [completed, partial], [completed], options);
+  assert.equal(withPartial.purchase[2].progress, 1);
+  assert.equal(withPartial.sales[2].complete, 1);
+});
