@@ -10,7 +10,7 @@ function queryResult(rows) {
   return { select() { return this; }, lean: async () => rows };
 }
 
-test('PO referral and payment notifications reach the owner and secondary-role admins', async (t) => {
+test('PO referral and payment notifications reach the owner, managers, admins, and Finance', async (t) => {
   const originalFind = User.find;
   const originalSendMail = mailer.sendMail;
   const controllerPath = require.resolve('../src/controllers/leadController');
@@ -20,7 +20,8 @@ test('PO referral and payment notifications reach the owner and secondary-role a
   const superAdmin = { email: 'superadmin@example.test' };
   const admin = { email: 'admin@example.test' };
   const submitter = { email: 'submitter@example.test' };
-  const adminRoleQueries = [];
+  const manager = { email: 'manager@example.test', role: 'manager' };
+  const finance = { email: 'finance@example.test', role: 'sales', roles: ['Finance'] };
 
   User.find = (filter) => {
     const clauses = filter.$or || [];
@@ -30,9 +31,14 @@ test('PO referral and payment notifications reach the owner and secondary-role a
     if (clauses.some((clause) => {
       const patterns = [...(clause.role?.$in || []), ...(clause.roles?.$in || [])];
       const matchesSuperAdminAlias = patterns.some((pattern) => pattern instanceof RegExp && pattern.test('Super Admin'));
-      if (matchesSuperAdminAlias) adminRoleQueries.push(filter);
       return matchesSuperAdminAlias;
-    })) return queryResult([superAdmin, admin]);
+    })) {
+      const users = [{ ...superAdmin, roles: ['Super Admin'] }, { ...admin, role: 'admin' }, manager, finance];
+      return queryResult(users.filter(user => clauses.some(clause =>
+        clause.role?.$in?.some(pattern => user.role && pattern.test(user.role)) ||
+        clause.roles?.$in?.some(pattern => user.roles?.some(role => pattern.test(role)))
+      )));
+    }
     if (clauses.some((clause) => clause._id)) return queryResult([superAdmin, admin, submitter]);
     return queryResult([superAdmin, admin]);
   };
@@ -95,13 +101,13 @@ test('PO referral and payment notifications reach the owner and secondary-role a
       assignments: [{ assignedStaff: 'anand-id', assignedStaffEmail: 'anand@example.test', poYearRows: [{ poNumber: 'PO-1', poAmount: 1000 }] }]
     },
     index: 0, status: 'PAYMENT', remarks: '', paymentReceived: true,
-    paymentStatus: { status: 'ADVANCE_RECEIVED', amount: 250, confirmed: false, name: 'Finance User', at: '2026-11-21T10:00:00Z' }, poAmount: 1000
+    paymentStatus: { status: 'ADVANCE_RECEIVED', amount: 250, paymentDate: '2026-11-20', bank: 'HDFC Bank', confirmed: false, name: 'Finance User', at: '2026-11-21T10:00:00Z' }, poAmount: 1000
   });
-  assert.equal(payment.sent, 3);
+  assert.equal(payment.sent, 5);
   assert.deepEqual(new Set(sent.map((mail) => mail.to)), new Set([
-    'gaurav@example.test', 'superadmin@example.test', 'admin@example.test'
+    'gaurav@example.test', 'superadmin@example.test', 'admin@example.test', 'manager@example.test', 'finance@example.test'
   ]));
-  assert.ok(adminRoleQueries.length > 0, 'payment notifications query role aliases such as "Super Admin"');
+  assert.ok(sent.every(mail => mail.html.includes('2026-11-20') && mail.html.includes('HDFC Bank')));
   assert.ok(sent.every((mail) => /payment received/i.test(mail.subject)));
   assert.ok(sent.every((mail) => mail.html.includes('Amount received')));
   assert.ok(sent.every((mail) => mail.html.includes('Recorded by') && mail.html.includes('Finance User') && mail.html.includes('Updated at')));

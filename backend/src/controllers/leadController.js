@@ -2417,19 +2417,19 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
   const ownerId = owner && typeof owner === 'object' && typeof owner.toHexString === 'function'
     ? owner
     : owner?._id || (typeof owner?.id === 'string' ? owner.id : '') || (mongoose.isValidObjectId(owner) ? owner : '');
-  const ownerEmail = hasGeneratedForOwner
+  const ownerEmail = leadOwner
     ? leadOwnerEmailValue || owner?.email || (typeof owner === 'string' && owner.includes('@') ? owner : '')
     : assignment.assignedStaffEmail || serviceSnapshot.assignedStaffEmail || serviceSelection.assignedStaffEmail
       || (!hasAssignedOwner ? assignment.closedOnBehalfOfEmail || lead?.closedOnBehalfOfEmail : '')
       || (allowLeadOwnerFallback ? lead?.assignedStaffEmail : '') || owner?.email
       || (typeof owner === 'string' && owner.includes('@') ? owner : '');
-  const ownerName = hasGeneratedForOwner
+  const ownerName = leadOwner
     ? leadOwnerNameValue || owner?.name || (owner && !ownerId && !ownerEmail ? String(owner) : '')
     : assignment.assignedStaffText || serviceSnapshot.assignedStaffText || serviceSelection.assignedStaffText
       || (!hasAssignedOwner ? assignment.closedOnBehalfOfName || lead?.closedOnBehalfOfName : '')
       || (allowLeadOwnerFallback ? lead?.assignedStaffText : '') || owner?.name
       || (owner && !ownerId && !ownerEmail ? String(owner) : '');
-  const ownerCrmId = hasGeneratedForOwner
+  const ownerCrmId = leadOwner
     ? leadOwnerCrmId || owner?.crmUserId || (owner && !ownerId ? String(owner) : '')
     : assignment.assignedStaffCrmUserId || serviceSnapshot.assignedStaffCrmUserId
       || serviceSelection.assignedStaffCrmUserId || (!hasAssignedOwner ? closureOwner : '')
@@ -2447,14 +2447,14 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
     ? await User.find({ $or: ownerConditions, isActive: { $ne: false } }).select('email').lean()
     : [];
   const leadOwnerEmail = String(ownerEmail || '').trim().toLowerCase();
-  const adminRolePatterns = [/^admin$/i, /^super[\s_-]*admin$/i];
-  const adminUsers = !ownerOnly && paymentReceived
-    ? await User.find({ $or: [{ role: { $in: adminRolePatterns } }, { roles: { $in: adminRolePatterns } }], isActive: { $ne: false } }).select('email').lean()
+  const paymentRolePatterns = [/^admin$/i, /^super[\s_-]*admin$/i, /^manager$/i, /^finance$/i, /^accounts$/i];
+  const paymentUsers = !ownerOnly && paymentReceived
+    ? await User.find({ $or: [{ role: { $in: paymentRolePatterns } }, { roles: { $in: paymentRolePatterns } }], isActive: { $ne: false } }).select('email').lean()
     : [];
   const financeUsers = !ownerOnly && leadClosure
     ? await User.find({ $or: [{ role: { $in: ['accounts', 'finance'] } }, { roles: { $in: ['accounts', 'finance'] } }], isActive: { $ne: false } }).select('email').lean()
     : [];
-  const responsibleUsers = ownerOnly || specialApproval ? [] : await User.find({ $or: [
+  const responsibleUsers = ownerOnly || specialApproval || paymentReceived ? [] : await User.find({ $or: [
     { role: { $in: ADMIN_ROLES }, isActive: { $ne: false } },
     { roles: { $in: ADMIN_ROLES }, isActive: { $ne: false } },
     ...(approval.payload?.poSubmittedById ? [{ _id: approval.payload.poSubmittedById }] : []),
@@ -2465,7 +2465,7 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
     ...(ownerOnly || specialApproval
       ? [...leadOwnerUsers.map((user) => user.email), leadOwnerEmail]
       : paymentReceived
-      ? [...leadOwnerUsers.map((user) => user.email), leadOwnerEmail, ...adminUsers.map((user) => user.email)]
+      ? [...leadOwnerUsers.map((user) => user.email), leadOwnerEmail, ...paymentUsers.map((user) => user.email)]
       : [...responsibleUsers.map((user) => user.email), ...leadOwnerUsers.map((user) => user.email), leadOwnerEmail]),
     ...financeUsers.map((user) => user.email),
     ...(!paymentReceived && !ownerOnly && !specialApproval ? [
@@ -2487,6 +2487,8 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
     <tr><td style="padding:12px 14px;border-bottom:1px solid #ccfbf1;color:#475569;font-size:13px">Payment status</td><td align="right" style="padding:12px 14px;border-bottom:1px solid #ccfbf1;color:#115e59;font-size:13px;font-weight:700">${paymentStatus?.status === 'COMPLETE_RECEIVED' ? 'Complete received' : 'Advance received'}</td></tr>
     <tr><td style="padding:12px 14px;border-bottom:1px solid #ccfbf1;color:#475569;font-size:13px">PO amount</td><td align="right" style="padding:12px 14px;border-bottom:1px solid #ccfbf1;color:#0f172a;font-size:14px;font-weight:700">${totalPoAmount}</td></tr>
     <tr><td style="padding:12px 14px;color:#475569;font-size:13px">Amount received</td><td align="right" style="padding:12px 14px;color:#0f766e;font-size:16px;font-weight:800">${receivedAmount}</td></tr>
+    ${paymentStatus?.paymentDate ? `<tr><td style="padding:12px 14px;color:#475569;font-size:13px">Payment date</td><td align="right" style="padding:12px 14px;font-size:13px">${escapeHtml(paymentStatus.paymentDate)}</td></tr>` : ''}
+    ${paymentStatus?.bank ? `<tr><td style="padding:12px 14px;color:#475569;font-size:13px">Bank receiving payment</td><td align="right" style="padding:12px 14px;font-size:13px">${escapeHtml(paymentStatus.bank)}</td></tr>` : ''}
     ${paymentStatus?.confirmed ? '<tr><td colspan="2" style="padding:0 14px 12px;color:#0f766e;font-size:12px">Amount confirmed against the PO total.</td></tr>' : ''}
     <tr><td style="padding:12px 14px;border-top:1px solid #ccfbf1;color:#475569;font-size:13px">Recorded by</td><td align="right" style="padding:12px 14px;border-top:1px solid #ccfbf1;font-size:13px;font-weight:700">${escapeHtml(paymentStatus?.name || 'Finance team')}</td></tr>
     <tr><td style="padding:12px 14px;color:#475569;font-size:13px">Updated at</td><td align="right" style="padding:12px 14px;font-size:13px">${paymentStatus?.at ? escapeHtml(new Date(paymentStatus.at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })) + ' IST' : 'Not recorded'}</td></tr>
