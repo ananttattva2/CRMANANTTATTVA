@@ -127,7 +127,7 @@ test('PO approval list defers proof enrichment, preserves amounts/status, and de
   const start = source.indexOf('exports.listDuplicateLeadApprovals =');
   const end = source.indexOf('\nexports.', start + 1);
   const original = { _id: '64b000000000000000000001', type: 'purchase_order', approvalStatus: 'PENDING',
-    clientName: 'Example', payload: { leadId: '64b000000000000000000002', poYearRows: [{ poNumber: 'PO-42', poAmount: 42000, poFileUrl: `data:application/pdf;base64,${'a'.repeat(2_000_000)}` }] } };
+    clientName: 'Example', payload: { leadId: '64b000000000000000000002', service: { servicesOffered: 'Annual Return Filing' }, poYearRows: [{ poNumber: 'PO-42', poAmount: 42000, poFileUrl: `data:application/pdf;base64,${'a'.repeat(2_000_000)}` }] } };
   const projections = [];
   const context = { exports: {}, require: name => require(name.replace('../services/', '../src/services/')), userHasAnyRole: () => true, ADMIN_ROLES: ['admin'],
     Lead: { collection: { collectionName: 'leads' }, find() { assert.fail('List must not fetch every related lead/proof'); } },
