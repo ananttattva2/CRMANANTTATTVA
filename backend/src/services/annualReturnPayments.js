@@ -39,7 +39,15 @@ function paymentSeriesKey(approval) {
   return JSON.stringify([String(leadId), numbers[0], normalize(service.eprCategory), normalize(service.subApplicantType || service.piboCategory || service.applicantType), normalize(service.plantUnit)]);
 }
 
-function annualPaymentQueue(approvals) {
+const indiaYearMonth = new Intl.DateTimeFormat('en-IN', {
+  timeZone: 'Asia/Kolkata', year: 'numeric', month: 'numeric'
+});
+
+function annualPaymentQueue(approvals, now = new Date()) {
+  const parts = indiaYearMonth.formatToParts(now);
+  const yearNow = Number(parts.find(part => part.type === 'year').value);
+  const monthNow = Number(parts.find(part => part.type === 'month').value);
+  const currentAnnualReturnStart = yearNow - (monthNow >= 4 ? 1 : 2);
   const groups = new Map();
   const byApproval = new Map();
   for (const approval of approvals) {
@@ -52,14 +60,14 @@ function annualPaymentQueue(approvals) {
   }
   for (const entries of groups.values()) {
     const years = [...new Set(entries.map(row => row.year))].sort();
-    let unlocked = true;
+    let waitingForYear = null;
     for (const year of years) {
       const current = entries.filter(row => row.year === year);
       const laterPayment = entries.some(row => row.year > year && row.payment);
       for (const row of current) {
-        byApproval.get(row.approvalId).push({ ...row, unlocked, further: year !== years[0], laterPayment });
+        byApproval.get(row.approvalId).push({ ...row, unlocked: !waitingForYear, waitingForYear, further: financialYearStart(year) > currentAnnualReturnStart || year !== years[0], laterPayment });
       }
-      unlocked &&= current.every(row => row.payment?.status === 'COMPLETE_RECEIVED');
+      if (!waitingForYear && current.some(row => row.payment?.status !== 'COMPLETE_RECEIVED')) waitingForYear = year;
     }
   }
   return byApproval;
