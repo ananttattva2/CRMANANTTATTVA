@@ -93,7 +93,7 @@ const ApplicationPortfolio = forwardRef(function ApplicationPortfolio({ mode, pe
   const serviceColumns = useMemo(() => [...new Set(scopedGroups.flatMap(group => group.records.flatMap(record => (record.services || []).flatMap(service => service.offeredServices || []))).filter(service => service && service !== 'unclassified'))]
     .sort((left, right) => left === 'Annual Return Filling' ? -1 : right === 'Annual Return Filling' ? 1 : left.localeCompare(right)), [scopedGroups])
   const annualRegistrationSection = section === 'annualRegistration'
-  const baseAnnualColumns = STATUS_COLUMNS.filter(([key]) => key === 'total' || key.startsWith('annual:') || key === 'otherServicesApproved')
+  const baseAnnualColumns = STATUS_COLUMNS.filter(([key]) => key === 'total' || key.startsWith('annual:') || key === 'registrationApproved' || key === 'otherServicesApproved')
   const pendingColumns = STATUS_COLUMNS.filter(([key]) => PENDING_STATUS_KEYS.has(key))
   const dynamicAnnualYears = [...new Set(scopedGroups.flatMap(group => applicationSummaryRecords(group).flatMap(row => row.annualYears)))]
     .filter(year => !['2025-26', '2026-27', '2027-28'].includes(year)).sort().map(year => [`annual:${year}`, year])

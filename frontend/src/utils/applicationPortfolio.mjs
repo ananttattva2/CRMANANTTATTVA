@@ -4,7 +4,7 @@ export const PIBO_CATEGORIES = ['Producer', 'Brand Owner', 'PWP', 'Importer', 'P
 export const STATUS_COLUMNS = [
   ['total', 'Total'],
   ['annual:2025-26', '2025-26'], ['annual:2026-27', '2026-27'], ['annual:2027-28', '2027-28'], ['annual:unrecorded', 'Not Recorded'],
-  ['otherServicesApproved', 'Approved'],
+  ['registrationApproved', 'Approved'], ['otherServicesApproved', 'Approved'],
   ['annualActionRequired', 'AR Action Required'],
   ['applied', 'Applied'], ['underReview', 'Under Review'],
   ['notStarted', 'Not Started'], ['rejected', 'Rejected']
@@ -75,13 +75,10 @@ export function matchesApplicationService(record, key) {
   return applicationSummaryService(record) === key
 }
 export function matchesDistributionSummary(record, key) {
-  return !isApprovedRegistration(record) && (key === 'total' || record.category === key)
+  return key === 'total' || record.category === key
 }
 export function matchesServiceSummary(record, key, date = new Date()) {
   const summary = record.annualYears ? record : applicationSummaryRecords({ records: [record] })[0]
-  // Completed Registration remains available in PO reporting, but must not
-  // appear in either the service Total or its visible breakdown.
-  if (isApprovedRegistration(summary)) return false
   if (key === 'total') return true
   const representativeService = rawApplicationSummaryService(summary)
   const annualForYear = summary.annual && summary.annualYears.length > 0
@@ -90,13 +87,10 @@ export function matchesServiceSummary(record, key, date = new Date()) {
   return matchesApplicationService(summary, key)
 }
 export function matchesStatusSummary(record, key, date = new Date()) { 
-  // The status Total must reconcile with the visible status buckets. Completed
-  // Registration is intentionally hidden from this summary, so it must not be
-  // counted in Total either.
-  if (key === 'total') return !isApprovedRegistration(record)
+  if (key === 'total') return true
   const actionRequired = matchesServiceSummary(record, 'annualActionRequired', date)
   if (key === 'annualActionRequired') return actionRequired
-  if (key === 'registrationApproved') return false
+  if (key === 'registrationApproved') return isApprovedRegistration(record)
   if (key === 'otherServicesApproved') return !actionRequired
     && record.bucket === 'approved'
     && (record.services || []).some(service => service.offeredServices?.some(offered => (

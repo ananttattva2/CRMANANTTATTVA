@@ -39,12 +39,12 @@ test('SPOC reports count all 43 services instead of collapsing them into 41 appl
   assert.equal(groups[0].records.length, 41);
   const [report] = applicationReportGroups(groups);
   assert.equal(report.records.length, 43);
-  assert.equal(report.records.filter(row => matchesStatusSummary(row, 'total')).length, 41);
-  assert.equal(report.records.filter(row => matchesServiceSummary(row, 'total')).length, 41);
-  assert.equal(report.records.filter(row => matchesDistributionSummary(row, 'total')).length, 41);
-  assert.equal(PIBO_CATEGORIES.reduce((total, category) => total + report.records.filter(row => matchesDistributionSummary(row, category)).length, 0), 41);
-  assert.equal(report.records.filter(row => matchesStatusSummary(row, 'registrationApproved')).length, 0);
-  assert.equal(report.records.filter(row => matchesServiceSummary(row, 'New Registration')).length, 0);
+  assert.equal(report.records.filter(row => matchesStatusSummary(row, 'total')).length, 43);
+  assert.equal(report.records.filter(row => matchesServiceSummary(row, 'total')).length, 43);
+  assert.equal(report.records.filter(row => matchesDistributionSummary(row, 'total')).length, 43);
+  assert.equal(PIBO_CATEGORIES.reduce((total, category) => total + report.records.filter(row => matchesDistributionSummary(row, category)).length, 0), 43);
+  assert.equal(report.records.filter(row => matchesStatusSummary(row, 'registrationApproved')).length, 2);
+  assert.equal(report.records.filter(row => matchesServiceSummary(row, 'New Registration')).length, 2);
   assert.equal(report.records.filter(row => matchesStatusSummary(row, 'otherServicesApproved')).length, 41);
   assert.equal(new Set(report.records.map(row => row.id)).size, 43);
   const other = client('other-user', 'krishna', 'Importer', 'Approved');
@@ -539,7 +539,7 @@ test('Annual Return PO service objects qualify for all users and applicant types
   }
 });
 
-test('approved Registration and New Registration are excluded from status summary while other approved services remain', async () => {
+test('approved Registration and New Registration appear in their own status column', async () => {
   const { buildApplicationPortfolio, applicationServiceSummaryRecords, matchesStatusSummary } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const registration = client('registration', 'sonal', 'Producer', 'Approved');
   registration.workflowStatus = 'submitted';
@@ -552,22 +552,23 @@ test('approved Registration and New Registration are excluded from status summar
   consulting.workflowStatus = 'submitted';
   consulting.selectedLead.company = 'Consulting Client';
   const rows = applicationServiceSummaryRecords(buildApplicationPortfolio([registration, newRegistration, consulting], users)[0]);
-  assert.deepEqual(rows.filter((row) => matchesStatusSummary(row, 'registrationApproved')).map((row) => row.name), []);
-  assert.deepEqual(rows.filter((row) => matchesStatusSummary(row, 'total')).map((row) => row.name), ['Consulting Client']);
+  assert.deepEqual(rows.filter((row) => matchesStatusSummary(row, 'registrationApproved')).map((row) => row.name), ['20 MICRONS LIMITED', 'New Registration Client']);
+  assert.deepEqual(rows.filter((row) => matchesStatusSummary(row, 'total')).map((row) => row.name), ['20 MICRONS LIMITED', 'New Registration Client', 'Consulting Client']);
   assert.equal(rows.find((row) => row.name === 'Consulting Client' && matchesStatusSummary(row, 'registrationApproved')), undefined);
   assert.deepEqual(rows.filter((row) => matchesStatusSummary(row, 'otherServicesApproved')).map((row) => row.name), ['Consulting Client']);
   assert.equal(rows.filter((row) => matchesStatusSummary(row, 'otherServicesApproved')).some((row) => ['Registration', 'New Registration'].includes(row.summaryService)), false);
 });
 
-test('approved Registration is excluded from service and PIBO totals and breakdowns', async () => {
+test('approved Registration is included in service totals and breakdowns', async () => {
   const { buildApplicationPortfolio, applicationServiceSummaryRecords, matchesServiceSummary, isApprovedRegistration } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const registration = client('approved-registration-breakdown', 'sonal', 'Importer', 'Approved');
+  registration.selectedLead.assignments[0].closedAt = '2026-11-26';
   registration.workflowStatus = 'submitted';
   registration.data.basic.servicesOffered = 'New Registration';
   const [group] = buildApplicationPortfolio([registration], users);
   const [row] = applicationServiceSummaryRecords(group);
-  assert.equal(matchesServiceSummary(row, 'total'), false);
-  assert.equal(matchesServiceSummary(row, 'New Registration'), false);
+  assert.equal(matchesServiceSummary(row, 'total'), true);
+  assert.equal(matchesServiceSummary(row, 'New Registration'), true);
   assert.equal(isApprovedRegistration(row), true);
 });
 
@@ -588,7 +589,7 @@ test('portfolio sections split Annual Return and Registration from every other s
   assert.equal(annualRegistration.length + otherServices.length, group.records.length);
 });
 
-test('Yes Registered excludes approved New Registration when the same applicant also has Annual Return', async () => {
+test('Yes Registered shows approved New Registration separately from Annual Return', async () => {
   const { buildApplicationPortfolio, applicationServiceSummaryRecords, matchesStatusSummary } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const registration = client('registered-service', 'sonal', 'Importer', '');
   registration.workflowStatus = 'submitted';
@@ -604,11 +605,11 @@ test('Yes Registered excludes approved New Registration when the same applicant 
     { assignedServiceId: 'annual', assignedTo: 'manager', assignedStaff: 'sonal', closedAt: '2026-10-01', poStatus: 'received', poYearRows: [{ poFinancialYear: '2026-27', annualReturnYear: '2026-27' }] }
   ];
   const rows = applicationServiceSummaryRecords(buildApplicationPortfolio([registration], users)[0]);
-  assert.equal(rows.filter(row => matchesStatusSummary(row, 'registrationApproved')).length, 0);
+  assert.equal(rows.filter(row => matchesStatusSummary(row, 'registrationApproved')).length, 1);
   const registrationRow = rows.find(row => row.summaryService === 'New Registration');
   assert.equal(registrationRow.cpcb, 'Approved');
   assert.equal(registrationRow.services[0].cpcb, 'Registered');
-  assert.equal(matchesStatusSummary(registrationRow, 'total'), false);
+  assert.equal(matchesStatusSummary(registrationRow, 'total'), true);
   assert.equal(rows.filter(row => row.summaryService === 'Annual Return Filling' && matchesStatusSummary(row, 'annual:2026-27')).length, 0);
 });
 
