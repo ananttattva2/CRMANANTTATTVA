@@ -60,7 +60,7 @@ function ImportPreview({ pending, busy, onClose, onConfirm }) {
 }
 
 export default function PurchaseDataWorkspace({ clientId, financialYear, currentUser }) {
-  const [activeTab, setActiveTab] = useState('Purchase Data');
+  const [activeTab, setActiveTab] = useState(() => new URLSearchParams(window.location.search).get('tab') === 'sales' ? 'Sales Data' : 'Purchase Data');
   const [purchase, setPurchase] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');

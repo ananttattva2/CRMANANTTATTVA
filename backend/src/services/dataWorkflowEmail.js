@@ -2,10 +2,13 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '
 function safeUrl(value) { try { const url = new URL(value); return url.protocol === 'https:' ? url.href : ''; } catch { return ''; } }
 function buildDataWorkflowEmail({ title, moduleName, clientName, financialYear, actorName, recipientName, record, stage, message }) {
   const base = safeUrl(process.env.FRONTEND_URL || process.env.APP_URL || 'https://crmananttattva.vercel.app');
-  const url = base ? new URL('/sales/client-master', base).href : '';
+  const workspace = stage === 'consent_exceeded' && record.clientId
+    ? `/sales/client-data/${encodeURIComponent(record.clientId)}?financialYear=${encodeURIComponent(financialYear)}&tab=sales`
+    : '/sales/client-master';
+  const url = base ? new URL(workspace, base).href : '';
   const pending = ['manager_pending', 'excel_uploaded', 'compliance_pending'].includes(stage);
-  const tone = stage.includes('rejected') ? '#be123c' : '#0f766e';
-  const status = stage === 'manager_pending' ? 'Manager review pending' : stage === 'excel_uploaded' ? 'Excel upload complete' : stage === 'compliance_pending' ? 'Compliance review pending' : stage.includes('rejected') ? 'Changes requested' : 'Review complete';
+  const tone = stage === 'consent_exceeded' || stage.includes('rejected') ? '#be123c' : '#0f766e';
+  const status = stage === 'consent_exceeded' ? 'CTO/CCA quantity exceeded' : stage === 'manager_pending' ? 'Manager review pending' : stage === 'excel_uploaded' ? 'Excel upload complete' : stage === 'compliance_pending' ? 'Compliance review pending' : stage.includes('rejected') ? 'Changes requested' : 'Review complete';
   const files = [['Base Data', record.baseUpload], ['Portal Upload', record.portalUpload]].filter(([, file]) => file);
   const fileRows = files.map(([label,file]) => `<tr><td style="padding:16px 18px;border-bottom:1px solid #e2e8f0"><div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px">${escapeHtml(moduleName)} ${label}</div><div style="margin-top:5px;font-size:13px;font-weight:bold;color:#0f172a;word-break:break-all">${escapeHtml(file.originalName || file.name || 'Excel file')}</div><div style="margin-top:6px;font-size:12px;color:#64748b">${Number(file.importedRowCount || 0).toLocaleString('en-IN')} imported rows · ${Number(file.totalQuantity || 0).toLocaleString('en-IN', { maximumFractionDigits: 3 })} MT</div><span style="display:inline-block;margin-top:8px;font-size:11px;font-weight:bold;color:#047857">${file.importStatus === 'Imported' ? 'Imported successfully' : 'Upload saved'}</span></td></tr>`).join('');
   const detail = stage === 'manager_pending' ? 'Both Excel files have been saved and automatically submitted. Please review the client data in CRM.' : stage === 'excel_uploaded' ? 'Both Excel files have been uploaded. Open CRM to review the client workspace.' : message || title;

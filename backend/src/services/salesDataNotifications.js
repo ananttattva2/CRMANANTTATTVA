@@ -26,9 +26,10 @@ async function notifySalesWorkflow({ stage, client, sales, actor, message = '', 
   const clientName = client?.data?.basic?.clientLegalName || client?.data?.basic?.tradeName || 'Client';
   let recipients = [];
   if (['manager_pending', 'excel_uploaded'].includes(stage)) recipients = [await managerFor(actor)].filter(Boolean);
+  else if (stage === 'consent_exceeded') recipients = [actor, await managerFor(actor), ...await complianceUsers()].filter(Boolean);
   else if (stage === 'compliance_pending') recipients = await complianceUsers();
   else if (sales.submittedBy) recipients = [await User.findById(sales.submittedBy).select('name email role isActive').lean()].filter(Boolean);
-  recipients = recipients.filter((user) => user?.isActive !== false);
+  recipients = [...new Map(recipients.filter(user => user?.isActive !== false).map(user => [String(user._id), user])).values()];
   if (!recipients.length) return { ok: false, reason: 'recipient_missing' };
 
   const kind = `sales_data_${stage}`;
@@ -36,6 +37,7 @@ async function notifySalesWorkflow({ stage, client, sales, actor, message = '', 
   if (preventDuplicate && await Notification.exists({ kind, 'metadata.clientId': clientId, 'metadata.financialYear': sales.financialYear, 'metadata.dataVersion': sales.dataVersion || 0 })) return { ok: true, skipped: true };
   const titles = {
     excel_uploaded: 'Sales Excel files uploaded',
+    consent_exceeded: 'Sales quantity exceeds CTO/CCA quantity',
     manager_pending: 'Sales Data ready for Manager review', compliance_pending: 'Sales Data ready for Compliance review',
     manager_rejected: 'Sales Data returned for rework', compliance_approved: 'Sales Data fully approved',
     compliance_rejected: 'Sales Data returned by Compliance'

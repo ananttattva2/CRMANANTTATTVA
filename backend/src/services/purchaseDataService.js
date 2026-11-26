@@ -124,17 +124,21 @@ function duplicateKey(row, source) {
   ].join('|');
 }
 
-function normalizePurchaseRows(rawRows = [], source = 'base', selectedYear = '', headerRowNumber = 1) {
+function normalizePurchaseRows(rawRows = [], source = 'base', selectedYear = '', headerRowNumber = 1, { salesPortal = false } = {}) {
   const usableRows = (Array.isArray(rawRows) ? rawRows : []).filter((row) => row && typeof row === 'object' && Object.values(row).some((value) => text(value)));
   if (!usableRows.length) {
     const error = new Error('The selected file has no usable purchase rows.'); error.code = 'EMPTY_FILE'; throw error;
   }
   const headerMap = buildHeaderMap(usableRows[0], source);
+  if (source === 'portal' && salesPortal) {
+    const exactHeader = Object.keys(usableRows[0]).find(header => normalizeHeader(header) === 'totalplasticqtytons');
+    headerMap.portalQuantity = exactHeader;
+  }
   const quantityField = source === 'base' ? 'baseQuantity' : 'portalQuantity';
   const required = ['financialYear', 'entityName', 'registrationType', 'plasticCategory', 'materialType', quantityField, 'gstPaid'];
 const missingHeaders = required.filter((field) => !headerMap[field]);
   if (missingHeaders.length) {
-    const labels = { financialYear: 'Financial Year', entityName: 'Name of Entity', registrationType: 'Registration Type', plasticCategory: 'Category of Plastic', materialType: 'Plastic Material Type', baseQuantity: 'Qty. of Plastic (MT)', portalQuantity: 'Total Plastic Quantity', gstPaid: 'Total Invoice Value' };
+    const labels = { financialYear: 'Financial Year', entityName: 'Name of Entity', registrationType: 'Registration Type', plasticCategory: 'Category of Plastic', materialType: 'Plastic Material Type', baseQuantity: 'Qty. of Plastic (MT)', portalQuantity: salesPortal ? 'Total Plastic Qty (Tons)' : 'Total Plastic Quantity', gstPaid: 'Total Invoice Value' };
     const missingLabels = missingHeaders.map((field) => labels[field] || field);
     const error = new Error(`Missing required headers/columns: ${missingLabels.join(', ')}`); error.code = 'MISSING_HEADERS'; error.missingHeaders = missingLabels; throw error;
   }
