@@ -12,11 +12,12 @@ const helpers = source.slice(source.indexOf('function formatAmount('), source.in
 const normalization = source.slice(source.indexOf('function normalizePoApprovalRow('), source.indexOf('function SubmittedPoReview('));
 const start = source.indexOf('filteredLeadClosureApprovals.map((row) => {');
 const end = source.indexOf('\n                </ApprovalTable>', start);
+const closureStatus = source.slice(source.indexOf('function leadClosureApproved('), source.indexOf('function getApprovalStatus('));
 const expression = source.slice(start, end).trim().replace(/\}$/, '');
 
 function renderRows(rows) {
   // Execute the production JSX callback so undefined render helpers fail here.
-  const code = esbuild.transformSync(`${helpers}\n${normalization}\nresult = (${expression});`, { loader: 'jsx', format: 'cjs' }).code;
+  const code = esbuild.transformSync(`${helpers}\n${normalization}\n${closureStatus}\nresult = (${expression});`, { loader: 'jsx', format: 'cjs' }).code;
   const context = {
     React, console: { debug() {} }, filteredLeadClosureApprovals: rows,
     savingId: '', canApprove: true, openLeadClosureApproval() {},
@@ -51,4 +52,16 @@ test('Lead Closure Approval displays finance remarks, payment date and legacy pa
   assert.match(html, /15 Dec 2026/);
   row.poReview.leadOwnerRequest = { paymentData: 'Payment expected after delivery' };
   assert.match(renderRows([row]), /Payment expected after delivery/);
+});
+
+test('Lead Closure Approval retains Super Admin approvals after the final Finance decision', () => {
+  const html = renderRows([{ id: 'approved', poReview: {
+    stage: 'FINALIZED', leadClosureApproval: { name: 'Super Admin', remarks: 'Go ahead' }
+  } }]);
+  assert.match(html, />Approved</);
+  assert.match(html, /By Super Admin/);
+  assert.match(html, /Go ahead/);
+  assert.match(html, /View PO Details/);
+  assert.doesNotMatch(html, />Approve<\/button>/);
+  assert.match(source, /\) : activeTab === 'epr-credit' \? <CreditRateApprovals/);
 });

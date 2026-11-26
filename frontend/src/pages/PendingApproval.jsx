@@ -649,6 +649,10 @@ function hydratePurchaseOrderApprovals(approvals = [], leads = []) {
   });
 }
 
+function leadClosureApproved(row) {
+  return Boolean(row.poReview?.leadClosureApproval || row.poReview?.managementGoAhead || row.poReview?.stage === 'FINANCE_RELEASED');
+}
+
 function getApprovalStatus(row) {
   return String(row?.approvalStatus || row?.status || 'PENDING').toUpperCase();
 }
@@ -829,8 +833,10 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
   }, [poApprovals, searchTerm, statusFilter, piboFilter, userFilter, typeFilter, poDateSort]);
   const filteredLeadClosureApprovals = useMemo(() => {
     const direction = poDateSort === 'asc' ? 1 : -1;
-    return poApprovals.filter((row) => row.poReview?.stage === 'LEAD_CLOSURE_PENDING').sort((a, b) => direction * (poSubmittedTimestamp(a) - poSubmittedTimestamp(b)));
-  }, [poApprovals, poDateSort]);
+    return poApprovals.filter(row => (row.poReview?.stage === 'LEAD_CLOSURE_PENDING' || leadClosureApproved(row))
+      && filterRow({ ...row, approvalStatus: leadClosureApproved(row) ? 'APPROVED' : 'PENDING' }))
+      .sort((a, b) => direction * (poSubmittedTimestamp(a) - poSubmittedTimestamp(b)));
+  }, [poApprovals, poDateSort, searchTerm, statusFilter, piboFilter, userFilter]);
   const approvedTodayCount = useMemo(() => (
     allApprovalRows.filter((row) => getApprovalStatus(row) === 'APPROVED').length
   ), [allApprovalRows]);
@@ -940,6 +946,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
       setActiveTab(tabId);
       setTypeFilter(tabId);
       if (tabId === 'clients') setStatusFilter('PENDING');
+      if (tabId === 'lead-closure') setStatusFilter('all');
     }
   }
 
@@ -1354,6 +1361,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
       const response = await api.post(`/leads/finance-approvals/${id}/lead-closure-approve`, { remarks, version: leadClosureDecision.row.poReview?.version });
       setNotice(response.data?.message || 'Lead Closure Approval saved.');
       setLeadClosureDecision(null);
+      setStatusFilter('APPROVED');
       await loadPage({ force: true, silent: true });
     } catch (err) {
       setError(readError(err, 'Unable to save Lead Closure Approval.'));
@@ -1736,7 +1744,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                 Refresh
               </button>
             </div>}
-            {activeTab !== 'deactivation' && activeTab !== 'epr-credit' && activeTab !== 'po' && !isComplianceApprovalView && (
+            {activeTab !== 'deactivation' && activeTab !== 'epr-credit' && activeTab !== 'po' && activeTab !== 'lead-closure' && !isComplianceApprovalView && (
               <div className="pending-status-quick-filters" aria-label="Quick approval status filters">
                 <span>Quick filter</span>
                 <button type="button" className={statusFilter === 'APPROVED' ? 'is-active' : ''} onClick={() => { setActiveTab('quotations'); setTypeFilter('quotations'); setStatusFilter('APPROVED'); }}>
@@ -1752,12 +1760,14 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
               />
             </div>
 
-            {activeTab === 'lead-closure' && (
+            {activeTab === 'lead-closure' ? (
               <div className="pending-po-table-wrapper">
-                <ApprovalTable title="Lead Closure Approval" columns={['Company / Lead', 'Service', 'PO Amount', 'Submitted By', 'Finance Remarks', 'Payment Data', 'Status', 'Actions']} emptyText="No POs are waiting for Lead Closure Approval." page={1} totalPages={1} showing={filteredLeadClosureApprovals.length} total={filteredLeadClosureApprovals.length} onPrev={() => {}} onNext={() => {}}>
+                <ApprovalTable title="Lead Closure Approval" columns={['Company / Lead', 'Service', 'PO Amount', 'Submitted By', 'Finance Remarks', 'Payment Data', 'Status', 'Actions']} emptyText={statusFilter === 'APPROVED' ? 'No approved Lead Closure requests found.' : 'No Lead Closure requests match these filters.'} page={1} totalPages={1} showing={filteredLeadClosureApprovals.length} total={filteredLeadClosureApprovals.length} onPrev={() => {}} onNext={() => {}}>
                   {filteredLeadClosureApprovals.map((row) => {
                     const id = row._id || row.id;
                     const pos = normalizeApprovalPoRows(row);
+                    const approved = leadClosureApproved(row);
+                    const decision = row.poReview?.leadClosureApproval || row.poReview?.managementGoAhead;
                     return (
                       <tr key={id}>
                         <td><strong>{row.clientName}</strong>{row.uniqueId && <><br /><small>{row.uniqueId}</small></>}</td>
@@ -1766,10 +1776,15 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                         <td>{row.payload?.poSubmittedByName || row.createdByName || '—'}</td>
                         <td>{row.poReview?.financeReferral?.remarks ? <span className="block max-w-xs whitespace-pre-wrap text-xs text-slate-600">{row.poReview.financeReferral.remarks}</span> : '—'}</td>
                         <td>{row.poReview?.leadOwnerRequest?.paymentDate ? <span className="block max-w-xs whitespace-pre-wrap text-xs text-slate-600">{new Date(`${row.poReview.leadOwnerRequest.paymentDate}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span> : row.poReview?.leadOwnerRequest?.paymentData ? <span className="block max-w-xs whitespace-pre-wrap text-xs text-slate-600">{row.poReview.leadOwnerRequest.paymentData}</span> : '—'}</td>
-                        <td><span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-xs font-bold text-amber-800">Awaiting Lead Closure Approval</span></td>
+                        <td>{approved ? <>
+                          <span className="inline-flex rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-800">Approved</span>
+                          {decision?.name && <small className="mt-1 block text-slate-600">By {decision.name}</small>}
+                          {decision?.remarks && <small className="mt-1 block whitespace-pre-wrap text-slate-600">{decision.remarks}</small>}
+                        </> : <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-xs font-bold text-amber-800">Awaiting Lead Closure Approval</span>}</td>
                         <td>
                           <div className="pending-row-actions">
-                            <button type="button" className="btn-approve" disabled={Boolean(savingId) || !canApprove} onClick={() => openLeadClosureApproval(row)}>Approve</button>
+                            {approved ? <button type="button" className="btn-outline" onClick={() => openPoDetails(row)}>View PO Details</button>
+                            : <button type="button" className="btn-approve" disabled={Boolean(savingId) || !canApprove} onClick={() => openLeadClosureApproval(row)}>Approve</button>}
                           </div>
                         </td>
                       </tr>
@@ -1777,9 +1792,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                   })}
                 </ApprovalTable>
               </div>
-            )}
-
-            {activeTab === 'epr-credit' ? <CreditRateApprovals onCountChange={setCreditCount} /> : activeTab === 'deactivation' ? <DeactivationApprovals onCountChange={setDeactivationCount} /> : activeTab === 'po' ? (
+            ) : activeTab === 'epr-credit' ? <CreditRateApprovals onCountChange={setCreditCount} /> : activeTab === 'deactivation' ? <DeactivationApprovals onCountChange={setDeactivationCount} /> : activeTab === 'po' ? (
               <>
                 <ApprovalTable title="Purchase Order Approvals" className="pending-po-table" columns={['Company / Lead', 'Service', 'PO Amount', 'PO Proof', 'Basic Amount (INR)', 'Submitted By', { label: 'PO Uploaded', sortable: true, direction: poDateSort, onSort: () => { setPoDateSort((value) => value === 'desc' ? 'asc' : 'desc'); setPoPage(1); } }, 'Status', 'Actions']} emptyText={poLoading ? 'Loading purchase order approvals...' : 'No Purchase Orders are waiting for approval.'} page={poPage} totalPages={poTotalPages} showing={visiblePoApprovals.length} total={filteredPoApprovals.length} onPrev={() => setPoPage((value) => Math.max(1, value - 1))} onNext={() => setPoPage((value) => Math.min(poTotalPages, value + 1))} actions={<div className="pending-po-status-tabs" aria-label="PO approval status"><button type="button" className={statusFilter === 'PENDING' ? 'is-active' : ''} onClick={() => { setStatusFilter('PENDING'); setPoPage(1); }}>Pending</button><button type="button" className={statusFilter === 'APPROVED' ? 'is-active' : ''} onClick={() => { setStatusFilter('APPROVED'); setPoPage(1); }}>Approved</button><button type="button" className={statusFilter === 'REJECTED' ? 'is-active' : ''} onClick={() => { setStatusFilter('REJECTED'); setPoPage(1); }}>Rejected</button><button type="button" className={statusFilter === 'all' ? 'is-active' : ''} onClick={() => { setStatusFilter('all'); setPoPage(1); }}>All</button></div>}>
                 {visiblePoApprovals.map((row) => {
