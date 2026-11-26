@@ -2271,7 +2271,8 @@ exports.listPendingApprovals = async (req, res) => {
     const visibleClients = sourceClientIds.length
       ? await Client.find(combineAccessFilters(
           { _id: { $in: sourceClientIds } },
-          await clientAccessFilter(req.user)
+          await clientAccessFilter(req.user),
+          await require('../services/clientDirectoryEligibility').clientDirectoryEligibilityFilter()
         )).select('_id').lean()
       : [];
     const visibleClientIds = new Set(visibleClients.map((client) => String(client._id)));

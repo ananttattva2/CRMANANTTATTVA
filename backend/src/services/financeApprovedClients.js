@@ -32,9 +32,9 @@ function leadReferences(lead) {
   return {$or:[{selectedLead:lead._id},{'data.selectedLead':{$in:values}},{'data.selectedLeadSnapshot.id':{$in:values}},{'data.sourceLeadId':{$in:values}},...(lead.leadCode?[{'data.importMeta.leadNumber':lead.leadCode},{'data.selectedLeadSnapshot.leadCode':lead.leadCode}]:[])]};
 }
 function servicesClientFilter(services) {
-  const branches=services.map(({lead,serviceId})=>({$and:[leadReferences(lead),{$or:[
+  const branches=services.map(({lead,serviceId,allowUnscoped = (lead.assignments||[]).length===1})=>({$and:[leadReferences(lead),{$or:[
     ...(serviceId?[{assignedServiceId:serviceId},{$and:[{assignedServiceId:{$in:['',null]}},{'data.assignedServiceId':serviceId}]},{$and:[{assignedServiceId:{$in:['',null]}},{'data.assignedServiceId':{$in:['',null]}},{'data.selectedLeadSnapshot.assignedServiceId':serviceId}]}]:[]),
-    ...((lead.assignments||[]).length===1?[{assignedServiceId:{$in:['',null]},'data.assignedServiceId':{$in:['',null]},'data.selectedLeadSnapshot.assignedServiceId':{$in:['',null]}}]:[])
+    ...(allowUnscoped?[{assignedServiceId:{$in:['',null]},'data.assignedServiceId':{$in:['',null]},'data.selectedLeadSnapshot.assignedServiceId':{$in:['',null]}}]:[])
   ]}]}));
   return branches.length?{$or:branches}:{_id:{$in:[]}};
 }
