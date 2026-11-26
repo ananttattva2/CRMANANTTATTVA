@@ -337,6 +337,16 @@ function canAssignManagerForPo(row) {
   return ['FINANCE_PENDING', 'PARTIALLY_APPROVED', 'APPROVED'].includes(String(row.poApprovalStatus || '').toUpperCase());
 }
 
+function recordedPoCloserName(row, staff, currentUser) {
+  if (!canAssignManagerForPo(row)) return '';
+  const requester = row.closureRequestedBy;
+  const requesterId = String(requester?._id || requester || '');
+  const user = requesterId && [...staff, currentUser].find(person =>
+    [person?._id, person?.id, person?.crmUserId, person?.userId].some(id => String(id || '') === requesterId)
+  );
+  return row.closureRequestedByText || requester?.name || user?.name || user?.email || '';
+}
+
 function userHasManagerRole(user = {}) {
   return [user.role, ...(Array.isArray(user.roles) ? user.roles : []), user.designation]
     .some((role) => /(^|[\s_-])manager($|[\s_-])/i.test(String(role || '')));
@@ -3035,11 +3045,7 @@ export default function LeadGeneration() {
                       : managerOptions;
                     const pendingCloserId = !leadClosed ? String(row.closureRequestedBy || '') : '';
                     const pendingCloserName = !leadClosed ? row.closureRequestedByText : '';
-                    const pendingCloser = pendingCloserId
-                      ? [...staff, currentUser].find(user => [user?._id, user?.id, user?.crmUserId, user?.userId]
-                        .some(id => String(id || '') === pendingCloserId))
-                      : null;
-                    const recordedCloserName = pendingCloserName || pendingCloser?.name || pendingCloser?.email;
+                    const recordedCloserName = recordedPoCloserName(row, staff, currentUser);
                     const intendedCloser = currentUser;
                     const intendedCloserIds = [intendedCloser?._id, intendedCloser?.id, intendedCloser?.crmUserId, intendedCloser?.userId].filter(Boolean);
                     const intendedCloserOption = intendedCloserIds.length ? [{
@@ -5588,7 +5594,7 @@ function LeadDetailView({ lead, quotations = [], staff = [], currentUser = null,
                           <td className="px-4 py-3">{matchingService.applicantType || '-'}</td>
                           <td className="px-4 py-3 font-black text-violet-700">{directApplicantOptions(matchingService.eprCategory) ? 'Not applicable' : (matchingService.piboCategory || '-')}</td>
                           <td className="px-4 py-3">{matchingService.servicesOffered || '-'}</td>
-                          <td className="px-4 py-3 font-black">{row.closedBy?.name || row.closedByText || '-'}</td>
+                          <td className="px-4 py-3 font-black">{row.closedBy?.name || row.closedByText || recordedPoCloserName(row, staff, currentUser) || '-'}</td>
                           <td className="px-4 py-3 font-black">{row.assignedTo?.name || row.assignedToText || '-'}</td>
                           <td className="px-4 py-3">{row.assignedTo?.email || row.assignedToEmail || '-'}</td>
                           <td className="min-w-[270px] px-4 py-3">

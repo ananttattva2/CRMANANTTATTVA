@@ -118,6 +118,7 @@ test('Admin PO approval unlocks manager assignment and Finance approval gates cl
   assert.match(leadPage, /managerAssignmentReady/);
   assert.match(leadPage, /const pendingCloserName = !leadClosed \? row\.closureRequestedByText/);
   assert.match(leadPage, /\(pendingCloserId \|\| pendingCloserName\) && managerAssignmentReady/);
+  assert.match(leadPage, /row\.closedByText \|\| recordedPoCloserName\(row, staff, currentUser\)/);
   assert.match(leadPage, /const managerAssignmentReady = canAssignManagerForPo\(row\)/);
   assert.match(leadPage, /row\.assignedTo && !row\.closedBy && !canAssignManagerForPo\(row\)/);
   assert.match(leadPage, /\['FINANCE_PENDING', 'PARTIALLY_APPROVED', 'APPROVED'\]\.includes\(String\(row\.poApprovalStatus/);
