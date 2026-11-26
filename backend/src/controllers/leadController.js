@@ -2383,7 +2383,7 @@ exports.permanentlyCloseProvisionalLead = async (req, res) => {
   }
 };
 
-async function notifyPurchaseOrderDecision({ approval, lead, index, status, remarks, screenshotUrl, leadClosure = false, specialApproval = false, initialApproval = false, ownerOnly = false, paymentReceived = false, paymentStatus, poAmount }) {
+async function notifyPurchaseOrderDecision({ approval, lead, index, status, remarks, screenshotUrl, leadClosure = false, specialApproval = false, initialApproval = false, ownerOnly = false, paymentReceived = false, managementReferral = false, paymentDate, paymentStatus, poAmount, paymentRows }) {
   const serviceId = String(approval.payload?.assignedServiceId || '');
   const assignmentMatches = serviceId
     ? (lead?.assignments || []).filter(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === serviceId)
@@ -2457,8 +2457,8 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
     ...(ownerName ? [{ name: String(ownerName).trim() }] : []),
     ...(ownerCrmId ? [{ crmUserId: String(ownerCrmId).trim() }] : [])
   ];
-  const shouldNotifyOwner = leadClosure || specialApproval || initialApproval || ownerOnly || paymentReceived
-    || ['APPROVED', 'REJECTED', 'REVISION_REQUIRED'].includes(String(status || '').toUpperCase());
+  const shouldNotifyOwner = !managementReferral && (leadClosure || specialApproval || initialApproval || ownerOnly || paymentReceived
+    || ['APPROVED', 'REJECTED', 'REVISION_REQUIRED'].includes(String(status || '').toUpperCase()));
   const leadOwnerUsers = shouldNotifyOwner && ownerConditions.length
     ? await User.find({ $or: ownerConditions, isActive: { $ne: false } }).select('email').lean()
     : [];
@@ -2470,39 +2470,44 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
   const financeUsers = !ownerOnly && leadClosure
     ? await User.find({ $or: [{ role: { $in: ['accounts', 'finance'] } }, { roles: { $in: ['accounts', 'finance'] } }], isActive: { $ne: false } }).select('email').lean()
     : [];
-  const responsibleUsers = ownerOnly || specialApproval || paymentReceived ? [] : await User.find({ $or: [
+  const responsibleUsers = ownerOnly || specialApproval || paymentReceived || managementReferral ? [] : await User.find({ $or: [
     { role: { $in: ADMIN_ROLES }, isActive: { $ne: false } },
     { roles: { $in: ADMIN_ROLES }, isActive: { $ne: false } },
     ...(approval.payload?.poSubmittedById ? [{ _id: approval.payload.poSubmittedById }] : []),
     ...(approval.createdByName ? [{ name: approval.createdByName }] : []),
     ...(leadClosure && ownerId ? [{ _id: ownerId }] : [])
   ] }).select('email').lean();
+  const superAdminRoles = [/^super[\s_-]*admin$/i];
+  const managementUsers = managementReferral
+    ? await User.find({ $or: [{ role: { $in: superAdminRoles } }, { roles: { $in: superAdminRoles } }], isActive: { $ne: false } }).select('email').lean()
+    : [];
   const recipients = [...new Set([
-    ...(ownerOnly || specialApproval
+    ...(managementReferral ? managementUsers.map(user => user.email) : ownerOnly || specialApproval
       ? [...leadOwnerUsers.map((user) => user.email), leadOwnerEmail]
       : paymentReceived
       ? [...leadOwnerUsers.map((user) => user.email), leadOwnerEmail, ...paymentUsers.map((user) => user.email)]
       : [...responsibleUsers.map((user) => user.email), ...leadOwnerUsers.map((user) => user.email), leadOwnerEmail]),
     ...financeUsers.map((user) => user.email),
-    ...(!paymentReceived && !ownerOnly && !specialApproval ? [
+    ...(!paymentReceived && !ownerOnly && !specialApproval && !managementReferral ? [
       approval.payload?.poSubmittedByEmail,
       approval.payload?.leadCreatorEmail,
       ...(approval.payload?.quotationCreatorEmails || [])
     ] : [])
   ].map((email) => String(email || '').trim().toLowerCase()).filter(Boolean))];
   const verb = status === 'APPROVED' ? 'approved' : status === 'REJECTED' ? 'rejected' : 'marked for revision';
-  const decisionRows = Array.isArray(approval.payload?.poYearRows) && approval.payload.poYearRows.length
+  const decisionRows = paymentRows || (Array.isArray(approval.payload?.poYearRows) && approval.payload.poYearRows.length
     ? approval.payload.poYearRows
-    : (lead.assignments?.[resolvedIndex]?.poYearRows || []);
+    : (lead.assignments?.[resolvedIndex]?.poYearRows || []));
   const paymentLabel = paymentStatus?.status === 'COMPLETE_RECEIVED' ? 'Complete payment received' : 'Advance payment received';
-  const emailTitle = paymentReceived ? paymentLabel : specialApproval ? 'PO Special Approval requested' : leadClosure ? 'Lead Closure Approval granted' : initialApproval ? 'Purchase Order passed Admin review' : status === 'APPROVED' ? 'Purchase Order approved successfully' : status === 'REJECTED' ? 'Purchase Order rejected' : 'Purchase Order revision required';
-  const emailEyebrow = paymentReceived ? 'Payment update' : specialApproval ? 'PO Special Approval' : leadClosure ? 'Lead closure approval' : initialApproval ? 'Admin review completed' : `Purchase order ${verb}`;
+  const emailTitle = paymentReceived ? paymentLabel : managementReferral ? 'Lead Closure Approval requested' : specialApproval ? 'PO Special Approval requested' : leadClosure ? 'Lead Closure Approval granted' : initialApproval ? 'Purchase Order passed Admin review' : status === 'APPROVED' ? 'Purchase Order approved successfully' : status === 'REJECTED' ? 'Purchase Order rejected' : 'Purchase Order revision required';
+  const emailEyebrow = paymentReceived ? 'Payment update' : managementReferral ? 'Lead Closure Approval' : specialApproval ? 'PO Special Approval' : leadClosure ? 'Lead closure approval' : initialApproval ? 'Admin review completed' : `Purchase order ${verb}`;
   const receivedAmount = Number(paymentStatus?.amount || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
   const totalPoAmount = Number(poAmount || decisionRows.reduce((sum, row) => sum + Number(row.poAmount || 0), 0)).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
   const paymentSummaryHtml = paymentReceived ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #99f6e4;background:#f0fdfa">
     <tr><td style="padding:12px 14px;border-bottom:1px solid #ccfbf1;color:#475569;font-size:13px">Payment status</td><td align="right" style="padding:12px 14px;border-bottom:1px solid #ccfbf1;color:#115e59;font-size:13px;font-weight:700">${paymentStatus?.status === 'COMPLETE_RECEIVED' ? 'Complete received' : 'Advance received'}</td></tr>
     <tr><td style="padding:12px 14px;border-bottom:1px solid #ccfbf1;color:#475569;font-size:13px">PO amount</td><td align="right" style="padding:12px 14px;border-bottom:1px solid #ccfbf1;color:#0f172a;font-size:14px;font-weight:700">${totalPoAmount}</td></tr>
     <tr><td style="padding:12px 14px;color:#475569;font-size:13px">Amount received</td><td align="right" style="padding:12px 14px;color:#0f766e;font-size:16px;font-weight:800">${receivedAmount}</td></tr>
+    ${paymentStatus?.annualReturnYear ? `<tr><td style="padding:12px 14px">Annual Return year</td><td align="right" style="padding:12px 14px">${escapeHtml(paymentStatus.annualReturnYear)}</td></tr>` : ''}
     ${paymentStatus?.paymentDate ? `<tr><td style="padding:12px 14px;color:#475569;font-size:13px">Payment receipt date</td><td align="right" style="padding:12px 14px;font-size:13px">${escapeHtml(paymentStatus.paymentDate)}</td></tr>` : ''}
     ${paymentStatus?.bank ? `<tr><td style="padding:12px 14px;color:#475569;font-size:13px">Bank name</td><td align="right" style="padding:12px 14px;font-size:13px">${escapeHtml(paymentStatus.bank)}</td></tr>` : ''}
     ${paymentStatus?.paymentMode ? `<tr><td style="padding:12px 14px;color:#475569;font-size:13px">Mode of payment</td><td align="right" style="padding:12px 14px;font-size:13px">${escapeHtml(paymentStatus.paymentMode)}</td></tr>` : ''}
@@ -2513,6 +2518,8 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
   </table>` : '';
   const emailMessage = paymentReceived
     ? `Finance recorded ${paymentStatus?.status === 'COMPLETE_RECEIVED' ? 'a complete' : 'an advance'} payment for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong>. Review the summary below and open the CRM record for full details.`
+    : managementReferral
+    ? `Review the Lead Closure Approval request for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong>. Payment date ${escapeHtml(paymentDate || '')}.`
     : specialApproval
     ? `Finance requested Special Approval for the Purchase Order for <strong>${escapeHtml(lead.company || lead.leadCode)}</strong>. Review the finance remarks and submit the required payment date in the CRM.`
     : leadClosure
@@ -2531,7 +2538,7 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
     remarksLabel: paymentReceived ? 'Narration' : specialApproval ? 'Finance remarks' : leadClosure ? 'Approval remarks' : 'Decision remarks',
     status,
     summaryHtml: paymentSummaryHtml,
-    actionUrl: `${String(process.env.FRONTEND_URL || process.env.APP_URL || 'https://crmananttattva.com').replace(/\/$/, '')}${paymentReceived || specialApproval ? '/finance-approval' : '/pending-approval'}`,
+    actionUrl: `${String(process.env.FRONTEND_URL || process.env.APP_URL || 'https://crmananttattva.com').replace(/\/$/, '')}${paymentReceived || specialApproval ? '/finance-approval' : managementReferral ? '/pending-approval?tab=lead-closure' : '/pending-approval'}`,
     actionLabel: paymentReceived ? 'Review payment in Finance Approval' : specialApproval ? 'Open Lead Owner Request' : 'Open Pending Approval'
   });
   let screenshotAttachment = null;
@@ -2545,7 +2552,9 @@ async function notifyPurchaseOrderDecision({ approval, lead, index, status, rema
   }
   const subject = paymentReceived
     ? `${paymentLabel} - ${lead.company || lead.leadCode}`
-    : specialApproval
+    : managementReferral
+      ? `Lead Closure Approval requested - ${lead.company || lead.leadCode}`
+      : specialApproval
       ? `PO Special Approval requested - ${lead.company || lead.leadCode}`
       : initialApproval
         ? `PO passed Admin review - ${lead.company || lead.leadCode}`

@@ -13,7 +13,7 @@ test('PO requires Admin → Finance referral → Lead Owner request → Lead Clo
  assert.throws(()=>transition(referred,'LEAD_OWNER_REQUEST',actor('sales'),'Invalid payment date',2,new Date(),'2026-02-31'),error=>error.status===400);
  assert.throws(()=>transition(referred,'FINANCE_FINAL',actor('accounts'),'Approve',2),error=>error.status===409);
  const leadRequest=transition(referred,'LEAD_OWNER_REQUEST',actor('sales'),'Lead owner remarks',2,new Date(),'2026-12-15');assert.equal(leadRequest.stage,'LEAD_CLOSURE_PENDING');assert.equal(leadRequest.frozen,true);assert.equal(leadRequest.leadOwnerRequest.paymentDate,'2026-12-15');
- for(const role of ['manager','accounts','sales'])assert.throws(()=>transition(leadRequest,'LEAD_CLOSURE_APPROVE',actor(role),'Approve',3),error=>error.status===403);
+ for(const role of ['admin','manager','accounts','sales'])assert.throws(()=>transition(leadRequest,'LEAD_CLOSURE_APPROVE',actor(role),'Approve',3),error=>error.status===403);
  assert.throws(()=>transition(leadRequest,'FINANCE_FINAL',actor('accounts'),'Approve',3),error=>error.status===409);
  const released=transition(leadRequest,'LEAD_CLOSURE_APPROVE',actor('superadmin'),'Reviewed Finance remarks',3);assert.equal(released.frozen,false);assert.equal(released.stage,'FINANCE_RELEASED');assert.equal(released.financeReferral.remarks,'Finance remarks');
  assert.throws(()=>transition(released,'FINANCE_FINAL',actor('admin'),'Approve',4),error=>error.status===403);
@@ -38,4 +38,17 @@ test('finance terms retain the user-selected payment term and every custom quota
 test('saved quotation ID takes priority over another quotation with the same display number',()=>{
  const terms=termsSnapshot([{poNumber:'PO-2',quotationId:'selected',quotationNumber:'AT/1'}],[{_id:'other',quotationNumber:'AT/1',terms:['Wrong version']},{_id:'selected',quotationNumber:'AT/1',terms:['Selected version']}]);
  assert.deepEqual(terms[0].customTerms,['Selected version']);
+});
+
+test('Finance can send a direct referral with a payment date for Super Admin review', () => {
+ const ready = transition(null, 'ADMIN_APPROVE', actor('admin'), 'Reviewed');
+ assert.throws(() => transition(ready, 'FINANCE_REFER_DIRECT', actor('finance'), 'Refer', 1), error => error.status === 400);
+ const direct = transition(ready, 'FINANCE_REFER_DIRECT', actor('finance'), 'Refer', 1, new Date(), '2026-12-15');
+ assert.equal(direct.stage, 'LEAD_CLOSURE_PENDING');
+ assert.equal(direct.leadOwnerRequest.paymentDate, '2026-12-15');
+ assert.equal(direct.leadOwnerRequest.submittedByFinance, true);
+ assert.equal(direct.history.length, 2);
+ const released = transition(direct, 'LEAD_CLOSURE_APPROVE', actor('superadmin'), 'Approved', 2);
+ assert.equal(released.stage, 'FINANCE_RELEASED');
+ assert.equal(transition(released, 'FINANCE_FINAL', actor('finance'), 'Final decision', 3).stage, 'FINALIZED');
 });

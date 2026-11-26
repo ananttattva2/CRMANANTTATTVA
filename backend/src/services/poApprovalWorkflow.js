@@ -19,7 +19,7 @@ function sourceSignature(assignment = {}, service = {}) {
 function transition(review, event, user, remarks, expectedVersion, now = new Date(), paymentDate = '') {
   const text = String(remarks || '').trim();
   if (!text || text.length > 2500) fail(400, 'Enter remarks between 1 and 2,500 characters.');
-  if (event === 'LEAD_OWNER_REQUEST') {
+  if (event === 'LEAD_OWNER_REQUEST' || event === 'FINANCE_REFER_DIRECT') {
     const paymentDateText = String(paymentDate || '').trim();
     const parsedPaymentDate = /^\d{4}-\d{2}-\d{2}$/.test(paymentDateText) ? new Date(`${paymentDateText}T00:00:00Z`) : null;
     if (!parsedPaymentDate || Number.isNaN(parsedPaymentDate.getTime()) || parsedPaymentDate.toISOString().slice(0, 10) !== paymentDateText) {
@@ -30,13 +30,14 @@ function transition(review, event, user, remarks, expectedVersion, now = new Dat
     ADMIN_APPROVE: { roles: ['admin', 'superadmin'], from: null, to: 'FINANCE_READY' },
     FINANCE_APPROVE: { roles: ['accounts', 'finance'], from: 'FINANCE_READY', to: 'FINALIZED' },
     FINANCE_REFER: { roles: ['accounts', 'finance'], from: 'FINANCE_READY', to: 'LEAD_OWNER_PENDING' },
+    FINANCE_REFER_DIRECT: { roles: ['accounts', 'finance'], from: 'FINANCE_READY', to: 'LEAD_CLOSURE_PENDING' },
     LEAD_OWNER_REQUEST: { roles: ['any'], from: 'LEAD_OWNER_PENDING', to: 'LEAD_CLOSURE_PENDING' },
-    LEAD_CLOSURE_APPROVE: { roles: ['admin', 'superadmin'], from: 'LEAD_CLOSURE_PENDING', to: 'FINANCE_RELEASED' },
+    LEAD_CLOSURE_APPROVE: { roles: ['superadmin'], from: 'LEAD_CLOSURE_PENDING', to: 'FINANCE_RELEASED' },
     FINANCE_FINAL: { roles: ['accounts', 'finance'], from: 'FINANCE_RELEASED', to: 'FINALIZED' }
   };
   const rule = rules[event];
   if (!rule) fail(404, 'Unknown review action.');
-  if (rule.roles[0] !== 'any' && !userHasAnyRole(user, rule.roles)) fail(403, event === 'LEAD_CLOSURE_APPROVE' ? 'Only Admin or Super Admin can give Lead Closure Approval.' : 'Your role cannot perform this approval step.');
+  if (rule.roles[0] !== 'any' && !userHasAnyRole(user, rule.roles)) fail(403, event === 'LEAD_CLOSURE_APPROVE' ? 'Only Super Admin can give Lead Closure Approval.' : 'Your role cannot perform this approval step.');
   if ((review?.stage || null) !== rule.from) fail(409, 'This PO is not ready for that action. Refresh the approval list.');
   if (event !== 'ADMIN_APPROVE' && Number(expectedVersion) !== review.version) fail(409, 'This PO changed after you opened it. Refresh and try again.');
   const entry = { event, remarks: text, by: String(user._id), name: user.name || user.email || '', at: now.toISOString() };
@@ -44,7 +45,8 @@ function transition(review, event, user, remarks, expectedVersion, now = new Dat
     history: [...(review?.history || []), entry],
     ...(event === 'ADMIN_APPROVE' ? { adminApproval: entry } : {}),
     ...(event === 'FINANCE_APPROVE' ? { financeFinal: entry } : {}),
-    ...(event === 'FINANCE_REFER' ? { financeReferral: entry } : {}),
+    ...(event === 'FINANCE_REFER' || event === 'FINANCE_REFER_DIRECT' ? { financeReferral: entry } : {}),
+    ...(event === 'FINANCE_REFER_DIRECT' ? { leadOwnerRequest: { ...entry, paymentDate: String(paymentDate).trim(), submittedByFinance: true } } : {}),
     ...(event === 'LEAD_OWNER_REQUEST' ? { leadOwnerRequest: { ...entry, paymentDate: String(paymentDate || '').trim() } } : {}),
     ...(event === 'LEAD_CLOSURE_APPROVE' ? { leadClosureApproval: entry, managementGoAhead: entry } : {}),
     ...(event === 'FINANCE_FINAL' ? { financeFinal: entry } : {}) };

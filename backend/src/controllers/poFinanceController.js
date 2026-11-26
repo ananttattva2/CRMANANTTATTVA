@@ -3,10 +3,13 @@ const mongoose = require('mongoose');
 const Approval = require('../models/PendingApproval');
 const Lead = require('../models/Lead');
 const Quotation = require('../models/Quotation');
+const User = require('../models/User');
+const { annualPaymentSchedule, annualPaymentQueue } = require('../services/annualReturnPayments');
 const { userHasAnyRole } = require('../utils/userRoles');
 const { transition, sourceSignature, termsSnapshot, fail } = require('../services/poApprovalWorkflow');
 const REVIEW_ROLES = ['accounts', 'finance', 'admin', 'superadmin'];
 const canView = user => userHasAnyRole(user, REVIEW_ROLES);
+const FINANCE_LIST_STAGES = ['FINANCE_READY', 'LEAD_OWNER_PENDING', 'LEAD_CLOSURE_PENDING', 'FINANCE_RELEASED', 'FINALIZED'];
 function identity(value) {
   if (value && typeof value === 'object') {
     if (typeof value.toHexString === 'function') return value.toHexString().toLowerCase();
@@ -44,6 +47,29 @@ function isAssignedStaff(assignment, lead, user, service = {}) {
     lead?.closedOnBehalfOfUser, lead?.closedOnBehalfOfName, lead?.closedOnBehalfOfEmail
   ].some(value => userKeys.has(identity(value)));
 }
+const bypassLeadOwner = owner => Boolean(owner && userHasAnyRole(owner, ['franchise', 'superadmin']));
+
+async function referralOwner(approval, lead, index, session) {
+  const assignment = lead.assignments[index] || {};
+  const service = ownerService(approval, lead, index);
+  const generated = [lead.generatedForUser, lead.generatedForCrmUserId, lead.generatedForEmail, lead.generatedForName];
+  const creator = [lead.createdBy, lead.createdByCrmUserId, lead.createdByEmail, lead.createdByName];
+  const allowRoot = Math.max(lead.assignments?.length || 0, lead.serviceSelections?.length || 0) <= 1;
+  const assigned = [assignment.assignedStaff, assignment.assignedStaffCrmUserId, assignment.assignedStaffEmail, assignment.assignedStaffText,
+    service.assignedStaff, service.assignedStaffCrmUserId, service.assignedStaffEmail, service.assignedStaffText,
+    ...(allowRoot ? [lead.assignedStaff, lead.assignedStaffCrmUserId, lead.assignedStaffEmail, lead.assignedStaffText] : [])];
+  const closure = [assignment.closedOnBehalfOfUser, assignment.closedOnBehalfOfEmail, assignment.closedOnBehalfOfName,
+    lead.closedOnBehalfOfUser, lead.closedOnBehalfOfEmail, lead.closedOnBehalfOfName];
+  const keys = [generated, creator, assigned, closure].find(group => group.some(Boolean))?.filter(Boolean).map(value => String(value?._id || value).trim());
+  if (!keys?.length) fail(409, 'Assign a lead owner to this service before referring the PO.');
+  const ids = keys.filter(mongoose.isValidObjectId);
+  const owners = await User.find({ $or: [
+    { _id: { $in: ids } }, { crmUserId: { $in: keys } }, { email: { $in: keys.map(key => key.toLowerCase()) } }, { name: { $in: keys } }
+  ] }).select('_id crmUserId email name role roles').session(session).lean();
+  return ids.map(id => owners.find(owner => String(owner._id) === id)).find(Boolean)
+    || (owners.length === 1 ? owners[0] : null);
+}
+
 function ownerService(approval, lead, index) {
   const serviceId = String(approval?.payload?.assignedServiceId || '');
   const selections = lead?.serviceSelections || [];
@@ -110,7 +136,8 @@ async function filterAssignedLeadOwnerApprovals(approvals, user) {
 }
 function report(res, error) {
   console.error('PO review failed', { name: error.name, code: error.code, status: error.status });
-  return res.status(error.status || 503).json({ error: error.status ? error.message : 'Unable to save this PO review. Refresh and try again.' });
+  return res.status(error.status || 503).json({ error: error.status ? error.message : 'Unable to save this PO review. Refresh and try again.',
+    ...(error.paymentDateRequired ? { paymentDateRequired: true } : {}) });
 }
 async function deliverDecisionNotification(notification) {
   try {
@@ -248,28 +275,18 @@ exports.act = async (req, res) => {
   if (!event) return res.status(404).json({ error: 'Unknown review action.' });
   try {
     let notification;
-    const result = await inTransaction(req.params.id, async ({ approval, lead, index }) => {
+    const result = await inTransaction(req.params.id, async ({ approval, lead, index, session }) => {
       requireUnchanged(approval, lead.assignments[index], lead.serviceSelections?.[index]);
       const paymentDate = req.body.paymentDate;
-      const review = transition(approval.poReview, event, req.user, req.body.remarks, req.body.version, new Date(), paymentDate);
+      if (event === 'FINANCE_REFER' && !userHasAnyRole(req.user, ['accounts', 'finance'])) fail(403, 'Your role cannot perform this approval step.');
+      const direct = event === 'FINANCE_REFER' && bypassLeadOwner(await referralOwner(approval, lead, index, session));
+      if (direct && !paymentDate) throw Object.assign(new Error('Enter the payment date for the Super Admin request.'), { status: 400, paymentDateRequired: true });
+      const review = transition(approval.poReview, direct ? 'FINANCE_REFER_DIRECT' : event, req.user, req.body.remarks, req.body.version, new Date(), paymentDate);
       // Lead owner request: verify the user is the assignment's assigned staff.
       if (event === 'LEAD_OWNER_REQUEST') {
         const assignment = lead.assignments[index];
         const service = ownerService(approval, lead, index);
         if (!isAssignedStaff(assignment, lead, req.user, service)) fail(403, 'Only the assigned lead owner can request management approval.');
-      }
-      if (event === 'FINANCE_REFER') {
-        const assignment = lead.assignments[index];
-        const service = ownerService(approval, lead, index);
-        const hasOwner = [
-          lead.generatedForUser, lead.generatedForName, lead.generatedForEmail, lead.createdBy, lead.createdByName, lead.createdByEmail,
-          assignment?.assignedStaff, assignment?.assignedStaffCrmUserId, assignment?.assignedStaffText, assignment?.assignedStaffEmail,
-          assignment?.closedOnBehalfOfUser, assignment?.closedOnBehalfOfName, assignment?.closedOnBehalfOfEmail,
-          service.assignedStaff, service.assignedStaffCrmUserId, service.assignedStaffText, service.assignedStaffEmail,
-          lead.assignedStaff, lead.assignedStaffCrmUserId, lead.assignedStaffText, lead.assignedStaffEmail,
-          lead.closedOnBehalfOfUser, lead.closedOnBehalfOfName, lead.closedOnBehalfOfEmail
-        ].some(value => Boolean(String(value?._id || value || '').trim()));
-        if (!hasOwner) fail(409, 'Assign a lead owner to this service before referring the PO.');
       }
       if (event === 'FINANCE_APPROVE' || event === 'FINANCE_FINAL') {
         const status = event === 'FINANCE_APPROVE' ? 'APPROVED' : String(req.body.status || '').toUpperCase();
@@ -297,11 +314,13 @@ exports.act = async (req, res) => {
         approval.markModified('payload');
         notification = { approval, lead, index, status: 'APPROVED', remarks: review.leadClosureApproval?.remarks || '', screenshotUrl: '', leadClosure: true };
       }
-      if (event === 'FINANCE_REFER') {
-        notification = { approval, lead, index, status: 'REFERRED', remarks: review.financeReferral?.remarks || '', screenshotUrl: '', specialApproval: true };
+      if (event === 'FINANCE_REFER' || event === 'LEAD_OWNER_REQUEST') {
+        notification = { approval, lead, index, status: 'REFERRED', remarks: String(req.body.remarks).trim(),
+          screenshotUrl: '', specialApproval: event === 'FINANCE_REFER' && !direct,
+          managementReferral: direct || event === 'LEAD_OWNER_REQUEST', paymentDate: review.leadOwnerRequest?.paymentDate };
       }
       approval.poReview = review;
-      return { ok: true, review, message: event === 'FINANCE_APPROVE' ? 'Finance approval saved. Staff assignment is now unlocked.' : event === 'FINANCE_REFER' ? 'Remark submitted. This PO is now with the lead owner to request management approval.' : event === 'LEAD_OWNER_REQUEST' ? 'Request submitted. This PO is now awaiting Lead Closure Approval from Super Admin.' : event === 'LEAD_CLOSURE_APPROVE' ? 'Lead Closure Approval saved. Finance can now record the final decision.' : 'Finance final decision saved.' };
+      return { ok: true, review, message: event === 'FINANCE_APPROVE' ? 'Finance approval saved. Staff assignment is now unlocked.' : event === 'FINANCE_REFER' && !direct ? 'Remark submitted. This PO is now with the lead owner to request management approval.' : direct || event === 'LEAD_OWNER_REQUEST' ? 'Request submitted. This PO is now awaiting Lead Closure Approval from Super Admin.' : event === 'LEAD_CLOSURE_APPROVE' ? 'Lead Closure Approval saved. Finance can now record the final decision.' : 'Finance final decision saved.' };
     });
     const emailNotification = notification ? await deliverDecisionNotification(notification) : null;
     return res.json(emailNotification ? { ...result, emailNotification } : result);
@@ -327,16 +346,33 @@ exports.paymentStatus = async (req, res) => {
     if (!narration || narration.length > 500) fail(400, 'Enter a payment narration of up to 500 characters.');
     const receiptDetails = { paymentDate, paymentMode, bank, referenceNumber };
     let notification;
-    const result = await inTransaction(req.params.id, async ({ approval, lead, index }) => {
+    const result = await inTransaction(req.params.id, async ({ approval, lead, index, session }) => {
       if (!approval.poReview) fail(409, 'This PO is not under Finance review.');
-      const pos = approval.payload?.poYearRows || lead.assignments[index]?.poYearRows || [];
+      let annualPayment;
+      if (annualPaymentSchedule(approval).length) {
+        const siblings = await Approval.find({
+          _id: { $ne: approval._id }, type: 'purchase_order', 'payload.leadId': String(lead._id),
+          'poReview.stage': { $in: FINANCE_LIST_STAGES },
+          approvalStatus: { $nin: ['REJECTED', 'REVISION_REQUIRED'] }
+        }).select('payload.service payload.leadId payload.poYearRows poReview').session(session).lean();
+        const schedule = annualPaymentQueue([approval, ...siblings]).get(String(approval._id));
+        const year = String(req.body.annualReturnYear || '').trim();
+        annualPayment = year ? schedule.find(row => row.year === year) : schedule.length === 1 ? schedule[0] : null;
+        if (!annualPayment) fail(400, 'Select a valid Annual Return year.');
+        if (!annualPayment.unlocked) fail(409, 'Complete payment for the previous Annual Return year first.');
+        if (annualPayment.laterPayment && status !== 'COMPLETE_RECEIVED') fail(409, 'A later Annual Return year already has a recorded payment.');
+      } else if (req.body.annualReturnYear) {
+        fail(400, 'This PO has no payment schedule for the selected Annual Return year.');
+      }
+      const pos = annualPayment?.rows || approval.payload?.poYearRows || lead.assignments[index]?.poYearRows || [];
       const poAmount = pos.reduce((sum, row) => sum + Number(row.poAmount || 0), 0);
       const amount = confirmAmount ? poAmount : Number(req.body.amount);
       if (!Number.isFinite(amount) || amount <= 0) fail(400, 'Enter a valid received amount.');
-      const entry = { status, amount, ...receiptDetails, confirmed: confirmAmount, remarks: narration, by: String(req.user._id), name: req.user.name || req.user.email || '', at: new Date().toISOString() };
-      approval.poReview = { ...approval.poReview, paymentStatus: entry, history: [...(approval.poReview.history || []), { event: `PAYMENT_${status}`, ...receiptDetails, narration, remarks: `${status}: ${amount}${confirmAmount ? ' (confirmed as PO amount)' : ''}`, by: entry.by, name: entry.name, at: entry.at }] };
+      const yearDetails = annualPayment ? { annualReturnYear: annualPayment.year } : {};
+      const entry = { status, amount, ...yearDetails, ...receiptDetails, confirmed: confirmAmount, remarks: narration, by: String(req.user._id), name: req.user.name || req.user.email || '', at: new Date().toISOString() };
+      approval.poReview = { ...approval.poReview, ...(annualPayment ? { annualPayments: { ...approval.poReview.annualPayments, [annualPayment.year]: entry } } : { paymentStatus: entry }), history: [...(approval.poReview.history || []), { event: `PAYMENT_${status}`, ...yearDetails, ...receiptDetails, narration, remarks: `${status}: ${amount}${confirmAmount ? ' (confirmed as PO amount)' : ''}`, by: entry.by, name: entry.name, at: entry.at }] };
       approval.markModified('poReview');
-      notification = { approval, lead, index, status: 'PAYMENT', remarks: entry.remarks, screenshotUrl: '', paymentStatus: entry, poAmount };
+      notification = { approval, lead, index, status: 'PAYMENT', remarks: entry.remarks, screenshotUrl: '', paymentStatus: entry, poAmount, paymentRows: pos };
       return { ok: true, review: approval.poReview, message: `Payment status recorded: ${status.replace('_', ' ').toLowerCase()} (${amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}).` };
     });
     const emailNotification = notification
@@ -359,8 +395,8 @@ async function withLeadOwnerNames(approvals) {
   const ids = [...new Set(approvals.map(row => String(row.payload?.leadId || '')).filter(mongoose.isValidObjectId))];
   if (!ids.length) return approvals;
   const leads = await Lead.find({ _id: { $in: ids } })
-    .select('generatedForUser generatedForName generatedForEmail createdBy createdByName createdByEmail importedCreatedBy assignedStaffText closedOnBehalfOfName assignments.assignedServiceId assignments.serviceAssignmentId assignments.assignedStaffText assignments.closedOnBehalfOfName serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId serviceSelections.assignedStaffText')
-    .populate('generatedForUser createdBy', 'name email').maxTimeMS(15000).lean();
+    .select('generatedForUser generatedForCrmUserId generatedForName generatedForEmail createdBy createdByName createdByEmail importedCreatedBy assignedStaffText closedOnBehalfOfName assignments.assignedServiceId assignments.serviceAssignmentId assignments.assignedStaffText assignments.closedOnBehalfOfName serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId serviceSelections.assignedStaffText')
+    .populate('generatedForUser createdBy', 'name email role roles').maxTimeMS(15000).lean();
   const byId = new Map(leads.map(lead => [String(lead._id), lead]));
   return approvals.map(row => {
     const lead = byId.get(String(row.payload?.leadId || ''));
@@ -372,23 +408,28 @@ async function withLeadOwnerNames(approvals) {
       || assignment?.assignedStaffText || service?.assignedStaffText || assignment?.closedOnBehalfOfName
       || (lead?.assignments?.length <= 1 ? lead?.assignedStaffText || lead?.closedOnBehalfOfName : '')
       || row.payload?.leadCreatorName || row.poReview?.leadOwnerRequest?.name || '';
-    return { ...row, leadOwnerName };
+    const owner = lead?.generatedForUser || (lead?.generatedForCrmUserId || lead?.generatedForName || lead?.generatedForEmail ? null : lead?.createdBy);
+    return { ...row, leadOwnerName, specialApprovalDirect: bypassLeadOwner(owner) };
   });
 }
 exports.list = async (req, res) => {
   const staffView = !canView(req.user);
   try {
-    const baseFilter = { type: 'purchase_order', 'poReview.stage': { $in: ['FINANCE_READY', 'LEAD_OWNER_PENDING', 'LEAD_CLOSURE_PENDING', 'FINANCE_RELEASED', 'FINALIZED'] } };
+    const baseFilter = { type: 'purchase_order', 'poReview.stage': { $in: FINANCE_LIST_STAGES } };
     const approvals = await Approval.find(baseFilter)
-      .select('clientName uniqueId approvalStatus createdByName createdAt actionAt poReview payload.specialApprovalOrigin payload.leadId payload.assignedServiceId payload.assignmentIndex payload.leadCode payload.leadCreatorName payload.poSubmittedByName payload.poSubmittedAt payload.service payload.poYearRows.poNumber payload.poYearRows.poAmount payload.poYearRows.quotationBasicAmount payload.poYearRows.quotationNumber payload.poYearRows.quotationItems.unit payload.poYearRows.quotationItems.basicAmount payload.poYearRows.fy')
+      .select('clientName uniqueId approvalStatus createdByName createdAt actionAt poReview payload.specialApprovalOrigin payload.leadId payload.assignedServiceId payload.assignmentIndex payload.leadCode payload.leadCreatorName payload.poSubmittedByName payload.poSubmittedAt payload.service payload.poYearRows.poNumber payload.poYearRows.poAmount payload.poYearRows.quotationBasicAmount payload.poYearRows.quotationNumber payload.poYearRows.quotationItems.unit payload.poYearRows.quotationItems.basicAmount payload.poYearRows.fy payload.poYearRows.poFinancialYear payload.poYearRows.annualReturnYear payload.poYearRows.poNo payload.poYearRows.services')
       .sort({ updatedAt: -1 }).maxTimeMS(15000).lean();
     if (staffView) {
       const visible = await filterAssignedLeadOwnerApprovals(approvals, req.user);
-      return res.json({ ok: true, approvals: await withLeadOwnerNames(visible) });
+      return res.json({ ok: true, approvals: await withLeadOwnerNames(visible.map(row => ({ ...row, annualReturnPayments: annualPaymentSchedule(row) }))) });
     }
     for (const approval of approvals) if (approval.payload?.specialApprovalOrigin || approval.poReview?.managementGoAhead || approval.poReview?.financeReferral) approval.approvalSource = 'Special Approval';
     const specialClosures = await require('../services/specialClosureFinance').loadSpecialClosures(approvals);
-    return res.json({ ok: true, approvals: await withLeadOwnerNames([...approvals, ...specialClosures]) });
+    const schedule = annualPaymentQueue(approvals.filter(row => !row.specialClosure && !['REJECTED', 'REVISION_REQUIRED'].includes(row.approvalStatus)));
+    const listed = [...approvals, ...specialClosures].map(row => ({
+      ...row, annualReturnPayments: schedule.get(String(row._id)) || annualPaymentSchedule(row)
+    }));
+    return res.json({ ok: true, approvals: await withLeadOwnerNames(listed) });
   } catch (error) { return report(res, error); }
 };
 exports.detail = async (req, res) => {

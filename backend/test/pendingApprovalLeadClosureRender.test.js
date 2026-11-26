@@ -20,7 +20,7 @@ function renderRows(rows) {
   const code = esbuild.transformSync(`${helpers}\n${normalization}\n${closureStatus}\nresult = (${expression});`, { loader: 'jsx', format: 'cjs' }).code;
   const context = {
     React, console: { debug() {} }, filteredLeadClosureApprovals: rows,
-    savingId: '', canApprove: true, openLeadClosureApproval() {},
+    savingId: '', isSuperAdmin: true, openLeadClosureApproval() {},
   };
   vm.runInNewContext(code, context);
   return renderToStaticMarkup(React.createElement('table', null, React.createElement('tbody', null, context.result)));

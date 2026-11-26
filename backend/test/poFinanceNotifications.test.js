@@ -92,6 +92,15 @@ test('PO referral and payment notifications reach the owner, managers, admins, a
   assert.deepEqual(sent.map((mail) => mail.to), ['gaurav@example.test']);
 
   sent.length = 0;
+  await notifyPurchaseOrderDecision({
+    approval, lead, index: 0, status: 'REFERRED', remarks: 'Finance direct referral.',
+    managementReferral: true, paymentDate: '2026-12-15'
+  });
+  assert.deepEqual(sent.map(mail => mail.to), ['superadmin@example.test']);
+  assert.ok(sent[0].html.includes('/pending-approval?tab=lead-closure'));
+  assert.ok(sent[0].html.includes('2026-12-15'));
+
+  sent.length = 0;
   const payment = await notifyPurchaseOrderDecision({
     approval, lead: {
       ...lead,
