@@ -143,6 +143,11 @@ test('converted cold leads remain in Cold Closed history and link to one unique 
   '../models/TemporaryLead':{find:()=>chain(++coldReads===1?cold:[cold[0]])},
   '../models/LeadRevenue':{find:()=>chain(++revenueReads===1?[own,inherited]:[inherited])},
   '../models/Quotation':{find:()=>chain([])},
+  '../models/PendingApproval':{find(filter) {
+   assert.equal(filter['poReview.finalStatus'], 'APPROVED');
+   assert.ok(filter['payload.leadId'].$in.includes('h'));
+   return chain([{ actionAt: '2026-11-25', payload: { leadId: 'h', assignedServiceId: 'a', poYearRows: [{ poNumber: 'PO-1', poAmount: 30000 }] } }]);
+  }},
   './leadController':{leadAccessFilter:async()=>({visible:'hot'})},
   './temporaryLeadController':{temporaryLeadAccessFilter:async()=>({visible:'cold'})},
   '../services/leadRevenue':require('../src/services/leadRevenue'),
@@ -151,9 +156,11 @@ test('converted cold leads remain in Cold Closed history and link to one unique 
  const context={exports:{},require:name=>deps[name]};
  vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../src/controllers/leadRevenueController.js'),'utf8'),context);
  const res={set(){},json(data){this.data=data}};
- await context.exports.pipeline({user:{_id:'u'}},res,e=>{throw e});
+ await context.exports.pipeline({path:'/summary-dashboard',user:{_id:'u'}},res,e=>{throw e});
  assert.equal(res.data.rows.length,3);
  assert.equal(res.data.rows.find(r=>r.kind==='hot').revenuePaise,1500000);
+ assert.equal(res.data.rows.find(r=>r.kind==='hot').state,'closed');
+ assert.equal(res.data.rows.find(r=>r.kind==='hot').poActivity[0].amountPaise,3000000);
  assert.equal(res.data.rows.find(r=>r.kind==='hot').owner,'Current Owner');
  assert.equal(res.data.rows.find(r=>r.kind==='hot').ownerId,'owner');
  assert.equal(res.data.rows.find(r=>r.kind==='hot').ownerActive,true);
@@ -238,4 +245,25 @@ test('administrator may correct an incorrect estimate to zero without deleting i
  assert.equal(h.updates[0].update.$set.amountPaise,0);
  assert.equal(h.updates[0].update.$push.corrections.beforePaise,1000000);
  assert.equal(h.updates[0].update.$push.corrections.afterPaise,0);
+});
+
+test('Summary Dashboard reports older leads and their PO amounts in the Finance approval period', async () => {
+  const { approvedPoActivity } = require('../src/services/leadRevenue');
+  const { summaryPipelineRows } = await import('../../frontend/src/utils/leadPipeline.mjs');
+  const lead = { createdAt: '2025-01-01', kind: 'hot', state: 'closed' };
+  const approval = (assignedServiceId, actionAt) => ({
+    actionAt, payload: { assignedServiceId, poYearRows: [{ poNumber: 'PO-7', poAmount: 30000 }] }
+  });
+  lead.poActivity = approvedPoActivity(lead, [
+    approval('registration', '2026-11-25'), approval('return-2026', '2026-11-25'),
+    approval('return-2027', '2026-11-20'), approval('registration', '2026-11-19')
+  ]);
+  const period = (start, end) => ({ start: Date.parse(start), end: Date.parse(end) });
+  const week = summaryPipelineRows([lead], period('2026-11-23', '2026-11-30'));
+  assert.equal(week.length, 1);
+  assert.equal(week[0].poAmountPaise, 6000000);
+  assert.equal(week[0].reportDate, '2026-11-25');
+  assert.equal(summaryPipelineRows([lead], period('2026-11-16', '2026-11-23'))[0].poAmountPaise, 3000000);
+  assert.equal(summaryPipelineRows([lead], period('2026-11-01', '2026-12-01'))[0].poAmountPaise, 9000000);
+  assert.equal(summaryPipelineRows([lead], period('2025-01-01', '2025-02-01')).length, 0);
 });

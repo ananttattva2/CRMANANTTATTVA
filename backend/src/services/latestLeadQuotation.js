@@ -48,10 +48,10 @@ function quotationKeys(quotation = {}) {
  * Returns one amount per lead. A revised quotation never gets added to an
  * older quotation for the same lead; only the latest eligible record wins.
  */
-function latestQuotationAmountsByLead(leads = [], quotations = []) {
+function latestQuotationAmountsByLead(leads = [], quotations = [], { includeClosed = false } = {}) {
   const latestByKey = new Map();
   for (const quotation of quotations) {
-    if (!quotationIsEligible(quotation)) continue;
+    if (includeClosed ? !ELIGIBLE_STATUSES.has(text(quotation.status).toLowerCase()) : !quotationIsEligible(quotation)) continue;
     for (const key of quotationKeys(quotation)) {
       if (isLaterQuotation(quotation, latestByKey.get(key))) latestByKey.set(key, quotation);
     }

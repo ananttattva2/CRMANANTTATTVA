@@ -7,7 +7,7 @@ const Quotation = require('../models/Quotation');
 const LeadActivity = require('../models/LeadActivity');
 const { leadAccessFilter } = require('./leadController');
 const { temporaryLeadAccessFilter } = require('./temporaryLeadController');
-const { amountPaise, serviceRows, groupsFrom, hotClosed, purchaseOrders, serviceDetails, clientContactDetails } = require('../services/leadRevenue');
+const { amountPaise, serviceRows, groupsFrom, hotClosed, purchaseOrders, approvedPoActivity, recordedClosureDate, serviceDetails, clientContactDetails } = require('../services/leadRevenue');
 const { userHasAnyRole } = require('../utils/userRoles');
 const { latestQuotationAmountsByLead } = require('../services/latestLeadQuotation');
 
@@ -127,21 +127,34 @@ exports.pipeline = async (req, res, next) => {
     const hotIds = hot.map((lead) => lead._id);
     const hotIdStrings = hotIds.map(String);
     const hotCodes = hot.flatMap((lead) => [lead.leadCode, lead.sourceLeadId]).map((value) => String(value || '').trim()).filter(Boolean);
-    const [entries, quotations] = await Promise.all([
+    const [entries, quotations, financeApprovals] = await Promise.all([
       Revenue.find({ $or: [{ leadKind: 'hot', leadId: { $in: hotIds } }, { leadKind: 'cold', leadId: { $in: cold.map(l => l._id) } }] })
         .select('leadKind leadId amountPaise').sort({ createdAt: 1 }).maxTimeMS(15000).lean(),
-      (compactAdmin ? require('../services/compactReadSnapshot').compactReadSnapshot(Quotation, { filter: { deletedAt: null, status: { $in: ['submitted', 'sent', 'admin_approved', 'approved'] }, serviceState: { $ne: 'closed' } }, versionIndex: { deletedAt: 1, status: 1, serviceState: 1, updatedAt: 1, _id: 1 }, selection: '_id leadRef leadId leadCode businessLeadCode quotationNumber quotationDate createdAt grandTotal status serviceState' }) : Quotation.find({
+      (compactAdmin ? require('../services/compactReadSnapshot').compactReadSnapshot(Quotation, { filter: { deletedAt: null, status: { $in: ['submitted', 'sent', 'admin_approved', 'approved'] } }, versionIndex: { deletedAt: 1, status: 1, serviceState: 1, updatedAt: 1, _id: 1 }, selection: '_id leadRef leadId leadCode businessLeadCode quotationNumber quotationDate createdAt grandTotal status serviceState' }) : Quotation.find({
         status: { $in: ['submitted', 'sent', 'admin_approved', 'approved'] },
-        serviceState: { $ne: 'closed' },
         $or: [
           { leadRef: { $in: hotIds } },
           { leadId: { $in: [...hotIdStrings, ...hotCodes] } },
           { leadCode: { $in: hotCodes } },
           { businessLeadCode: { $in: hotCodes } }
         ]
-      }).select('_id leadRef leadId leadCode businessLeadCode quotationNumber quotationDate createdAt grandTotal status serviceState').maxTimeMS(15000).lean())
+      }).select('_id leadRef leadId leadCode businessLeadCode quotationNumber quotationDate createdAt grandTotal status serviceState').maxTimeMS(15000).lean()),
+      req.path === '/summary-dashboard' && hotIds.length
+        ? require('../models/PendingApproval').find({
+          type: 'purchase_order', approvalStatus: 'APPROVED', 'poReview.stage': 'FINALIZED', 'poReview.finalStatus': 'APPROVED',
+          'payload.leadId': { $in: [...hotIds, ...hotIdStrings] }
+        }).select('actionAt sourceClientId payload.leadId payload.assignedServiceId payload.assignmentIndex payload.poYearRows.poNumber payload.poYearRows.poNo payload.poYearRows.poDate payload.poYearRows.poFinancialYear payload.poYearRows.fy payload.poYearRows.poAmount')
+          .sort({ actionAt: -1, _id: -1 }).maxTimeMS(15000).lean()
+        : Promise.resolve([])
     ]);
-    const latestQuotationByLead = latestQuotationAmountsByLead(hot, quotations);
+    const financeByLead = new Map();
+    for (const approval of financeApprovals) {
+      const id = String(approval.payload.leadId);
+      if (!financeByLead.has(id)) financeByLead.set(id, []);
+      financeByLead.get(id).push(approval);
+    }
+    const latestOpenQuotationByLead = latestQuotationAmountsByLead(hot, quotations);
+    const latestQuotationByLead = latestQuotationAmountsByLead(hot, quotations, { includeClosed: true });
     const revenueByLead = new Map();
     for (const entry of entries) {
       const key = `${entry.leadKind}:${entry.leadId}`;
@@ -158,7 +171,7 @@ exports.pipeline = async (req, res, next) => {
     }
     const ownerNames = new Map(hot.map(lead => { const owner = pipelineOwnerDetails(lead, 'hot'); return [String(owner.id || ''), owner.name]; }).filter(([id]) => id));
     const rows = [
-      ...hot.map(lead => ({ kind: 'hot', lead, closed: hotClosed(lead), inheritedIds: originIdsByHot.get(String(lead._id)) || [] })),
+      ...hot.map(lead => ({ kind: 'hot', lead, closed: financeByLead.has(String(lead._id)) || hotClosed(lead), inheritedIds: originIdsByHot.get(String(lead._id)) || [] })),
       ...cold.map(lead => ({ kind: 'cold', lead, closed: lead.status === 'CONVERTED' || Boolean(lead.pipelineClosedAt), inheritedIds: [] }))
     ].map(({ kind, lead, closed, inheritedIds }) => {
       const inactiveDays = pipelineInactiveDays(lead);
@@ -168,7 +181,8 @@ exports.pipeline = async (req, res, next) => {
       const serviceInterests = kind === 'hot' ? [...new Set((lead.serviceSelections || []).flatMap((service) => [service.servicesOffered, service.applicableService, service.eprCategory]).map((value) => String(value || '').trim()).filter(Boolean))] : [];
       const releasedOrStale = Boolean(lead.noOwner?.active || owner.previous);
       const previousOwner = owner.previous?.name || ownerNames.get(String(lead.noOwner?.previousOwner?.id || '')) || lead.noOwner?.previousOwner?.name || lead.noOwner?.previousOwner?.email || '';
-      return { communicationModeParent: String(lead.communicationModeParent || '').trim(), communicationMode: String(lead.communicationMode || '').trim(), canonicalKey: kind === 'cold' && lead.status === 'CONVERTED' && lead.convertedLead ? `hot:${lead.convertedLead}` : `${kind}:${lead._id}`, converted: kind === 'cold' && lead.status === 'CONVERTED', convertedLeadId: kind === 'cold' && lead.convertedLead ? String(lead.convertedLead) : undefined, poAmountPaise: kind === 'hot' ? purchaseOrders(lead).reduce((n, po) => n + po.amountPaise, 0) : 0, quotationAmountPaise: kind === 'hot' && !closed ? (latestQuotationByLead.get(String(lead._id)) || 0) : 0, id: String(lead._id), kind, state: closed ? 'closed' : 'open', code: lead.leadCode || lead.tempLeadCode, company: lead.company || lead.clientName, previousOwner: releasedOrStale ? previousOwner : '', previousOwnerId: releasedOrStale ? String(lead.noOwner?.previousOwner?.id || owner.previous?.id || '') : '', owner: owner.name, ownerId: owner.id, ownerActive: owner.active, serviceCount: kind === 'hot' ? lead.serviceSelections?.length || 1 : 0, serviceInterests, revenuePaise: ownRevenue + inheritedRevenue, createdAt: lead.createdAt, inactiveDays };
+      const poActivity = kind === 'hot' ? approvedPoActivity(lead, financeByLead.get(String(lead._id)) || []) : [];
+      return { poActivity, closedAt: closed && kind === 'hot' ? recordedClosureDate(lead) : null, communicationModeParent: String(lead.communicationModeParent || '').trim(), communicationMode: String(lead.communicationMode || '').trim(), canonicalKey: kind === 'cold' && lead.status === 'CONVERTED' && lead.convertedLead ? `hot:${lead.convertedLead}` : `${kind}:${lead._id}`, converted: kind === 'cold' && lead.status === 'CONVERTED', convertedLeadId: kind === 'cold' && lead.convertedLead ? String(lead.convertedLead) : undefined, poAmountPaise: kind === 'hot' ? purchaseOrders(lead).reduce((n, po) => n + po.amountPaise, 0) : 0, latestQuotationAmountPaise: kind === 'hot' ? latestQuotationByLead.get(String(lead._id)) || 0 : 0, quotationAmountPaise: kind === 'hot' && !closed ? (latestOpenQuotationByLead.get(String(lead._id)) || 0) : 0, id: String(lead._id), kind, state: closed ? 'closed' : 'open', code: lead.leadCode || lead.tempLeadCode, company: lead.company || lead.clientName, previousOwner: releasedOrStale ? previousOwner : '', previousOwnerId: releasedOrStale ? String(lead.noOwner?.previousOwner?.id || owner.previous?.id || '') : '', owner: owner.name, ownerId: owner.id, ownerActive: owner.active, serviceCount: kind === 'hot' ? lead.serviceSelections?.length || 1 : 0, serviceInterests, revenuePaise: ownRevenue + inheritedRevenue, createdAt: lead.createdAt, inactiveDays };
 
     });
     res.set('Server-Timing', `pipeline;dur=${Date.now() - startedAt}`);

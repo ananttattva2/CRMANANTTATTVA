@@ -40,6 +40,22 @@ export function inPipelinePeriod(value, range) {
   return timestamp >= range.start && timestamp < range.end;
 }
 
+export function summaryPipelineRows(rows, range) {
+  return currentPipelineRows(rows).flatMap(row => {
+    if (row.kind !== 'hot' || row.state !== 'closed') {
+      return inPipelinePeriod(row.createdAt, range) ? [row] : [];
+    }
+    if (!row.poActivity?.length) {
+      const reportDate = row.closedAt || row.createdAt;
+      return inPipelinePeriod(reportDate, range) ? [{ ...row, reportDate }] : [];
+    }
+    const approvals = row.poActivity.filter(event => inPipelinePeriod(event.date || row.closedAt || row.createdAt, range));
+    if (!approvals.length) return [];
+    const reportDate = approvals[0].date || row.closedAt || row.createdAt;
+    return [{ ...row, reportDate, poAmountPaise: approvals.reduce((total, event) => total + event.amountPaise, 0) }];
+  });
+}
+
 export function previousPipelinePeriodRange(period, value) {
   if (!['week', 'month', 'quarter'].includes(period)) return null;
   const current = pipelinePeriodRange(period, value);

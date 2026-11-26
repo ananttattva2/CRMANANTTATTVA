@@ -80,7 +80,7 @@ export async function createSalesRepPerformancePdf({ reps = [], totals = {}, sum
     doc.setFont('helvetica', 'bold'); doc.setFontSize(17); doc.setTextColor(7, 88, 72)
     doc.text('Summary Dashboard Report', margin + 5, 20)
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(71, 85, 105)
-    doc.text(`Lead creation date: ${currentRange} | ${comparison} | Generated ${generatedAt} IST`, margin + 5, 29)
+    doc.text(`Reporting period: ${currentRange} | ${comparison} | Generated ${generatedAt} IST`, margin + 5, 29)
   }
 
   drawHeading()

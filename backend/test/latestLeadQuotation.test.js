@@ -25,4 +25,5 @@ test('ignores draft, rejected and closed quotation records', () => {
 
   const result = latestQuotationAmountsByLead([lead], quotations);
   assert.equal(result.get(String(lead._id)), 5000000);
+  assert.equal(latestQuotationAmountsByLead([lead], quotations, { includeClosed: true }).get(String(lead._id)), 12000000);
 });

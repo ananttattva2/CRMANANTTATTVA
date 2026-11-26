@@ -65,6 +65,26 @@ function purchaseOrders(lead = {}) {
   });
   return [...unique.values()];
 }
+function approvedPoActivity(lead, approvals) {
+  const services = new Set();
+  return approvals.flatMap(approval => {
+    const { assignedServiceId, assignmentIndex, poYearRows } = approval.payload || {};
+    const key = assignedServiceId || (assignmentIndex != null ? String(assignmentIndex) : String(approval.sourceClientId || approval._id));
+    if (services.has(key)) return [];
+    services.add(key);
+    const assignment = assignedServiceId
+      ? lead.assignments?.find(row => String(row.assignedServiceId || row.serviceAssignmentId || '') === String(assignedServiceId))
+      : lead.assignments?.[assignmentIndex];
+    const orders = purchaseOrders(poYearRows?.length ? { poYearRows } : assignment || {});
+    const date = approval.actionAt || assignment?.closedAt || lead.closedAt || null;
+    return [{ date, amountPaise: orders.reduce((total, order) => total + order.amountPaise, 0) }];
+  });
+}
+function recordedClosureDate(lead) {
+  return [lead.closedAt, ...(lead.assignments || []).map(row => row.closedAt), ...(lead.serviceSelections || []).map(row => row.closedAt)]
+    .filter(value => value && Number.isFinite(new Date(value).getTime()))
+    .sort((a, b) => new Date(a) - new Date(b))[0] || null;
+}
 function serviceDetails(lead = {}) {
   const rows = lead.serviceSelections?.length ? lead.serviceSelections : [lead];
   return rows.map((row, index) => {
@@ -88,4 +108,4 @@ function clientContactDetails(lead = {}) {
     city: lead.city || address.city || '', state: lead.state || address.state || '', pinCode: lead.pinCode || address.pinCode || ''
   };
 }
-module.exports = { amountPaise, serviceRows, groupsFrom, hotClosed, purchaseOrders, serviceDetails, clientContactDetails };
+module.exports = { amountPaise, serviceRows, groupsFrom, hotClosed, purchaseOrders, approvedPoActivity, recordedClosureDate, serviceDetails, clientContactDetails };
