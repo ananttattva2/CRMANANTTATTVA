@@ -35,6 +35,6 @@ test('Lead and Client directories request pages and debounce search', () => {
   assert.match(leadPage, /query\.trim\(\) \? 400 : 0/);
   assert.match(leadPage, /fetchLeadDetail/);
   assert.match(clientPage, /params: \{ paginated: true, (?:directory: true, )?\.\.\.params \}/);
-  assert.match(clientDirectory, /query\.trim\(\) \? 400 : 0/);
+  assert.match(clientDirectory, /query\.trim\(\) \? 200 : 0/);
   assert.match(clientDirectory, /pagination\?\.totalPages/);
 });

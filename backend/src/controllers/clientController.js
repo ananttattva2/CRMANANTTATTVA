@@ -1460,10 +1460,7 @@ exports.listClients = async (req, res) => {
       .populate('adminControls.assignedTo', 'name email role avatarUrl')
       .sort({ [sortBy]: sortOrder, _id: sortOrder })
       .skip(snapshot ? 0 : (page - 1) * limit).limit(snapshot ? 0 : limit).maxTimeMS(20000).lean();
-  const [clients, counted, summaryRows] = await Promise.all([
-    snapshot ? require('../services/crmCache').getCrmCache().remember(`dashboard-clients:${mongoose.mongo.BSON.EJSON.stringify({ filter, projection, sortBy, sortOrder })}`, clientRead) : clientRead(),
-    snapshot ? Promise.resolve(null) : Client.countDocuments(filter),
-    snapshot ? Promise.resolve([]) : Client.aggregate([
+  const readSummary = () => Client.aggregate([
       { $match: baseFilter },
       { $group: {
         _id: null,
@@ -1478,7 +1475,14 @@ exports.listClients = async (req, res) => {
         rejected: { $sum: { $cond: [{ $eq: ['$data.cpcb.status', 'Rejected'] }, 1, 0] } },
         discontinued: { $sum: { $cond: [{ $in: ['$adminControls.visibilityStatus', ['DISCONTINUED', 'SUSPENDED']] }, 1, 0] } }
       } }
-    ])
+  ]);
+  const summaryRead = () => req.query.directory === 'true'
+    ? require('../services/crmCache').getCrmCache().remember(`client-directory-summary:v1:${mongoose.mongo.BSON.EJSON.stringify(baseFilter)}`, readSummary)
+    : readSummary();
+  const [clients, counted, summaryRows] = await Promise.all([
+    snapshot ? require('../services/crmCache').getCrmCache().remember(`dashboard-clients:${mongoose.mongo.BSON.EJSON.stringify({ filter, projection, sortBy, sortOrder })}`, clientRead) : clientRead(),
+    snapshot ? Promise.resolve(null) : Client.countDocuments(filter),
+    snapshot ? Promise.resolve([]) : summaryRead()
   ]);
   const total = counted ?? clients.length;
   if (req.query.export === 'true' && clients.length) {

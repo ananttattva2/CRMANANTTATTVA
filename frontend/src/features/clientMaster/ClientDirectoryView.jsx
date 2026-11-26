@@ -178,7 +178,7 @@ function ClientDirectoryView({ clients, pagination, summary, staff, loading, err
         staff: staffFilter,
         metric: metricFilter
       });
-    }, query.trim() ? 400 : 0);
+    }, query.trim() ? 200 : 0);
     return () => window.clearTimeout(timer);
   }, [metricFilter, onDirectoryQueryChange, page, query, rowsPerPage, staffFilter, visibilityFilter]);
 

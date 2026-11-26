@@ -1512,6 +1512,8 @@ export default function ClientMaster() {
   const clientRecordRequestRef = useRef(0);
   const pageLoadRequestRef = useRef(0);
   const directoryRequestRef = useRef(0);
+  const directoryAbortRef = useRef(null);
+  useEffect(() => () => directoryAbortRef.current?.abort(), []);
   const saveRequestRef = useRef(false);
   const { clientKey: routeClientKey, annualYear: routeAnnualYear } = useParams();
   const routeAnnualYearLabel = routeAnnualYear ? decodeURIComponent(routeAnnualYear) : '';
@@ -1933,11 +1935,15 @@ export default function ClientMaster() {
 
   const loadClientDirectory = useCallback(async (params = {}) => {
     const requestId = ++directoryRequestRef.current;
+    directoryAbortRef.current?.abort();
+    const controller = new AbortController();
+    directoryAbortRef.current = controller;
     setLoading(true);
     setError('');
     try {
       const response = await api.get(API_ENDPOINTS.clients.list, {
-        params: { paginated: true, directory: true, ...params }
+        params: { paginated: true, directory: true, ...params },
+        signal: controller.signal
       });
       if (requestId !== directoryRequestRef.current) return;
       const rows = enrichClientsFromLeads(getClientMasterRows(response.data?.clients || [], []), []);
