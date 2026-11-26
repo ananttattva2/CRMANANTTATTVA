@@ -2911,13 +2911,14 @@ exports.listDuplicateLeadApprovals = async (req, res) => {
   const approvals = [...activeApprovals, ...recentDecisions];
   const readAt = Date.now();
   const purchaseOrderApprovals = approvals.filter((approval) => approval.type === 'purchase_order');
-  // Complete saved snapshots can render immediately. Legacy rows missing
-  // amounts still use the existing recovery path, so totals are not lost.
-  const poEnrichmentApprovals = purchaseOrderApprovals.filter(approval => {
+  const hasServiceName = service => Boolean(String(service?.servicesOffered || service?.applicableService || '').trim());
+  const needsPoAmounts = approval => {
     if (!listOnly) return true;
     const rows = approval.payload?.poYearRows;
     return !Array.isArray(rows) || !rows.length || rows.some(row => !(Number(row?.poAmount) > 0));
-  });
+  };
+  const poEnrichmentApprovals = purchaseOrderApprovals.filter(approval =>
+    needsPoAmounts(approval) || !hasServiceName(approval.payload?.service));
   if (poEnrichmentApprovals.length) {
     const approvalLeadId = (approval) => {
       const payloadId = String(approval.payload?.leadId || '').trim();
@@ -2943,10 +2944,10 @@ exports.listDuplicateLeadApprovals = async (req, res) => {
     const leadByCompany = new Map(leads.map((lead) => [String(lead.company || '').toLowerCase(), lead]).filter(([company]) => company));
     const leadBySourceId = new Map(leads.map((lead) => [String(lead.sourceLeadId || ''), lead]).filter(([id]) => id));
     const matchedLeadCodes = leads.map((lead) => lead.leadCode).filter(Boolean);
-    const quotations = await Quotation.find({ $or: [
+    const quotations = poEnrichmentApprovals.some(needsPoAmounts) ? await Quotation.find({ $or: [
       { leadRef: { $in: leadIds } }, { leadId: { $in: leadIds } },
       { leadCode: { $in: matchedLeadCodes } }, { businessLeadCode: { $in: matchedLeadCodes } }
-    ] }).select('_id leadRef leadId leadCode businessLeadCode quotationNumber items combinedBasicAmount subtotal grandTotal').maxTimeMS(15000).lean();
+    ] }).select('_id leadRef leadId leadCode businessLeadCode quotationNumber items combinedBasicAmount subtotal grandTotal').maxTimeMS(15000).lean() : [];
     const quoteForRow = (row, lead) => quotations.find((quote) => String(quote._id) === String(row.quotationId || ''))
       || quotations.find((quote) => quote.quotationNumber && quote.quotationNumber === row.quotationNumber)
       || quotations.find((quote) => [quote.leadRef, quote.leadId, quote.leadCode, quote.businessLeadCode].some((value) => [String(lead._id), lead.leadCode].includes(String(value || ''))));
@@ -2968,7 +2969,21 @@ exports.listDuplicateLeadApprovals = async (req, res) => {
         lookup: approvalLeadId(approval) ? 'object-id' : (String(approval.sourceClientId || '').split(':po:')[0] || 'company')
       };
       if (!lead) return;
-      const assignmentIndex = Number(payload.assignmentIndex);
+      const rawIndex = payload.assignmentIndex;
+      const assignmentIndex = rawIndex == null || rawIndex === '' ? -1 : Number(rawIndex);
+      const services = lead.serviceSelections || [];
+      const serviceKey = row => String(row?.assignedServiceId || row?.serviceAssignmentId || '');
+      const serviceId = String(payload.assignedServiceId || '');
+      const identifiedServices = serviceId ? services.filter(row => serviceKey(row) === serviceId) : [];
+      const indexedService = services[assignmentIndex] || (services.length === 1 ? services[0] : null);
+      const matchedService = identifiedServices.length === 1 ? identifiedServices[0]
+        : !identifiedServices.length && (!serviceId || !serviceKey(indexedService)) ? indexedService : null;
+      const service = hasServiceName(payload.service) ? payload.service
+        : matchedService ? { ...payload.service, ...matchedService } : payload.service || {};
+      if (!needsPoAmounts(approval)) {
+        approval.payload = { ...payload, service };
+        return;
+      }
       const assignments = Array.isArray(lead.assignments) ? lead.assignments : [];
       const assignment = (Number.isInteger(assignmentIndex) && assignments[assignmentIndex]?.poYearRows?.length ? assignments[assignmentIndex] : null)
         || assignments.find((row) => payload.assignedServiceId && String(row.assignedServiceId || '') === String(payload.assignedServiceId) && row.poYearRows?.length)
@@ -3005,17 +3020,12 @@ exports.listDuplicateLeadApprovals = async (req, res) => {
           poFileSize: normalizedProof.poFileSize ?? row.poFileSize ?? snapshot.poFileSize ?? liveRow.poFileSize ?? null
         };
       });
-      const resolvedIndex = assignments.indexOf(assignment);
       approval.poDebug = {
         ...approval.poDebug,
         assignmentMatched: Boolean(assignment),
         leadRows: liveRows.length,
         quotationMatched: poYearRows.some((row) => Boolean(row.quotationId || row.quotationNumber || row.quotationItems?.length))
       };
-      const service = (lead.serviceSelections || []).find((row) => payload.assignedServiceId && String(row.assignedServiceId || '') === String(payload.assignedServiceId))
-        || lead.serviceSelections?.[resolvedIndex >= 0 ? resolvedIndex : assignmentIndex]
-        || payload.service
-        || {};
       approval.payload = {
         ...payload,
         leadId: payload.leadId || String(lead._id),

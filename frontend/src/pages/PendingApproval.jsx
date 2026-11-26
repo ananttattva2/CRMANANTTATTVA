@@ -1761,7 +1761,7 @@ export default function PendingApproval({ embedded = false, companyOnly = false 
                     return (
                       <tr key={id}>
                         <td><strong>{row.clientName}</strong>{row.uniqueId && <><br /><small>{row.uniqueId}</small></>}</td>
-                        <td>{row.payload?.service?.servicesOffered || row.payload?.service?.eprCategory || '—'}</td>
+                        <td>{row.payload?.service?.servicesOffered || row.payload?.service?.applicableService || row.payload?.service?.eprCategory || '—'}</td>
                         <td>{pos.length ? `₹${formatAmount(pos.reduce((sum, po) => sum + (po.poAmountValue || 0), 0))}` : '—'}</td>
                         <td>{row.payload?.poSubmittedByName || row.createdByName || '—'}</td>
                         <td>{row.poReview?.financeReferral?.remarks ? <span className="block max-w-xs whitespace-pre-wrap text-xs text-slate-600">{row.poReview.financeReferral.remarks}</span> : '—'}</td>
