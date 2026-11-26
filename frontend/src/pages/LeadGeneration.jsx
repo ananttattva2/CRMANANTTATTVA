@@ -333,6 +333,10 @@ function primaryLeadOwner(item = {}, users = [], currentUser = null) {
   };
 }
 
+function canAssignManagerForPo(row) {
+  return ['FINANCE_PENDING', 'PARTIALLY_APPROVED', 'APPROVED'].includes(String(row.poApprovalStatus || '').toUpperCase());
+}
+
 function userHasManagerRole(user = {}) {
   return [user.role, ...(Array.isArray(user.roles) ? user.roles : []), user.designation]
     .some((role) => /(^|[\s_-])manager($|[\s_-])/i.test(String(role || '')));
@@ -2192,9 +2196,9 @@ export default function LeadGeneration() {
     if (revenueDraft?.amount && (!/^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/.test(String(revenueDraft.amount)) || Number(revenueDraft.amount) <= 0 || (revenueDraft.mode === 'add' && !revenueDraft.groupId))) { setError('Enter a valid revenue amount and choose the existing group when adding revenue.'); return null; }
     const validationError = validateLeadForSubmit(workflowStatus);
     if (validationError) { setError(validationError); showToast(validationError, 'error'); return null; }
-    const invalidAssignmentIndex = assignmentRows.findIndex((row) => row.assignedTo && !row.closedBy);
+    const invalidAssignmentIndex = assignmentRows.findIndex((row) => row.assignedTo && !row.closedBy && !canAssignManagerForPo(row));
     if (invalidAssignmentIndex >= 0) {
-      const message = `Assignment row ${invalidAssignmentIndex + 1}: close the lead before assigning it to a manager.`;
+      const message = `Assignment row ${invalidAssignmentIndex + 1}: Admin PO approval is required before assigning a manager.`;
       setError(message);
       showToast(message, 'error');
       return null;
@@ -3024,7 +3028,7 @@ export default function LeadGeneration() {
                     const rowFrozen = serviceOnlyMode && index < frozenAssignmentRowCount && !ownsService;
                     const leadClosed = Boolean(row.closedBy);
                     const poApprovalStatus = String(row.poApprovalStatus || '').toUpperCase();
-                    const managerAssignmentReady = ['FINANCE_PENDING', 'PARTIALLY_APPROVED', 'APPROVED'].includes(poApprovalStatus);
+                    const managerAssignmentReady = canAssignManagerForPo(row);
                     const canAssignStaff = poApprovalStatus === 'APPROVED' && String(currentUser?.role || '').toLowerCase() === 'manager' && currentUserIds.includes(String(row.assignedTo || ''));
                     const assignedManagerOptions = row.assignedTo && !managerOptions.some((option) => String(option.value) === String(row.assignedTo))
                       ? [{ value: String(row.assignedTo), label: row.assignedToText || lead.assignedToText || 'Previously assigned manager' }, ...managerOptions]
