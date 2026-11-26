@@ -355,20 +355,40 @@ exports.paymentStatus = async (req, res) => {
     return res.json({ ...result, ...(emailNotification ? { emailNotification } : {}), crmNotification });
   } catch (error) { return report(res, error); }
 };
+async function withLeadOwnerNames(approvals) {
+  const ids = [...new Set(approvals.map(row => String(row.payload?.leadId || '')).filter(mongoose.isValidObjectId))];
+  if (!ids.length) return approvals;
+  const leads = await Lead.find({ _id: { $in: ids } })
+    .select('generatedForUser generatedForName generatedForEmail createdBy createdByName createdByEmail importedCreatedBy assignedStaffText closedOnBehalfOfName assignments.assignedServiceId assignments.serviceAssignmentId assignments.assignedStaffText assignments.closedOnBehalfOfName serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId serviceSelections.assignedStaffText')
+    .populate('generatedForUser createdBy', 'name email').maxTimeMS(15000).lean();
+  const byId = new Map(leads.map(lead => [String(lead._id), lead]));
+  return approvals.map(row => {
+    const lead = byId.get(String(row.payload?.leadId || ''));
+    const index = lead ? resolveAssignmentIndex(row, lead) : -1;
+    const assignment = lead?.assignments?.[index];
+    const service = lead && ownerService(row, lead, index);
+    const leadOwnerName = lead?.generatedForName || lead?.generatedForUser?.name || lead?.generatedForEmail || lead?.generatedForUser?.email
+      || lead?.createdByName || lead?.createdBy?.name || lead?.importedCreatedBy || lead?.createdByEmail || lead?.createdBy?.email
+      || assignment?.assignedStaffText || service?.assignedStaffText || assignment?.closedOnBehalfOfName
+      || (lead?.assignments?.length <= 1 ? lead?.assignedStaffText || lead?.closedOnBehalfOfName : '')
+      || row.payload?.leadCreatorName || row.poReview?.leadOwnerRequest?.name || '';
+    return { ...row, leadOwnerName };
+  });
+}
 exports.list = async (req, res) => {
   const staffView = !canView(req.user);
   try {
     const baseFilter = { type: 'purchase_order', 'poReview.stage': { $in: ['FINANCE_READY', 'LEAD_OWNER_PENDING', 'LEAD_CLOSURE_PENDING', 'FINANCE_RELEASED', 'FINALIZED'] } };
     const approvals = await Approval.find(baseFilter)
-      .select('clientName uniqueId approvalStatus createdByName createdAt actionAt poReview payload.specialApprovalOrigin payload.leadId payload.assignedServiceId payload.assignmentIndex payload.leadCode payload.poSubmittedByName payload.poSubmittedAt payload.service payload.poYearRows.poNumber payload.poYearRows.poAmount payload.poYearRows.quotationBasicAmount payload.poYearRows.quotationNumber payload.poYearRows.quotationItems.unit payload.poYearRows.quotationItems.basicAmount payload.poYearRows.fy')
+      .select('clientName uniqueId approvalStatus createdByName createdAt actionAt poReview payload.specialApprovalOrigin payload.leadId payload.assignedServiceId payload.assignmentIndex payload.leadCode payload.leadCreatorName payload.poSubmittedByName payload.poSubmittedAt payload.service payload.poYearRows.poNumber payload.poYearRows.poAmount payload.poYearRows.quotationBasicAmount payload.poYearRows.quotationNumber payload.poYearRows.quotationItems.unit payload.poYearRows.quotationItems.basicAmount payload.poYearRows.fy')
       .sort({ updatedAt: -1 }).maxTimeMS(15000).lean();
     if (staffView) {
       const visible = await filterAssignedLeadOwnerApprovals(approvals, req.user);
-      return res.json({ ok: true, approvals: visible });
+      return res.json({ ok: true, approvals: await withLeadOwnerNames(visible) });
     }
     for (const approval of approvals) if (approval.payload?.specialApprovalOrigin || approval.poReview?.managementGoAhead || approval.poReview?.financeReferral) approval.approvalSource = 'Special Approval';
     const specialClosures = await require('../services/specialClosureFinance').loadSpecialClosures(approvals);
-    return res.json({ ok: true, approvals: [...approvals, ...specialClosures] });
+    return res.json({ ok: true, approvals: await withLeadOwnerNames([...approvals, ...specialClosures]) });
   } catch (error) { return report(res, error); }
 };
 exports.detail = async (req, res) => {

@@ -137,13 +137,14 @@ test('converted cold leads remain in Cold Closed history and link to one unique 
  const cold = [{_id:'c',status:'CONVERTED',convertedLead:'h',clientName:'Origin'}, {_id:'c2',status:'DRAFT',tempLeadCode:'C2',clientName:'Cold'}];
  const own = {_id:'r1',leadKind:'hot',leadId:'h',groupId:'g1',amountPaise:1000000,serviceKeys:['a']};
  const inherited = {_id:'r2',leadKind:'cold',leadId:'c',groupId:'g2',amountPaise:500000,serviceKeys:['cold-base']};
- let coldReads=0,revenueReads=0;
+ let coldReads=0,revenueReads=0,approvalReads=0;
  const deps={
   'node:crypto':require('node:crypto'),mongoose:{},'../models/Lead':{find:()=>chain(hot)},
   '../models/TemporaryLead':{find:()=>chain(++coldReads===1?cold:[cold[0]])},
   '../models/LeadRevenue':{find:()=>chain(++revenueReads===1?[own,inherited]:[inherited])},
   '../models/Quotation':{find:()=>chain([])},
   '../models/PendingApproval':{find(filter) {
+   approvalReads++;
    assert.equal(filter['poReview.finalStatus'], 'APPROVED');
    assert.ok(filter['payload.leadId'].$in.includes('h'));
    return chain([{ actionAt: '2026-11-25', payload: { leadId: 'h', assignedServiceId: 'a', poYearRows: [{ poNumber: 'PO-1', poAmount: 30000 }] } }]);
@@ -188,6 +189,7 @@ test('converted cold leads remain in Cold Closed history and link to one unique 
  assert.equal(unstaffed.state, 'open');
  assert.equal(unstaffed.poActivity.length, 0);
  assert.equal(unstaffed.poAmountPaise, 0);
+ assert.equal(approvalReads, 1, 'Only the staffed summary request should query Finance approvals');
 });
 
 

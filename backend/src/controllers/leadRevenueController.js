@@ -127,6 +127,21 @@ exports.pipeline = async (req, res, next) => {
     ]);
     const hotIds = hot.map((lead) => lead._id);
     const hotIdStrings = hotIds.map(String);
+    const closedServicesByLead = new Map();
+    const eligibleLeadIds = [];
+    if (summary) {
+      for (const lead of hot) {
+        const services = staffedClosedServices(lead);
+        closedServicesByLead.set(String(lead._id), services);
+        if (services.length) eligibleLeadIds.push(lead._id);
+      }
+    }
+    const readFinanceApprovals = () => require('../models/PendingApproval').find({
+      type: 'purchase_order', approvalStatus: 'APPROVED', 'poReview.stage': 'FINALIZED', 'poReview.finalStatus': 'APPROVED',
+      'payload.leadId': { $in: [...eligibleLeadIds, ...eligibleLeadIds.map(String)] }
+    }).select('actionAt sourceClientId payload.leadId payload.assignedServiceId payload.assignmentIndex payload.poYearRows.poNumber payload.poYearRows.poNo payload.poYearRows.poDate payload.poYearRows.poFinancialYear payload.poYearRows.fy payload.poYearRows.poAmount')
+      .sort({ actionAt: -1, _id: -1 }).maxTimeMS(15000).lean();
+    const leadReadAt = Date.now();
     const hotCodes = hot.flatMap((lead) => [lead.leadCode, lead.sourceLeadId]).map((value) => String(value || '').trim()).filter(Boolean);
     const [entries, quotations, financeApprovals] = await Promise.all([
       Revenue.find({ $or: [{ leadKind: 'hot', leadId: { $in: hotIds } }, { leadKind: 'cold', leadId: { $in: cold.map(l => l._id) } }] })
@@ -140,14 +155,15 @@ exports.pipeline = async (req, res, next) => {
           { businessLeadCode: { $in: hotCodes } }
         ]
       }).select('_id leadRef leadId leadCode businessLeadCode quotationNumber quotationDate createdAt grandTotal status serviceState').maxTimeMS(15000).lean()),
-      summary && hotIds.length
-        ? require('../models/PendingApproval').find({
-          type: 'purchase_order', approvalStatus: 'APPROVED', 'poReview.stage': 'FINALIZED', 'poReview.finalStatus': 'APPROVED',
-          'payload.leadId': { $in: [...hotIds, ...hotIdStrings] }
-        }).select('actionAt sourceClientId payload.leadId payload.assignedServiceId payload.assignmentIndex payload.poYearRows.poNumber payload.poYearRows.poNo payload.poYearRows.poDate payload.poYearRows.poFinancialYear payload.poYearRows.fy payload.poYearRows.poAmount')
-          .sort({ actionAt: -1, _id: -1 }).maxTimeMS(15000).lean()
-        : Promise.resolve([])
+      eligibleLeadIds.length
+        ? (compactAdmin
+          ? require('../services/crmCache').getCrmCache().remember(
+              `summary-finance-approvals:v1:${eligibleLeadIds.map(String).sort().join(',')}`, readFinanceApprovals
+            )
+          : readFinanceApprovals())
+        : []
     ]);
+    const relatedReadsAt = Date.now();
     const financeByLead = new Map();
     for (const approval of financeApprovals) {
       const id = String(approval.payload.leadId);
@@ -173,7 +189,7 @@ exports.pipeline = async (req, res, next) => {
     const ownerNames = new Map(hot.map(lead => { const owner = pipelineOwnerDetails(lead, 'hot'); return [String(owner.id || ''), owner.name]; }).filter(([id]) => id));
     const rows = [
       ...hot.map(lead => {
-        const closedServices = summary ? staffedClosedServices(lead) : [];
+        const closedServices = closedServicesByLead.get(String(lead._id)) || [];
         return { kind: 'hot', lead, closedServices, closed: summary ? closedServices.length > 0 : hotClosed(lead), inheritedIds: originIdsByHot.get(String(lead._id)) || [] };
       }),
       ...cold.map(lead => ({ kind: 'cold', lead, closed: lead.status === 'CONVERTED' || Boolean(lead.pipelineClosedAt), inheritedIds: [] }))
@@ -197,7 +213,7 @@ exports.pipeline = async (req, res, next) => {
       return { poActivity, closedAt: closed && kind === 'hot' ? recordedClosureDate(closedPoLead) : null, communicationModeParent: String(lead.communicationModeParent || '').trim(), communicationMode: String(lead.communicationMode || '').trim(), canonicalKey: kind === 'cold' && lead.status === 'CONVERTED' && lead.convertedLead ? `hot:${lead.convertedLead}` : `${kind}:${lead._id}`, converted: kind === 'cold' && lead.status === 'CONVERTED', convertedLeadId: kind === 'cold' && lead.convertedLead ? String(lead.convertedLead) : undefined, poAmountPaise: kind === 'hot' ? purchaseOrders(closedPoLead).reduce((n, po) => n + po.amountPaise, 0) : 0, latestQuotationAmountPaise: kind === 'hot' ? latestQuotationByLead.get(String(lead._id)) || 0 : 0, quotationAmountPaise: kind === 'hot' && !closed ? (latestOpenQuotationByLead.get(String(lead._id)) || 0) : 0, id: String(lead._id), kind, state: closed ? 'closed' : 'open', code: lead.leadCode || lead.tempLeadCode, company: lead.company || lead.clientName, previousOwner: releasedOrStale ? previousOwner : '', previousOwnerId: releasedOrStale ? String(lead.noOwner?.previousOwner?.id || owner.previous?.id || '') : '', owner: owner.name, ownerId: owner.id, ownerActive: owner.active, serviceCount: kind === 'hot' ? lead.serviceSelections?.length || 1 : 0, serviceInterests, revenuePaise: ownRevenue + inheritedRevenue, createdAt: lead.createdAt, inactiveDays };
 
     });
-    res.set('Server-Timing', `pipeline;dur=${Date.now() - startedAt}`);
+    res.set('Server-Timing', `pipeline;dur=${Date.now() - startedAt}, leads;dur=${leadReadAt - startedAt}, related;dur=${relatedReadsAt - leadReadAt}`);
     res.json({ ok: true, rows });
   } catch (error) { next(error); }
 };
