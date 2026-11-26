@@ -133,7 +133,7 @@ test('duplicate request retries are idempotent; unique-index races are reported 
 
 test('converted cold leads remain in Cold Closed history and link to one unique Hot business lead', async () => {
  const chain = value => ({select(){return this},populate(){return this},sort(){return this},maxTimeMS(){return this},async lean(){return value}});
- const hot = [{_id:'h',leadCode:'H1',company:'Hot',generatedForUser:{_id:'owner',name:'Current Owner'},generatedForName:'Stale Owner',serviceSelections:[{assignedServiceId:'a'}],assignments:[]}];
+ const hot = [{_id:'h',leadCode:'H1',company:'Hot',generatedForUser:{_id:'owner',name:'Current Owner'},generatedForName:'Stale Owner',serviceSelections:[{assignedServiceId:'a'}],assignments:[{assignedServiceId:'a',poStatus:'received',poApprovalStatus:'APPROVED',closedAt:'2026-11-25',assignedTo:'manager',assignedStaff:'staff'}]}];
  const cold = [{_id:'c',status:'CONVERTED',convertedLead:'h',clientName:'Origin'}, {_id:'c2',status:'DRAFT',tempLeadCode:'C2',clientName:'Cold'}];
  const own = {_id:'r1',leadKind:'hot',leadId:'h',groupId:'g1',amountPaise:1000000,serviceKeys:['a']};
  const inherited = {_id:'r2',leadKind:'cold',leadId:'c',groupId:'g2',amountPaise:500000,serviceKeys:['cold-base']};
@@ -178,6 +178,16 @@ test('converted cold leads remain in Cold Closed history and link to one unique 
  assert.equal(coldReads,1);
  assert.equal(revenueReads,1);
  assert.equal(Object.hasOwn(res.data.rows[0],'groups'),false);
+
+ // A Finance-approved PO and requested closer do not close an unstaffed service.
+ hot[0].assignments[0].closureRequestedBy = 'sales';
+ delete hot[0].assignments[0].closedAt;
+ delete hot[0].assignments[0].assignedStaff;
+ await context.exports.pipeline({path:'/summary-dashboard',user:{_id:'u'}},res,e=>{throw e});
+ const unstaffed = res.data.rows.find(row => row.kind === 'hot');
+ assert.equal(unstaffed.state, 'open');
+ assert.equal(unstaffed.poActivity.length, 0);
+ assert.equal(unstaffed.poAmountPaise, 0);
 });
 
 
@@ -266,4 +276,27 @@ test('Summary Dashboard reports older leads and their PO amounts in the Finance 
   assert.equal(summaryPipelineRows([lead], period('2026-11-16', '2026-11-23'))[0].poAmountPaise, 3000000);
   assert.equal(summaryPipelineRows([lead], period('2026-11-01', '2026-12-01'))[0].poAmountPaise, 9000000);
   assert.equal(summaryPipelineRows([lead], period('2025-01-01', '2025-02-01')).length, 0);
+});
+
+test('Summary Dashboard closure applies across clients and requires closure and staff on the same service', () => {
+  const { staffedClosedServices } = require('../src/services/leadRevenue');
+  const po = { poStatus: 'received', poApprovalStatus: 'APPROVED' };
+  const closed = { ...po, closedAt: '2026-11-25', assignedTo: 'manager' };
+  const leads = [
+    { company: 'PO approved only', assignments: [{ ...po, closureRequestedBy: 'sales', assignedTo: 'manager' }] },
+    { company: 'Closed without staff', assignments: [closed] },
+    { company: 'Staffed without closure', assignments: [{ ...po, assignedTo: 'manager', assignedStaff: 'staff' }] },
+    { company: 'Different services', assignments: [
+      { ...closed, assignedServiceId: 'a' },
+      { ...po, assignedServiceId: 'b', assignedTo: 'manager', assignedStaff: 'staff' }
+    ] },
+    { company: 'Ready for work', assignments: [{ ...closed, assignedStaff: 'staff' }] },
+    { company: 'One ready service among siblings', assignments: [
+      { ...closed, assignedServiceId: 'a', assignedStaff: 'staff' },
+      { ...po, assignedServiceId: 'b', assignedTo: 'manager' }
+    ] }
+  ];
+  assert.deepEqual(leads.filter(lead => staffedClosedServices(lead).length).map(lead => lead.company),
+    ['Ready for work', 'One ready service among siblings']);
+  assert.deepEqual(staffedClosedServices(leads.at(-1)).map(row => row.serviceId), ['a']);
 });

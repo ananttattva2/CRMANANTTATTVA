@@ -21,9 +21,14 @@ function serviceClosureRows(lead = {}) {
     return { serviceId: serviceId || id(assignment) || (services.length === 1 ? id(lead) : ''), assignment: own };
   });
 }
+function staffedPoClosure(row) {
+  return poClosed(row)
+    && [row.assignedTo, row.assignedToText, row.assignedToEmail].some(value => text(value))
+    && [row.assignedStaff, row.assignedStaffText, row.assignedStaffEmail].some(value => text(value));
+}
 function serviceClosureSummary(lead = {}) {
   const services = serviceClosureRows(lead);
   const closedCount = services.filter(({ assignment }) => poClosed(assignment)).length;
   return { total: services.length, closedCount, openCount: services.length - closedCount };
 }
-module.exports = { serviceClosureRows, serviceClosureSummary, poClosed };
+module.exports = { serviceClosureRows, serviceClosureSummary, poClosed, staffedPoClosure };

@@ -1,6 +1,6 @@
 const Lead = require('../models/Lead');
 const { servicesClientFilter } = require('./financeApprovedClients');
-const { serviceClosureSummary, serviceClosureRows, poClosed } = require('../../../shared/leadPoClosure.cjs');
+const { serviceClosureSummary, serviceClosureRows, staffedPoClosure } = require('../../../shared/leadPoClosure.cjs');
 async function closedPoClientFilter(LeadModel = Lead, { requireStaff = false } = {}) {
   const leads = await LeadModel.find({ $or: [
     { closedAt: { $exists: true, $ne: null } }, { closedBy: { $exists: true, $ne: null } },
@@ -17,10 +17,7 @@ async function closedPoClientFilter(LeadModel = Lead, { requireStaff = false } =
   if (requireStaff) {
     return servicesClientFilter(leads.flatMap(lead => {
       const services = serviceClosureRows(lead);
-      return services.filter(({ assignment }) => poClosed(assignment)
-        && [assignment.assignedTo, assignment.assignedToText, assignment.assignedToEmail].some(value => String(value || '').trim())
-        && [assignment.assignedStaff, assignment.assignedStaffText, assignment.assignedStaffEmail].some(value => String(value || '').trim())
-      ).map(({ serviceId }) => ({ lead, serviceId, allowUnscoped: services.length === 1 }));
+      return services.filter(({ assignment }) => staffedPoClosure(assignment)).map(({ serviceId }) => ({ lead, serviceId, allowUnscoped: services.length === 1 }));
     }));
   }
   const eligible = leads.filter(lead => serviceClosureSummary(lead).closedCount > 0);

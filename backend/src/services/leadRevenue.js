@@ -65,6 +65,10 @@ function purchaseOrders(lead = {}) {
   });
   return [...unique.values()];
 }
+function staffedClosedServices(lead) {
+  const { serviceClosureRows, staffedPoClosure } = require('../../../shared/leadPoClosure.cjs');
+  return serviceClosureRows(lead).filter(({ assignment }) => staffedPoClosure(assignment));
+}
 function approvedPoActivity(lead, approvals) {
   const services = new Set();
   return approvals.flatMap(approval => {
@@ -108,4 +112,4 @@ function clientContactDetails(lead = {}) {
     city: lead.city || address.city || '', state: lead.state || address.state || '', pinCode: lead.pinCode || address.pinCode || ''
   };
 }
-module.exports = { amountPaise, serviceRows, groupsFrom, hotClosed, purchaseOrders, approvedPoActivity, recordedClosureDate, serviceDetails, clientContactDetails };
+module.exports = { amountPaise, serviceRows, groupsFrom, hotClosed, purchaseOrders, approvedPoActivity, staffedClosedServices, recordedClosureDate, serviceDetails, clientContactDetails };
