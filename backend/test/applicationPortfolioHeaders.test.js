@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const esbuild = require('../../frontend/node_modules/esbuild');
 
-test('Annual Return status summary restores grouped headers and approved-year counts', async () => {
+test('Application status summary shows approved Annual Return and Importer of Raw Material registration', async () => {
   const frontendRoot = path.resolve(__dirname, '../../frontend');
   const data = {
     users: [{ _id: 'sonal', name: 'Sonal', role: 'operation' }],
@@ -33,6 +33,23 @@ test('Annual Return status summary restores grouped headers and approved-year co
     const record=structuredClone(data.assignments[0]);record._id=id;record.assignedServiceId=id;record.selectedLead.company=name;record.selectedLead.assignments[0].assignedServiceId=id;record.data.basic.eprCategory=category;record.data.cpcb.status=status;data.assignments.push(record);
   }
   const actionRequired = structuredClone(data.assignments[0]); actionRequired._id = 'action-required'; actionRequired.selectedLead.company = 'Action Required Client'; actionRequired.selectedLead.assignments[0].poYearRows = []; actionRequired.selectedLead.assignments[0].poStatus = ''; data.assignments.push(actionRequired);
+  data.assignments.push({
+    _id: 'assignment:raw-material-registration',
+    assignmentOnly: true,
+    assignedServiceId: 'raw-material-registration',
+    selectedLead: {
+      company: 'Raw Material Registration Client',
+      serviceSelections: [{
+        assignedServiceId: 'raw-material-registration', eprCategory: 'EPR - Plastic Waste',
+        subApplicantType: 'Importer of Raw Material', servicesOffered: 'New Registration'
+      }],
+      assignments: [{
+        assignedServiceId: 'raw-material-registration', assignedTo: 'manager',
+        assignedStaff: 'sonal', closedAt: '2026-11-26', poApprovalStatus: 'APPROVED'
+      }]
+    },
+    data: { cpcb: { status: 'Approved' } }
+  });
   const mocks = {
     pageReadSnapshot: 'export const readPageSnapshot = () => null; export const savePageSnapshot = () => {};',
     api: `const data = ${JSON.stringify(data)}; export default { get: async () => ({ data }) };`
@@ -70,14 +87,23 @@ test('Annual Return status summary restores grouped headers and approved-year co
 
     const headers = await page.$$eval('#dashboard .portfolio-matrix thead tr', rows => rows.map(row => [...row.children].map(cell => cell.textContent.trim())));
     assert.deepEqual(headers, [
-      ['AnantTattva SPOC', 'Total', 'Annual Return Applicable', 'Approved', 'Pending'],
-      ['2025-26', '2026-27', '2027-28', 'Not Recorded', 'Approved', 'AR Action Required', 'Applied', 'Under Review', 'Not Started', 'Rejected']
+      ['AnantTattva SPOC', 'Total', 'Annual Return Applicable', 'Registration', 'Approved', 'Pending'],
+      ['2025-26', '2026-27', '2027-28', 'Not Recorded', 'Approved', 'Approved', 'AR Action Required', 'Applied', 'Under Review', 'Not Started', 'Rejected']
     ]);
     const counts = await page.$$eval('#dashboard .portfolio-matrix tfoot td button', buttons => buttons.map(button => button.textContent.trim()));
     assert.deepEqual(counts, [
-      '2', '1', '0', '0', '0', '0', '1', '0', '0', '0', '0'
+      '3', '1', '0', '0', '0', '1', '0', '1', '0', '0', '0', '0'
     ]);
     assert.equal(await page.$eval('#dashboard .portfolio-matrix tbody .portfolio-person strong', node => node.textContent), 'Sonal');
+
+    await page.click('#dashboard button[aria-label="Sonal: 1 Registration Approved"]');
+    await page.waitForSelector('dialog[open]');
+    const registrationDetails = await page.$eval('dialog[open]', dialog => dialog.textContent);
+    assert.match(registrationDetails, /Raw Material Registration Client/);
+    assert.match(registrationDetails, /Importer of Raw Material/);
+    await page.click('dialog[open] .portfolio-service-toggle');
+    assert.match(await page.$eval('dialog[open] .portfolio-service-detail-row', row => row.textContent), /New Registration/);
+    await page.click('dialog[open] button[aria-label="Close client details"]');
 
     const pendingHeaders = await page.$$eval('#pending .portfolio-matrix thead tr', rows => rows.map(row => [...row.children].map(cell => cell.textContent.trim())));
     assert.deepEqual(pendingHeaders, [
