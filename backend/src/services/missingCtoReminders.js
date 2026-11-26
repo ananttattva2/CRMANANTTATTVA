@@ -1,12 +1,4 @@
 const {hydrateClientData}=require('./clientMasterHydration');
-const {createHash,randomUUID}=require('node:crypto');
-const Client=require('../models/Client');
-const User=require('../models/User');
-const Delivery=require('../models/ConsentReminderDelivery');
-const {sendMail}=require('../utils/mailer');
-const {userHasAnyRole}=require('../utils/userRoles');
-const {financeApprovedServices,servicesClientFilter}=require('./financeApprovedClients');
-const {clientMasterSourceRecordFilter}=require('./clientMasterVisibility');
 const {resolveClientMasterData,getSelectedLeadId,getAssignedServiceId}=require('./clientMasterResolver');
 const {needsPieceWeight}=require('../../../shared/productQuantity.cjs');
 const id=value=>String(value?._id||value||'').trim();
@@ -54,29 +46,4 @@ function digestEmail(rows) {
  const csv=[fields,...rows.map(values)].map(row=>row.map(cell).join(',')).join('\r\n');
  return {subject:`Action required: CTO/CCA details pending (${rows.length} client service records)`,html,csv};
 }
-let running=false,started=false;
-async function runMissingCtoReminders(options={}) {
- if(running)return {skipped:'already_running'};running=true;
- try{
-  const services=options.services||await financeApprovedServices();
-  const leadIds=services.map(item=>item.lead._id),leadCodes=services.map(item=>item.lead.leadCode).filter(Boolean);
-  const clients=options.clients||await Client.find({$and:[clientMasterSourceRecordFilter(),{$or:[{selectedLead:{$in:leadIds}},{'data.selectedLead':{$in:leadIds.map(String)}},{'data.selectedLeadSnapshot.id':{$in:leadIds.map(String)}},{'data.importMeta.leadNumber':{$in:leadCodes}}]}]}).select('selectedLead assignedServiceId data createdBy updatedAt').lean();
-  const users=options.users||await User.find({isActive:{$ne:false}}).select('_id crmUserId name email role roles managerId').lean();
-  const rows=buildMissingCtoRows(services,clients,users),buckets=new Map();
-  for(const user of users){if(!user.email||user.isActive===false)continue;const mine=userHasAnyRole(user,['admin','superadmin'])?rows:rows.filter(row=>row.recipientIds.includes(id(user._id)));if(mine.length){const email=user.email.trim().toLowerCase();const existing=buckets.get(email)||[];buckets.set(email,[...new Map([...existing,...mine].map(row=>[row.key,row])).values()]);}}
-  const result={pending:rows.length,recipients:buckets.size,sent:0,errors:0};
-  if(options.dryRun)return {...result,rows};
-  const now=options.now||new Date(),day=new Date(now.getTime()+330*60000).toISOString().slice(0,10),deliveries=options.deliveries||Delivery,send=options.send||sendMail;
-  for(const[recipient,mine]of buckets){
-   const key=createHash('sha256').update(`missing-cto|${day}|${recipient}`).digest('hex'),claim=randomUUID();
-   await deliveries.updateOne({key},{$setOnInsert:{key,status:'pending',recipient,kind:'missing-cto',validUntil:day}},{upsert:true}).catch(e=>{if(e.code!==11000)throw e;});
-   const record=await deliveries.findOneAndUpdate({key,status:{$ne:'sent'},$or:[{leaseUntil:{$exists:false}},{leaseUntil:{$lte:now}}]},{$set:{status:'sending',claim,leaseUntil:new Date(now.getTime()+15*60000)}},{new:true});
-   if(!record)continue;
-   try{const mail=digestEmail(mine);const delivered=await send(recipient,mail.subject,mail.html,{branded:false,attachments:[{filename:'pending-cto-details.csv',content:Buffer.from(mail.csv),contentType:'text/csv'}]});if(delivered?.summary?.rejected?.length&&!delivered.summary.accepted?.length)throw Error('Recipient rejected');await deliveries.updateOne({key,claim},{$set:{status:'sent',sentAt:now},$unset:{claim:1,leaseUntil:1}});result.sent++;}
-   catch(error){result.errors++;await deliveries.updateOne({key,claim},{$set:{status:'pending'},$unset:{claim:1,leaseUntil:1}});console.error('Missing CTO digest delivery failed',{name:error.name});}
-  }
-  return result;
- }finally{running=false;}
-}
-function startMissingCtoReminderScheduler(){if(started)return;started=true;const run=()=>runMissingCtoReminders().catch(e=>console.error('Missing CTO scan failed',{name:e.name}));setTimeout(run,60000).unref();setInterval(run,60*60*1000).unref();}
-module.exports={missingCtoFields,buildMissingCtoRows,digestEmail,runMissingCtoReminders,startMissingCtoReminderScheduler};
+module.exports={missingCtoFields,buildMissingCtoRows,digestEmail};

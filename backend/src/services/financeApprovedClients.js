@@ -42,6 +42,15 @@ async function financeApprovedClientFilter(options) {return servicesClientFilter
 function managerAssignmentError(before={},next={},approved=[]) {
   const changes=(next.assignments||[]).map((row,index)=>({row,index,previous:(before.assignments||[]).find(old=>row.assignedServiceId&&id(old.assignedServiceId)===id(row.assignedServiceId))||before.assignments?.[index]||{}})).filter(({row,previous})=>row.assignedTo&&id(row.assignedTo)!==id(previous.assignedTo));
   if(next.assignedTo&&id(next.assignedTo)!==id(before.assignedTo)) changes.push({row:next.assignments?.[0]||before.assignments?.[0]||{},index:0});
-  return changes.some(({row,index})=>!approved.some(item=>id(item.lead._id)===id(before._id)&&(row.assignedServiceId?item.serviceId===id(row.assignedServiceId):item.index===index)))?'Finance must finally approve this service Purchase Order before assigning a manager.':'';
+  return changes.some(({ row, index }) => {
+    const serviceId = id(row.assignedServiceId || row.serviceAssignmentId);
+    const original = serviceId
+      ? before.assignments?.find(item => id(item.assignedServiceId || item.serviceAssignmentId) === serviceId)
+      : before.assignments?.[index];
+    const status = String(original?.poApprovalStatus || '').toUpperCase();
+    if (['FINANCE_PENDING', 'PARTIALLY_APPROVED'].includes(status)) return false;
+    return !approved.some(item => id(item.lead._id) === id(before._id) &&
+      (serviceId ? item.serviceId === serviceId : item.index === index));
+  }) ? 'Admin must approve this service Purchase Order before assigning a manager.' : '';
 }
 module.exports={managerAssignmentError,finalFinanceApproval,financeApprovedServices,servicesClientFilter,financeApprovedClientFilter};

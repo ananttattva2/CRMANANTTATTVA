@@ -110,15 +110,15 @@ test('PO received closure asks whether quotation was sent and supports earlier q
   assert.match(pendingApprovalPage, /resolveQuotationBasicAmount/);
 });
 
-test('approved PO unlocks manager assignment and manager assignment closes the service', () => {
+test('Admin PO approval unlocks manager assignment and Finance approval gates closure and staff assignment', () => {
   const leadPage = read('../../frontend/src/pages/LeadGeneration.jsx');
   const leadController = read('../src/controllers/leadController.js');
   const managerNotifications = read('../src/services/leadAssignmentNotifications.js');
   const staffWorkflow = read('../src/services/staffOnboardingWorkflow.js');
   assert.match(leadPage, /managerAssignmentReady/);
-  assert.match(leadPage, /\['FINANCE_PENDING', 'APPROVED'\]\.includes\(poApprovalStatus\)/);
+  assert.match(leadPage, /\['FINANCE_PENDING', 'PARTIALLY_APPROVED', 'APPROVED'\]\.includes\(poApprovalStatus\)/);
   assert.match(leadPage, /Finance approval required/);
-  assert.match(leadController, /const adminApproved = \['FINANCE_PENDING', 'APPROVED'\]/);
+  assert.match(leadController, /const adminApproved = isPoFinanceApproved\(row\)/);
   assert.match(leadPage, /Select manager to close service/);
   assert.match(leadController, /changedManagerRows/);
   assert.match(managerNotifications, /assignmentIndex/);

@@ -15,11 +15,16 @@ test('Finance approval follows the exact service ID after rows are reordered and
  assert.deepEqual(servicesClientFilter([]),{_id:{$in:[]}});
 });
 
-test('manager assignment blocks Finance-pending, forged and sibling approvals, including root assignment',()=>{
+test('manager assignment accepts persisted Admin partial approval and blocks forged and sibling approvals',()=>{
  const {managerAssignmentError}=require('../src/services/financeApprovedClients');
  const before={_id:'lead',assignments:[{assignedServiceId:'s1'}]};
  const next={assignments:[{assignedServiceId:'s1',assignedTo:'manager',poApprovalStatus:'APPROVED'}]};
  assert.ok(managerAssignmentError(before,next,[]));
+ for (const poApprovalStatus of ['FINANCE_PENDING', 'PARTIALLY_APPROVED']) {
+  const partial = { ...before, assignments: [{ assignedServiceId: 's1', poApprovalStatus }] };
+  assert.equal(managerAssignmentError(partial,next,[]),'');
+  assert.ok(managerAssignmentError(partial,{ assignments: [{ assignedServiceId: 'sibling', assignedTo: 'manager' }] },[]));
+ }
  assert.ok(managerAssignmentError(before,next,[{lead:{_id:'lead'},serviceId:'sibling',index:0}]));
  assert.equal(managerAssignmentError(before,next,[{lead:{_id:'lead'},serviceId:'s1',index:0}]),'');
  assert.ok(managerAssignmentError(before,{assignedTo:'manager'},[]));
