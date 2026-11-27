@@ -1,9 +1,9 @@
 import { normalizeCombinedPricingGroups, quotationItemKey, quotationItemsTotal } from './quotationDocument.mjs';
 import { inPipelinePeriod } from './leadPipeline.mjs';
 
-export function hotQuotationLeadIds(rows, range) {
+export function quotationLeadIdsInPeriod(rows, range) {
   return new Set(rows
-    .filter(row => row.kind === 'hot' && row.id && inPipelinePeriod(row.createdAt, range))
+    .filter(row => row.id && inPipelinePeriod(row.createdAt, range))
     .map(row => String(row.id)));
 }
 

@@ -3,7 +3,7 @@ import CountUp from 'react-countup';
 import creditPricing, { CreditTargetSelect } from '../features/eprCredit/CreditTargetSelect';
 import { CreditRateRequestLoader } from '../features/eprCredit/CreditRateRequests';
 import { loadFullQuotation } from '../utils/quotationDetail.mjs';
-import { countQuotationServices, filterQuotationServices, quotationMatchesLeadIds } from '../utils/quotationServiceView.mjs';
+import { countQuotationServices, filterQuotationServices } from '../utils/quotationServiceView.mjs';
 import {
   isMeaningfulQuotationItem,
   isCombinedQuotation,
@@ -872,9 +872,6 @@ function parseQuotationWorkbook(fileRows, leads = []) {
 export default function Quotations() {
   const navigate = useNavigate();
   const location = useLocation();
-  const hotQuotationScope = location.state?.hotQuotationScope;
-  const hotLeadIds = useMemo(() => Array.isArray(hotQuotationScope?.leadIds)
-    ? new Set(hotQuotationScope.leadIds) : null, [hotQuotationScope]);
   // Keep review permissions available while the quotation list is loading or
   // temporarily unavailable. /auth/me refreshes this snapshot below.
   const [currentUser, setCurrentUser] = useState(readStoredQuotationUser);
@@ -896,7 +893,7 @@ export default function Quotations() {
   const [validityFilter, setValidityFilter] = useState('');
   const [expandedId, setExpandedId] = useState('');
   const [expandedCompany, setExpandedCompany] = useState('');
-  const [listMode, setListMode] = useState(() => hotLeadIds ? 'open' : 'company');
+  const [listMode, setListMode] = useState('company');
   const [menuId, setMenuId] = useState('');
   const [previewQuotation, setPreviewQuotation] = useState(null);
   const [detailQuotation, setDetailQuotation] = useState(null);
@@ -992,7 +989,6 @@ export default function Quotations() {
     const term = query.trim().toLowerCase();
     return quotations.filter((row) => {
       if (!contextMatchesQuotation(row, quotationContext)) return false;
-      if (hotLeadIds && !quotationMatchesLeadIds(row, hotLeadIds)) return false;
       const rowUsers = quotationUserNames(row);
       const firstItem = row.items?.[0] || {};
       const haystack = [
@@ -1014,7 +1010,7 @@ export default function Quotations() {
       const matchesUser = !userFilter || rowUsers.some((name) => normalizeSearchValue(name) === normalizeSearchValue(userFilter));
       return (!term || haystack.includes(term)) && matchesUser && matchesQuotationStatus && matchesAdminApproval && matchesValidity;
     });
-  }, [adminApprovalFilter, hotLeadIds, query, quotationContext, quotationStatusFilter, quotations, userFilter, validityFilter]);
+  }, [adminApprovalFilter, query, quotationContext, quotationStatusFilter, quotations, userFilter, validityFilter]);
 
   const serviceView = listMode === 'open' || listMode === 'closed';
   const groupedView = listMode !== 'all';
@@ -1078,14 +1074,6 @@ export default function Quotations() {
   useEffect(() => {
     loadPage();
   }, []);
-
-  useEffect(() => {
-    if (hotLeadIds) {
-      setListMode('open');
-      setExpandedCompany('');
-      setPage(1);
-    }
-  }, [hotLeadIds]);
 
   useEffect(() => {
     if (isExplicitAddQuotation) startNew(quotationContext);
@@ -2218,7 +2206,7 @@ export default function Quotations() {
         <div className="bg-[#f5f7fb] px-4 py-5 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex min-w-0 items-center gap-3">
-              <button type="button" onClick={() => hotLeadIds ? navigate(-1) : navigate('/dashboard')} className="btn-lift grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-orange-600 shadow-sm" title="Back">
+              <button type="button" onClick={() => navigate('/dashboard')} className="btn-lift grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-orange-600 shadow-sm" title="Back">
                 <ArrowLeft className="h-5 w-5" />
               </button>
               <div className="min-w-0">
@@ -2262,16 +2250,6 @@ export default function Quotations() {
               </button>
             </div>
           </div>
-
-          {hotLeadIds && (
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-bold text-orange-800">
-              <span>Hot Leads · {hotQuotationScope.period}
-                {hotQuotationScope.owner && ` · ${hotQuotationScope.owner}`}
-                {hotQuotationScope.query && ` · Search “${hotQuotationScope.query}”`}
-              </span>
-              <button type="button" onClick={() => navigate('/sales/quotations', { replace: true, state: {} })} className="btn-lift h-9 rounded-lg border border-orange-200 bg-white px-3 text-xs font-black text-orange-700">Clear Hot Leads Filter</button>
-            </div>
-          )}
 
           {quotationContext && (
             <div className="mt-5 flex flex-col gap-3 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-black text-orange-700 sm:flex-row sm:items-center sm:justify-between">

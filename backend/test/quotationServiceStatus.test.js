@@ -50,16 +50,16 @@ test('legacy quotation items use compatible service labels and reject mismatched
   ] }, lead), ['open', 'closed', 'open']);
 });
 
-test('Hot Leads quotation scope uses the lead creation period and resolved lead ID', async () => {
-  const { hotQuotationLeadIds, quotationMatchesLeadIds } = await import('../../frontend/src/utils/quotationServiceView.mjs');
-  const scope = hotQuotationLeadIds([
+test('dashboard quotation filters use the lead creation period and resolved lead ID', async () => {
+  const { quotationLeadIdsInPeriod, quotationMatchesLeadIds } = await import('../../frontend/src/utils/quotationServiceView.mjs');
+  const scope = quotationLeadIdsInPeriod([
     { id: 'hot-in-period', kind: 'hot', state: 'closed', createdAt: '2026-11-20' },
     { id: 'hot-outside', kind: 'hot', createdAt: '2026-10-20' },
     { id: 'cold', kind: 'cold', createdAt: '2026-11-20' }
   ], { start: Date.parse('2026-11-01'), end: Date.parse('2026-12-01') });
-  assert.deepEqual([...scope], ['hot-in-period']);
+  assert.deepEqual([...scope], ['hot-in-period', 'cold']);
   assert.ok(quotationMatchesLeadIds({ linkedLeadId: 'hot-in-period', leadId: 'legacy-code' }, scope));
-  assert.equal(quotationMatchesLeadIds({ linkedLeadId: 'cold' }, scope), false);
+  assert.equal(quotationMatchesLeadIds({ linkedLeadId: 'hot-outside' }, scope), false);
 });
 
 test('combined prices remain whole when a group spans both quotation tabs', async () => {

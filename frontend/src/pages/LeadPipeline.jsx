@@ -6,8 +6,8 @@ import { currentPipelineRows, summaryPipelineRows, uniquePipelineRows, pipelineP
 import { salesRepSummary, salesRepTableData, salesRepOwner, isUnassignedOwner } from '../utils/salesRepSummary.mjs';
 import { downloadSalesRepPerformancePdf } from '../utils/salesRepPerformancePdf.mjs';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowDown, ArrowUp, ArrowUpRight, CalendarDays, CircleDollarSign, Download, FileText, Flame, LayoutGrid, Minus, RefreshCw, Search, Snowflake, Target, Users, WalletCards, X } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { ArrowDown, ArrowUp, ArrowUpRight, CalendarDays, ChevronDown, CircleDollarSign, Download, FileText, Flame, LayoutGrid, Minus, RefreshCw, Search, Snowflake, Target, Users, WalletCards, X } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, Cell, Legend, Line, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import DashboardShell from '../components/dashboard/DashboardShell';
 import DashboardViewTabs from '../components/dashboard/DashboardViewTabs';
@@ -15,7 +15,8 @@ import LeadRevenuePanel, { revenueMoney } from '../components/leads/LeadRevenueP
 import useCrmRefresh from '../hooks/useCrmRefresh';
 import api from '../services/api';
 import { API_ENDPOINTS } from '../services/apiEndpoints';
-import { countQuotationServices, hotQuotationLeadIds, quotationMatchesLeadIds } from '../utils/quotationServiceView.mjs';
+import { filterQuotationServices, quotationLeadIdsInPeriod, quotationMatchesLeadIds } from '../utils/quotationServiceView.mjs';
+import OpenQuotationsDialog from '../components/dashboard/OpenQuotationsDialog';
 import '../styles/lead-pipeline.css';
 
 function storedUser() {
@@ -195,11 +196,11 @@ function SalesPriorityCard({ kind, open, closed, expectedRevenue, quotationValue
       <section className="sales-priority-pair" aria-label={hot ? 'Hot open leads and quotations' : 'Cold open leads and expected revenue'}>
         {hot ? <div className="sales-priority-open-row">
           {leadOpenMetric}
-          <button type="button" onClick={onOpenQuotations} disabled={openQuotations === null && !quotationCountUnavailable}>
+          <button type="button" aria-haspopup="dialog" onClick={onOpenQuotations} disabled={openQuotations === null && !quotationCountUnavailable}>
             <FileText/><span><small>Open Quotations</small><strong>{openQuotations?.toLocaleString('en-IN') ?? '—'}</strong>
               {quotationCountUnavailable && <small>Click to retry</small>}
               {openQuotations === null && !quotationCountUnavailable && <span className="sr-only">Loading count</span>}
-            </span><ArrowUpRight className="sales-priority-open-arrow" aria-hidden="true"/>
+            </span><ChevronDown className="sales-priority-open-arrow" aria-hidden="true"/>
           </button>
         </div> : leadOpenMetric}
         {hot ? <div className="sales-priority-money-row">
@@ -284,7 +285,6 @@ function SalesTrafficStrip({ sources, previousSources = [], comparisonLabel = ''
 
 export default function LeadPipeline() {
   const location = useLocation();
-  const navigate = useNavigate();
   const summaryView = location.pathname.startsWith('/summary-dashboard');
   const salesDashboardView = location.pathname === '/sales-dashboard';
   const salesDesignView = summaryView || salesDashboardView;
@@ -293,6 +293,7 @@ export default function LeadPipeline() {
   const [rows, setRows] = useState(() => readPageSnapshot(snapshotKey)?.rows || []);
   const [quotationRows, setQuotationRows] = useState(null);
   const [quotationCountUnavailable, setQuotationCountUnavailable] = useState(false);
+  const [quotationDialogOpen, setQuotationDialogOpen] = useState(false);
   const [sourceModes, setSourceModes] = useState([]);
   const [sourceOptionsUnavailable, setSourceOptionsUnavailable] = useState(false);
   const [loading, setLoading] = useState(() => !readPageSnapshot(snapshotKey));
@@ -373,21 +374,29 @@ export default function LeadPipeline() {
   }, [serviceView]);
   const dashboardRows = useMemo(() => summaryView ? rows.filter((row) => !isExistingClientTrafficSource(row) || (row.kind === 'hot' && row.state === 'closed')) : rows, [rows, summaryView]);
   const baseFiltered = useMemo(() => dashboardRows.filter(r => (!owner || salesRepOwner(r) === owner) && `${r.company} ${r.code} ${r.owner}`.toLowerCase().includes(deferredQuery.trim().toLowerCase())), [dashboardRows, deferredQuery, owner]);
-  const quotationLeadIds = useMemo(() => hotQuotationLeadIds(baseFiltered, range), [baseFiltered, range]);
-  const openQuotationCount = useMemo(() => quotationRows === null || loading ? null : quotationRows.filter(row =>
-    quotationMatchesLeadIds(row, quotationLeadIds) && countQuotationServices(row).open > 0
-  ).length, [loading, quotationLeadIds, quotationRows]);
-  function openHotQuotations() {
-    if (openQuotationCount === null) {
+  const openQuotations = useMemo(() => {
+    if (quotationRows === null) return null;
+    const term = deferredQuery.trim().toLowerCase();
+    const useLeadFilters = Boolean(owner || period !== 'all');
+    if (loading && (useLeadFilters || term)) return null;
+    const leadIds = useLeadFilters || term ? quotationLeadIdsInPeriod(rows.filter(row =>
+      (!owner || salesRepOwner(row) === owner) && `${row.company} ${row.code} ${row.owner}`.toLowerCase().includes(term)
+    ), range) : null;
+    return quotationRows.flatMap(row => {
+      if (leadIds && !quotationMatchesLeadIds(row, leadIds)) {
+        const quoteText = [row.companyName, row.leadDetails?.companyName, row.leadCode, row.businessLeadCode].join(' ').toLowerCase();
+        if (useLeadFilters || !quoteText.includes(term)) return [];
+      }
+      const serviceSummary = filterQuotationServices(row, 'open');
+      return serviceSummary ? [{ ...row, serviceSummary }] : [];
+    });
+  }, [deferredQuery, loading, owner, period, quotationRows, range, rows]);
+  function openQuotationList() {
+    if (openQuotations === null) {
       if (quotationCountUnavailable) void load();
       return;
     }
-    navigate('/sales/quotations', { state: { hotQuotationScope: {
-      leadIds: [...quotationLeadIds],
-      period: range.label,
-      owner,
-      query: deferredQuery.trim()
-    } } });
+    setQuotationDialogOpen(true);
   }
   const filterPeriod = summaryView || salesDashboardView ? summaryPipelineRows
     : (source, periodRange) => currentPipelineRows(source.filter(row => inPipelinePeriod(row.createdAt, periodRange)));
@@ -540,7 +549,7 @@ export default function LeadPipeline() {
         {!unique.length && <p role="status" className="pipeline-filter-empty">No leads match these filters. Try another period or owner.</p>}
         {comparisonLabel && previousRange && <div className="sales-period-comparison" role="note"><div><small>Selected {comparisonLabel}</small><strong>{range.label}</strong></div><span>compared with</span><div><small>Previous {comparisonLabel}</small><strong>{previousRange.label}</strong></div></div>}
         <section className="sales-priority-grid" aria-label="Sales pipeline priorities">
-          <SalesPriorityCard kind="hot" open={hotOpen.length} closed={hotClosed.length} expectedRevenue={total(hotOpen)} quotationValue={quotationTotal(hotOpen)} poValue={poTotal(hotClosed)} previousOpen={previousHotOpen.length} previousClosed={previousHotClosed.length} previousExpectedRevenue={total(previousHotOpen)} previousQuotationValue={quotationTotal(previousHotOpen)} previousPoValue={poTotal(previousHotClosed)} comparisonLabel={comparisonLabel} onOpen={open} openQuotations={openQuotationCount} quotationCountUnavailable={quotationCountUnavailable} onOpenQuotations={openHotQuotations}/>
+          <SalesPriorityCard kind="hot" open={hotOpen.length} closed={hotClosed.length} expectedRevenue={total(hotOpen)} quotationValue={quotationTotal(hotOpen)} poValue={poTotal(hotClosed)} previousOpen={previousHotOpen.length} previousClosed={previousHotClosed.length} previousExpectedRevenue={total(previousHotOpen)} previousQuotationValue={quotationTotal(previousHotOpen)} previousPoValue={poTotal(previousHotClosed)} comparisonLabel={comparisonLabel} onOpen={open} openQuotations={openQuotations?.length ?? null} quotationCountUnavailable={quotationCountUnavailable} onOpenQuotations={openQuotationList}/>
           <SalesPriorityCard kind="cold" open={coldRows.length} closed={0} expectedRevenue={total(coldRows)} poValue={0} previousOpen={previousColdRows.length} previousClosed={0} previousExpectedRevenue={total(previousColdRows)} previousPoValue={0} comparisonLabel={comparisonLabel} onOpen={open}/>
         </section>
         <section className="sales-dashboard-main">
@@ -558,6 +567,7 @@ export default function LeadPipeline() {
       </section><TrafficSources sources={trafficSources} onSelect={openSource} optionsUnavailable={sourceOptionsUnavailable}/></div>}
       {!salesDesignView && <SalesRepTable reps={salesReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)} onSourceClick={openOwnerSource}/>}
     </>}
+    {quotationDialogOpen && <OpenQuotationsDialog quotations={openQuotations || []} onClose={() => setQuotationDialogOpen(false)}/>}
     <dialog ref={dialog} className="pipeline-dialog" onCancel={() => setSelection(null)} onClose={() => setSelection(null)}>
       {selection && <><header><div><p className="pipeline-eyebrow">PIPELINE DETAILS</p><h2>{selection.owner ? `${selection.owner.toUpperCase()} · ` : ''}{selection.sourceLabel ? `Traffic Source · ${selection.sourceLabel}` : selection.kind ? `${selection.kind === 'hot' ? 'Hot' : 'Cold'} Leads` : 'All Leads'}{selection.state ? ` · ${selection.state === 'open' ? 'Open' : selection.state === 'unassigned' ? 'Unassigned' : 'Closed'}` : ''}</h2><p>{selection.owner ? `Lead Owner: ${selection.owner.toUpperCase()} · ` : ''}{listed.length} clients · {revenueMoney(total(listed))} estimated revenue{selection.kind === 'hot' && selection.state === 'open' ? ` · ${revenueMoney(quotationTotal(listed))} latest quotation value` : ''}{selection.kind === 'hot' && selection.state === 'closed' ? ` · ${revenueMoney(poTotal(listed))} PO value` : ''}</p></div><div className="pipeline-toolbar"><button type="button" onClick={() => exportRows(listed, 'pipeline-details')} disabled={!listed.length}><Download size={16}/>Excel</button><button type="button" onClick={() => setSelection(null)} aria-label="Close lead list"><X/></button></div></header>
       <div className="pipeline-dialog-search"><label><Search size={15}/><input aria-label="Search leads in this dialog" value={dialogSearch} onChange={e => setDialogSearch(e.target.value)} placeholder="Search company, lead ID, owner or source…"/></label></div>
