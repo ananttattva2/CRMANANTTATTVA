@@ -18,7 +18,10 @@ import { API_ENDPOINTS } from '../services/apiEndpoints';
 import { filterQuotationServices, quotationLeadIdsInPeriod, quotationMatchesLeadIds } from '../utils/quotationServiceView.mjs';
 import OpenQuotationsDialog from '../components/dashboard/OpenQuotationsDialog';
 import PipelineLeadQuotations from '../components/dashboard/PipelineLeadQuotations';
+import PipelineClientDetails from '../components/dashboard/PipelineClientDetails';
 import '../styles/lead-pipeline.css';
+
+const LEAD_DETAILS_PAGE_SIZE = 4;
 
 function storedUser() {
   try { return JSON.parse(localStorage.getItem('user') || 'null'); } catch { return null; }
@@ -259,7 +262,7 @@ function SalesDashboardRepTable({ reps: allReps, comparisonLabel, range, previou
     {pdfExportError && <p className="sales-dashboard-export-error" role="alert">{pdfExportError}</p>}
     {comparisonLabel && <div className="sales-rep-comparison" role="note"><div><small>This {comparisonLabel}</small><strong>{range.label}</strong></div><span aria-hidden="true">vs</span><div><small>Previous {comparisonLabel}</small><strong>{previousRange.label}</strong></div><p>Current values, previous values and change are shown for every sales metric.</p></div>}
     <div className="sales-dashboard-reps-table"><table><thead><tr><th>Sales Representative</th><th>Total<br/>Leads</th><th colSpan="3">Hot Leads<div className="has-unassigned"><small>Closed</small><small>Open</small><small>Unassigned <button type="button" className="sales-unassigned-count" aria-label={`${totals.hotUnassigned} unassigned hot leads`} onClick={() => onMetricClick('Unassigned', 'hot', '')}>{totals.hotUnassigned.toLocaleString('en-IN')}</button></small></div></th><th>Cold Leads<br/><small>Open</small></th><th>Expected Revenue</th><th>PO Value</th><th>Major Service Interest</th></tr></thead>
-      <tbody>{visible.map((rep) => <tr key={rep.owner}><td><span className="sales-dashboard-rep"><i>{rep.owner.split(/\s+/).slice(0,2).map(part => part[0]).join('').toUpperCase()}</i><b>{rep.owner.toUpperCase()}</b></span></td><td><RepMetric value={rep.totalLeads} previous={rep.previousTotalLeads} comparisonLabel={comparisonLabel} label={`${rep.owner} total leads`} onClick={() => onMetricClick(rep.owner, '', '')}/></td><td className="is-closed"><RepMetric value={rep.hotClosed} previous={rep.previousHotClosed} comparisonLabel={comparisonLabel} label={`${rep.owner} hot closed leads`} onClick={() => onMetricClick(rep.owner, 'hot', 'closed')}/></td><td className="is-hot"><RepMetric value={rep.hotOpen} previous={rep.previousHotOpen} comparisonLabel={comparisonLabel} label={`${rep.owner} hot open leads`} onClick={() => onMetricClick(rep.owner, 'hot', 'open')}/></td><td className="is-unassigned"><RepMetric value={rep.hotUnassigned || 0} previous={rep.previousHotUnassigned || 0} comparisonLabel={comparisonLabel} label={`${rep.owner} released unassigned hot leads`} onClick={() => onMetricClick(rep.owner, 'hot', 'unassigned')}/></td><td className="is-cold"><RepMetric value={rep.coldOpen} previous={rep.previousColdOpen} comparisonLabel={comparisonLabel} label={`${rep.owner} cold leads`} onClick={() => onMetricClick(rep.owner, 'cold', '')}/></td><td><strong>{revenueMoney(rep.expectedRevenuePaise)}</strong><CardPeriodComparison value={rep.expectedRevenuePaise} previous={rep.previousExpectedRevenuePaise} comparisonLabel={comparisonLabel} money/></td><td><strong>{revenueMoney(rep.poValuePaise)}</strong><CardPeriodComparison value={rep.poValuePaise} previous={rep.previousPoValuePaise} comparisonLabel={comparisonLabel} money/></td><td><div className="sales-service-tags">{rep.serviceInterests.length ? rep.serviceInterests.map((item, index) => <span key={item.label}><i>{index + 1}</i>{item.label}<b>{item.count}</b></span>) : <small>Not recorded</small>}</div></td></tr>)}</tbody>
+      <tbody>{visible.map((rep) => <tr key={rep.owner}><td><span className="sales-dashboard-rep"><i>{rep.owner.split(/\s+/).slice(0,2).map(part => part[0]).join('').toUpperCase()}</i><b>{rep.owner.toUpperCase()}</b></span></td><td><RepMetric value={rep.totalLeads} previous={rep.previousTotalLeads} comparisonLabel={comparisonLabel} label={`${rep.owner} total leads`} onClick={() => onMetricClick(rep.owner, '', '')}/></td><td className="is-closed"><RepMetric value={rep.hotClosed} previous={rep.previousHotClosed} comparisonLabel={comparisonLabel} label={`${rep.owner} hot closed leads`} onClick={() => onMetricClick(rep.owner, 'hot', 'closed')}/></td><td className="is-hot"><RepMetric value={rep.hotOpen} previous={rep.previousHotOpen} comparisonLabel={comparisonLabel} label={`${rep.owner} hot open leads`} onClick={() => onMetricClick(rep.owner, 'hot', 'open')}/></td><td className="is-unassigned"><RepMetric value={rep.hotUnassigned || 0} previous={rep.previousHotUnassigned || 0} comparisonLabel={comparisonLabel} label={`${rep.owner} released unassigned hot leads`} onClick={() => onMetricClick(rep.owner, 'hot', 'unassigned')}/></td><td className="is-cold"><RepMetric value={rep.coldOpen} previous={rep.previousColdOpen} comparisonLabel={comparisonLabel} label={`${rep.owner} cold leads`} onClick={() => onMetricClick(rep.owner, 'cold', '')}/></td><td><strong>{revenueMoney(rep.expectedRevenuePaise)}</strong><CardPeriodComparison value={rep.expectedRevenuePaise} previous={rep.previousExpectedRevenuePaise} comparisonLabel={comparisonLabel} money/></td><td><strong>{revenueMoney(rep.poValuePaise)}</strong><CardPeriodComparison value={rep.poValuePaise} previous={rep.previousPoValuePaise} comparisonLabel={comparisonLabel} money/></td><td>{rep.serviceInterests.length ? <ul className="sales-service-tags">{rep.serviceInterests.map(item => <li key={item.label}><span>{item.label}</span><b>{item.count.toLocaleString('en-IN')}</b></li>)}</ul> : <span className="sales-service-empty">Not recorded</span>}</td></tr>)}</tbody>
       {!!allReps.length && <tfoot><tr><th scope="row">Grand Total <small>All {reps.length} representatives + unassigned</small></th><td>{totals.totalLeads.toLocaleString('en-IN')}</td><td className="is-closed">{totals.hotClosed.toLocaleString('en-IN')}</td><td className="is-hot">{totals.hotOpen.toLocaleString('en-IN')}</td><td className="is-unassigned"><RepMetric value={totals.hotUnassigned} previous={totals.previousHotUnassigned} comparisonLabel={comparisonLabel} label="Unassigned hot leads" onClick={() => onMetricClick('Unassigned', 'hot', '')}/></td><td className="is-cold">{totals.coldOpen.toLocaleString('en-IN')}</td><td>{revenueMoney(totals.expectedRevenuePaise)}</td><td>{revenueMoney(totals.poValuePaise)}</td><td><span className="sales-dashboard-total-note">Stable total across all pages</span></td></tr></tfoot>}
       </table>{!reps.length && <p className="pipeline-empty">No sales representatives match these filters.</p>}</div>
     {!!reps.length && <footer><span>Showing {first + 1}–{Math.min(first + pageSize, reps.length)} of {reps.length} records</span><label>Rows per page<select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value="5">5</option><option value="10">10</option><option value="25">25</option></select></label><div><button onClick={() => setPage(value => Math.max(1, value - 1))} disabled={safePage === 1}>‹</button><b>{safePage}</b><button onClick={() => setPage(value => Math.min(pageCount, value + 1))} disabled={safePage === pageCount}>›</button></div></footer>}
@@ -319,13 +322,10 @@ export default function LeadPipeline() {
   const [dialogSearch, setDialogSearch] = useState('');
   const deferredDialogSearch = useDeferredValue(dialogSearch);
   const [dialogPage, setDialogPage] = useState(1);
-  const [dialogPageSize, setDialogPageSize] = useState(5);
   const [expandedLeadQuotes, setExpandedLeadQuotes] = useState('');
-  const [expandedServiceQuotes, setExpandedServiceQuotes] = useState({}); // { serviceId: true }
   const [revenueRow, setRevenueRow] = useState(null);
   const [closeRow, setCloseRow] = useState(null);
   const [serviceView, setServiceView] = useState(null);
-  const serviceDialog = useRef(null);
   const serviceRequest = useRef(0);
   const [remarks, setRemarks] = useState('');
   const [closing, setClosing] = useState(false);
@@ -371,10 +371,6 @@ export default function LeadPipeline() {
     if (selection && dialog.current && !dialog.current.open) dialog.current.showModal();
     if (!selection && dialog.current?.open) dialog.current.close();
   }, [selection]);
-  useEffect(() => {
-    if (serviceView && serviceDialog.current && !serviceDialog.current.open) serviceDialog.current.showModal();
-    if (!serviceView && serviceDialog.current?.open) serviceDialog.current.close();
-  }, [serviceView]);
   const dashboardRows = useMemo(() => summaryView ? rows.filter((row) => !isExistingClientTrafficSource(row) || (row.kind === 'hot' && row.state === 'closed')) : rows, [rows, summaryView]);
   const baseFiltered = useMemo(() => dashboardRows.filter(r => (!owner || salesRepOwner(r) === owner) && `${r.company} ${r.code} ${r.owner}`.toLowerCase().includes(deferredQuery.trim().toLowerCase())), [dashboardRows, deferredQuery, owner]);
   const openQuotations = useMemo(() => {
@@ -414,10 +410,10 @@ export default function LeadPipeline() {
     if (!q) return listed;
     return listed.filter(r => `${r.company} ${r.code} ${r.owner} ${r.communicationMode || ''}`.toLowerCase().includes(q));
   }, [listed, deferredDialogSearch]);
-  const dialogPageCount = Math.max(1, Math.ceil(dialogListed.length / dialogPageSize));
+  const dialogPageCount = Math.max(1, Math.ceil(dialogListed.length / LEAD_DETAILS_PAGE_SIZE));
   const dialogSafePage = Math.min(dialogPage, dialogPageCount);
-  const dialogFirst = (dialogSafePage - 1) * dialogPageSize;
-  const dialogVisible = dialogListed.slice(dialogFirst, dialogFirst + dialogPageSize);
+  const dialogFirst = (dialogSafePage - 1) * LEAD_DETAILS_PAGE_SIZE;
+  const dialogVisible = dialogListed.slice(dialogFirst, dialogFirst + LEAD_DETAILS_PAGE_SIZE);
   const showInactivity = dialogListed.some(row => isUnassignedOwner(row.owner) && row.inactiveDays != null);
   const leadColumns = showInactivity ? 8 : 7;
   useEffect(() => { setDialogPage(1); setDialogSearch(''); setExpandedLeadQuotes(''); }, [selection]);
@@ -656,36 +652,17 @@ export default function LeadPipeline() {
         </div>
         {dialogListed.length > 0 && (
           <footer className="pipeline-dialog-pagination">
-            <span><b>{dialogFirst + 1}–{Math.min(dialogFirst + dialogPageSize, dialogListed.length)}</b> of <b>{dialogListed.length}</b> leads</span>
-            <label>Rows per page
-              <select value={dialogPageSize} onChange={event => { setDialogPageSize(Number(event.target.value)); changeDialogPage(1); }}>
-                {[5, 10, 25, 50].map(size => <option key={size} value={size}>{size}</option>)}
-              </select>
-            </label>
-            <nav aria-label="Lead list pages">
+            <span><b>{dialogFirst + 1}–{Math.min(dialogFirst + LEAD_DETAILS_PAGE_SIZE, dialogListed.length)}</b> of <b>{dialogListed.length}</b> leads</span>
+            {dialogPageCount > 1 && <nav aria-label="Lead list pages">
               <button type="button" onClick={() => changeDialogPage(dialogSafePage - 1)} disabled={dialogSafePage === 1}>Previous</button>
               <span>Page {dialogSafePage} of {dialogPageCount}</span>
               <button type="button" onClick={() => changeDialogPage(dialogSafePage + 1)} disabled={dialogSafePage === dialogPageCount}>Next</button>
-            </nav>
+            </nav>}
           </footer>
         )}
       </>}
     </dialog>
-    <dialog ref={serviceDialog} className="pipeline-dialog pipeline-services-dialog" onCancel={closeServices} onClose={closeServices}>
-      {serviceView && <><header><div><p className="pipeline-eyebrow">CLIENT DETAILS</p><h2>{serviceView.row.company}</h2><p>{serviceView.row.code} · {serviceView.services?.length || 0} services</p></div><button type="button" onClick={closeServices} aria-label="Close services" className="rounded-xl border bg-white p-2"><X/></button></header><div className="pipeline-dialog-body">
-        {serviceView.loading ? <p role="status" className="pipeline-empty">Loading services…</p> : serviceView.error ? <p role="alert" className="pipeline-error">{serviceView.error}</p> : <>
-          {serviceView.clientDetails && <section className="pipeline-client-profile" aria-label="Client contact details">{[
-            ['Contact person', serviceView.clientDetails.contactPerson], ['Designation', serviceView.clientDetails.designation], ['Email', serviceView.clientDetails.email], ['Phone', serviceView.clientDetails.phone],
-            ['Communication mode', serviceView.clientDetails.communicationMode || 'Other / Not specified'], ['Industry / Sector', serviceView.clientDetails.industry], ['Lead owner', serviceView.row.owner],
-            ['Address', serviceView.clientDetails.address], ['City / State / PIN', [serviceView.clientDetails.city, serviceView.clientDetails.state, serviceView.clientDetails.pinCode].filter(Boolean).join(', ')],
-            ...(serviceView.clientDetails.communicationNote ? [['Communication note', serviceView.clientDetails.communicationNote]] : [])
-          ].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value || 'Not recorded'}</strong></div>)}</section>}
-          <h3 className="mb-3 mt-5 font-black">Services &amp; assignments</h3>
-          <div className="pipeline-table-wrap pipeline-services-table-wrap"><table className="pipeline-services-table"><thead><tr>{['#', 'Service', 'Applicant', 'Financial Year', 'Manager', 'Staff', 'Status', 'Quotations'].map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>{(serviceView.services || []).map((service, index) => { const qCount = service.quotations?.length || 0; const qOpen = expandedServiceQuotes[service.id]; return (<React.Fragment key={service.id}><tr><td className="pipeline-service-index-cell">{String(index + 1).padStart(2, '0')}</td><td><b>{service.offering || 'Service'}</b><small>{service.category || 'Category not recorded'}</small></td><td>{service.applicant || '—'}</td><td>{service.year || '—'}</td><td>{service.manager || '—'}</td><td>{service.staff || '—'}</td><td><span className={`pipeline-badge ${service.closed ? 'closed' : 'open'}`}>{service.closed ? 'Closed' : 'Open'}</span></td><td>{qCount > 0 ? <button type="button" className="pipeline-view-q-btn" onClick={() => setExpandedServiceQuotes(prev => ({ ...prev, [service.id]: !prev[service.id] }))}><FileText size={14}/>{qOpen ? 'Hide' : 'View'} Quotation{qCount > 1 ? `s (${qCount})` : ''}</button> : <p className="pipeline-empty-small">No quotations recorded.</p>}</td></tr>{qOpen && qCount > 0 && <tr className="pipeline-expanded-row"><td colSpan={8}><div className="pipeline-quotation-expand"><table className="pipeline-quotation-table"><thead><tr>{['Quotation No.', 'Date', 'Status', 'Amount'].map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>{service.quotations.map((q, qi) => <tr key={qi}><td><b>{q.number || 'Not numbered'}</b></td><td>{q.date ? new Date(q.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td><td><span className={`pipeline-badge ${q.status || ''}`}>{q.status || 'quotation'}</span></td><td className="font-bold">{revenueMoney(q.amountPaise)}</td></tr>)}</tbody></table></div></td></tr>} </React.Fragment>); })}</tbody></table></div>
-          {!serviceView.services?.length && <p className="pipeline-empty">No accessible services recorded for this lead yet.</p>}
-          {serviceView.purchaseOrders?.length > 0 && <section className="mt-5"><h3 className="mb-3 font-black">Recorded purchase orders</h3><div className="pipeline-po-list">{serviceView.purchaseOrders.map((po, index) => <div key={index}><b>{po.number}</b><span>{po.date || 'Date not recorded'}</span><strong>{revenueMoney(po.amountPaise)}</strong></div>)}</div></section>}
-        </>}
-      </div></>}
-    </dialog>
+    {serviceView && <PipelineClientDetails key={`${serviceView.row.kind}-${serviceView.row.id}`} view={serviceView}
+      onClose={closeServices} onRetry={() => showServices(serviceView.row)}/>}
   </div></DashboardShell>;
 }

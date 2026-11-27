@@ -22,13 +22,19 @@ test('Quotations supports credit requests, service status tabs, and an in-dashbo
  const closedQuote={...quote,_id:'closed',itemClosureStates:quote.items.map(()=> 'closed')};
  const otherQuote={...quote,_id:'other',linkedLeadId:'hot-2',companyName:'Other company'};
  const unlinkedQuote={...quote,_id:'unlinked',linkedLeadId:null,companyName:'Unlinked company'};
+ const extraQuotes=Array.from({length:4},(_,index)=>({...unlinkedQuote,_id:'extra-'+index,companyName:'Extra client '+index}));
  const leads=[
-   {id:'hot-1',kind:'hot',state:'closed',company:'TEST',code:'LEAD-1',owner:'Sales One',createdAt:'2026-11-20',revenuePaise:0},
-   {id:'hot-2',kind:'hot',state:'open',company:'Other company',code:'LEAD-2',owner:'Sales Two',createdAt:'2026-11-20',revenuePaise:0}
+   {id:'hot-1',kind:'hot',state:'closed',company:'TEST',code:'LEAD-1',owner:'Sales One',createdAt:'2026-11-20',revenuePaise:0,serviceInterests:['EPR - Plastic Waste','Annual Return Filing']},
+   {id:'hot-2',kind:'hot',state:'open',company:'Other company',code:'LEAD-2',owner:'Sales Two',createdAt:'2026-11-20',revenuePaise:0},
+   ...Array.from({length:4},(_,index)=>({id:'closed-'+index,kind:'hot',state:'closed',company:'Closed client '+index,code:'CLOSED-'+index,owner:'Sales One',createdAt:'2026-11-20',revenuePaise:0}))
  ];
  export default {get:async (url, options)=>{
  if(url==='/auth/me')return {data:{user:{_id:'staff',role:'admin',email:'staff@example.test'}}};
  if(url==='/leads/summary-dashboard')return {data:{rows:leads}};
+ if(url==='/leads/pipeline-revenue/hot/hot-1/services')return {data:{
+   clientDetails:{contactPerson:'Contact fixture',address:'Example address'},
+   services:[{id:'service-1',offering:'Annual Return Filing',category:'EPR - Plastic Waste',year:'2026-27',manager:'Manager fixture',closed:true,quotations:[{number:'AT/26-27/526',amountPaise:10000}]}]
+ }};
  if(url==='/quotations' && options?.params?.leadId) return new Promise((resolve,reject)=>{
    (window.pipelineQuoteRequests ||= []).push({
      leadId: options.params.leadId, signal: options.signal,
@@ -36,7 +42,7 @@ test('Quotations supports credit requests, service status tabs, and an in-dashbo
      reject: () => reject(new Error('offline'))
    });
  });
- if(url==='/quotations')return {data:{quotations:window.dashboardMode?[quote,closedQuote,otherQuote,unlinkedQuote]:[quote]}};
+ if(url==='/quotations')return {data:{quotations:window.dashboardMode?[quote,closedQuote,otherQuote,unlinkedQuote,...extraQuotes]:[quote]}};
  if(url==='/quotations/'+quote._id){window.detailsCalls=(window.detailsCalls||0)+1;return new Promise((resolve,reject)=>{window.resolveCreditDetails=()=>resolve({data:{quotation:{...quote,_listOnly:false}}});window.rejectCreditDetails=()=>reject(new Error('offline'));});}
  return {data:{}};
  },post:async(url,body)=>{window.creditSubmission={url,body};return {data:{}}}};
@@ -70,7 +76,7 @@ test('Quotations supports credit requests, service status tabs, and an in-dashbo
    assert.equal(serviceStatus, status);
  }
  await page.click('#fixture-dashboard');
- await page.waitForFunction(() => document.querySelector('.sales-priority-open-row button:last-child strong')?.textContent === '3');
+ await page.waitForFunction(() => document.querySelector('.sales-priority-open-row button:last-child strong')?.textContent === '7');
  await page.locator('.sales-priority-open-row button:last-child').click();
  const popup = 'dialog[open][aria-labelledby="dashboard-open-quotations-title"]';
  await page.waitForSelector(popup);
@@ -89,7 +95,13 @@ test('Quotations supports credit requests, service status tabs, and an in-dashbo
  }
  await page.setViewport({ width: 1440, height: 900 });
  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
- assert.match(await page.$eval(popup, el => el.textContent), /3 open quotations.*Unlinked company/);
+ assert.match(await page.$eval(popup, el => el.textContent), /7 open quotations.*Unlinked company/);
+ assert.equal(await page.$$eval(`${popup} .dashboard-quotation-company`, rows => rows.length), 5);
+ await page.locator('[aria-label="Next client page"]').click();
+ assert.equal(await page.$$eval(`${popup} .dashboard-quotation-company`, rows => rows.length), 2);
+ await page.locator('[aria-label="Previous client page"]').click();
+ assert.equal(await page.$$eval(`${popup} .dashboard-quotation-company`, rows => rows.length), 5);
+ assert.equal(await page.$eval('.sales-service-tags span', el => getComputedStyle(el).fontSize), '12px');
  await page.locator('[aria-label="Close open quotations"]').click();
  await page.waitForSelector(popup, { hidden: true });
  await page.type('input[aria-label="Search pipeline"]', 'LEAD-1');
@@ -118,6 +130,13 @@ test('Quotations supports credit requests, service status tabs, and an in-dashbo
  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Search open quotations');
  await page.locator('[aria-label="Close open quotations"]').click();
  await page.waitForSelector(popup, { hidden: true });
+ await page.focus('input[aria-label="Search pipeline"]');
+ await page.keyboard.press('Home');
+ await page.keyboard.down('Shift');
+ await page.keyboard.press('End');
+ await page.keyboard.up('Shift');
+ await page.keyboard.press('Backspace');
+ await page.waitForFunction(() => document.querySelector('.sales-priority-open-row button:last-child strong')?.textContent === '7');
  await page.locator('[aria-label="Hot closed leads and PO value"] button:first-child').click();
  const leadPopup = 'dialog.pipeline-lead-details[open]';
  const toggle = `${leadPopup} .pipeline-details-quote-toggle`;
@@ -125,6 +144,13 @@ test('Quotations supports credit requests, service status tabs, and an in-dashbo
  await page.waitForSelector(leadPopup);
  const bounds = await page.$eval(leadPopup, el => ({ width: el.offsetWidth, height: el.offsetHeight }));
  assert.ok(bounds.width <= 1160 && bounds.height < 690, JSON.stringify(bounds));
+ assert.equal(await page.$$eval(`${leadPopup} .pipeline-details-lead-row`, rows => rows.length), 4);
+ await page.locator(`${leadPopup} nav button:last-child`).click();
+ assert.equal(await page.$$eval(`${leadPopup} .pipeline-details-lead-row`, rows => rows.length), 1);
+ await page.locator(`${leadPopup} nav button:first-child`).click();
+ assert.equal(await page.$$eval(`${leadPopup} .pipeline-details-lead-row`, rows => rows.length), 4);
+ await page.locator('input[aria-label="Search leads in this dialog"]').fill('LEAD-1');
+ await page.waitForFunction(selector => document.querySelector(`${selector} .pipeline-details-lead-row`)?.textContent.includes('LEAD-1'), {}, leadPopup);
  await page.locator(toggle).click();
  await page.waitForFunction(() => window.pipelineQuoteRequests?.length === 1);
  assert.match(await page.$eval(details, el => el.textContent), /Loading quotations/);
@@ -150,6 +176,21 @@ test('Quotations supports credit requests, service status tabs, and an in-dashbo
    return { width: el.offsetWidth, scrollWidth: body.scrollWidth, bodyWidth: body.clientWidth };
  });
  assert.ok(mobile.width <= 374 && mobile.scrollWidth <= mobile.bodyWidth + 1, JSON.stringify(mobile));
+ await page.locator(`${leadPopup} .pipeline-company-button`).click();
+ const clientPopup = 'dialog.pipeline-client-details[open]';
+ await page.waitForSelector(`${clientPopup} .pipeline-client-service-row`);
+ assert.match(await page.$eval(clientPopup, el => el.textContent), /Contact fixture.*1 closed.*Annual Return Filing.*Manager fixture/);
+ await page.locator(`${clientPopup} .pipeline-client-quote-toggle`).click();
+ await page.waitForSelector(`${clientPopup} .pipeline-client-service-quotes`);
+ assert.match(await page.$eval(`${clientPopup} .pipeline-client-service-quotes`, el => el.textContent), /AT\/26-27\/526/);
+ const clientFits = await page.$eval(clientPopup, el => {
+   const body = el.querySelector('.pipeline-dialog-body');
+   return el.offsetWidth <= 374 && body.scrollWidth <= body.clientWidth + 1;
+ });
+ assert.ok(clientFits);
+ await page.locator(`${clientPopup} [aria-label="Close services"]`).click();
+ await page.waitForSelector(clientPopup, { hidden: true });
+ assert.ok(await page.$(leadPopup));
  assert.deepEqual(errors, []);
  }finally{await browser.close();}
 });

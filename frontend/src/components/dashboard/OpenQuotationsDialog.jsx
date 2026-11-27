@@ -6,7 +6,7 @@ import { API_ENDPOINTS } from '../../services/apiEndpoints';
 import { loadFullQuotation } from '../../utils/quotationDetail.mjs';
 import { buildQuotationPrintHtml, formatDisplayDate, formatInr } from '../../utils/quotationDocument.mjs';
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 5;
 
 function QuotationClient({ company, isExpanded, onToggle, onView }) {
   const reducedMotion = useReducedMotion();
@@ -127,7 +127,7 @@ export default function OpenQuotationsDialog({ quotations, onClose }) {
 
   return (
     <dialog ref={dialog} aria-labelledby="dashboard-open-quotations-title" onClose={onClose}
-      className="dashboard-quotation-dialog">
+      className={`dashboard-quotation-dialog${showingPreview ? ' is-preview' : ''}`}>
       <header className="dashboard-quotation-header">
         <div className="flex min-w-0 items-center gap-3">
           {preview
