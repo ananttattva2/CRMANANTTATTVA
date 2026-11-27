@@ -102,12 +102,13 @@ test('the canonical document lists the user-selected payment term first, then th
   };
   const html = shared.buildQuotationPrintHtml(eprQuote);
   const fixedTerms = shared.EPR_CREDIT_FIXED_TERMS;
+  const termPattern = (term) => new RegExp(term.replace(/&/g, '&amp;').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   // Every fixed term text must be present in the rendered document.
-  fixedTerms.forEach((term) => assert.match(html, new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
+  fixedTerms.forEach((term) => assert.match(html, termPattern(term)));
   // The first numbered term must be the user-selected payment term.
   assert.match(html, /1\.\s*100% after completion of work/);
   // The first fixed EPR Credit term follows as the second numbered term.
-  assert.match(html, new RegExp(`2\\. ${fixedTerms[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  assert.match(html, new RegExp(`2\\. ${fixedTerms[0].replace(/&/g, '&amp;').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
   // The Terms & Conditions label is explicitly bold.
   assert.match(html, /<p class="label" style="font-weight: 900;">Terms &amp; Conditions:<\/p>/);
 });
@@ -116,7 +117,7 @@ test('the canonical document omits EPR Credit fixed terms for non-EPR-Credit quo
   const shared = await template();
   const html = shared.buildQuotationPrintHtml(quote);
   const fixedTerm = shared.EPR_CREDIT_FIXED_TERMS[0];
-  assert.doesNotMatch(html, new RegExp(fixedTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.doesNotMatch(html, new RegExp(fixedTerm.replace(/&/g, '&amp;').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
 
 test('the client email lists the selected payment term first, then the EPR Credit terms below the calculation table', async () => {
@@ -129,7 +130,8 @@ test('the client email lists the selected payment term first, then the EPR Credi
   const result = await delivery.clientEmailContent('Quotation', 'Please find the quotation attached.', eprQuote);
   assert.match(result.html, /Terms &amp; Conditions/);
   const shared = await template();
-  shared.EPR_CREDIT_FIXED_TERMS.forEach((term) => assert.match(result.html, new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
+  const termPattern = (term) => new RegExp(term.replace(/&/g, '&amp;').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  shared.EPR_CREDIT_FIXED_TERMS.forEach((term) => assert.match(result.html, termPattern(term)));
   // The selected payment term must appear in the email terms list.
   assert.match(result.html, /<li[^>]*>100% after completion of work<\/li>/);
 });

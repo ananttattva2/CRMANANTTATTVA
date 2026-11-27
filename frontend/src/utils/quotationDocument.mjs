@@ -204,12 +204,14 @@ const PAYMENT_TERM_OPTIONS = [
 // EPR Credit service. These are derived from the items' business category and
 // are never stored as user-selectable terms.
 export const EPR_CREDIT_FIXED_TERMS = [
-  'As per PWM 2016, EPR Credit Rates shall be governed by Government of India, rates may vary in case of revision of rates by recyclers due to Government Norms.',
-  'Collection of specified plastic waste from various sources, including waste pickers, scrap dealers, aggregators, ULBs, educational institutions, and households.',
-  'Environmentally responsible disposal of the identified plastic waste through recycling processes or through cement plants for co-processing and energy recovery in waste-to-energy facilities.',
-  'Compliance with the Central Pollution Control Board (CPCB) guidelines and Plastic Waste Management (Amendment) Rules, 2022, for the collection and disposal of plastic waste.',
-  'Ensuring transparent documentation of collection and disposal operations, including Loading Weigh Slip, Unloading Weigh Slip, E-way Bill, Bill of Supply, Bill T/LR, Co-processing Certificate, and Certificate for Extended Producer Responsibility (EPR) Allocation.',
-  'EOL credit will not be having traceability documents as the same is waste to energy.'
+  'As per the Plastic Waste Management Rules, 2016, EPR credit rates shall be governed by the applicable Government of India norms. The rates may vary in case of any revision by recyclers due to changes in Government norms.',
+  'Collection of specified plastic waste shall be undertaken from various sources, including waste pickers, scrap dealers, aggregators, ULBs, educational institutions, and households, as applicable.',
+  'The identified plastic waste shall be disposed of in an environmentally responsible manner through recycling processes, co-processing through cement plants, or energy recovery through waste-to-energy facilities, as applicable.',
+  'All collection and disposal activities shall be carried out in compliance with the applicable Central Pollution Control Board (CPCB) guidelines and Plastic Waste Management (Amendment) Rules, 2022.',
+  'Transparent documentation shall be maintained for the collection and disposal operations, including Loading Weigh Slip, Unloading Weigh Slip, E-Way Bill, Bill of Supply, Bill T/LR, Co-processing Certificate, and Certificate for Extended Producer Responsibility (EPR) Allocation, wherever applicable.',
+  'EOL credits generated through Waste-to-Energy processes will not have conventional traceability documents, as the waste is processed through Waste-to-Energy facilities.',
+  'In case of physical audit at the plants/ PWP, the travel, lodging & boarding will be borne by client at actuals.',
+  'The EPR credit transferred to your PIBO CPCB account after your approval/ PO confirmation/ mail confirmation, will not be reversed/ refunded, and AnantTattva will not be responsible for any financial impact arising out of the same.'
 ];
 
 export function quotationHasEprCredit(quotation = {}) {
