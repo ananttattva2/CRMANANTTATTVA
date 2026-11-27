@@ -128,3 +128,31 @@ test('released leads are attributed to their recorded previous owner without inf
  assert.equal(anand.hotOpen,8);assert.equal(anand.hotUnassigned,2);assert.equal(anand.totalLeads,10);assert.equal(reps.find(rep=>rep.owner==='Other').hotUnassigned,1);
  assert.equal(totals.hotUnassigned,4);assert.equal(totals.totalLeads,12);assert.equal(totals.hotOpen+totals.hotClosed+totals.hotUnassigned+totals.coldOpen,12);
 });
+
+test('dashboard report separates closed, unassigned, hot open and cold revenue', async () => {
+ const { salesRepSummary, salesRepTableData } = await import('../../frontend/src/utils/salesRepSummary.mjs');
+ const rows = [
+  { kind: 'hot', state: 'closed', owner: 'Asha', revenuePaise: 1100, poAmountPaise: 7400 },
+  { kind: 'hot', state: 'open', owner: 'Asha', revenuePaise: 2200 },
+  { kind: 'hot', state: 'open', owner: 'Unassigned', previousOwner: 'Asha', revenuePaise: 3300 },
+  { kind: 'cold', state: 'open', owner: 'Asha', revenuePaise: 4400 },
+  { kind: 'hot', state: 'closed', owner: 'Unassigned', revenuePaise: 5500, poAmountPaise: 6600 }
+ ];
+ const previous = [{ kind: 'hot', state: 'open', owner: 'Unassigned', previousOwner: 'Asha', revenuePaise: 1200 }];
+ const { reps: [asha], totals } = salesRepTableData(salesRepSummary(rows, previous));
+ assert.equal(asha.totalLeads, 4);
+ assert.equal(asha.closedLeads, 1);
+ assert.equal(asha.closedExpectedRevenuePaise, 1100);
+ assert.equal(asha.closedPoRevenuePaise, 7400);
+ assert.equal(asha.hotOpen, 1);
+ assert.equal(asha.hotOpenExpectedRevenuePaise, 2200);
+ assert.equal(asha.unassignedOpenLeads, 1);
+ assert.equal(asha.unassignedExpectedRevenuePaise, 3300);
+ assert.equal(asha.previousUnassignedExpectedRevenuePaise, 1200);
+ assert.equal(asha.coldOpen, 1);
+ assert.equal(asha.coldExpectedRevenuePaise, 4400);
+ assert.equal(totals.closedLeads, 2);
+ assert.equal(totals.closedExpectedRevenuePaise, 6600);
+ assert.equal(totals.closedPoRevenuePaise, 14000);
+ assert.equal(totals.unassignedOpenLeads, 1);
+});

@@ -24,8 +24,8 @@ test('Quotations supports credit requests, service status tabs, and an in-dashbo
  const unlinkedQuote={...quote,_id:'unlinked',linkedLeadId:null,companyName:'Unlinked company'};
  const extraQuotes=Array.from({length:4},(_,index)=>({...unlinkedQuote,_id:'extra-'+index,companyName:'Extra client '+index}));
  const leads=[
-   {id:'hot-1',kind:'hot',state:'closed',company:'TEST',code:'LEAD-1',owner:'Sales One',createdAt:'2026-11-20',revenuePaise:0,serviceInterests:['EPR - Plastic Waste','Annual Return Filing']},
-   {id:'hot-2',kind:'hot',state:'open',company:'Other company',code:'LEAD-2',owner:'Sales Two',createdAt:'2026-11-20',revenuePaise:0},
+   {id:'hot-1',kind:'hot',state:'closed',company:'TEST',code:'LEAD-1',owner:'Sales One',createdAt:'2026-11-20',revenuePaise:75000,poAmountPaise:120000,serviceInterests:['EPR - Plastic Waste','Annual Return Filing']},
+   {id:'hot-2',kind:'hot',state:'open',company:'Other company',code:'LEAD-2',owner:'Sales Two',createdAt:'2026-11-20',revenuePaise:350000},
    ...Array.from({length:4},(_,index)=>({id:'closed-'+index,kind:'hot',state:'closed',company:'Closed client '+index,code:'CLOSED-'+index,owner:'Sales One',createdAt:'2026-11-20',revenuePaise:0}))
  ];
  export default {get:async (url, options)=>{
@@ -77,6 +77,26 @@ test('Quotations supports credit requests, service status tabs, and an in-dashbo
  }
  await page.click('#fixture-dashboard');
  await page.waitForFunction(() => document.querySelector('.sales-priority-open-row button:last-child strong')?.textContent === '7');
+ const report = await page.$eval('.sales-lead-report', table => ({
+   groups: [...table.tHead.rows[0].cells].map(cell => [cell.textContent, cell.colSpan]),
+   columns: [...table.tHead.rows[1].cells].map(cell => cell.textContent),
+   closedRevenue: table.querySelector('tfoot [data-field="closedExpectedRevenuePaise"]').textContent,
+   hotRevenue: table.querySelector('tfoot [data-field="hotOpenExpectedRevenuePaise"]').textContent,
+   aboveTraffic: Boolean(table.compareDocumentPosition(document.querySelector('.sales-traffic-strip')) & Node.DOCUMENT_POSITION_FOLLOWING)
+ }));
+ assert.deepEqual(report.groups, [['Sales representative', 1], ['Overall Leads', 4], ['Open Leads', 6]]);
+ assert.equal(report.columns.length, 10);
+ assert.doesNotMatch(report.columns.join(' '), /Major Service Interest/i);
+ assert.match(report.closedRevenue, /750\.00/);
+ assert.match(report.hotRevenue, /3,500\.00/);
+ assert.ok(report.aboveTraffic);
+ await page.locator('.sales-lead-report button[aria-label^="Sales Two hot open leads:"]').click();
+ const reportDrilldown = 'dialog.pipeline-lead-details[open]';
+ await page.waitForSelector(reportDrilldown);
+ assert.match(await page.$eval(reportDrilldown, el => el.textContent), /LEAD-2/);
+ assert.doesNotMatch(await page.$eval(reportDrilldown, el => el.textContent), /LEAD-1/);
+ await page.locator('[aria-label="Close lead list"]').click();
+ await page.waitForSelector(reportDrilldown, { hidden: true });
  await page.locator('.sales-priority-open-row button:last-child').click();
  const popup = 'dialog[open][aria-labelledby="dashboard-open-quotations-title"]';
  await page.waitForSelector(popup);
@@ -101,7 +121,6 @@ test('Quotations supports credit requests, service status tabs, and an in-dashbo
  assert.equal(await page.$$eval(`${popup} .dashboard-quotation-company`, rows => rows.length), 2);
  await page.locator('[aria-label="Previous client page"]').click();
  assert.equal(await page.$$eval(`${popup} .dashboard-quotation-company`, rows => rows.length), 5);
- assert.equal(await page.$eval('.sales-service-tags span', el => getComputedStyle(el).fontSize), '12px');
  await page.locator('[aria-label="Close open quotations"]').click();
  await page.waitForSelector(popup, { hidden: true });
  await page.type('input[aria-label="Search pipeline"]', 'LEAD-1');

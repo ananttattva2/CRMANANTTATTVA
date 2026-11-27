@@ -1,8 +1,44 @@
 import { trafficSourceHierarchy } from './trafficSources.mjs';
 
+const dashboardFields = [
+  'closedLeads', 'closedExpectedRevenuePaise', 'closedPoRevenuePaise',
+  'unassignedOpenLeads', 'unassignedExpectedRevenuePaise', 'hotOpenExpectedRevenuePaise', 'coldExpectedRevenuePaise'
+];
+
+export function salesMetricField(field, previous = false) {
+  return previous ? `previous${field[0].toUpperCase()}${field.slice(1)}` : field;
+}
+
+export function salesDashboardLeadBucket(row) {
+  if (row.kind === 'cold') return 'cold';
+  if (row.state === 'closed') return 'closed';
+  return isUnassignedOwner(row.owner) ? 'unassigned' : 'open';
+}
+
+function recordDashboardMetrics(rep, row, previous) {
+  const add = (field, amount) => { rep[salesMetricField(field, previous)] += Number(amount) || 0; };
+  switch (salesDashboardLeadBucket(row)) {
+    case 'closed':
+      add('closedLeads', 1);
+      add('closedExpectedRevenuePaise', row.revenuePaise);
+      add('closedPoRevenuePaise', row.poAmountPaise);
+      break;
+    case 'unassigned':
+      add('unassignedOpenLeads', 1);
+      add('unassignedExpectedRevenuePaise', row.revenuePaise);
+      break;
+    case 'open':
+      add('hotOpenExpectedRevenuePaise', row.revenuePaise);
+      break;
+    default:
+      add('coldExpectedRevenuePaise', row.revenuePaise);
+  }
+}
+
 function blankRep(owner) {
   return {
     owner,
+    ...Object.fromEntries(dashboardFields.flatMap(field => [[field, 0], [salesMetricField(field, true), 0]])),
     hotOpen: 0,
     hotClosed: 0,
     hotUnassigned: 0,
@@ -30,6 +66,7 @@ function count(rows, reps, previous = false) {
     rep[previous ? 'previousTotalLeads' : 'totalLeads'] += 1;
     rep[previous ? 'previousExpectedRevenuePaise' : 'expectedRevenuePaise'] += Number(row.revenuePaise) || 0;
     rep[previous ? 'previousPoValuePaise' : 'poValuePaise'] += Number(row.poAmountPaise) || 0;
+    recordDashboardMetrics(rep, row, previous);
     if (row.kind === 'hot' && isUnassignedOwner(row.owner)) rep[previous ? 'previousHotUnassigned' : 'hotUnassigned'] += 1;
     else if (row.kind === 'hot' && row.state === 'closed') rep[`${prefix}${previous ? 'HotClosed' : 'hotClosed'}`] += 1;
     else if (row.kind === 'hot') rep[`${prefix}${previous ? 'HotOpen' : 'hotOpen'}`] += 1;
@@ -59,7 +96,8 @@ export function salesRepSummary(currentRows = [], previousRows = [], configuredS
 // Unowned leads are a separate Hot Leads bucket, never a representative.
 export function salesRepTableData(allReps = []) {
   const isUnassigned = rep => !String(rep.owner || '').trim() || String(rep.owner).trim().toLowerCase() === 'unassigned';
-  const keys = ['totalLeads', 'hotOpen', 'hotClosed', 'hotUnassigned', 'coldOpen', 'expectedRevenuePaise', 'poValuePaise', 'previousTotalLeads', 'previousHotOpen', 'previousHotClosed', 'previousHotUnassigned', 'previousColdOpen', 'previousExpectedRevenuePaise', 'previousPoValuePaise'];
+  const keys = ['totalLeads', 'hotOpen', 'hotClosed', 'hotUnassigned', 'coldOpen', 'expectedRevenuePaise', 'poValuePaise', 'previousTotalLeads', 'previousHotOpen', 'previousHotClosed', 'previousHotUnassigned', 'previousColdOpen', 'previousExpectedRevenuePaise', 'previousPoValuePaise',
+    ...dashboardFields.flatMap(field => [field, salesMetricField(field, true)])];
   const sum = rows => rows.reduce((total, rep) => {
     for (const key of keys) total[key] += Number(rep[key]) || 0;
     return total;

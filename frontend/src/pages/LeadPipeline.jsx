@@ -3,7 +3,7 @@ import { exportWithReason } from '../utils/dataExport.mjs'
 import TrafficSources from '../components/leads/TrafficSources';
 import { isExistingClientTrafficSource, trafficSourceHierarchy, trafficSourceKey } from '../utils/trafficSources.mjs';
 import { currentPipelineRows, summaryPipelineRows, uniquePipelineRows, pipelinePeriodRange, previousPipelinePeriodRange, inPipelinePeriod } from '../utils/leadPipeline.mjs';
-import { salesRepSummary, salesRepTableData, salesRepOwner, isUnassignedOwner } from '../utils/salesRepSummary.mjs';
+import { salesDashboardLeadBucket, salesMetricField, salesRepSummary, salesRepTableData, salesRepOwner, isUnassignedOwner } from '../utils/salesRepSummary.mjs';
 import { downloadSalesRepPerformancePdf } from '../utils/salesRepPerformancePdf.mjs';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -220,6 +220,43 @@ function SalesPriorityCard({ kind, open, closed, expectedRevenue, quotationValue
   </article>;
 }
 
+const salesReportGroups = [
+  { label: 'Overall Leads', tone: 'overall', columns: [
+    { label: 'Total leads', field: 'totalLeads', bucket: '' },
+    { label: 'Expected revenue', field: 'closedExpectedRevenuePaise' },
+    { label: 'Closed leads', field: 'closedLeads', bucket: 'closed' },
+    { label: 'PO revenue', field: 'closedPoRevenuePaise' }
+  ] },
+  { label: 'Open Leads', tone: 'open', columns: [
+    { label: 'Unassigned leads', field: 'unassignedOpenLeads', bucket: 'unassigned' },
+    { label: 'Expected revenue', field: 'unassignedExpectedRevenuePaise' },
+    { label: 'Hot open leads', field: 'hotOpen', bucket: 'open' },
+    { label: 'Expected revenue', field: 'hotOpenExpectedRevenuePaise' },
+    { label: 'Cold leads', field: 'coldOpen', bucket: 'cold' },
+    { label: 'Expected revenue', field: 'coldExpectedRevenuePaise' }
+  ] }
+];
+const salesReportColumns = salesReportGroups.flatMap(group => group.columns.map(column => ({ ...column, tone: group.tone })));
+
+function SalesReportCells({ rep, comparisonLabel, onMetricClick }) {
+  return salesReportColumns.map(({ label, field, bucket, tone }) => {
+    const value = rep[field] || 0;
+    const previous = rep[salesMetricField(field, true)] || 0;
+    const money = field.endsWith('Paise');
+    return <td key={field} className={`sales-report-cell is-${tone}`} data-field={field}>
+      {money ? <>
+        <strong>{revenueMoney(value)}</strong>
+        <CardPeriodComparison value={value} previous={previous} comparisonLabel={comparisonLabel} money/>
+      </> : <RepMetric value={value} previous={previous} comparisonLabel={comparisonLabel}
+        label={`${rep.owner || 'All'} ${label.toLowerCase()}`} onClick={() => onMetricClick(rep.owner || '', bucket)}/>}
+    </td>;
+  });
+}
+
+function activeOwnerRows(rows) {
+  return rows.filter(row => row.owner === 'Unassigned' || row.ownerActive !== false);
+}
+
 function SalesDashboardRepTable({ reps: allReps, comparisonLabel, range, previousRange, dashboardSummary, onMetricClick }) {
   const { reps, totals } = useMemo(() => salesRepTableData(allReps), [allReps]);
   const [page, setPage] = useState(1);
@@ -261,9 +298,34 @@ function SalesDashboardRepTable({ reps: allReps, comparisonLabel, range, previou
     <header><div><span><Users/></span><div><h2 id="sales-performance-heading">Sales Rep Performance</h2><p>Lead summary, conversion and revenue by sales representative.</p><small className="sales-dashboard-sort-note">Sorting: Highest to lowest based on total Hot Leads.</small></div></div><div className="sales-dashboard-export-actions"><button type="button" onClick={exportReps} disabled={!allReps.length}><Download/>Export Excel</button><button type="button" onClick={exportPdf} disabled={!allReps.length || pdfExporting}><FileText/>{pdfExporting ? 'Preparing PDF...' : 'Download PDF'}</button></div></header>
     {pdfExportError && <p className="sales-dashboard-export-error" role="alert">{pdfExportError}</p>}
     {comparisonLabel && <div className="sales-rep-comparison" role="note"><div><small>This {comparisonLabel}</small><strong>{range.label}</strong></div><span aria-hidden="true">vs</span><div><small>Previous {comparisonLabel}</small><strong>{previousRange.label}</strong></div><p>Current values, previous values and change are shown for every sales metric.</p></div>}
-    <div className="sales-dashboard-reps-table"><table><thead><tr><th>Sales Representative</th><th>Total<br/>Leads</th><th colSpan="3">Hot Leads<div className="has-unassigned"><small>Closed</small><small>Open</small><small>Unassigned <button type="button" className="sales-unassigned-count" aria-label={`${totals.hotUnassigned} unassigned hot leads`} onClick={() => onMetricClick('Unassigned', 'hot', '')}>{totals.hotUnassigned.toLocaleString('en-IN')}</button></small></div></th><th>Cold Leads<br/><small>Open</small></th><th>Expected Revenue</th><th>PO Value</th><th>Major Service Interest</th></tr></thead>
-      <tbody>{visible.map((rep) => <tr key={rep.owner}><td><span className="sales-dashboard-rep"><i>{rep.owner.split(/\s+/).slice(0,2).map(part => part[0]).join('').toUpperCase()}</i><b>{rep.owner.toUpperCase()}</b></span></td><td><RepMetric value={rep.totalLeads} previous={rep.previousTotalLeads} comparisonLabel={comparisonLabel} label={`${rep.owner} total leads`} onClick={() => onMetricClick(rep.owner, '', '')}/></td><td className="is-closed"><RepMetric value={rep.hotClosed} previous={rep.previousHotClosed} comparisonLabel={comparisonLabel} label={`${rep.owner} hot closed leads`} onClick={() => onMetricClick(rep.owner, 'hot', 'closed')}/></td><td className="is-hot"><RepMetric value={rep.hotOpen} previous={rep.previousHotOpen} comparisonLabel={comparisonLabel} label={`${rep.owner} hot open leads`} onClick={() => onMetricClick(rep.owner, 'hot', 'open')}/></td><td className="is-unassigned"><RepMetric value={rep.hotUnassigned || 0} previous={rep.previousHotUnassigned || 0} comparisonLabel={comparisonLabel} label={`${rep.owner} released unassigned hot leads`} onClick={() => onMetricClick(rep.owner, 'hot', 'unassigned')}/></td><td className="is-cold"><RepMetric value={rep.coldOpen} previous={rep.previousColdOpen} comparisonLabel={comparisonLabel} label={`${rep.owner} cold leads`} onClick={() => onMetricClick(rep.owner, 'cold', '')}/></td><td><strong>{revenueMoney(rep.expectedRevenuePaise)}</strong><CardPeriodComparison value={rep.expectedRevenuePaise} previous={rep.previousExpectedRevenuePaise} comparisonLabel={comparisonLabel} money/></td><td><strong>{revenueMoney(rep.poValuePaise)}</strong><CardPeriodComparison value={rep.poValuePaise} previous={rep.previousPoValuePaise} comparisonLabel={comparisonLabel} money/></td><td>{rep.serviceInterests.length ? <ul className="sales-service-tags">{rep.serviceInterests.map(item => <li key={item.label}><span>{item.label}</span><b>{item.count.toLocaleString('en-IN')}</b></li>)}</ul> : <span className="sales-service-empty">Not recorded</span>}</td></tr>)}</tbody>
-      {!!allReps.length && <tfoot><tr><th scope="row">Grand Total <small>All {reps.length} representatives + unassigned</small></th><td>{totals.totalLeads.toLocaleString('en-IN')}</td><td className="is-closed">{totals.hotClosed.toLocaleString('en-IN')}</td><td className="is-hot">{totals.hotOpen.toLocaleString('en-IN')}</td><td className="is-unassigned"><RepMetric value={totals.hotUnassigned} previous={totals.previousHotUnassigned} comparisonLabel={comparisonLabel} label="Unassigned hot leads" onClick={() => onMetricClick('Unassigned', 'hot', '')}/></td><td className="is-cold">{totals.coldOpen.toLocaleString('en-IN')}</td><td>{revenueMoney(totals.expectedRevenuePaise)}</td><td>{revenueMoney(totals.poValuePaise)}</td><td><span className="sales-dashboard-total-note">Stable total across all pages</span></td></tr></tfoot>}
+    <div className="sales-dashboard-reps-table"><table className="sales-lead-report">
+      <colgroup><col className="sales-report-owner-col"/></colgroup>
+      {salesReportGroups.map(group => <colgroup key={group.tone}>
+        {group.columns.map(({ field }) => <col key={field} className={field.endsWith('Paise') ? 'sales-report-money-col' : undefined}/>)}
+      </colgroup>)}
+      <thead>
+        <tr>
+          <th rowSpan={2} scope="col" className="sales-report-owner">Sales representative</th>
+          {salesReportGroups.map(group => <th key={group.tone} scope="colgroup" colSpan={group.columns.length} className={`sales-report-group is-${group.tone}`}>{group.label}</th>)}
+        </tr>
+        <tr>
+          {salesReportColumns.map(({ label, field, tone }) => (
+            <th key={field} scope="col" className={`sales-report-column is-${tone}`}>
+              {label}<small>{field.endsWith('Paise') ? 'INR' : 'Count'}</small>
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {visible.map(rep => <tr key={rep.owner}>
+          <th scope="row" className="sales-report-owner"><span className="sales-dashboard-rep"><i>{rep.owner.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</i><b>{rep.owner.toUpperCase()}</b></span></th>
+          <SalesReportCells rep={rep} comparisonLabel={comparisonLabel} onMetricClick={onMetricClick}/>
+        </tr>)}
+      </tbody>
+      {!!allReps.length && <tfoot><tr>
+        <th scope="row" className="sales-report-owner">Grand Total <small>Includes unassigned leads</small></th>
+        <SalesReportCells rep={totals} comparisonLabel={comparisonLabel} onMetricClick={onMetricClick}/>
+      </tr></tfoot>}
       </table>{!reps.length && <p className="pipeline-empty">No sales representatives match these filters.</p>}</div>
     {!!reps.length && <footer><span>Showing {first + 1}–{Math.min(first + pageSize, reps.length)} of {reps.length} records</span><label>Rows per page<select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value="5">5</option><option value="10">10</option><option value="25">25</option></select></label><div><button onClick={() => setPage(value => Math.max(1, value - 1))} disabled={safePage === 1}>‹</button><b>{safePage}</b><button onClick={() => setPage(value => Math.min(pageCount, value + 1))} disabled={safePage === pageCount}>›</button></div></footer>}
   </section>;
@@ -404,7 +466,18 @@ export default function LeadPipeline() {
   const unique = useMemo(() => uniquePipelineRows(filtered), [filtered]);
   const trafficSources = useMemo(() => trafficSourceHierarchy(filtered, sourceModes), [filtered, sourceModes]);
   const previousTrafficSources = useMemo(() => trafficSourceHierarchy(previousFiltered, sourceModes), [previousFiltered, sourceModes]);
-  const listed = useMemo(() => selection ? (selection.kind ? filtered : unique).filter(r => (!selection.kind || r.kind === selection.kind) && (!selection.state || (selection.state === 'unassigned' ? isUnassignedOwner(r.owner) : r.state === selection.state && (!selection.owner || !isUnassignedOwner(r.owner)))) && (!selection.owner || (selection.owner === 'Unassigned' ? isUnassignedOwner(r.owner) : salesRepOwner(r) === selection.owner)) && (!selection.sources?.length || selection.sources.includes(trafficSourceKey(r.communicationMode)))) : [], [filtered, selection, unique]);
+  const listed = useMemo(() => {
+    if (!selection) return [];
+    if (selection.salesBucket !== undefined) return activeOwnerRows(filtered).filter(row =>
+      (!selection.owner || salesRepOwner(row) === selection.owner)
+      && (!selection.salesBucket || salesDashboardLeadBucket(row) === selection.salesBucket)
+    );
+    return (selection.kind ? filtered : unique).filter(r =>
+      (!selection.kind || r.kind === selection.kind)
+      && (!selection.state || (selection.state === 'unassigned' ? isUnassignedOwner(r.owner) : r.state === selection.state && (!selection.owner || !isUnassignedOwner(r.owner))))
+      && (!selection.owner || (selection.owner === 'Unassigned' ? isUnassignedOwner(r.owner) : salesRepOwner(r) === selection.owner))
+      && (!selection.sources?.length || selection.sources.includes(trafficSourceKey(r.communicationMode))));
+  }, [filtered, selection, unique]);
   const dialogListed = useMemo(() => {
     const q = deferredDialogSearch.trim().toLowerCase();
     if (!q) return listed;
@@ -444,13 +517,9 @@ export default function LeadPipeline() {
       previousHotClosed: priorHotRows.filter((row) => row.state === 'closed')
     };
   }, [filtered, previousFiltered]);
-  const activeOwnerRows = useMemo(() => (source) => source.filter((row) => {
-    if (row.owner === 'Unassigned') return true;
-    return row.ownerActive !== false;
-  }), []);
-  const ownerOptions = useMemo(() => [...new Set(activeOwnerRows(dashboardRows).map((row) => salesRepOwner(row)).filter((name) => name && name !== 'Unassigned'))].sort(), [activeOwnerRows, dashboardRows]);
+  const ownerOptions = useMemo(() => [...new Set(activeOwnerRows(dashboardRows).map((row) => salesRepOwner(row)).filter((name) => name && name !== 'Unassigned'))].sort(), [dashboardRows]);
   useEffect(() => { if (owner && !ownerOptions.includes(owner)) setOwner(''); }, [owner, ownerOptions]);
-  const salesReps = useMemo(() => salesRepSummary(activeOwnerRows(filtered), activeOwnerRows(previousFiltered), sourceModes), [activeOwnerRows, filtered, previousFiltered, sourceModes]);
+  const salesReps = useMemo(() => salesRepSummary(activeOwnerRows(filtered), activeOwnerRows(previousFiltered), sourceModes), [filtered, previousFiltered, sourceModes]);
   const comparisonLabel = period === 'week' ? 'week' : period === 'month' ? 'month' : period === 'quarter' ? 'quarter' : '';
   const trendData = useMemo(() => pipelineTrend(filtered, period, periodDate, range), [filtered, period, periodDate, range]);
   const previousTrendData = useMemo(() => {
@@ -484,7 +553,7 @@ export default function LeadPipeline() {
     const interests = new Map();
     ownerRows.forEach((row) => (row.serviceInterests || []).forEach((label) => interests.set(label, (interests.get(label) || 0) + 1)));
     return { ...rep, totalLeads: ownerRows.length, previousTotalLeads:previousOwnerRows.length, expectedRevenuePaise: total(ownerRows), previousExpectedRevenuePaise:total(previousOwnerRows), poValuePaise: poTotal(ownerRows), previousPoValuePaise:poTotal(previousOwnerRows), serviceInterests:[...interests.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)).slice(0, 2) };
-  }), [activeOwnerRows, filtered, previousFiltered, salesReps]);
+  }), [filtered, previousFiltered, salesReps]);
   async function showServices(row) {
     const request = ++serviceRequest.current;
     setServiceView({ row, loading: true });
@@ -492,7 +561,13 @@ export default function LeadPipeline() {
     catch (e) { if (request === serviceRequest.current) setServiceView({ row, loading: false, error: e.response?.data?.error || 'Unable to load services.' }); }
   }
   function closeServices() { serviceRequest.current++; setServiceView(null); }
-  function open(kind = '', state = '', selectedOwner = '') { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ kind, state, owner: selectedOwner }); }
+  function open(kind = '', state = '', selectedOwner = '', salesBucket) {
+    setRevenueRow(null); setCloseRow(null); setModalError('');
+    setSelection({ kind, state, owner: selectedOwner, salesBucket });
+  }
+  function openSalesMetric(selectedOwner, bucket) {
+    open(bucket === 'cold' ? 'cold' : bucket ? 'hot' : '', bucket === 'cold' ? '' : bucket, selectedOwner, bucket);
+  }
   function openSource(source) { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ sources: source.keys || [source.key], sourceLabel: source.label }); }
   function openOwnerSource(selectedOwner, source) { setRevenueRow(null); setCloseRow(null); setModalError(''); setSelection({ owner: selectedOwner, sources: source.keys || [source.key], sourceLabel: source.label }); }
   async function exportRows(source, name) {
@@ -537,7 +612,7 @@ export default function LeadPipeline() {
       <section className="summary-analytics-grid">
         <TrafficSources sources={trafficSources} onSelect={openSource} optionsUnavailable={sourceOptionsUnavailable}/>
       </section>
-      <SalesDashboardRepTable reps={salesDashboardReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} dashboardSummary={dashboardPdfSummary} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)}/></>}
+      <SalesDashboardRepTable reps={salesDashboardReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} dashboardSummary={dashboardPdfSummary} onMetricClick={openSalesMetric}/></>}
       {salesDesignView && <>
         {comparisonLabel ? <section className="sales-period-comparison" aria-label="Dashboard period comparison"><span>{comparisonLabel[0].toUpperCase() + comparisonLabel.slice(1)} comparison</span><strong>{range.label}</strong><small>vs</small><strong>{previousRange.label}</strong></section> : <p className="sales-comparison-hint">Select This Week or This Month above to compare the complete dashboard with the previous period.</p>}
         {!unique.length && <p role="status" className="pipeline-filter-empty">No leads match these filters. Try another period or owner.</p>}
@@ -547,7 +622,7 @@ export default function LeadPipeline() {
           <SalesPriorityCard kind="cold" open={coldRows.length} closed={0} expectedRevenue={total(coldRows)} poValue={0} previousOpen={previousColdRows.length} previousClosed={0} previousExpectedRevenue={total(previousColdRows)} previousPoValue={0} comparisonLabel={comparisonLabel} onOpen={open}/>
         </section>
         <section className="sales-dashboard-main">
-          <SalesDashboardRepTable reps={salesDashboardReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} dashboardSummary={dashboardPdfSummary} onMetricClick={(selectedOwner, kind, state) => open(kind, state, selectedOwner)}/>
+          <SalesDashboardRepTable reps={salesDashboardReps} comparisonLabel={comparisonLabel} range={range} previousRange={previousRange} dashboardSummary={dashboardPdfSummary} onMetricClick={openSalesMetric}/>
         </section>
         <SalesTrafficStrip sources={trafficSources} previousSources={previousTrafficSources} comparisonLabel={comparisonLabel} onSelect={openSource}/>
       </>}
