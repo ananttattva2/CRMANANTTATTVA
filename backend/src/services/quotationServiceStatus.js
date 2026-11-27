@@ -2,9 +2,10 @@ const mongoose = require('mongoose');
 const Lead = require('../models/Lead');
 
 const identity = value => String(value || '').trim();
-const serviceId = row => identity(row?.assignedServiceId || row?.serviceAssignmentId);
-const isClosed = row => Boolean(row?.closedAt || row?.closedBy || row?.closedByText || row?.closedByEmail);
+const serviceId = row => identity(row?.assignedServiceId || row?.serviceAssignmentId || row?.assignmentId);
 const normalized = value => identity(value).toLowerCase().replace(/[^a-z0-9]+/g, '');
+const isClosed = row => Boolean(row?.closedAt || row?.closedBy || row?.closedByText || row?.closedByEmail
+  || row?.permanentClosedAt || normalized(row?.poStatus) === 'permanentlyclosed' || normalized(row?.status) === 'closed');
 
 function serviceLabels(row) {
   return [
@@ -27,14 +28,34 @@ function itemClosureStates(quotation, lead) {
   const items = quotation.items || [];
   if (!lead) return items.map(() => quotation.serviceState === 'closed' ? 'closed' : 'open');
 
-  const services = lead.serviceSelections?.length ? lead.serviceSelections : [lead];
   const assignments = lead.assignments || [];
+  const services = lead.serviceSelections?.length ? lead.serviceSelections : assignments.length > 1 ? assignments : [lead];
   const singleService = services.length === 1 && assignments.length <= 1;
-  const leadClosed = singleService && (isClosed(lead) || normalized(lead.status) === 'closed');
+  const assignmentById = new Map();
+  for (const assignment of assignments) {
+    const id = serviceId(assignment);
+    if (id && (!assignmentById.has(id) || !isClosed(assignment))) assignmentById.set(id, assignment);
+  }
+  function assignmentAt(position, id) {
+    const positional = assignments[position];
+    return assignmentById.get(id) || (!id || !serviceId(positional) || serviceId(positional) === id ? positional : undefined);
+  }
+  const matchedAssignments = new Set();
+  const servicesClosed = services.every((service, index) => {
+    const assignment = assignmentAt(index, serviceId(service));
+    if (assignment) matchedAssignments.add(assignment);
+    return isClosed(service) || isClosed(assignment);
+  });
+  // Historical quotes may retain an item ID or year that no longer matches the
+  // lead's service rows. Only apply lead-wide closure when every service is closed.
+  if ((singleService && isClosed(lead)) || (servicesClosed
+    && assignments.every(assignment => matchedAssignments.has(assignment) || isClosed(assignment)))) {
+    return items.map(() => 'closed');
+  }
 
   return items.map(item => {
     const id = serviceId(item);
-    const byAssignmentId = id ? assignments.find(row => serviceId(row) === id) : null;
+    const byAssignmentId = assignmentById.get(id);
     const index = byAssignmentId ? assignments.indexOf(byAssignmentId) : item.sourceServiceIndex;
     const indexedService = services[index];
     const indexedAssignment = assignments[index];
@@ -54,12 +75,10 @@ function itemClosureStates(quotation, lead) {
 
     const service = services[serviceIndex];
     const matchedId = id || serviceId(service);
-    const positionalAssignment = assignments[serviceIndex];
-    const assignment = byAssignmentId
-      || assignments.find(row => matchedId && serviceId(row) === matchedId)
-      || (!matchedId || !serviceId(positionalAssignment) ? positionalAssignment : null);
-
-    return isClosed(service) || isClosed(assignment) || leadClosed ? 'closed' : 'open';
+    const assignment = assignmentAt(serviceIndex, matchedId);
+    // The root row often carries the first closure on a multi-service lead.
+    const serviceClosed = service !== lead && isClosed(service);
+    return serviceClosed || isClosed(assignment) ? 'closed' : 'open';
   });
 }
 
@@ -70,7 +89,7 @@ async function attachQuotationServiceStatus(quotations) {
   const leads = identifiers.length ? await Lead.find({ $or: [
     { _id: { $in: ids } },
     ...['leadCode', 'sourceLeadId', 'externalLeadId'].map(field => ({ [field]: { $in: identifiers } }))
-  ] }).select('leadCode sourceLeadId externalLeadId status closedAt closedBy closedByText closedByEmail servicesOffered eprCategory subApplicantType applicantType firstAnnualReturnYearApplicable serviceSelections assignments.assignedServiceId assignments.serviceAssignmentId assignments.closedAt assignments.closedBy assignments.closedByText assignments.closedByEmail').lean() : [];
+  ] }).select('leadCode sourceLeadId externalLeadId assignedServiceId status closedAt closedBy closedByText closedByEmail permanentClosedAt poStatus servicesOffered eprCategory subApplicantType applicantType firstAnnualReturnYearApplicable serviceSelections assignments.assignedServiceId assignments.serviceAssignmentId assignments.assignmentId assignments.status assignments.poStatus assignments.closedAt assignments.closedBy assignments.closedByText assignments.closedByEmail assignments.permanentClosedAt').lean() : [];
 
   const byId = new Map(leads.map(lead => [String(lead._id), lead]));
   const byCode = new Map(leads.filter(lead => lead.leadCode).map(lead => [lead.leadCode, lead]));

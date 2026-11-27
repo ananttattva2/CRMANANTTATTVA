@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 const esbuild = require('../../frontend/node_modules/esbuild');
 test('Quotations supports credit requests, service status tabs, and an in-dashboard open quotation list',async()=>{
@@ -66,6 +67,17 @@ test('Quotations supports credit requests, service status tabs, and an in-dashbo
  await page.locator('.sales-priority-open-row button:last-child').click();
  const popup = 'dialog[open][aria-labelledby="dashboard-open-quotations-title"]';
  await page.waitForSelector(popup);
+ await page.addStyleTag({ content: fs.readFileSync(path.resolve(__dirname, '../../frontend/src/styles/lead-pipeline.css'), 'utf8') });
+ for (const width of [1440, 390]) {
+   await page.setViewport({ width, height: 900 });
+   const bounds = await page.$eval(popup, el => {
+     const { x, width } = el.getBoundingClientRect();
+     return { x, width };
+   });
+   assert.ok(bounds.x > 0 && bounds.width <= Math.min(960, width - 16), JSON.stringify(bounds));
+   assert.ok(Math.abs(bounds.x * 2 + bounds.width - width) < 2, JSON.stringify(bounds));
+ }
+ await page.setViewport({ width: 1440, height: 900 });
  assert.match(await page.$eval(popup, el => el.textContent), /3 open quotations.*Unlinked company/);
  await page.locator('[aria-label="Close open quotations"]').click();
  await page.waitForSelector(popup, { hidden: true });

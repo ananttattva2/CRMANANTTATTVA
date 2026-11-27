@@ -1286,3 +1286,94 @@
 .sales-dashboard-reps td.is-unassigned button { color:#c2410c; font-size:12px; }
 .sales-dashboard-reps th:nth-child(3) { width:23%; }
 .sales-dashboard-reps table { min-width:1020px; }
+
+.dashboard-quotation-dialog {
+  position: fixed;
+  inset: 0;
+  box-sizing: border-box;
+  width: min(960px, calc(100% - 32px));
+  max-width: none;
+  max-height: 86dvh;
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #d5e4e7;
+  border-radius: 18px;
+  background: #fff;
+  color: #142a42;
+  box-shadow: 0 24px 80px #0e243b40;
+}
+.dashboard-quotation-dialog[open] { display: flex; flex-direction: column; }
+.dashboard-quotation-dialog::backdrop { background: #10243b75; }
+.dashboard-quotation-header, .dashboard-quotation-toolbar, .dashboard-quotation-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+}
+.dashboard-quotation-header { border-bottom: 1px solid #dce9e9; background: #f1f9f7; }
+.dashboard-quotation-header > div { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.dashboard-quotation-header h2 { margin: 0; font-size: 19px; font-weight: 750; overflow-wrap: anywhere; }
+.dashboard-quotation-header p { margin: 2px 0 0; color: #476378; font-size: 13px; }
+.dashboard-quotation-header-icon, .dashboard-quotation-icon-button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  color: #216d64;
+}
+.dashboard-quotation-header-icon { background: #d9efea; }
+.dashboard-quotation-icon-button { border: 1px solid #d2e1e4; background: #fff; }
+.dashboard-quotation-icon-button:hover { background: #e7f5f1; }
+.dashboard-quotation-toolbar { border-bottom: 1px solid #e7edef; }
+.dashboard-quotation-toolbar label {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid #cbdbe0;
+  border-radius: 9px;
+  color: #526a7e;
+}
+.dashboard-quotation-toolbar label:focus-within { outline: 2px solid #51988c; outline-offset: 1px; }
+.dashboard-quotation-toolbar svg { flex: none; }
+.dashboard-quotation-toolbar input { width: 100%; min-width: 0; background: transparent; outline: none; color: #142a42; font-size: 13px; }
+.dashboard-quotation-toolbar > span, .dashboard-quotation-footer { color: #476378; font-size: 13px; }
+.dashboard-quotation-list { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 12px 20px; background: #f5f8fa; }
+.dashboard-quotation-company { margin-bottom: 8px; border: 1px solid #dce5eb; border-radius: 10px; background: #fff; }
+.dashboard-quotation-company:last-child { margin-bottom: 0; }
+.dashboard-quotation-company-toggle {
+  display: grid;
+  width: 100%;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 10px 13px;
+  border-radius: 9px;
+  text-align: left;
+}
+.dashboard-quotation-company-toggle:hover, .dashboard-quotation-company-toggle[aria-expanded="true"] { background: #edf7f5; }
+.dashboard-quotation-company-toggle strong { font-size: 14px; overflow-wrap: anywhere; }
+.dashboard-quotation-company-toggle svg { color: #31786f; }
+.dashboard-quotation-company-toggle span { padding: 3px 8px; border-radius: 999px; background: #e3f4ee; color: #185e54; font-size: 12px; white-space: nowrap; }
+.dashboard-quotation-company-quotes { margin: 0; padding: 0 14px; list-style: none; }
+.dashboard-quotation-entry { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 20px; padding: 12px 0; border-top: 1px solid #e2ebed; font-size: 13px; }
+.dashboard-quotation-link { display: inline-flex; align-items: center; gap: 5px; color: #15695e; font-weight: 750; }
+.dashboard-quotation-link:hover { text-decoration: underline; }
+.dashboard-quotation-amount { text-align: right; white-space: nowrap; }
+.dashboard-quotation-amount small { display: block; color: #526a7e; font-size: 11px; }
+.dashboard-quotation-amount strong { color: #9b441a; font-size: 15px; font-variant-numeric: tabular-nums; }
+.dashboard-quotation-footer { border-top: 1px solid #e7edef; }
+.dashboard-quotation-preview { display: block; width: 100%; height: min(68dvh, 760px); border: 0; }
+@media (max-width: 560px) {
+  .dashboard-quotation-dialog { width: calc(100% - 16px); max-height: 92dvh; }
+  .dashboard-quotation-header, .dashboard-quotation-toolbar, .dashboard-quotation-footer, .dashboard-quotation-list { padding-inline: 12px; }
+  .dashboard-quotation-toolbar > span { display: none; }
+  .dashboard-quotation-amount { text-align: left; }
+}

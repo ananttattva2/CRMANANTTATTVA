@@ -50,6 +50,30 @@ test('legacy quotation items use compatible service labels and reject mismatched
   ] }, lead), ['open', 'closed', 'open']);
 });
 
+test('a fully closed lead closes a historical quote line with an outdated service ID', () => {
+  const lead = {
+    status: 'closed',
+    serviceSelections: [
+      { assignedServiceId: 'registration', servicesOffered: 'New Registration' },
+      { assignedServiceId: 'return-2027', servicesOffered: 'Annual Return Filling', servicesForYear: '2027-28' },
+      { assignedServiceId: 'return-2028', servicesOffered: 'Annual Return Filling', servicesForYear: '2028-29' }
+    ],
+    assignments: [
+      { assignedServiceId: 'registration', closedAt: '2026-11-24' },
+      { assignmentId: 'return-2027', closedByText: 'Manager' },
+      { assignedServiceId: 'return-2028', poStatus: 'permanently_closed' }
+    ]
+  };
+  const quote = { serviceState: 'open', items: [
+    { assignedServiceId: 'registration' },
+    { assignedServiceId: 'return-2027' },
+    { assignedServiceId: 'old-return-2028', sourceServiceIndex: 2, servicesOffered: 'Annual Return Filling', servicesForYear: '2028-29' }
+  ] };
+  assert.deepEqual(itemClosureStates(quote, lead), ['closed', 'closed', 'closed']);
+  lead.assignments[2].poStatus = 'received';
+  assert.deepEqual(itemClosureStates(quote, lead), ['closed', 'closed', 'open']);
+});
+
 test('dashboard quotation filters use the lead creation period and resolved lead ID', async () => {
   const { quotationLeadIdsInPeriod, quotationMatchesLeadIds } = await import('../../frontend/src/utils/quotationServiceView.mjs');
   const scope = quotationLeadIdsInPeriod([
