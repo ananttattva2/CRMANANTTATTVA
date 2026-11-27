@@ -8,6 +8,9 @@ test('popup details collapse duplicate snapshots while retaining distinct lead, 
   const original = { id: 'master', leadId: 'lead-323', leadCode: 'ATPL-LEAD-0323', name: 'SHREE MATANGI WOVEN SACK PRIVATE LIMITED', category: 'Producer', offered: 'Annual Return Filling', unit: 'Unit 1', cpcb: 'Approved' };
   const snapshots = [original, { ...original, id: 'assignment', name: ' shree matangi woven sack private limited ' }];
   assert.deepEqual(uniquePortfolioServiceDetails(snapshots), [original]);
+  const exportRows = [{ ...original, accountId: '00123' }, { ...original, accountId: '00456' }];
+  assert.equal(uniquePortfolioServiceDetails(exportRows).length, 1);
+  assert.equal(uniquePortfolioServiceDetails(exportRows, { includeExportFields: true }).length, 2);
   const distinct = [
     { ...original, id: 'registration', offered: 'New Registration' },
     { ...original, id: 'unit-two', unit: 'Unit 2' },
@@ -285,6 +288,45 @@ test('service breakdown counts each application once and agrees with the Clients
   assert.equal(loaded.getWorksheet('AR Action Required').getCell('N4').value, 'Sonal');
   assert.equal(loaded.getWorksheet('Service Statuses').rowCount, 6);
   assert.equal(rows[0].services.length, 2);
+});
+
+test('Assigned Applications Excel preserves account IDs and all saved years for the matching service', async () => {
+  const { buildApplicationPortfolio, applicationReportGroups } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const { createApplicationPortfolioWorkbook } = await import('../../frontend/src/utils/applicationPortfolioExport.mjs');
+  const ExcelJS = require('../../frontend/node_modules/exceljs');
+  const lead = {
+    _id: 'export-lead', company: 'Export client', assignedStaff: 'sonal', status: 'Closed',
+    accountsRecordId: 'ROOT-OTHER',
+    serviceSelections: [
+      { assignedServiceId: 'annual-one', servicesOffered: 'Annual Return Filling', accountsRecordId: '00123' },
+      { assignedServiceId: 'annual-two', servicesOffered: 'Annual Return Filling', accountsRecordId: '00456', firstAnnualReturnYearApplicable: '2024-25' }
+    ],
+    assignments: [
+      { assignedServiceId: 'annual-one', poStatus: 'received', assignedStaff: 'sonal', assignedTo: 'manager',
+        poYearRows: [{ annualReturnYear: '2027-28', poFinancialYear: '2029-30' }, { annualReturnYear: '2025-26' }] },
+      { assignedServiceId: 'annual-two', assignedStaff: 'sonal', assignedTo: 'manager' }
+    ]
+  };
+  const records = ['annual-one', 'annual-two'].map(id => ({
+    ...client(id, 'sonal', 'Producer', 'Approved'), assignedServiceId: id, selectedLead: lead
+  }));
+  const [group] = applicationReportGroups(buildApplicationPortfolio(records, users));
+  const workbook = await createApplicationPortfolioWorkbook(group.records, 'All SPOCs', 'Plastic · Total');
+  const loaded = new ExcelJS.Workbook();
+  await loaded.xlsx.load(await workbook.xlsx.writeBuffer());
+  for (const worksheet of loaded.worksheets) {
+    assert.equal(worksheet.getCell('O3').value, 'Annual Return Year');
+    assert.equal(worksheet.getCell('R3').value, 'Account ID');
+  }
+  const clients = loaded.getWorksheet('Clients');
+  assert.equal(clients.getCell('O4').value, '2024-25, 2025-26, 2027-28');
+  assert.equal(clients.getCell('R4').value, '00123, 00456');
+  const services = loaded.getWorksheet('Service Statuses');
+  assert.equal(services.getCell('O4').value, '2025-26, 2027-28');
+  assert.equal(services.getCell('R4').value, '00123');
+  assert.equal(services.getCell('R4').type, ExcelJS.ValueType.String);
+  assert.equal(services.getCell('O5').value, '2024-25');
+  assert.equal(services.getCell('R5').value, '00456');
 });
 
 

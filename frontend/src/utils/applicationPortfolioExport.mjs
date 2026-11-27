@@ -1,7 +1,15 @@
 import { exportWithReason } from './dataExport.mjs'
-import { annualActionReasons, matchesServiceSummary } from './applicationPortfolio.mjs'
+import { annualActionReasons, isAnnualReturnService, matchesServiceSummary } from './applicationPortfolio.mjs'
 
-const headers = ['Unique ID', 'Legal Name', 'Client Status', 'Visibility', 'CPCB Status', 'PIBo Category', 'State', 'Created', 'Lead ID', 'Industry', 'Service Category', 'Services Offered', 'Unit', 'SPOC / User Name', 'Annual Return Year', 'AR Action Required', 'AR Action Required Details']
+const headers = ['Unique ID', 'Legal Name', 'Client Status', 'Visibility', 'CPCB Status', 'PIBo Category', 'State', 'Created', 'Lead ID', 'Industry', 'Service Category', 'Services Offered', 'Unit', 'SPOC / User Name', 'Annual Return Year', 'AR Action Required', 'AR Action Required Details', 'Account ID']
+
+function exportYears(service) {
+  if (service.offered && !isAnnualReturnService(service.offered)) return []
+  if (service.poAnnualYears?.length) return service.poAnnualYears
+  if (service.recordedAnnualYears?.length) return service.recordedAnnualYears
+  return service.annualYears || []
+}
+
 export async function createApplicationPortfolioWorkbook(records, name, label) {
   const imported = await import('exceljs')
   const ExcelJS = imported.default || imported
@@ -10,7 +18,20 @@ export async function createApplicationPortfolioWorkbook(records, name, label) {
   const safe = value => { const text = String(value ?? ''); return /^[=+\-@]/.test(text) ? `'${text}` : text }
   const summaryRow = row => row.services?.length ? row : { ...row, services: [row] }
   const actionRequired = row => matchesServiceSummary(summaryRow(row), 'annualActionRequired')
-  const values = row => [row.code, row.name, row.clientStatus, row.visibility, row.cpcb, row.category, row.state, row.created ? new Date(row.created).toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata' }) : 'Not recorded', row.leadCode, row.industry, row.eprCategory, row.offered, row.unit, row.spocName || name, (row.annualYears || []).join(', ') || 'Not recorded', actionRequired(row) ? 'Yes' : 'No', actionRequired(row) ? annualActionReasons(summaryRow(row)).join('; ') : '-'].map(safe)
+  const values = row => {
+    const services = summaryRow(row).services
+    const years = [...new Set(services.flatMap(exportYears).filter(Boolean))].sort()
+    const accounts = [...new Set(services.map(service => service.accountId).filter(Boolean))]
+    const needsAction = actionRequired(row)
+    return [
+      row.code, row.name, row.clientStatus, row.visibility, row.cpcb, row.category, row.state,
+      row.created ? new Date(row.created).toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata' }) : 'Not recorded',
+      row.leadCode, row.industry, row.eprCategory, row.offered, row.unit, row.spocName || name,
+      years.join(', ') || 'Not recorded',
+      needsAction ? 'Yes' : 'No', needsAction ? annualActionReasons(summaryRow(row)).join('; ') : '-',
+      accounts.join(', ')
+    ].map(safe)
+  }
   const sheets = [
     ['Clients', records],
     ['Service Statuses', records.flatMap(row => row.services || [row])],
@@ -22,7 +43,7 @@ export async function createApplicationPortfolioWorkbook(records, name, label) {
     sheet.addRow([`${records.length} clients exported`, `${rows.length} records`])
     sheet.addRow(headers)
     rows.forEach(row => sheet.addRow(values(row)))
-    sheet.columns.forEach((column, index) => { column.width = [23, 48, 20, 18, 30, 36, 25, 18, 25, 25, 30, 35, 20, 26, 22, 20, 58][index] })
+    sheet.columns.forEach((column, index) => { column.width = [23, 48, 20, 18, 30, 36, 25, 18, 25, 25, 30, 35, 20, 26, 30, 20, 58, 25][index] })
     sheet.autoFilter = { from: { row: 3, column: 1 }, to: { row: sheet.rowCount, column: headers.length } }
     sheet.getRow(3).eachCell(cell => { cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF187F80' } } })
     sheet.eachRow(row => { row.alignment = { vertical: 'top', wrapText: true } })

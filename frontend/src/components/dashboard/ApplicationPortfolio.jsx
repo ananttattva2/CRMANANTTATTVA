@@ -19,11 +19,15 @@ function ClientRecordsPopup({ selection, onClose }) {
     setExporting(true); setExportError('')
     try {
       const { downloadApplicationPortfolioExcel } = await import('../../utils/applicationPortfolioExport.mjs')
-      await downloadApplicationPortfolioExcel(records, selection.name, selection.label)
+      const exportRecords = matchingRecords.map(row => ({
+        ...row, services: uniquePortfolioServiceDetails(row.services, { includeExportFields: true })
+      }))
+      await downloadApplicationPortfolioExcel(exportRecords, selection.name, selection.label)
     } catch { setExportError('Excel download failed. Please retry.') } finally { setExporting(false) }
   }
   useEffect(() => { dialog.current?.showModal() }, [])
-  const records = selection.records.filter(row => matchesPortfolioSearch(row, query)).map(row => ({
+  const matchingRecords = selection.records.filter(row => matchesPortfolioSearch(row, query))
+  const records = matchingRecords.map(row => ({
     ...row, services: uniquePortfolioServiceDetails(row.services)
   }))
   const columnCount = selection.key === 'annualActionRequired' ? 10 : 9

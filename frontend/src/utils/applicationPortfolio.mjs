@@ -237,6 +237,18 @@ export function applicationRecord(client) {
   // earliest Annual Return year listed on the received PO, regardless of the PO
   // financial year. The summary layer reduces these years to that first year.
   const poAnnualYears = [...new Set(annualPoRows.map(po => String(po.annualReturnYear || '').trim()).filter(Boolean))]
+  const snapshot = data.selectedLeadSnapshot || {}
+  const snapshotServiceId = text(snapshot.assignedServiceId, snapshot.serviceAssignmentId)
+  const sameServiceSnapshot = selectedServiceId ? snapshotServiceId === selectedServiceId : services.length <= 1
+  const singleLeadService = !client.assignmentOnly && services.length <= 1 && assignments.length <= 1
+  const accountId = text(service.accountsRecordId, sameServiceSnapshot && snapshot.accountsRecordId,
+    singleLeadService && lead.accountsRecordId)
+  const serviceAnnualYears = annual ? [
+    ...(Array.isArray(service.annualReturnYears) ? service.annualReturnYears : []),
+    service.firstAnnualReturnYearApplicable,
+    singleLeadService ? lead.firstAnnualReturnYearApplicable : ''
+  ].map(year => String(year || '').trim()).filter(year => Number.isFinite(financialYearStart(year))) : []
+  const recordedAnnualYears = [...new Set(poAnnualYears.length ? poAnnualYears : serviceAnnualYears)]
   const dashboardAnnualYears = new Set(STATUS_COLUMNS.map(([key]) => key.startsWith('annual:') ? key.slice(7) : '').filter(year => year && year !== 'unrecorded'))
   const annualYears = poAnnualYears.filter(year => dashboardAnnualYears.has(year))
   const annualEligiblePo = annualYears.length > 0
@@ -256,7 +268,7 @@ export function applicationRecord(client) {
   const status = normalize(cpcb)
   const inactive = /suspend|discontinu|inactive/.test(normalize(`${clientStatus} ${visibility} ${cpcb}`))
   const bucket = cpcbStatusBucket(cpcb)
-  return { id: String(client._id), assignmentOnly: Boolean(client.assignmentOnly), statusSourceClientId: client.statusSourceClientId || '', leadId: String(lead._id || ''), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, lead.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, lead.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, lead.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), offeredServices: canonicalOfferedServices(offered), closed, bucket, live: !inactive, annual, annualEligiblePo, annualWorkflowReady, annualYears, poAnnualYears, sourceIds: [String(client._id)] }
+  return { id: String(client._id), assignmentOnly: Boolean(client.assignmentOnly), statusSourceClientId: client.statusSourceClientId || '', leadId: String(lead._id || ''), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, lead.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, lead.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, lead.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), offeredServices: canonicalOfferedServices(offered), closed, bucket, live: !inactive, annual, annualEligiblePo, annualWorkflowReady, annualYears, poAnnualYears, accountId, recordedAnnualYears, sourceIds: [String(client._id)] }
 }
 // Placeholders and blank drafts do not represent another application when
 // this lead already has a submitted master for the same applicant/unit/service.
@@ -291,6 +303,8 @@ export function effectiveApplicationServices(services) {
     existing.annualWorkflowReady ||= service.annualWorkflowReady
     existing.annualYears = [...new Set([...(existing.annualYears || []), ...(service.annualYears || [])])]
     existing.poAnnualYears = [...new Set([...(existing.poAnnualYears || []), ...(service.poAnnualYears || [])])]
+    existing.recordedAnnualYears = [...new Set([...(existing.recordedAnnualYears || []), ...(service.recordedAnnualYears || [])])]
+    existing.accountId ||= service.accountId
     return false
   })
   const saved = services.filter(service => !service.assignmentOnly)
@@ -305,6 +319,8 @@ export function effectiveApplicationServices(services) {
     master.annualEligiblePo ||= service.annualEligiblePo
     master.annualYears = [...new Set([...(master.annualYears || []), ...(service.annualYears || [])])]
     master.poAnnualYears = [...new Set([...(master.poAnnualYears || []), ...(service.poAnnualYears || [])])]
+    master.recordedAnnualYears = [...new Set([...(master.recordedAnnualYears || []), ...(service.recordedAnnualYears || [])])]
+    master.accountId ||= service.accountId
     return false
   })
 }
@@ -354,14 +370,15 @@ export function matchesPortfolioSearch(row, query) {
 
 // Client Master and assignment snapshots can describe the same displayed
 // service. Collapse identical detail rows without changing application counts.
-export function uniquePortfolioServiceDetails(services = []) {
+export function uniquePortfolioServiceDetails(services = [], { includeExportFields = false } = {}) {
   const seen = new Set()
   return services.filter(service => {
     const key = JSON.stringify([
       service.leadId || service.leadCode || service.code,
       service.leadCode || service.code, service.name, service.category,
       service.industry, service.eprCategory, service.offered,
-      service.unit, service.cpcb, service.clientStatus, service.visibility
+      service.unit, service.cpcb, service.clientStatus, service.visibility,
+      ...(includeExportFields ? [service.accountId, (service.recordedAnnualYears || []).slice().sort().join(', ')] : [])
     ].map(value => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase()))
     if (seen.has(key)) return false
     seen.add(key)
