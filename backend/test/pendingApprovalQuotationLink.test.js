@@ -22,3 +22,26 @@ test('quotation preview displays services offered separately from service and EP
   assert.match(modal, /item\.servicesOffered \|\| item\.applicableService/)
   assert.match(modal, /'EPR Category'/)
 })
+
+test('quotation status reads the annual return year for each item, including older saved quotations', async () => {
+  const { quotationAnnualReturnYearLabel } = await import('../../frontend/src/utils/quotationDocument.mjs')
+  assert.equal(quotationAnnualReturnYearLabel({
+    servicesOffered: 'Annual Return Filling', annualReturnYears: ['2025-26', '2026-27'],
+    servicesForYear: '2027-28', registrationYear: '2024-25'
+  }), '2025-26, 2026-27')
+  assert.equal(quotationAnnualReturnYearLabel({ applicableService: 'Annual Filing', servicesForYear: '2027-28' }), '2027-28')
+  assert.equal(quotationAnnualReturnYearLabel({
+    servicesOffered: 'Annual Return', serviceStartDate: '2028-04-01', serviceEndDate: '2029-03-31'
+  }), '2028-29')
+  assert.equal(quotationAnnualReturnYearLabel({ servicesOffered: 'Annual Return' }), '—')
+  assert.equal(quotationAnnualReturnYearLabel({
+    servicesOffered: ' ',
+    applicableService: 'Annual Return Filling',
+    firstAnnualReturnYearApplicable: '2026-27'
+  }), '2026-27')
+  assert.equal(quotationAnnualReturnYearLabel({
+    serviceName: 'Annual Return',
+    annualReturnYear: '2025-26'
+  }), '2025-26')
+  assert.equal(quotationAnnualReturnYearLabel({ servicesOffered: 'New Registration', servicesForYear: '2027-28' }), null)
+})

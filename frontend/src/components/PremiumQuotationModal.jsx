@@ -3,6 +3,7 @@ import CountUp from 'react-countup';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import { periodDisplay } from '../utils/servicePeriod';
+import { quotationAnnualReturnYearLabel } from '../utils/quotationDocument.mjs';
 
 function toNumber(value) {
   const numeric = Number(String(value ?? '').replace(/[^\d.-]/g, ''));
@@ -102,6 +103,14 @@ export default function PremiumQuotationModal({
   const displayRows = groupedPricing
     ? groupedPricingRows(items, combinedPricingGroups, combinedBasicAmount, totalAmount)
     : items.map((item, index) => ({ item, index }));
+  const yearLabels = items.map(quotationAnnualReturnYearLabel);
+  const showAnnualReturnYear = yearLabels.some(year => year !== null);
+  const itemHeaders = [
+    'Sr.No', 'Business Category', 'Service Category', 'Services Offered',
+    ...(showAnnualReturnYear ? ['Annual Return Year'] : []),
+    'Service Period', 'Select Period', 'Transition Period', 'EPR Category', 'Applicant Type', 'Unit',
+    ...(groupedPricing ? ['Pricing Group', 'Group Amount (INR)'] : ['Basic Amount (INR)'])
+  ];
   return (
     <AnimatePresence>
       {open && (
@@ -200,8 +209,8 @@ export default function PremiumQuotationModal({
                   <table className="w-full min-w-[1420px] border-collapse text-left text-sm">
                     <thead className="bg-slate-50 text-[11px] font-black uppercase tracking-[0.06em] text-slate-600">
                       <tr>
-                        {['Sr.No', 'Business Category', 'Service Category', 'Services Offered', 'Service Period', 'Select Period', 'Transition Period', 'EPR Category', 'Applicant Type', 'Unit', ...(groupedPricing ? ['Pricing Group'] : []), groupedPricing ? 'Group Amount (INR)' : 'Basic Amount (INR)'].map((header) => (
-                          <th key={header} className="border-r border-slate-200 px-3 py-3 last:border-r-0">{header}</th>
+                        {itemHeaders.map((header) => (
+                          <th key={header} scope="col" className="border-r border-slate-200 px-3 py-3 last:border-r-0">{header}</th>
                         ))}
                       </tr>
                     </thead>
@@ -218,6 +227,7 @@ export default function PremiumQuotationModal({
                           <td className="px-3 py-3 font-black uppercase text-slate-800">{item.businessCategory || '-'}</td>
                           <td className="px-3 py-3 font-black uppercase text-slate-800">{item.serviceCategory || '-'}</td>
                           <td className="px-3 py-3 font-black uppercase text-teal-700">{item.servicesOffered || item.applicableService || '-'}</td>
+                          {showAnnualReturnYear && <td className="px-3 py-3 font-black tabular-nums text-slate-800">{yearLabels[index] || '—'}</td>}
                           <td className="px-3 py-3 font-black text-slate-700">{periodDisplay(item.servicePeriod, item.periodUnit)}</td>
                           <td className="px-3 py-3 font-black text-slate-700">{String(item.periodUnit || 'annual') === 'days' ? 'Days' : String(item.periodUnit || 'annual') === 'months' ? 'Month' : 'Annual'}</td>
                           <td className="px-3 py-3 font-black text-slate-700">{item.transitionPeriod || 'No'}</td>
@@ -228,7 +238,7 @@ export default function PremiumQuotationModal({
                           {(!groupedPricing || firstInGroup) && <td rowSpan={groupedPricing ? groupSize : undefined} className="px-3 py-3 text-right align-middle font-black text-orange-500"><AnimatedCurrency value={groupedPricing ? group.basicAmount : item.basicAmount} duration={2} /></td>}
                         </motion.tr>
                       )) : (
-                        <tr><td colSpan={groupedPricing ? 12 : 11} className="px-4 py-8 text-center font-black text-slate-400">No quotation items added.</td></tr>
+                        <tr><td colSpan={itemHeaders.length} className="px-4 py-8 text-center font-black text-slate-400">No quotation items added.</td></tr>
                       )}
                     </tbody>
                   </table>

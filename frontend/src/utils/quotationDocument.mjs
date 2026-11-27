@@ -115,6 +115,22 @@ function quotationServicePeriodYears(item = {}) {
   });
 }
 
+export function quotationAnnualReturnYearLabel(item = {}) {
+  const annualReturnService = [
+    item.servicesOffered,
+    item.applicableService,
+    item.serviceName,
+    item.serviceCategory,
+    item.eprCategory
+  ].some((value) => /annual(?:return|fill?ing)/.test(normalizedQuotationService({ servicesOffered: value })));
+  if (!annualReturnService) return null;
+  const selectedYears = quotationAnnualReturnOrCreditYears(item);
+  return selectedYears.join(', ')
+    || String(item.annualReturnYear || item.firstAnnualReturnYearApplicable || item.annualYear || item.servicesForYear || item.financialYear || '').trim()
+    || quotationServicePeriodYears(item).join(', ')
+    || '—';
+}
+
 function quotationAnnualReturnRegistrationYear(item = {}) {
   if (isEprCreditItem(item)) return quotationEprCreditYears(item).join(', ') || '-';
   if (String(item.registrationYear || '').trim()) return String(item.registrationYear).trim();
