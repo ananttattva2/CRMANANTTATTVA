@@ -1,6 +1,7 @@
 const creditPricing = require('../../../shared/eprCreditPricing.cjs');
 const { quotationValidityError } = require('../utils/quotationValidity');
 const { directQuotationApproval } = require('../services/directQuotationApproval');
+const { attachQuotationServiceStatus } = require('../services/quotationServiceStatus');
 const Quotation = require('../models/Quotation');
 const mongoose = require('mongoose');
 const ProformaInvoice = require('../models/ProformaInvoice');
@@ -941,7 +942,10 @@ exports.listQuotations = async (req, res) => {
     testLeadReferences ? dashboardQuotationExclusionFilter(testLeadReferences) : {}
   );
   const listView = ['directory', 'mis'].includes(req.query.view);
-  const listFields = 'quotationNumber leadId leadRef clientRef leadCode businessLeadCode companyName leadDetails.companyName leadDetails.contactPerson quotationDate validUntil serviceState pricingMode combinedBasicAmount grandTotal status source createdByName preparedByName leadGeneratedBy assignedUserName managementApproval.status managementApproval.approverId managementApproval.approverName createdBy createdAt updatedAt items.assignedServiceId items.sourceServiceIndex items.unit items.basicAmount items.businessCategory';
+  const includeServiceStatus = req.query.view === 'directory' && req.query.includeServiceStatus === 'true';
+  const serviceFields = ' combinedPricingGroups items.id items.servicesOffered items.applicableService items.eprCategory items.serviceCategory items.subApplicantType items.piboCategory items.applicantType items.servicesForYear items.financialYear';
+  const listFields = 'quotationNumber leadId leadRef clientRef leadCode businessLeadCode companyName leadDetails.companyName leadDetails.contactPerson quotationDate validUntil serviceState pricingMode combinedBasicAmount grandTotal status source createdByName preparedByName leadGeneratedBy assignedUserName managementApproval.status managementApproval.approverId managementApproval.approverName createdBy createdAt updatedAt items.assignedServiceId items.sourceServiceIndex items.unit items.basicAmount items.businessCategory'
+    + (includeServiceStatus ? serviceFields : '');
   const query = Quotation.find(scopedFilter)
     .select(listView ? listFields : req.query.view === 'lead-review'
       ? 'quotationNumber leadId leadRef leadCode businessLeadCode companyName leadDetails.companyName pricingMode combinedBasicAmount grandTotal items.unit items.basicAmount createdAt updatedAt'
@@ -960,7 +964,8 @@ exports.listQuotations = async (req, res) => {
   const [quotations, counted] = await Promise.all([listView && Quotation.collection?.name ? listRead() : query.lean(), (req.query.view === 'lead-review' || snapshot) && !limit ? Promise.resolve(null) : Quotation.countDocuments(scopedFilter)]);
   if (listView) quotations.forEach(row => { row._listOnly = true; });
   const total = counted ?? quotations.length;
-  res.json({ ok: true, quotations, pagination: { page, limit: limit || total, total, pages: limit ? Math.ceil(total / limit) : 1 } });
+  const rows = includeServiceStatus ? await attachQuotationServiceStatus(quotations) : quotations;
+  res.json({ ok: true, quotations: rows, pagination: { page, limit: limit || total, total, pages: limit ? Math.ceil(total / limit) : 1 } });
 };
 
 exports.getQuotation = async (req, res) => {

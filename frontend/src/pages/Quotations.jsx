@@ -2,6 +2,7 @@ import CompanyQuotationHistory, { CreditRequestButton } from '../features/eprCre
 import creditPricing, { CreditTargetSelect } from '../features/eprCredit/CreditTargetSelect';
 import { CreditRateRequestLoader } from '../features/eprCredit/CreditRateRequests';
 import { loadFullQuotation } from '../utils/quotationDetail.mjs';
+import { filterQuotationServices } from '../utils/quotationServiceView.mjs';
 import {
   isMeaningfulQuotationItem,
   isCombinedQuotation,
@@ -430,7 +431,9 @@ function syncQuotationWithLead(quotation = {}, lead = {}) {
     ...quotation,
     companyName: lead.company || quotation.companyName || '',
     leadDetails: mergeQuotationLeadDetails(quotation.leadDetails, mapLeadToDetails(lead)),
-    items: syncQuotationItemsWithLead(quotation.items, lead)
+    items: quotation.itemClosureStates && quotation._listOnly
+      ? quotation.items
+      : syncQuotationItemsWithLead(quotation.items, lead)
   };
 }
 
@@ -1008,9 +1011,18 @@ export default function Quotations() {
     });
   }, [adminApprovalFilter, query, quotationContext, quotationStatusFilter, quotations, userFilter, validityFilter]);
 
+  const serviceView = listMode === 'open' || listMode === 'closed';
+  const groupedView = listMode !== 'all';
+  const groupedQuotations = useMemo(() => serviceView
+    ? filteredQuotations.flatMap(row => {
+      const serviceSummary = filterQuotationServices(row, listMode);
+      return serviceSummary ? [{ ...row, serviceSummary }] : [];
+    })
+    : filteredQuotations, [filteredQuotations, listMode, serviceView]);
+
   const companyGroups = useMemo(() => {
     const groups = new Map();
-    filteredQuotations.forEach((row) => {
+    groupedQuotations.forEach((row) => {
       const company = String(row.companyName || row.leadDetails?.companyName || 'Unnamed company').trim();
       const key = normalizeSearchValue(company) || `unknown-${row._id || row.id}`;
       if (!groups.has(key)) groups.set(key, { key, company, quotations: [] });
@@ -1027,7 +1039,7 @@ export default function Quotations() {
         return { ...group, quotations: sortedQuotations, latestQuotation: sortedQuotations[0] || null };
       })
       .sort((left, right) => quotationTime(right.latestQuotation) - quotationTime(left.latestQuotation) || left.company.localeCompare(right.company));
-  }, [filteredQuotations]);
+  }, [groupedQuotations]);
   const allQuotations = useMemo(() => [...filteredQuotations].sort((left, right) => {
     const time = (row) => {
       const timestamp = new Date(row.quotationDate || row.createdAt || row.updatedAt || 0).getTime();
@@ -1035,7 +1047,7 @@ export default function Quotations() {
     };
     return time(right) - time(left);
   }), [filteredQuotations]);
-  const listTotal = listMode === 'company' ? companyGroups.length : allQuotations.length;
+  const listTotal = groupedView ? companyGroups.length : allQuotations.length;
   const totalPages = Math.max(1, Math.ceil(listTotal / rowsPerPage));
   const scopeBasicAmount = quotation.pricingMode === 'combined'
     ? combinedQuotationTotal(quotation, quotation.items)
@@ -1182,7 +1194,7 @@ export default function Quotations() {
     }) : Promise.resolve();
     try {
       const [meResult, quotationsResult] = await Promise.allSettled([
-        api.get(API_ENDPOINTS.auth.me), api.get(API_ENDPOINTS.quotations.list, { params: { view: 'directory' } })
+        api.get(API_ENDPOINTS.auth.me), api.get(API_ENDPOINTS.quotations.list, { params: { view: 'directory', includeServiceStatus: true } })
       ]);
       if (sequence !== listRequestRef.current) return;
       if (meResult.status === 'fulfilled') setCurrentUser(meResult.value.data.user);
@@ -2185,7 +2197,7 @@ export default function Quotations() {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-baseline gap-3">
                   <h1 className="text-3xl font-black text-slate-950">Quotations</h1>
-                  <span className="text-sm font-black text-slate-500">{companyGroups.length} companies · {filteredQuotations.length} quotations</span>
+                  <span className="text-sm font-black text-slate-500">{companyGroups.length} companies · {groupedQuotations.length} quotations</span>
                 </div>
               </div>
             </div>
@@ -2238,11 +2250,15 @@ export default function Quotations() {
           )}
 
           <div className="mt-5 flex items-center justify-between gap-4">
-            <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm" role="group" aria-label="Quotation list view">
-              <button type="button" onClick={() => { setListMode('company'); setExpandedCompany(''); }} aria-pressed={listMode === 'company'} className={`rounded-lg px-5 py-2.5 text-sm font-black transition ${listMode === 'company' ? 'bg-emerald-700 text-white shadow' : 'text-slate-600 hover:bg-slate-50'}`}>Company Wise</button>
-              <button type="button" onClick={() => { setListMode('all'); setExpandedCompany(''); }} aria-pressed={listMode === 'all'} className={`rounded-lg px-5 py-2.5 text-sm font-black transition ${listMode === 'all' ? 'bg-emerald-700 text-white shadow' : 'text-slate-600 hover:bg-slate-50'}`}>All Quotations</button>
+            <div className="inline-flex flex-wrap rounded-xl border border-slate-200 bg-white p-1 shadow-sm" role="group" aria-label="Quotation list view">
+              {[
+                ['company', 'Company Wise'], ['all', 'All Quotations'],
+                ['open', 'Open Quotations'], ['closed', 'Closed Quotations']
+              ].map(([mode, label]) => (
+                <button key={mode} type="button" onClick={() => { setListMode(mode); setExpandedCompany(''); }} aria-pressed={listMode === mode} className={`rounded-lg px-5 py-2.5 text-sm font-black transition ${listMode === mode ? 'bg-emerald-700 text-white shadow' : 'text-slate-600 hover:bg-slate-50'}`}>{label}</button>
+              ))}
             </div>
-            <p className="hidden text-xs font-bold text-slate-500 sm:block">{listMode === 'company' ? 'Grouped by company · latest company activity first' : 'Every quotation · latest quotation first'}</p>
+            <p className="hidden text-xs font-bold text-slate-500 sm:block">{groupedView ? 'Grouped by company · latest company activity first' : 'Every quotation · latest quotation first'}</p>
           </div>
 
           <section className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg shadow-slate-900/5">
@@ -2250,14 +2266,14 @@ export default function Quotations() {
               <table className="w-full min-w-[1050px] table-fixed text-left text-sm">
                 <thead className="sticky top-0 z-20 bg-slate-50 text-xs font-black uppercase tracking-[0.06em] text-slate-600 shadow-sm">
                   <tr>
-                    {(listMode === 'company' ? [
+                    {(groupedView ? [
                       ['Company', 'w-[260px]'],
                       ['Lead Code', 'w-[140px]'],
                       ['Contact Person', 'w-[170px]'],
                       ['Quotations', 'w-[130px]'],
                       ['Item Count', 'w-[110px]'],
                       ['Grand Total', 'w-[150px]'],
-                      ['Lead Status', 'w-[130px]']
+                      [serviceView ? 'Service Status' : 'Lead Status', 'w-[130px]']
                     ] : [
                       ['Quotation', 'w-[170px]'], ['Company', 'w-[250px]'], ['Lead Code', 'w-[130px]'], ['Date', 'w-[125px]'], ['Valid Until', 'w-[125px]'], ['Amount', 'w-[140px]'], ['Status / Actions', 'w-[210px]']
                     ]).map(([header, width]) => (
@@ -2269,7 +2285,7 @@ export default function Quotations() {
                   {loading ? (
                     <tr><td colSpan={7} className="px-5 py-14 text-center font-black text-slate-400">Loading quotations...</td></tr>
                   ) : listTotal === 0 ? (
-                    <tr><td colSpan={7} className="px-5 py-14 text-center font-black text-slate-400">No quotations found.</td></tr>
+                    <tr><td colSpan={7} className="px-5 py-14 text-center font-black text-slate-400">{serviceView ? `No quotations with ${listMode} services found.` : 'No quotations found.'}</td></tr>
                   ) : listMode === 'all' ? visibleQuotations.map((row, index) => (
                     <tr key={row._id || row.id} className={`transition hover:bg-emerald-50/40 ${index === 0 && page === 1 ? 'bg-emerald-50/60' : 'bg-white'}`}>
                       <td className="px-4 py-5"><span className="inline-flex items-center gap-2 font-black text-orange-600">{row.quotationNumber || '-'}{index === 0 && page === 1 && <em className="not-italic rounded-full bg-emerald-600 px-2 py-1 text-[9px] font-black uppercase text-white">Latest</em>}</span></td>
@@ -2282,9 +2298,10 @@ export default function Quotations() {
                     </tr>
                   )) : visibleCompanyGroups.map((group) => {
                     const quotationCount = group.quotations.length;
-                    const itemCount = group.quotations.reduce((sum, row) => sum + (row.items?.length || 0), 0);
-                    const grandTotal = group.quotations.reduce((sum, row) => sum + (Number(row.grandTotal) || 0), 0);
-                    const openCount = group.quotations.filter((row) => String(row.serviceState || 'open').toLowerCase() !== 'closed').length;
+                    const itemCount = group.quotations.reduce((sum, row) => sum + (row.serviceSummary?.items.length ?? row.items?.length ?? 0), 0);
+                    const sharedPricing = group.quotations.some(row => row.serviceSummary?.total === null);
+                    const grandTotal = group.quotations.reduce((sum, row) => sum + (row.serviceSummary ? row.serviceSummary.total || 0 : Number(row.grandTotal) || 0), 0);
+                    const openCount = group.quotations.filter((row) => (row.serviceSummary?.status || String(row.serviceState || 'open').toLowerCase()) !== 'closed').length;
                     const leadStatus = openCount ? 'Open' : 'Closed';
                     const first = group.latestQuotation || group.quotations[0] || {};
                     const isOpen = expandedCompany === group.key;
@@ -2295,10 +2312,10 @@ export default function Quotations() {
                         <td className="px-4 py-5 font-black uppercase text-slate-600">{first.leadDetails?.contactPerson || '-'}</td>
                         <td className="px-4 py-5"><span className="rounded-full bg-blue-50 px-3 py-2 font-black text-blue-700">{quotationCount}</span></td>
                         <td className="px-4 py-5 font-black text-slate-700">{itemCount}</td>
-                        <td className="px-4 py-5 font-black text-orange-600">{formatInr(grandTotal)}</td>
+                        <td className="px-4 py-5 font-black text-orange-600">{sharedPricing ? 'Shared pricing' : formatInr(grandTotal)}</td>
                         <td className="px-4 py-5"><span className={`rounded-full border px-3 py-2 text-xs font-black uppercase ${leadStatus === 'Open' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{leadStatus}{openCount && openCount !== quotationCount ? ` (${openCount})` : ''}</span></td>
                       </tr>
-                      {isOpen && <tr><td colSpan={7} className="bg-slate-50 p-5"><div className="mb-3 flex items-center justify-between gap-3"><div><h3 className="font-black text-slate-900">Company Wise Quotations</h3><p className="text-xs font-bold text-slate-500">Latest quotation is always listed first. Select View to open an individual quotation.</p></div><span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">{quotationCount} total</span></div><CompanyQuotationHistory quotations={group.quotations} onView={showQuotationDetail} onEdit={editQuotation} onRequestCredit={openCreditRequest} renderApproval={renderManagementApprovalAction} canRevise={canReviseQuotation} formatDate={formatDisplayDate} formatAmount={formatInr} /></td></tr>}
+                      {isOpen && <tr><td colSpan={7} className="bg-slate-50 p-5"><div className="mb-3 flex items-center justify-between gap-3"><div><h3 className="font-black text-slate-900">{serviceView ? (listMode === 'open' ? 'Open Quotations' : 'Closed Quotations') : 'Company Wise Quotations'}</h3><p className="text-xs font-bold text-slate-500">Latest quotation is always listed first. Select View to open an individual quotation.</p></div><span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">{quotationCount} total</span></div><CompanyQuotationHistory quotations={group.quotations} serviceView={serviceView} onView={showQuotationDetail} onEdit={editQuotation} onRequestCredit={openCreditRequest} renderApproval={renderManagementApprovalAction} canRevise={canReviseQuotation} formatDate={formatDisplayDate} formatAmount={formatInr} /></td></tr>}
                     </React.Fragment>;
                   })}
                 </tbody>
@@ -2311,8 +2328,8 @@ export default function Quotations() {
               setRowsPerPage={setRowsPerPage}
               total={listTotal}
               totalPages={totalPages}
-              showing={listMode === 'company' ? visibleCompanyGroups.length : visibleQuotations.length}
-              label={listMode === 'company' ? 'companies' : 'quotations'}
+              showing={groupedView ? visibleCompanyGroups.length : visibleQuotations.length}
+              label={groupedView ? 'companies' : 'quotations'}
             />
           </section>
         </div>
