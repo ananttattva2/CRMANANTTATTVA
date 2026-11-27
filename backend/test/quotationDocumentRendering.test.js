@@ -92,7 +92,7 @@ test('EPR Credit fixed terms are exposed only when the quotation contains an EPR
   assert.equal(shared.quotationEprCreditFixedTerms(mixedQuote).length, shared.EPR_CREDIT_FIXED_TERMS.length);
 });
 
-test('the canonical document prepends the frozen EPR Credit terms before user-selected terms', async () => {
+test('the canonical document lists the user-selected payment term first, then the frozen EPR Credit terms', async () => {
   const shared = await template();
   const eprQuote = {
     ...quote,
@@ -104,9 +104,12 @@ test('the canonical document prepends the frozen EPR Credit terms before user-se
   const fixedTerms = shared.EPR_CREDIT_FIXED_TERMS;
   // Every fixed term text must be present in the rendered document.
   fixedTerms.forEach((term) => assert.match(html, new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
-  // The first numbered term must be a fixed EPR Credit term, not the user-selected payment term.
-  assert.match(html, new RegExp(`1\\. ${fixedTerms[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
-  assert.match(html, /100% after completion of work/);
+  // The first numbered term must be the user-selected payment term.
+  assert.match(html, /1\.\s*100% after completion of work/);
+  // The first fixed EPR Credit term follows as the second numbered term.
+  assert.match(html, new RegExp(`2\\. ${fixedTerms[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  // The Terms & Conditions label is explicitly bold.
+  assert.match(html, /<p class="label" style="font-weight: 900;">Terms &amp; Conditions:<\/p>/);
 });
 
 test('the canonical document omits EPR Credit fixed terms for non-EPR-Credit quotations', async () => {
@@ -116,7 +119,7 @@ test('the canonical document omits EPR Credit fixed terms for non-EPR-Credit quo
   assert.doesNotMatch(html, new RegExp(fixedTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
 
-test('the client email appends the EPR Credit terms block below the calculation table for EPR Credit quotations', async () => {
+test('the client email lists the selected payment term first, then the EPR Credit terms below the calculation table', async () => {
   const eprQuote = {
     ...quote,
     items: [{ businessCategory: 'EPR Credit', serviceCategory: 'EPR - Plastic Waste', servicesOffered: 'Category 1 - EOL', unit: 1, basicAmount: 1.3, serviceStartDate: '2026-11-20', serviceEndDate: '2026-11-20' }],
@@ -127,6 +130,8 @@ test('the client email appends the EPR Credit terms block below the calculation 
   assert.match(result.html, /Terms &amp; Conditions/);
   const shared = await template();
   shared.EPR_CREDIT_FIXED_TERMS.forEach((term) => assert.match(result.html, new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
+  // The selected payment term must appear in the email terms list.
+  assert.match(result.html, /<li[^>]*>100% after completion of work<\/li>/);
 });
 
 test('the client email omits the EPR Credit terms block for non-EPR-Credit quotations', async () => {

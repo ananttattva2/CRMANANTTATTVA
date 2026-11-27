@@ -380,7 +380,9 @@ function buildQuotationPrintHtml(quotation, options = {}) {
   `).join('');
   const fixedTerms = quotationEprCreditFixedTerms(quotation);
   const selectedTerms = quotationSelectedTerms(quotation);
-  const allTerms = [...fixedTerms, ...selectedTerms];
+  // Manual/user-selected terms (e.g. payment term) come first, followed by the
+  // mandatory EPR Credit terms so the client sees the negotiated term on top.
+  const allTerms = [...selectedTerms, ...fixedTerms];
   const terms = allTerms.length
     ? allTerms.map((term, index) => `<p>${index + 1}. ${escapeHtml(term)}</p>`).join('')
     : '<p>No terms added.</p>';
@@ -492,7 +494,7 @@ function buildQuotationPrintHtml(quotation, options = {}) {
         <tbody>${displayRows.map(({ item }, index) => `<tr><td class="center">${index + 1}</td><td>${escapeHtml(quotationDisplayValue(item.eprCategory || item.serviceCategory))}</td><td>${escapeHtml(getQuotationApplicantType(item))}</td>${hasReturnYearItems ? `<td>${escapeHtml(quotationDisplayValue(quotationAnnualReturnRegistrationYear(item)))}</td>` : ''}<td>${escapeHtml(quotationDisplayValue(item.servicesOffered))}</td></tr>`).join('') || `<tr><td colspan="${hasReturnYearItems ? 5 : 4}" class="center">No quotation items added.</td></tr>`}</tbody>
       </table>
       <section class="terms">
-        <p class="label">Terms & Conditions:</p>
+        <p class="label" style="font-weight: 900;">Terms &amp; Conditions:</p>
         ${terms}
       </section>
       <section class="important">

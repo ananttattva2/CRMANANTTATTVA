@@ -30,9 +30,13 @@ async function clientEmailContent(subject, body, quotation = {}) {
     eprCreditCalculationTable(quotation),
     documentTemplate()
   ]);
+  // The user-selected payment term comes first, followed by the mandatory
+  // EPR Credit terms so the negotiated term sits on top in the email.
+  const selectedTerm = template.quotationPaymentTerm(quotation);
   const fixedTerms = template.quotationEprCreditFixedTerms(quotation);
-  const termsBlock = fixedTerms.length
-    ? `<section style="margin-top:24px"><h3 style="margin:0 0 8px;color:#0f766e;font-size:17px">Terms &amp; Conditions</h3><ol style="margin:0;padding-left:20px">${fixedTerms.map(term => `<li style="margin-bottom:8px">${escapeHtml(term)}</li>`).join('')}</ol></section>`
+  const emailTerms = [selectedTerm, ...fixedTerms].filter(Boolean);
+  const termsBlock = emailTerms.length
+    ? `<section style="margin-top:24px"><h3 style="margin:0 0 8px;color:#0f766e;font-size:17px">Terms &amp; Conditions</h3><ol style="margin:0;padding-left:20px">${emailTerms.map(term => `<li style="margin-bottom:8px">${escapeHtml(term)}</li>`).join('')}</ol></section>`
     : '';
   return { subject, html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:15px;line-height:1.7"><div>${escapeHtml(body).replace(/\r?\n/g, '<br/>')}</div>${calculationTable}${termsBlock}${signature}</div>`, logo: getIntroductionLogoAttachment() };
 }
