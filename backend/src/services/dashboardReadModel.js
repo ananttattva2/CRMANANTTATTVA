@@ -1,5 +1,6 @@
 // Dashboard reads need status and ownership, never embedded proof documents.
 const { createOverallCache } = require('./overallDashboardData');
+const { Types } = require('mongoose');
 const compactFields = (prefix, fields) => Object.fromEntries(fields.split(' ').map(field => [field, `${prefix}.${field}`]));
 const poFields = 'fy poFinancialYear annualReturnYear poNumber poNo poDate poReceivedDate poEndDate poAmount paymentTerm';
 function compactPo(prefix) {
@@ -23,9 +24,9 @@ function assignmentProjection(prefix) {
   };
 }
 const leadProjection = {
-  ...Object.fromEntries('_id company companyName clientName companyIdentity leadCode sourceLeadId status closedAt closedBy closedByText closedByEmail assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail firstAnnualReturnYearApplicable servicesOffered applicableService applicantType subApplicantType piboCategory industryType eprCategory plantUnit accountsRecordId'.split(' ').map(field => [field, 1])),
+  ...Object.fromEntries('_id company companyName clientName companyIdentity leadCode leadNumber sourceLeadId externalLeadId status closedAt closedBy closedByText closedByEmail assignedStaff assignedStaffText assignedStaffEmail assignedTo assignedToText assignedToEmail firstAnnualReturnYearApplicable servicesOffered applicableService applicantType subApplicantType piboCategory industryType eprCategory plantUnit accountsRecordId'.split(' ').map(field => [field, 1])),
   assignments: { $map: { input: { $ifNull: ['$assignments', []] }, as: 'assignment', in: assignmentProjection('$$assignment') } },
-  serviceSelections: { $map: { input: { $ifNull: ['$serviceSelections', []] }, as: 'service', in: compactFields('$$service', 'assignedServiceId serviceAssignmentId subApplicantType piboCategory applicantType piboParent firstAnnualReturnYearApplicable financialYear servicesForYear annualReturnYears servicesOffered applicableService industryType eprCategory plantUnit serviceStartDate serviceEndDate dueDate accountsRecordId') } }
+  serviceSelections: { $map: { input: { $ifNull: ['$serviceSelections', []] }, as: 'service', in: compactFields('$$service', 'assignedServiceId serviceAssignmentId subApplicantType piboCategory applicantType piboParent firstAnnualReturnYearApplicable financialYear servicesForYear annualReturnYears servicesOffered applicableService industryType eprCategory serviceCategory plantUnit serviceStartDate serviceEndDate dueDate accountsRecordId') } }
 };
 const statusFields = prefix => compactFields(prefix, 'status approvalStatus applicationStatus');
 function scopedStatus(path) {
@@ -37,11 +38,11 @@ const clientProjection = Object.fromEntries([
   '_id', 'createdBy', 'workflowStatus', 'assignedServiceId', 'assignedStaff', 'assignedStaffText', 'assignedStaffEmail',
   'assignedTo', 'assignedUser', 'userName', 'user', 'adminControls', 'serviceAllocations', 'selectedLead',
   'createdAt', 'updatedAt', 'submittedAt', 'sla.status', 'firstAnnualReturnYear', 'financialYear',
-  ...'clientLegalName tradeName piboCategory subApplicantType applicantType servicesOffered applicableService cpcbStatus plantUnit companyIndustry industryType eprCategory state firstAnnualReturnYear servicesForYear'.split(' ').map(field => `data.basic.${field}`),
+  ...'clientLegalName tradeName piboCategory subApplicantType applicantType servicesOffered applicableService cpcbStatus plantUnit companyIndustry industryType eprCategory serviceCategory state firstAnnualReturnYear servicesForYear'.split(' ').map(field => `data.basic.${field}`),
   ...'companyName assignedTo user userName leadNumber clientCode uniqueId clientStatus visibilityStatus cpcbStatus state approvalOverride'.split(' ').map(field => `data.importMeta.${field}`),
   'data.cpcb.status', 'data.cpcb.approvalStatus', 'data.cpcb.applicationStatus', 'data.assignedServiceId',
   'data.selectedLead',
-  ...'id sourceLeadId leadCode assignedServiceId serviceAssignmentId company plantUnit servicesOffered applicableService piboCategory subApplicantType applicantType industryType eprCategory assignedStaff assignedStaffText assignedStaffEmail closedAt closedBy closedByText closedByEmail permanentClosedAt accountsRecordId'.split(' ').map(field => `data.selectedLeadSnapshot.${field}`),
+  ...'id sourceLeadId externalLeadId leadCode assignedServiceId serviceAssignmentId company plantUnit servicesOffered applicableService piboCategory subApplicantType applicantType industryType eprCategory serviceCategory assignedStaff assignedStaffText assignedStaffEmail closedAt closedBy closedByText closedByEmail permanentClosedAt accountsRecordId'.split(' ').map(field => `data.selectedLeadSnapshot.${field}`),
   'data.address.state', 'data.addresses.state', 'data.registeredAddress.state', 'data.serviceAllocations', 'data.firstAnnualReturnYearApplicable',
   ...'compliancePoNo poNo poNumber compliancePoDate poDate compliancePoFileName poFileName poFinancialYear'.split(' ').map(field => `data.financials.${field}`),
   ...'poNumber poNo poDate poFileName poFinancialYear'.split(' ').map(field => `data.validation.${field}`),
@@ -72,7 +73,7 @@ function invalidateDashboardReads() { for (const invalidate of caches) invalidat
 // v4 discards snapshots captured before permanent service-staff ownership was
 // made authoritative (for example ATUL LTD retaining Nitin import metadata
 // after its live service was assigned to Tushar).
-const cachedAssignments = createDashboardCache({ name: 'dashboard-assignments-v8', maxEntries: 2 });
+const cachedAssignments = createDashboardCache({ name: 'dashboard-assignments-v9', maxEntries: 2 });
 const staffFields = ['assignedStaff', 'assignedStaffText', 'assignedStaffEmail'];
 const legacyClosedOwnerFields = ['closedBy', 'closedByText', 'closedByEmail'];
 const present = field => ({ [field]: { $exists: true, $nin: [null, ''] } });
@@ -95,16 +96,22 @@ function hasPermanentOwner(record, includeLegacy = true) {
 }
 const identity = value => {
   if (value == null) return '';
+  if (typeof value.toHexString === 'function') return value.toHexString();
   if (typeof value === 'object') value = value._id || value.id || value.leadId || '';
-  return String(value).trim().toLowerCase();
+  return String(value).trim();
 };
-const leadReferences = lead => [lead?._id, lead?.sourceLeadId, lead?.leadCode].map(identity).filter(Boolean);
+const leadCodeNumber = value => /^atpl-(?:lead-)?0*(\d+)$/i.exec(value)?.[1];
+const referenceKey = value => {
+  const number = leadCodeNumber(value);
+  return number ? `atpl-lead-${number.padStart(4, '0')}` : value.toLowerCase();
+};
+const leadReferences = lead => [lead._id, lead.leadCode, lead.leadNumber, lead.sourceLeadId, lead.externalLeadId].map(identity).filter(Boolean);
 const clientLeadReferences = client => {
   const data = client?.data || {};
   const snapshot = data.selectedLeadSnapshot || {};
   return [
-    client?.selectedLead, data.selectedLead, snapshot.id, snapshot.sourceLeadId,
-    snapshot.leadCode, data.importMeta?.leadNumber, data.importMeta?.uniqueId
+    client?.selectedLead, data.selectedLead, snapshot.id, snapshot.leadCode, snapshot.sourceLeadId,
+    snapshot.externalLeadId, data.importMeta?.leadNumber, data.importMeta?.uniqueId
   ].map(identity).filter(Boolean);
 };
 async function loadDashboardAssignments({ Client, Lead }, clientFilter, leadFilter) {
@@ -130,8 +137,36 @@ async function loadDashboardAssignments({ Client, Lead }, clientFilter, leadFilt
     // Index every stable identity so statuses saved against a lead code or
     // source id survive the compact dashboard read and reach service matching.
     const byReference = new Map();
-    for (const lead of leads) for (const reference of leadReferences(lead)) byReference.set(reference, lead);
-    const linkedLead = client => clientLeadReferences(client).map(reference => byReference.get(reference)).find(Boolean);
+    const indexLead = lead => {
+      for (const reference of leadReferences(lead).map(referenceKey)) {
+        const existing = byReference.get(reference);
+        if (existing !== null) byReference.set(reference, !existing || existing === lead ? lead : null);
+      }
+    };
+    leads.forEach(indexLead);
+    const linkedLead = client => byId.get(identity(client.selectedLead))
+      || clientLeadReferences(client).map(reference => byId.get(reference) || byReference.get(referenceKey(reference))).find(Boolean);
+    // Some imports save only a lead code. A lead owned through its Client
+    // Master may be absent from the permanent-owner lead query above.
+    const missingReferences = [...new Set(clients.filter(client => !linkedLead(client)
+      && (hasPermanentOwner(client, false) || hasPermanentOwner(client.data?.selectedLeadSnapshot)))
+      .flatMap(clientLeadReferences))];
+    if (missingReferences.length) {
+      const codes = [...new Set(missingReferences.flatMap(reference => {
+        const number = leadCodeNumber(reference);
+        return number ? [reference, `ATPL-LEAD-${number.padStart(4, '0')}`, `ATPL-${number.padStart(4, '0')}`] : [reference];
+      }))];
+      const ids = missingReferences.filter(reference => /^[a-f\d]{24}$/i.test(reference)).map(reference => new Types.ObjectId(reference));
+      const matches = ['leadCode', 'leadNumber', 'sourceLeadId', 'externalLeadId'].map(field => ({ [field]: { $in: codes } }));
+      if (ids.length) matches.push({ _id: { $in: ids } });
+      const linked = await Lead.aggregate([{ $match: { $and: [leadFilter, { $or: matches }] } }, { $project: leadProjection }]).option({ maxTimeMS: 12000 });
+      for (const lead of linked) {
+        if (byId.has(String(lead._id))) continue;
+        byId.set(String(lead._id), lead);
+        leads.push(lead);
+        indexLead(lead);
+      }
+    }
     const retained = clients.filter(client => {
       const snapshot = client.data?.selectedLeadSnapshot || {};
       return hasPermanentOwner(client, false) || hasPermanentOwner(snapshot)

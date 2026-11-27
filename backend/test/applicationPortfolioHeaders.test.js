@@ -33,6 +33,12 @@ test('Application status summary shows approved Annual Return and Importer of Ra
   for (const [id,name,category,status] of [['battery','Battery Client','EPR - Battery Waste','Under Review'],['ewaste','Electronic Client','EPR - E-Waste','Approved']]) {
     const record=structuredClone(data.assignments[0]);record._id=id;record.assignedServiceId=id;record.selectedLead.company=name;record.selectedLead.assignments[0].assignedServiceId=id;record.data.basic.eprCategory=category;record.data.cpcb.status=status;data.assignments.push(record);
   }
+  const battery = data.assignments.find(record => record._id === 'battery');
+  delete battery.selectedLead.assignments[0].accountsRecordId;
+  battery.selectedLead.serviceSelections = [
+    { assignedServiceId: 'new-battery-service', subApplicantType: 'Producer', eprCategory: 'EPR Batteries', servicesOffered: 'Annual Return Filling', accountsRecordId: 'BATTERY-ACCOUNT' },
+    { assignedServiceId: 'other-battery-service', subApplicantType: 'Brand Owner', eprCategory: 'EPR Batteries', servicesOffered: 'Annual Return Filling', accountsRecordId: 'OTHER-ACCOUNT' }
+  ];
   const actionRequired = structuredClone(data.assignments[0]); actionRequired._id = 'action-required'; actionRequired.selectedLead.company = 'Action Required Client'; actionRequired.selectedLead.assignments[0].poYearRows = []; actionRequired.selectedLead.assignments[0].poStatus = ''; data.assignments.push(actionRequired);
   const other = structuredClone(data.assignments[0]);
   other._id = 'other-service';
@@ -126,6 +132,7 @@ test('Application status summary shows approved Annual Return and Importer of Ra
     await page.click('#dashboard .portfolio-person');await page.waitForSelector('dialog[open]');
     const details=await page.$eval('dialog[open]',dialog=>dialog.textContent);
     assert.ok(details.includes('Battery Client'));assert.ok(!details.includes('Annual Client'));assert.ok(!details.includes('Electronic Client'));
+    assert.equal(await page.$eval('dialog[open] tbody td:nth-child(2)', cell => cell.textContent), 'BATTERY-ACCOUNT');
     await page.click('dialog[open] button[aria-label="Close client details"]');
     await page.click('#dashboard .portfolio-waste-tabs button[aria-label^="E-Waste:"]');
     await page.click('#dashboard .portfolio-person');await page.waitForSelector('dialog[open]');assert.ok(await page.$eval('dialog[open]',dialog=>dialog.textContent.includes('Electronic Client')));

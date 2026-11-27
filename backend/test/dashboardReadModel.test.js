@@ -59,6 +59,54 @@ test('legacy Balaji draft linked by lead code reaches the Unit 2 importer dashbo
   assert.equal(importer.cpcb, 'Approved');
 });
 
+test('legacy accounts are recovered through lead codes and matched to the correct applicant in the portfolio and Excel', async () => {
+  const { applicationReportGroups, buildApplicationPortfolio, portfolioAccountIds } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const { createApplicationPortfolioWorkbook } = await import('../../frontend/src/utils/applicationPortfolioExport.mjs');
+  const ExcelJS = require('../../frontend/node_modules/exceljs');
+  const lead = {
+    _id: 'mongo-legacy-accounts',
+    leadCode: 'ATPL-0190',
+    company: 'Legacy Account Fixture',
+    serviceSelections: [
+      { assignedServiceId: 'new-brand', subApplicantType: 'Brand Owner', accountsRecordId: 'ATPL-LEAD-0142' },
+      { assignedServiceId: 'new-importer', subApplicantType: 'Importer', accountsRecordId: 'ATPL-LEAD-0143' },
+      { assignedServiceId: 'no-account', subApplicantType: 'Producer' }
+    ].map(service => ({ ...service, servicesOffered: 'Annual Return Filling', eprCategory: 'EPR - Plastic Waste', plantUnit: 'Unit 1' }))
+  };
+  const clients = ['Brand Owner', 'Importer', 'Producer'].map((candidate, index) => ({
+    _id: `account-fixture-${index}`, assignedStaff: 'sonal', workflowStatus: 'submitted',
+    ...(index === 0 ? { assignedServiceId: 'obsolete-id' } : {}),
+    data: {
+      basic: { piboCategory: candidate, eprCategory: 'Plastic Waste', servicesOffered: 'Annual Return Filing', plantUnit: 'Unit 1' },
+      importMeta: { uniqueId: 'ATPL-LEAD-0190' }, cpcb: { status: 'Approved' }
+    }
+  }));
+  const leadFilter = { deletedAt: null };
+  const leadQueries = [];
+  const loaded = await loadDashboardAssignments({
+    Client: { aggregate: () => ({ option: async () => clients }) },
+    Lead: { aggregate: pipeline => {
+      leadQueries.push(pipeline[0].$match);
+      return { option: async () => leadQueries.length === 1 ? [] : [lead] };
+    } }
+  }, { fixture: 'legacy-accounts' }, leadFilter);
+  assert.equal(leadQueries.length, 2);
+  assert.equal(leadQueries[1].$and[0], leadFilter);
+  assert.ok(leadQueries[1].$and[1].$or.find(filter => filter.leadCode).leadCode.$in.includes(lead.leadCode));
+  const assignments = mergeManagerStaffAllocations(loaded.clients.map(dashboardStatusClient), loaded.leads);
+  const [group] = applicationReportGroups(buildApplicationPortfolio(assignments, [{ _id: 'sonal', name: 'Sonal', role: 'operation' }]));
+  const ids = records => Object.fromEntries(records.map(row => [row.category, portfolioAccountIds(row.services).join(', ')]));
+  assert.deepEqual(ids(group.records), { 'Brand Owner': 'ATPL-LEAD-0142', Importer: 'ATPL-LEAD-0143', Producer: '' });
+  const workbook = await createApplicationPortfolioWorkbook(group.records, 'All SPOCs', 'Total');
+  const exported = new ExcelJS.Workbook();
+  await exported.xlsx.load(await workbook.xlsx.writeBuffer());
+  for (const sheetName of ['Clients', 'Service Statuses']) {
+    const sheet = exported.getWorksheet(sheetName);
+    const rows = sheet.getRows(4, 3).map(row => [row.getCell('F').value, row.getCell('R').value]);
+    assert.deepEqual(Object.fromEntries(rows), ids(group.records));
+  }
+});
+
 test('dashboard reads coalesce concurrent loads and expire without sharing scope keys', async () => {
   let now = 0, reads = 0;
   const cached = createDashboardCache({ ttl: 15, now: () => now });

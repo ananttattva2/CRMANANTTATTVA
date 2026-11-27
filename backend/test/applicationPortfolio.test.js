@@ -336,6 +336,24 @@ test('Assigned Applications Excel preserves account IDs and all saved years for 
   assert.equal(services.getCell('R5').value, '00456');
 });
 
+test('account fallback uses a legacy service alias and leaves ambiguous or conflicting services blank', async () => {
+  const { applicationRecord } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const row = client('account-fallback', 'sonal', 'Brand Owner');
+  row.assignedServiceId = 'old-brand';
+  row.data.basic.servicesOffered = 'Annual Return Filing';
+  row.data.basic.plantUnit = 'Unit 1';
+  row.selectedLead.serviceSelections = [
+    { assignedServiceId: 'brand', serviceAssignmentId: 'old-brand', subApplicantType: 'Brand Owner', plantUnit: 'Unit 1', servicesOffered: 'Annual Return Filling', accountsRecordId: 'BRAND-1' },
+    { assignedServiceId: 'brand-2', subApplicantType: 'Brand Owner', plantUnit: 'Unit 1', servicesOffered: 'Annual Return Filling', accountsRecordId: 'BRAND-2' },
+    { assignedServiceId: 'importer', subApplicantType: 'Importer', plantUnit: 'Unit 1', servicesOffered: 'Annual Return Filling', accountsRecordId: 'IMPORTER-1' }
+  ];
+  assert.equal(applicationRecord(row).accountId, 'BRAND-1');
+  row.assignedServiceId = 'unmatched';
+  assert.equal(applicationRecord(row).accountId, '');
+  row.data.basic.piboCategory = 'Recycler';
+  assert.equal(applicationRecord(row).accountId, '');
+});
+
 test('merged assignment rows retain every recorded account ID without borrowing a multi-service lead ID', async () => {
   const { applicationRecord, effectiveApplicationServices, portfolioAccountIds } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
   const { mergeManagerStaffAllocations } = require('../src/services/managerStaffAllocations');

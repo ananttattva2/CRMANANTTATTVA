@@ -207,6 +207,35 @@ export function applicantCategory(value) {
   if (key === 'pwp' || key.includes('plasticwasteprocessor')) return 'PWP'
   return text(value) || 'Not recorded'
 }
+function serviceAccountProfile(source, fallback = {}) {
+  const applicant = text(source.subApplicantType, source.piboCategory, fallback.subApplicantType,
+    fallback.piboCategory, source.applicantType, fallback.applicantType)
+  const applicantKey = normalize(applicantCategory(applicant))
+  const epr = text(source.eprCategory, source.serviceCategory, fallback.eprCategory, fallback.serviceCategory)
+  return {
+    applicant: ['pibo', 'simp', 'notrecorded', 'na'].includes(applicantKey) ? '' : applicantKey,
+    unit: normalize(text(source.plantUnit, fallback.plantUnit)),
+    epr: portfolioWasteCategory(epr) || normalize(epr.replace(/^epr[\s-]*/i, '')),
+    offerings: canonicalOfferedServices(source.servicesOffered || source.applicableService
+      || fallback.servicesOffered || fallback.applicableService).map(value => isRegistrationService(value) ? 'registration' : normalize(value))
+  }
+}
+
+function matchingAccountService(services, snapshot, basic, selectedServiceId) {
+  const byId = services.filter(service => selectedServiceId
+    && [service.assignedServiceId, service.serviceAssignmentId].some(id => text(id) === selectedServiceId))
+  if (byId.length) return byId.length === 1 ? byId[0] : null
+  const profile = serviceAccountProfile(basic, snapshot)
+  const matches = services.filter(service => {
+    const candidate = serviceAccountProfile(service)
+    const sharesOffering = profile.offerings.some(value => candidate.offerings.includes(value))
+    if (profile.offerings.length && candidate.offerings.length && !sharesOffering) return false
+    if (['applicant', 'unit', 'epr'].some(field => profile[field] && candidate[field] && profile[field] !== candidate[field])) return false
+    return sharesOffering || Boolean(profile.applicant && candidate.applicant === profile.applicant)
+  })
+  return matches.length === 1 ? matches[0] : null
+}
+
 export function applicationRecord(client) {
   const data = client.data || {}, basic = data.basic || {}, meta = data.importMeta || {}, lead = client.selectedLead || {}
   const services = lead.serviceSelections || []
@@ -264,7 +293,13 @@ export function applicationRecord(client) {
   const scopedAssignment = exactAssignment || indexedAssignment || (singleLeadService ? assignment : null)
   const identifiedService = serviceIndex >= 0
     || (services.length === 1 && (!selectedServiceId || !text(service.assignedServiceId, service.serviceAssignmentId)))
-  const accountId = text(identifiedService && service.accountsRecordId, scopedAssignment?.accountsRecordId,
+  // Account imports can generate service IDs after the Client Master was saved.
+  // Resolve the ID independently of the application status and PO counters.
+  const accountService = !identifiedService && !client.assignmentOnly
+    ? matchingAccountService(services, snapshot, basic, selectedServiceId)
+    : null
+  const accountId = text(identifiedService && service.accountsRecordId, accountService?.accountsRecordId,
+    scopedAssignment?.accountsRecordId,
     matchedSnapshotService?.accountsRecordId, matchedSnapshotAssignment?.accountsRecordId, sameServiceSnapshot && snapshot.accountsRecordId,
     singleLeadService && lead.accountsRecordId)
   const serviceAnnualYears = annual ? [
