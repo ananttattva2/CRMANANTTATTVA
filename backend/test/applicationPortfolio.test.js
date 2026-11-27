@@ -299,7 +299,7 @@ test('Assigned Applications Excel preserves account IDs and all saved years for 
     accountsRecordId: 'ROOT-OTHER',
     serviceSelections: [
       { assignedServiceId: 'annual-one', servicesOffered: 'Annual Return Filling', accountsRecordId: '00123' },
-      { assignedServiceId: 'annual-two', servicesOffered: 'Annual Return Filling', accountsRecordId: '00456', firstAnnualReturnYearApplicable: '2024-25' }
+      { assignedServiceId: 'annual-two', servicesOffered: 'Annual Return Filling', firstAnnualReturnYearApplicable: '2024-25' }
     ],
     assignments: [
       { assignedServiceId: 'annual-one', poStatus: 'received', assignedStaff: 'sonal', assignedTo: 'manager',
@@ -310,6 +310,13 @@ test('Assigned Applications Excel preserves account IDs and all saved years for 
   const records = ['annual-one', 'annual-two'].map(id => ({
     ...client(id, 'sonal', 'Producer', 'Approved'), assignedServiceId: id, selectedLead: lead
   }));
+  records[1].data.selectedLeadSnapshot = {
+    accountsRecordId: 'UNSCOPED',
+    serviceSelections: [
+      { assignedServiceId: 'annual-two', accountsRecordId: '00456' },
+      { assignedServiceId: 'another-service', accountsRecordId: 'SIBLING' }
+    ]
+  };
   const [group] = applicationReportGroups(buildApplicationPortfolio(records, users));
   const workbook = await createApplicationPortfolioWorkbook(group.records, 'All SPOCs', 'Plastic · Total');
   const loaded = new ExcelJS.Workbook();
@@ -327,6 +334,25 @@ test('Assigned Applications Excel preserves account IDs and all saved years for 
   assert.equal(services.getCell('R4').type, ExcelJS.ValueType.String);
   assert.equal(services.getCell('O5').value, '2024-25');
   assert.equal(services.getCell('R5').value, '00456');
+});
+
+test('merged assignment rows retain every recorded account ID without borrowing a multi-service lead ID', async () => {
+  const { applicationRecord, effectiveApplicationServices, portfolioAccountIds } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const { mergeManagerStaffAllocations } = require('../src/services/managerStaffAllocations');
+  const lead = {
+    _id: 'merged-account', company: 'Merged client', accountsRecordId: 'ROOT',
+    serviceSelections: ['one', 'two', 'three'].map(assignedServiceId => ({ assignedServiceId, servicesOffered: 'Annual Return Filling' })),
+    assignments: ['one', 'two', 'three'].map((assignedServiceId, index) => ({
+      assignedServiceId, assignedStaff: 'sonal', accountsRecordId: ['00123', '00456', undefined][index]
+    }))
+  };
+  const rows = mergeManagerStaffAllocations([], [lead]).map(applicationRecord);
+  assert.deepEqual(rows.map(row => row.accountId), ['00123', '00456', '']);
+  const merged = effectiveApplicationServices(rows);
+  assert.equal(merged.length, 1);
+  assert.deepEqual(portfolioAccountIds(merged), ['00123', '00456']);
+  const single = { ...lead, serviceSelections: [lead.serviceSelections[2]], assignments: [lead.assignments[2]] };
+  assert.equal(applicationRecord(mergeManagerStaffAllocations([], [single])[0]).accountId, 'ROOT');
 });
 
 

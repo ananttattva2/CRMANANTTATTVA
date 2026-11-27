@@ -47,5 +47,12 @@
 .portfolio-waste-icon{display:grid;place-items:center;width:24px;height:24px;border-radius:7px;background:#dcece9;color:#26756d;font-size:9px;letter-spacing:.03em}
 .portfolio-waste-tabs button[aria-selected=true] .portfolio-waste-icon{background:#ffffff20;color:#fff}
 .portfolio-waste-tabs button:focus-visible{outline:3px solid #6dc7c0;outline-offset:3px}
+.portfolio-dialog-table>table>tbody>tr>td:nth-child(2){min-width:110px;max-width:160px;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.portfolio-dialog-table>table>tbody>tr>td:nth-child(3){min-width:220px;max-width:320px}
+.portfolio-dialog-table>table>tbody>tr>td:nth-child(5),.portfolio-dialog-table>table>tbody>tr>td:nth-child(6){min-width:110px}
+.portfolio-service-totals{display:flex;flex-wrap:wrap;gap:8px;padding:0 28px 14px;margin:0}
+.portfolio-service-totals>div{display:flex;align-items:center;gap:12px;padding:6px 10px;border:1px solid #dbe9e9;border-radius:9px;background:#f5faf9;color:#335963;font-size:11px}
+.portfolio-service-totals dd{margin:0;color:#16666b;font-size:13px;font-weight:750;font-variant-numeric:tabular-nums}
+@media(max-width:640px){.portfolio-service-totals{padding-inline:20px}.portfolio-waste-tabs{flex-wrap:wrap}}
 .application-portfolio>.portfolio-toolbar{flex-wrap:wrap}
 @media(max-width:640px){.portfolio-search-filters{width:100%;gap:10px}.portfolio-waste-tabs{width:100%}.portfolio-waste-tabs button{flex:1;padding:7px 8px;gap:5px}.portfolio-waste-icon{display:none}.application-portfolio>.portfolio-toolbar>span{flex-wrap:wrap}}

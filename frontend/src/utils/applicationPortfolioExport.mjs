@@ -1,5 +1,5 @@
 import { exportWithReason } from './dataExport.mjs'
-import { annualActionReasons, isAnnualReturnService, matchesServiceSummary } from './applicationPortfolio.mjs'
+import { annualActionReasons, isAnnualReturnService, matchesServiceSummary, portfolioAccountIds } from './applicationPortfolio.mjs'
 
 const headers = ['Unique ID', 'Legal Name', 'Client Status', 'Visibility', 'CPCB Status', 'PIBo Category', 'State', 'Created', 'Lead ID', 'Industry', 'Service Category', 'Services Offered', 'Unit', 'SPOC / User Name', 'Annual Return Year', 'AR Action Required', 'AR Action Required Details', 'Account ID']
 
@@ -21,7 +21,7 @@ export async function createApplicationPortfolioWorkbook(records, name, label) {
   const values = row => {
     const services = summaryRow(row).services
     const years = [...new Set(services.flatMap(exportYears).filter(Boolean))].sort()
-    const accounts = [...new Set(services.map(service => service.accountId).filter(Boolean))]
+    const accounts = portfolioAccountIds(services)
     const needsAction = actionRequired(row)
     return [
       row.code, row.name, row.clientStatus, row.visibility, row.cpcb, row.category, row.state,

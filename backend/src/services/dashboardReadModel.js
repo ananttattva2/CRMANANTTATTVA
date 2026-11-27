@@ -17,7 +17,7 @@ function compactPo(prefix) {
 }
 function assignmentProjection(prefix) {
   return {
-    ...compactFields(prefix, 'assignedServiceId serviceAssignmentId assignedTo assignedToText assignedToEmail assignedStaff assignedStaffText assignedStaffEmail closedAt closedBy closedByText closedByEmail permanentClosedAt servicesOffered poStatus poApprovalStatus'),
+    ...compactFields(prefix, 'assignedServiceId serviceAssignmentId assignedTo assignedToText assignedToEmail assignedStaff assignedStaffText assignedStaffEmail closedAt closedBy closedByText closedByEmail permanentClosedAt servicesOffered poStatus poApprovalStatus accountsRecordId'),
     poYearRows: { $map: { input: { $ifNull: [`${prefix}.poYearRows`, []] }, as: 'po', in: compactPo('$$po') } },
     originalPoDetails: compactPo(`${prefix}.originalPoDetails`)
   };
@@ -41,7 +41,7 @@ const clientProjection = Object.fromEntries([
   ...'companyName assignedTo user userName leadNumber clientCode uniqueId clientStatus visibilityStatus cpcbStatus state approvalOverride'.split(' ').map(field => `data.importMeta.${field}`),
   'data.cpcb.status', 'data.cpcb.approvalStatus', 'data.cpcb.applicationStatus', 'data.assignedServiceId',
   'data.selectedLead',
-  ...'id sourceLeadId leadCode assignedServiceId company plantUnit servicesOffered applicableService piboCategory subApplicantType applicantType industryType eprCategory assignedStaff assignedStaffText assignedStaffEmail closedAt closedBy closedByText closedByEmail permanentClosedAt accountsRecordId'.split(' ').map(field => `data.selectedLeadSnapshot.${field}`),
+  ...'id sourceLeadId leadCode assignedServiceId serviceAssignmentId company plantUnit servicesOffered applicableService piboCategory subApplicantType applicantType industryType eprCategory assignedStaff assignedStaffText assignedStaffEmail closedAt closedBy closedByText closedByEmail permanentClosedAt accountsRecordId'.split(' ').map(field => `data.selectedLeadSnapshot.${field}`),
   'data.address.state', 'data.addresses.state', 'data.registeredAddress.state', 'data.serviceAllocations', 'data.firstAnnualReturnYearApplicable',
   ...'compliancePoNo poNo poNumber compliancePoDate poDate compliancePoFileName poFileName poFinancialYear'.split(' ').map(field => `data.financials.${field}`),
   ...'poNumber poNo poDate poFileName poFinancialYear'.split(' ').map(field => `data.validation.${field}`),
@@ -72,7 +72,7 @@ function invalidateDashboardReads() { for (const invalidate of caches) invalidat
 // v4 discards snapshots captured before permanent service-staff ownership was
 // made authoritative (for example ATUL LTD retaining Nitin import metadata
 // after its live service was assigned to Tushar).
-const cachedAssignments = createDashboardCache({ name: 'dashboard-assignments-v7', maxEntries: 2 });
+const cachedAssignments = createDashboardCache({ name: 'dashboard-assignments-v8', maxEntries: 2 });
 const staffFields = ['assignedStaff', 'assignedStaffText', 'assignedStaffEmail'];
 const legacyClosedOwnerFields = ['closedBy', 'closedByText', 'closedByEmail'];
 const present = field => ({ [field]: { $exists: true, $nin: [null, ''] } });

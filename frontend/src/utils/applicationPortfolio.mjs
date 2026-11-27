@@ -1,4 +1,5 @@
 import { buildOperationsProgressGroups, assignedCompanyKey } from './operationsUserProgress.mjs'
+import { portfolioWasteCategory } from './portfolioWasteCategories.mjs'
 
 export const PIBO_CATEGORIES = ['Producer', 'Brand Owner', 'PWP', 'Importer', 'Producer (Small & Micro)', 'Importer of Raw Material', 'Recycler']
 export const STATUS_COLUMNS = [
@@ -42,12 +43,14 @@ export function applicationServiceSummaryRecords(group) {
       // Blank service placeholders are not applications and must not create a
       // synthetic "Not recorded" service/status row.
       for (const offered of service.offeredServices) {
-        if (!byService.has(offered)) byService.set(offered, [])
-        byService.get(offered).push({ ...service, offeredServices: [offered], offered })
+        const waste = portfolioWasteCategory(service.eprCategory) || normalize(service.eprCategory)
+        const key = `${waste}:${offered}`
+        if (!byService.has(key)) byService.set(key, [])
+        byService.get(key).push({ ...service, offeredServices: [offered], offered })
       }
     }
-    return [...byService].map(([offered, services]) => ({
-      ...record, ...services[0], id: `${record.id}:${offered}`, services,
+    return [...byService].map(([key, services]) => ({
+      ...record, ...services[0], id: `${record.id}:${key}`, services,
       sourceIds: services.map(service => service.id)
     }))
   })
@@ -113,12 +116,21 @@ export function isApprovedRegistration(record) {
       || isRegistrationService(rawApplicationSummaryService(record)))
 }
 export function isAnnualReturnOrRegistration(record) {
-  const service = rawApplicationSummaryService(record)
-  return isAnnualReturnService(service) || isRegistrationService(service)
+  return portfolioServiceType(record) !== 'otherServices'
 }
 export function matchesPortfolioSection(record, section) {
   const annualOrRegistration = isAnnualReturnOrRegistration(record)
   return section === 'otherServices' ? !annualOrRegistration : annualOrRegistration
+}
+export function portfolioServiceType(record) {
+  const offered = record.services[0]?.offeredServices
+  if (isAnnualReturnService(offered)) return 'annualReturn'
+  if (isRegistrationService(offered)) return 'registration'
+  return 'otherServices'
+}
+
+export function portfolioAccountIds(services) {
+  return [...new Set(services.flatMap(service => service.accountIds || [service.accountId]).filter(Boolean))]
 }
 export function annualActionReasons(record) {
   const services = (record.services || []).filter(service => service.offeredServices?.includes('Annual Return Filling'))
@@ -198,7 +210,9 @@ export function applicantCategory(value) {
 export function applicationRecord(client) {
   const data = client.data || {}, basic = data.basic || {}, meta = data.importMeta || {}, lead = client.selectedLead || {}
   const services = lead.serviceSelections || []
-  const selectedServiceId = String(client.assignedServiceId || data.assignedServiceId || data.selectedLeadSnapshot?.assignedServiceId || '')
+  const snapshot = data.selectedLeadSnapshot || {}
+  const snapshotServiceId = text(snapshot.assignedServiceId, snapshot.serviceAssignmentId)
+  const selectedServiceId = String(client.assignedServiceId || data.assignedServiceId || snapshotServiceId || '')
   const serviceIndex = services.findIndex(item => selectedServiceId && String(item.assignedServiceId || item.serviceAssignmentId || '') === selectedServiceId)
   const service = serviceIndex >= 0 ? services[serviceIndex] : (services.length === 1 ? services[0] : {})
   const assignments = lead.assignments || []
@@ -237,11 +251,21 @@ export function applicationRecord(client) {
   // earliest Annual Return year listed on the received PO, regardless of the PO
   // financial year. The summary layer reduces these years to that first year.
   const poAnnualYears = [...new Set(annualPoRows.map(po => String(po.annualReturnYear || '').trim()).filter(Boolean))]
-  const snapshot = data.selectedLeadSnapshot || {}
-  const snapshotServiceId = text(snapshot.assignedServiceId, snapshot.serviceAssignmentId)
-  const sameServiceSnapshot = selectedServiceId ? snapshotServiceId === selectedServiceId : services.length <= 1
+  const snapshotServices = snapshot.serviceSelections || []
+  const matchedSnapshotService = selectedServiceId
+    ? snapshotServices.find(item => text(item.assignedServiceId, item.serviceAssignmentId) === selectedServiceId)
+    : snapshotServices.length === 1 && services.length <= 1 ? snapshotServices[0] : null
+  const matchedSnapshotAssignment = selectedServiceId
+    ? snapshot.assignments?.find(item => text(item.assignedServiceId, item.serviceAssignmentId) === selectedServiceId)
+    : null
+  const sameServiceSnapshot = selectedServiceId ? snapshotServiceId === selectedServiceId
+    : services.length <= 1 && snapshotServices.length <= 1 && assignments.length <= 1
   const singleLeadService = !client.assignmentOnly && services.length <= 1 && assignments.length <= 1
-  const accountId = text(service.accountsRecordId, sameServiceSnapshot && snapshot.accountsRecordId,
+  const scopedAssignment = exactAssignment || indexedAssignment || (singleLeadService ? assignment : null)
+  const identifiedService = serviceIndex >= 0
+    || (services.length === 1 && (!selectedServiceId || !text(service.assignedServiceId, service.serviceAssignmentId)))
+  const accountId = text(identifiedService && service.accountsRecordId, scopedAssignment?.accountsRecordId,
+    matchedSnapshotService?.accountsRecordId, matchedSnapshotAssignment?.accountsRecordId, sameServiceSnapshot && snapshot.accountsRecordId,
     singleLeadService && lead.accountsRecordId)
   const serviceAnnualYears = annual ? [
     ...(Array.isArray(service.annualReturnYears) ? service.annualReturnYears : []),
@@ -304,7 +328,7 @@ export function effectiveApplicationServices(services) {
     existing.annualYears = [...new Set([...(existing.annualYears || []), ...(service.annualYears || [])])]
     existing.poAnnualYears = [...new Set([...(existing.poAnnualYears || []), ...(service.poAnnualYears || [])])]
     existing.recordedAnnualYears = [...new Set([...(existing.recordedAnnualYears || []), ...(service.recordedAnnualYears || [])])]
-    existing.accountId ||= service.accountId
+    existing.accountIds = portfolioAccountIds([existing, service])
     return false
   })
   const saved = services.filter(service => !service.assignmentOnly)
@@ -320,7 +344,7 @@ export function effectiveApplicationServices(services) {
     master.annualYears = [...new Set([...(master.annualYears || []), ...(service.annualYears || [])])]
     master.poAnnualYears = [...new Set([...(master.poAnnualYears || []), ...(service.poAnnualYears || [])])]
     master.recordedAnnualYears = [...new Set([...(master.recordedAnnualYears || []), ...(service.recordedAnnualYears || [])])]
-    master.accountId ||= service.accountId
+    master.accountIds = portfolioAccountIds([master, service])
     return false
   })
 }
@@ -365,7 +389,7 @@ export function buildApplicationPortfolio(assignments, users) {
 export function matchesPortfolioSearch(row, query) {
   const normalizeSearch = value => String(value || '').toLowerCase().normalize('NFKC').replace(/corpration/g, 'corporation').replace(/[^a-z0-9]/g, '')
   const needle = normalizeSearch(query)
-  return !needle || [row, ...(row.services || [])].some(service => [service.name, service.code, service.leadCode, service.category, service.cpcb, service.state, service.industry, service.eprCategory, service.offered].some(value => normalizeSearch(value).includes(needle)))
+  return !needle || [row, ...(row.services || [])].some(service => [service.name, service.code, service.leadCode, service.category, service.cpcb, service.state, service.industry, service.eprCategory, service.offered, ...portfolioAccountIds([service])].some(value => normalizeSearch(value).includes(needle)))
 }
 
 // Client Master and assignment snapshots can describe the same displayed
@@ -378,7 +402,7 @@ export function uniquePortfolioServiceDetails(services = [], { includeExportFiel
       service.leadCode || service.code, service.name, service.category,
       service.industry, service.eprCategory, service.offered,
       service.unit, service.cpcb, service.clientStatus, service.visibility,
-      ...(includeExportFields ? [service.accountId, (service.recordedAnnualYears || []).slice().sort().join(', ')] : [])
+      ...(includeExportFields ? [portfolioAccountIds([service]).slice().sort().join(', '), (service.recordedAnnualYears || []).slice().sort().join(', ')] : [])
     ].map(value => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase()))
     if (seen.has(key)) return false
     seen.add(key)

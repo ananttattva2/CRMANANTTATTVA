@@ -202,6 +202,8 @@ function mergeManagerStaffAllocations(clients = [], leads = []) {
       const enrichedAssignment = {
         ...assignment,
         assignedServiceId: serviceId,
+        ...(!assignment.accountsRecordId && services.length <= 1 && lead.assignments.length === 1 && lead.accountsRecordId
+          ? { accountsRecordId: lead.accountsRecordId } : {}),
         ...(matchingPoRows.length ? { poYearRows: matchingPoRows } : {}),
         ...(matchingAssignments.some(candidate => normalize(candidate.poStatus) === 'received') ? { poStatus: 'received' } : {})
       };

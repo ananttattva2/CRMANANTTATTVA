@@ -8,5 +8,8 @@ test('waste categories isolate sibling services and their statuses without modif
  const before=JSON.stringify(groups);
  const plastic=applicationReportGroups(portfolioGroupsForWasteCategory(groups,'plastic'))[0].records;
  const battery=applicationReportGroups(portfolioGroupsForWasteCategory(groups,'battery'))[0].records;
+ const all=applicationReportGroups(groups)[0].records;
+ assert.deepEqual(all.map(row=>row.bucket),['approved','underReview']);
+ assert.equal(new Set(all.map(row=>row.id)).size,2);
  assert.equal(plastic.length,1);assert.equal(plastic[0].bucket,'approved');assert.equal(battery.length,1);assert.equal(battery[0].bucket,'underReview');assert.equal(battery[0].services.length,1);assert.equal(JSON.stringify(groups),before);
 });
