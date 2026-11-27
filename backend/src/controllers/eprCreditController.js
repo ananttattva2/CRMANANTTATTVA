@@ -1,8 +1,10 @@
 const crypto = require('node:crypto');
 const mongoose = require('mongoose');
 const Quotation = require('../models/Quotation');
+const { userHasAnyRole } = require('../utils/userRoles');
 const pricing = require('../../../shared/eprCreditPricing.cjs');
-const canDecide = user => String(user?.email || '').trim().toLowerCase() === pricing.approverEmail;
+const canDecide = user => String(user?.email || '').trim().toLowerCase() === pricing.approverEmail
+  || userHasAnyRole(user ?? {}, ['superadmin']);
 const fail = (res, code, error) => res.status(code).json({ error });
 function changesFor(quotation, requested) {
   if (!Array.isArray(requested) || !requested.length || requested.length > 200) throw new Error('Select at least one EPR Credit amount to request.');
@@ -40,11 +42,12 @@ function finalAmountsFor(request, body = {}) {
 }
 module.exports = ({ quotationAccessFilter }) => ({
   listCreditRateRequests: async (req, res) => {
-    const scope = canDecide(req.user) ? {} : await quotationAccessFilter(req.user);
+    const canReview = canDecide(req.user);
+    const scope = canReview ? {} : await quotationAccessFilter(req.user);
     const quotations = await Quotation.find({ $and: [scope, { 'creditRateRequests.0': { $exists: true } }] })
       .select('quotationNumber companyName leadDetails.companyName creditRateRequests').sort({ updatedAt: -1 }).limit(500).lean();
     const requests = quotations.flatMap(q => (q.creditRateRequests || []).map(request => ({ ...request, quotationId: String(q._id), quotationNumber: q.quotationNumber, companyName: q.companyName || q.leadDetails?.companyName })));
-    res.json({ requests, canDecide: canDecide(req.user), approverEmail: pricing.approverEmail });
+    res.json({ requests, canDecide: canReview, approverEmail: pricing.approverEmail });
   },
   requestCreditRateChange: async (req, res) => {
     if (!mongoose.isValidObjectId(req.params.id)) return fail(res, 400, 'Invalid quotation.');
@@ -60,7 +63,7 @@ module.exports = ({ quotationAccessFilter }) => ({
     res.status(201).json({ request });
   },
   decideCreditRateChange: async (req, res) => {
-    if (!canDecide(req.user)) return fail(res, 403, 'Only anand.padhya@ananttattva.com can approve or reject EPR Credit rate requests.');
+    if (!canDecide(req.user)) return fail(res, 403, `Only Super Admins and ${pricing.approverEmail} can approve or reject EPR Credit rate requests.`);
     if (!mongoose.isValidObjectId(req.params.id)) return fail(res, 400, 'Invalid quotation.');
     const decision = String(req.body?.decision || '').toUpperCase();
     if (!['APPROVED', 'REJECTED'].includes(decision)) return fail(res, 400, 'Choose Approve or Reject.');
