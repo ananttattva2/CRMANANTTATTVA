@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUpRight, Building2, ChevronDown, FileText, Search, X } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { ArrowLeft, ArrowUpRight, Building2, ChevronDown, ChevronLeft, ChevronRight, FileText, Search, X } from 'lucide-react';
 import api from '../../services/api';
 import { API_ENDPOINTS } from '../../services/apiEndpoints';
 import { loadFullQuotation } from '../../utils/quotationDetail.mjs';
@@ -7,8 +8,60 @@ import { buildQuotationPrintHtml, formatDisplayDate, formatInr } from '../../uti
 
 const PAGE_SIZE = 10;
 
+function QuotationClient({ company, isExpanded, onToggle, onView }) {
+  const reducedMotion = useReducedMotion();
+  return (
+    <section className="dashboard-quotation-company" data-expanded={isExpanded}>
+      <button type="button" aria-expanded={isExpanded} onClick={onToggle} className="dashboard-quotation-company-toggle">
+        <span className="dashboard-quotation-client-icon"><Building2 size={17} aria-hidden="true"/></span>
+        <strong>{company.company}</strong>
+        <span className="dashboard-quotation-count">{company.rows.length} open</span>
+        <ChevronDown size={16} aria-hidden="true" className="dashboard-quotation-chevron"/>
+      </button>
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div className="dashboard-quotation-disclosure"
+            initial={reducedMotion ? false : { height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: reducedMotion ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}>
+            <ul className="dashboard-quotation-company-quotes">
+              {company.rows.map(row => (
+                <li key={row._id || row.id} className="dashboard-quotation-entry">
+                  <div>
+                    <strong className="dashboard-quotation-number">{row.quotationNumber || 'Unnumbered quotation'}</strong>
+                    <p className="dashboard-quotation-meta">{[row.businessLeadCode || row.leadCode, formatDisplayDate(row.quotationDate || row.createdAt)].filter(Boolean).join(' · ')}</p>
+                    <ul className="dashboard-quotation-services">{row.serviceSummary.items.map((item, index) => (
+                      <li key={index}>
+                        <span>{item.servicesOffered || item.applicableService || item.serviceCategory || item.eprCategory || item.businessCategory || 'Unnamed service'}</span>
+                        {item.servicesForYear && <small>{item.servicesForYear}</small>}
+                      </li>
+                    ))}</ul>
+                  </div>
+                  <div className="dashboard-quotation-amount">
+                    <small>Open service amount</small>
+                    <strong>{row.serviceSummary.total === null ? 'Shared pricing' : formatInr(row.serviceSummary.total)}</strong>
+                    <button type="button" onClick={() => onView(row)} className="dashboard-quotation-link" aria-label={row.quotationNumber ? `View quotation ${row.quotationNumber}` : 'View quotation'}>
+                      View quotation<ArrowUpRight size={15} aria-hidden="true"/>
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </section>
+  );
+}
+
 export default function OpenQuotationsDialog({ quotations, onClose }) {
   const dialog = useRef(null);
+  const list = useRef(null);
+  const searchInput = useRef(null);
+  const back = useRef(null);
+  const trigger = useRef(null);
+  const savedScroll = useRef(0);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState('');
@@ -36,7 +89,31 @@ export default function OpenQuotationsDialog({ quotations, onClose }) {
   const totalPages = Math.max(1, Math.ceil(companies.length / PAGE_SIZE));
   const activePage = Math.min(page, totalPages);
 
+  function changePage(next) {
+    setPage(next);
+    setExpanded('');
+    if (list.current) list.current.scrollTop = 0;
+  }
+
+  function changeSearch(value) {
+    setSearch(value);
+    changePage(1);
+  }
+
+  const showingPreview = Boolean(preview);
+  useEffect(() => {
+    if (showingPreview) back.current?.focus();
+    else if (trigger.current) {
+      if (list.current) list.current.scrollTop = savedScroll.current;
+      const buttons = dialog.current.querySelectorAll('.dashboard-quotation-link');
+      [...buttons].find(button => button.getAttribute('aria-label') === trigger.current)?.focus();
+      trigger.current = null;
+    }
+  }, [showingPreview]);
+
   async function viewQuotation(row) {
+    if (list.current) savedScroll.current = list.current.scrollTop;
+    trigger.current = row.quotationNumber ? `View quotation ${row.quotationNumber}` : 'View quotation';
     const request = { row, loading: true };
     setPreview(request);
     try {
@@ -54,7 +131,7 @@ export default function OpenQuotationsDialog({ quotations, onClose }) {
       <header className="dashboard-quotation-header">
         <div className="flex min-w-0 items-center gap-3">
           {preview
-            ? <button type="button" aria-label="Back to open quotations" onClick={() => setPreview(null)} className="dashboard-quotation-icon-button"><ArrowLeft size={18}/></button>
+            ? <button ref={back} type="button" aria-label="Back to open quotations" onClick={() => setPreview(null)} className="dashboard-quotation-icon-button"><ArrowLeft size={18}/></button>
             : <span className="dashboard-quotation-header-icon"><FileText size={21} aria-hidden="true"/></span>}
           <div>
             <h2 id="dashboard-open-quotations-title">{title}</h2>
@@ -64,7 +141,7 @@ export default function OpenQuotationsDialog({ quotations, onClose }) {
         <button type="button" aria-label="Close open quotations" onClick={() => dialog.current.close()} className="dashboard-quotation-icon-button"><X size={18}/></button>
       </header>
       {preview ? (
-        <div className="bg-slate-50">
+        <div className="dashboard-quotation-preview-panel">
           {preview.loading && <p className="p-5 text-sm text-slate-600" role="status">Loading quotation details…</p>}
           {preview.error && <div className="flex flex-wrap items-center gap-3 p-5"><p role="alert">{preview.error}</p><button type="button" onClick={() => viewQuotation(preview.row)} className="rounded-lg border bg-white px-3 py-2">Retry</button></div>}
           {preview.html && <iframe sandbox="" srcDoc={preview.html} title="Full quotation document" className="dashboard-quotation-preview" />}
@@ -72,47 +149,28 @@ export default function OpenQuotationsDialog({ quotations, onClose }) {
       ) : (
         <>
           <div className="dashboard-quotation-toolbar">
-            <label>
+            <div className="dashboard-quotation-search">
               <Search size={17} aria-hidden="true"/>
-              <input aria-label="Search open quotations" placeholder="Search client, lead code or quotation number" value={search}
-                onChange={event => { setSearch(event.target.value); setPage(1); }} />
-            </label>
-            <span>{companies.length.toLocaleString('en-IN')} {companies.length === 1 ? 'client' : 'clients'}</span>
+              <input ref={searchInput} type="text" aria-label="Search open quotations" placeholder="Search client, lead code or quotation number" value={search}
+                onChange={event => changeSearch(event.target.value)} />
+              {search && <button type="button" aria-label="Clear quotation search" onClick={() => { changeSearch(''); searchInput.current?.focus(); }}><X size={16}/></button>}
+            </div>
+            <span aria-live="polite">{companies.length.toLocaleString('en-IN')} {companies.length === 1 ? 'client' : 'clients'}</span>
           </div>
-          <div className="dashboard-quotation-list">
-          {!companies.length && <p role="status" className="py-5 text-center text-sm text-slate-500">No open quotations found.</p>}
+          <div ref={list} className="dashboard-quotation-list">
+            {!companies.length && <p role="status" className="dashboard-quotation-empty"><Search size={22} aria-hidden="true"/>No open quotations found.</p>}
             {companies.slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE).map(company => (
-              <section key={company.key} className="dashboard-quotation-company">
-                <button type="button" aria-expanded={expanded === company.key} onClick={() => setExpanded(expanded === company.key ? '' : company.key)}
-                  className="dashboard-quotation-company-toggle">
-                  <Building2 size={17} aria-hidden="true"/>
-                  <strong>{company.company}</strong>
-                  <span>{company.rows.length} open</span>
-                  <ChevronDown size={16} aria-hidden="true" className={expanded === company.key ? 'rotate-180' : ''}/>
-                </button>
-                {expanded === company.key && <ul className="dashboard-quotation-company-quotes">
-                  {company.rows.map(row => (
-                    <li key={row._id || row.id} className="dashboard-quotation-entry">
-                      <div>
-                        <button type="button" onClick={() => viewQuotation(row)} className="dashboard-quotation-link">{row.quotationNumber || 'View quotation'}<ArrowUpRight size={15} aria-hidden="true"/></button>
-                        <p className="text-xs text-slate-600">{[row.businessLeadCode || row.leadCode, formatDisplayDate(row.quotationDate || row.createdAt)].filter(Boolean).join(' · ')}</p>
-                        <ul className="mt-1 list-disc pl-4 text-slate-700">{row.serviceSummary.items.map((item, index) => (
-                          <li key={index}>{item.servicesOffered || item.applicableService || item.serviceCategory || item.eprCategory || item.businessCategory || 'Unnamed service'}{item.servicesForYear && ` · ${item.servicesForYear}`}</li>
-                        ))}</ul>
-                      </div>
-                      <div className="dashboard-quotation-amount"><small>Open service amount</small><strong>{row.serviceSummary.total === null ? 'Shared pricing' : formatInr(row.serviceSummary.total)}</strong></div>
-                    </li>
-                  ))}
-                </ul>}
-              </section>
+              <QuotationClient key={company.key} company={company} isExpanded={expanded === company.key}
+                onToggle={() => setExpanded(current => current === company.key ? '' : company.key)} onView={viewQuotation}/>
             ))}
           </div>
           {totalPages > 1 && <footer className="dashboard-quotation-footer">
             <span>Clients {(activePage - 1) * PAGE_SIZE + 1}–{Math.min(activePage * PAGE_SIZE, companies.length)} of {companies.length}</span>
-            <div className="flex gap-2">
-              <button type="button" disabled={activePage === 1} onClick={() => setPage(activePage - 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Previous</button>
-              <button type="button" disabled={activePage === totalPages} onClick={() => setPage(activePage + 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Next</button>
-            </div>
+            <nav aria-label="Quotation client pages">
+              <button type="button" aria-label="Previous client page" disabled={activePage === 1} onClick={() => changePage(activePage - 1)} className="dashboard-quotation-icon-button"><ChevronLeft size={18}/></button>
+              <span>Page {activePage} of {totalPages}</span>
+              <button type="button" aria-label="Next client page" disabled={activePage === totalPages} onClick={() => changePage(activePage + 1)} className="dashboard-quotation-icon-button"><ChevronRight size={18}/></button>
+            </nav>
           </footer>}
         </>
       )}

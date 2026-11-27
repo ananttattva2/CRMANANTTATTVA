@@ -68,6 +68,9 @@ test('Quotations supports credit requests, service status tabs, and an in-dashbo
  const popup = 'dialog[open][aria-labelledby="dashboard-open-quotations-title"]';
  await page.waitForSelector(popup);
  await page.addStyleTag({ content: fs.readFileSync(path.resolve(__dirname, '../../frontend/src/styles/lead-pipeline.css'), 'utf8') });
+ assert.equal(await page.$eval(popup, el => getComputedStyle(el).animationName), 'dashboard-quote-enter');
+ await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+ assert.equal(await page.$eval(popup, el => getComputedStyle(el).animationName), 'none');
  for (const width of [1440, 390]) {
    await page.setViewport({ width, height: 900 });
    const bounds = await page.$eval(popup, el => {
@@ -78,6 +81,7 @@ test('Quotations supports credit requests, service status tabs, and an in-dashbo
    assert.ok(Math.abs(bounds.x * 2 + bounds.width - width) < 2, JSON.stringify(bounds));
  }
  await page.setViewport({ width: 1440, height: 900 });
+ await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
  assert.match(await page.$eval(popup, el => el.textContent), /3 open quotations.*Unlinked company/);
  await page.locator('[aria-label="Close open quotations"]').click();
  await page.waitForSelector(popup, { hidden: true });
@@ -97,6 +101,14 @@ test('Quotations supports credit requests, service status tabs, and an in-dashbo
  await page.waitForSelector(`${popup} iframe[title="Full quotation document"]`);
  assert.equal(await page.$eval('#dashboard-open-quotations-title', el => el.textContent), 'AT/26-27/526');
  assert.equal(await page.$eval('#route', el => el.textContent), '/summary-dashboard');
+ await page.locator('[aria-label="Back to open quotations"]').click();
+ await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'View quotation AT/26-27/526');
+ await page.locator(`${popup} button[aria-expanded="true"]`).click();
+ await page.waitForSelector(`${popup} .dashboard-quotation-disclosure`, { hidden: true });
+ await page.type('input[aria-label="Search open quotations"]', 'no results for this search');
+ await page.waitForFunction(selector => document.querySelector(selector)?.textContent.includes('No open quotations found.'), {}, popup);
+ await page.locator('[aria-label="Clear quotation search"]').click();
+ await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Search open quotations');
  assert.deepEqual(errors, []);
  }finally{await browser.close();}
 });

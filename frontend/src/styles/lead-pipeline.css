@@ -1292,88 +1292,120 @@
   inset: 0;
   box-sizing: border-box;
   width: min(960px, calc(100% - 32px));
+  height: min(740px, 86dvh);
   max-width: none;
   max-height: 86dvh;
   margin: auto;
   padding: 0;
   overflow: hidden;
-  border: 1px solid #d5e4e7;
-  border-radius: 18px;
+  border: 1px solid #c9dadd;
+  border-radius: 22px;
   background: #fff;
   color: #142a42;
-  box-shadow: 0 24px 80px #0e243b40;
+  box-shadow: 0 24px 72px #081f354d, 0 5px 18px #193b431f;
 }
-.dashboard-quotation-dialog[open] { display: flex; flex-direction: column; }
-.dashboard-quotation-dialog::backdrop { background: #10243b75; }
+.dashboard-quotation-dialog[open] { display: flex; flex-direction: column; animation: dashboard-quote-enter 240ms cubic-bezier(.22,1,.36,1) both; }
+.dashboard-quotation-dialog::backdrop { background: #112b408c; backdrop-filter: blur(3px); animation: dashboard-quote-fade 220ms ease-out both; }
+@keyframes dashboard-quote-enter { from { opacity: 0; transform: translateY(12px) scale(.99); } to { opacity: 1; transform: none; } }
+@keyframes dashboard-quote-fade { from { opacity: 0; } to { opacity: 1; } }
 .dashboard-quotation-header, .dashboard-quotation-toolbar, .dashboard-quotation-footer {
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 20px;
+  padding: 14px 22px;
 }
-.dashboard-quotation-header { border-bottom: 1px solid #dce9e9; background: #f1f9f7; }
+.dashboard-quotation-header { min-height: 84px; border-bottom: 1px solid #dce9e9; background: linear-gradient(110deg, #e5f5f0 0%, #f4faf9 66%, #fff 100%); }
 .dashboard-quotation-header > div { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.dashboard-quotation-header h2 { margin: 0; font-size: 19px; font-weight: 750; overflow-wrap: anywhere; }
-.dashboard-quotation-header p { margin: 2px 0 0; color: #476378; font-size: 13px; }
+.dashboard-quotation-header h2 { margin: 0; font-size: 22px; font-weight: 750; letter-spacing: -.025em; overflow-wrap: anywhere; }
+.dashboard-quotation-header p { margin: 3px 0 0; color: #3f5f70; font-size: 13px; font-variant-numeric: tabular-nums; }
 .dashboard-quotation-header-icon, .dashboard-quotation-icon-button {
   display: grid;
   flex: none;
   place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
   color: #216d64;
 }
-.dashboard-quotation-header-icon { background: #d9efea; }
-.dashboard-quotation-icon-button { border: 1px solid #d2e1e4; background: #fff; }
-.dashboard-quotation-icon-button:hover { background: #e7f5f1; }
+.dashboard-quotation-header-icon { background: #11685e; color: #fff; box-shadow: 0 4px 12px #11685e30; }
+.dashboard-quotation-icon-button { border: 1px solid #d2e1e4; background: #fff; transition: background 160ms, border-color 160ms; }
+.dashboard-quotation-icon-button:not(:disabled):hover { border-color: #8dbab2; background: #e7f5f1; }
+.dashboard-quotation-icon-button:disabled { color: #899cab; background: #f8fafb; cursor: default; }
+.dashboard-quotation-dialog button:focus-visible { outline: 2px solid #208477; outline-offset: 2px; }
 .dashboard-quotation-toolbar { border-bottom: 1px solid #e7edef; }
-.dashboard-quotation-toolbar label {
+.dashboard-quotation-search {
   display: flex;
   flex: 1;
   align-items: center;
   gap: 9px;
   min-width: 0;
-  padding: 9px 12px;
+  min-height: 44px;
+  padding: 8px 12px;
   border: 1px solid #cbdbe0;
-  border-radius: 9px;
+  border-radius: 11px;
   color: #526a7e;
 }
-.dashboard-quotation-toolbar label:focus-within { outline: 2px solid #51988c; outline-offset: 1px; }
+.dashboard-quotation-search:focus-within { outline: 2px solid #51988c; outline-offset: 1px; }
+.dashboard-quotation-search > button { display: grid; flex: none; place-items: center; width: 26px; height: 26px; border-radius: 6px; }
+.dashboard-quotation-search > button:hover { background: #edf4f4; }
 .dashboard-quotation-toolbar svg { flex: none; }
 .dashboard-quotation-toolbar input { width: 100%; min-width: 0; background: transparent; outline: none; color: #142a42; font-size: 13px; }
 .dashboard-quotation-toolbar > span, .dashboard-quotation-footer { color: #476378; font-size: 13px; }
-.dashboard-quotation-list { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 12px 20px; background: #f5f8fa; }
-.dashboard-quotation-company { margin-bottom: 8px; border: 1px solid #dce5eb; border-radius: 10px; background: #fff; }
+.dashboard-quotation-list { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #a4c6c2 transparent; scrollbar-gutter: stable; padding: 14px 22px; background: #f2f7f8; }
+.dashboard-quotation-company { margin-bottom: 8px; border: 1px solid #dce7ea; border-radius: 13px; background: #fff; transition: border-color 180ms, box-shadow 180ms; }
+.dashboard-quotation-company[data-expanded="true"] { border-color: #99c8bf; box-shadow: 0 4px 14px #113e4510; }
 .dashboard-quotation-company:last-child { margin-bottom: 0; }
 .dashboard-quotation-company-toggle {
   display: grid;
   width: 100%;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 10px;
-  min-height: 48px;
-  padding: 10px 13px;
-  border-radius: 9px;
+  gap: 12px;
+  min-height: 58px;
+  padding: 8px 14px;
+  border-radius: 12px;
   text-align: left;
+  transition: background 160ms;
 }
-.dashboard-quotation-company-toggle:hover, .dashboard-quotation-company-toggle[aria-expanded="true"] { background: #edf7f5; }
+.dashboard-quotation-company-toggle:hover { background: #f5faf9; }
+.dashboard-quotation-company-toggle[aria-expanded="true"] { border-radius: 12px 12px 0 0; background: #eaf6f3; }
 .dashboard-quotation-company-toggle strong { font-size: 14px; overflow-wrap: anywhere; }
 .dashboard-quotation-company-toggle svg { color: #31786f; }
-.dashboard-quotation-company-toggle span { padding: 3px 8px; border-radius: 999px; background: #e3f4ee; color: #185e54; font-size: 12px; white-space: nowrap; }
-.dashboard-quotation-company-quotes { margin: 0; padding: 0 14px; list-style: none; }
-.dashboard-quotation-entry { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 20px; padding: 12px 0; border-top: 1px solid #e2ebed; font-size: 13px; }
-.dashboard-quotation-link { display: inline-flex; align-items: center; gap: 5px; color: #15695e; font-weight: 750; }
-.dashboard-quotation-link:hover { text-decoration: underline; }
-.dashboard-quotation-amount { text-align: right; white-space: nowrap; }
-.dashboard-quotation-amount small { display: block; color: #526a7e; font-size: 11px; }
-.dashboard-quotation-amount strong { color: #9b441a; font-size: 15px; font-variant-numeric: tabular-nums; }
-.dashboard-quotation-footer { border-top: 1px solid #e7edef; }
-.dashboard-quotation-preview { display: block; width: 100%; height: min(68dvh, 760px); border: 0; }
+.dashboard-quotation-client-icon { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 9px; background: #eef6f5; }
+.dashboard-quotation-count { padding: 4px 9px; border-radius: 999px; background: #def0eb; color: #185e54; font-size: 12px; font-weight: 650; white-space: nowrap; }
+.dashboard-quotation-chevron { transition: transform 200ms ease; }
+.dashboard-quotation-company-toggle[aria-expanded="true"] .dashboard-quotation-chevron { transform: rotate(180deg); }
+.dashboard-quotation-disclosure { overflow: hidden; }
+.dashboard-quotation-company-quotes { margin: 0; padding: 0 16px; list-style: none; }
+.dashboard-quotation-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px 24px; padding: 15px 0; border-top: 1px solid #dcebea; font-size: 13px; }
+.dashboard-quotation-number { color: #155e55; font-size: 14px; }
+.dashboard-quotation-meta { margin: 3px 0 9px; color: #536b7c; font-size: 12px; }
+.dashboard-quotation-services { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.dashboard-quotation-services li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; color: #243e51; }
+.dashboard-quotation-services li::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: #449488; align-self: center; }
+.dashboard-quotation-services small { padding: 1px 6px; border-radius: 5px; background: #eef4f7; color: #3f5e72; font-size: 11px; white-space: nowrap; }
+.dashboard-quotation-link { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 5px 10px; border: 1px solid #b7d6d0; border-radius: 8px; background: #f0f8f6; color: #155e55; font-weight: 700; transition: background 160ms; }
+.dashboard-quotation-link:hover { background: #dcf1eb; }
+.dashboard-quotation-amount { display: grid; justify-items: end; gap: 3px; text-align: right; }
+.dashboard-quotation-amount small { color: #526a7e; font-size: 11px; }
+.dashboard-quotation-amount strong { color: #944419; font-size: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dashboard-quotation-amount button { margin-top: 6px; }
+.dashboard-quotation-footer { border-top: 1px solid #e7edef; background: #fff; }
+.dashboard-quotation-footer nav { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+.dashboard-quotation-footer button { width: 34px; height: 34px; border-radius: 8px; }
+.dashboard-quotation-empty { display: grid; justify-items: center; gap: 9px; padding: 36px 12px; color: #476378; font-size: 14px; }
+.dashboard-quotation-preview-panel { flex: 1; min-height: 0; background: #eef4f6; }
+.dashboard-quotation-preview { display: block; width: 100%; height: 100%; border: 0; animation: dashboard-quote-fade 180ms ease-out both; }
 @media (max-width: 560px) {
-  .dashboard-quotation-dialog { width: calc(100% - 16px); max-height: 92dvh; }
+  .dashboard-quotation-dialog { width: calc(100% - 16px); height: 88dvh; max-height: 88dvh; border-radius: 16px; }
   .dashboard-quotation-header, .dashboard-quotation-toolbar, .dashboard-quotation-footer, .dashboard-quotation-list { padding-inline: 12px; }
   .dashboard-quotation-toolbar > span { display: none; }
-  .dashboard-quotation-amount { text-align: left; }
+  .dashboard-quotation-entry { grid-template-columns: minmax(0, 1fr); }
+  .dashboard-quotation-amount { justify-items: start; text-align: left; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-quotation-dialog[open], .dashboard-quotation-dialog::backdrop, .dashboard-quotation-preview { animation: none; }
+  .dashboard-quotation-dialog * { transition: none; }
 }
