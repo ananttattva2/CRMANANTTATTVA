@@ -105,6 +105,48 @@ const referenceKey = value => {
   const number = leadCodeNumber(value);
   return number ? `atpl-lead-${number.padStart(4, '0')}` : value.toLowerCase();
 };
+const accountIdsOnLead = lead => [...new Set([
+  ...(lead?.serviceSelections || []).map(service => service.accountsRecordId), lead?.accountsRecordId
+].map(identity).filter(Boolean))];
+const compactCompany = value => identity(value).toLowerCase().replace(/[^a-z0-9]/g, '');
+
+async function hydratePortfolioLeadAccounts(Lead, clients, leadFilter) {
+  // Use only already-visible Client Masters. Look up the actual business code
+  // when the saved Mongo reference points at an older copy with no accounts.
+  const codesByClient = new Map();
+  for (const client of clients) {
+    if (client.assignmentOnly || accountIdsOnLead(client.selectedLead).length) continue;
+    const meta = client.data?.importMeta || {};
+    const snapshot = client.data?.selectedLeadSnapshot || {};
+    const code = [meta.leadNumber, snapshot.leadCode, meta.clientCode, meta.uniqueId, client.selectedLead?.leadCode]
+      .map(identity).find(leadCodeNumber);
+    if (code) codesByClient.set(client, code);
+  }
+  if (!codesByClient.size) return clients;
+  const codes = [...new Set([...codesByClient.values()].flatMap(code => {
+    const number = leadCodeNumber(code).padStart(4, '0');
+    return [code, `ATPL-LEAD-${number}`, `ATPL-${number}`];
+  }))];
+  const leads = await Lead.aggregate([
+    { $match: { $and: [leadFilter, { leadCode: { $in: codes } }] } },
+    { $project: { leadCode: 1, company: 1, companyName: 1, clientName: 1, accountsRecordId: 1, 'serviceSelections.accountsRecordId': 1 } }
+  ]).option({ maxTimeMS: 12000 });
+  const byCode = new Map();
+  for (const lead of leads) {
+    const key = referenceKey(lead.leadCode);
+    byCode.set(key, [...(byCode.get(key) || []), lead]);
+  }
+  return clients.map(client => {
+    const code = codesByClient.get(client);
+    if (!code) return client;
+    const names = [client.data?.basic?.clientLegalName, client.data?.selectedLeadSnapshot?.company,
+      client.data?.importMeta?.companyName, client.selectedLead?.company].map(compactCompany).filter(Boolean);
+    const matches = (byCode.get(referenceKey(code)) || []).filter(lead =>
+      names.includes(compactCompany(lead.company || lead.companyName || lead.clientName)));
+    const ids = matches.length === 1 ? accountIdsOnLead(matches[0]) : [];
+    return ids.length ? { ...client, portfolioLeadAccountIds: ids } : client;
+  });
+}
 const leadReferences = lead => [lead._id, lead.leadCode, lead.leadNumber, lead.sourceLeadId, lead.externalLeadId].map(identity).filter(Boolean);
 const clientLeadReferences = client => {
   const data = client?.data || {};
@@ -175,4 +217,4 @@ async function loadDashboardAssignments({ Client, Lead }, clientFilter, leadFilt
     return { clients: retained.map(client => ({ ...client, selectedLead: linkedLead(client) || client.selectedLead })), leads };
   });
 }
-module.exports = { leadProjection, clientProjection, compactPo, loadDashboardAssignments, createDashboardCache, invalidateDashboardReads, hasPermanentOwner };
+module.exports = { leadProjection, clientProjection, compactPo, loadDashboardAssignments, hydratePortfolioLeadAccounts, createDashboardCache, invalidateDashboardReads, hasPermanentOwner };

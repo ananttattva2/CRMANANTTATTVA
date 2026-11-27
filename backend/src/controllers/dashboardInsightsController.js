@@ -11,7 +11,7 @@ const Team = require('../models/Team');
 const { loadPurchaseOrders } = require('./purchaseOrderController');
 const { getVisibleUserScope, ownerFilter } = require('../utils/visibilityScope');
 const { loadOverallRecords } = require('../services/overallDashboardData');
-const { loadDashboardAssignments, createDashboardCache, leadProjection } = require('../services/dashboardReadModel');
+const { loadDashboardAssignments, hydratePortfolioLeadAccounts, createDashboardCache, leadProjection } = require('../services/dashboardReadModel');
 const { allocatedOwnerKeyGroups } = require('../services/overallDashboardUsers');
 const cachedOverallRecords = createDashboardCache({ name: 'overall-records' });
 const cachedAssignmentReviews = createDashboardCache({ name: 'assignment-reviews' });
@@ -348,9 +348,10 @@ exports.uploadTracker = async (req, res) => {
           if (!permanentOwners.length) return true; // unassigned -> visible to all
           return permanentOwners.some(key => visibleIdentities.has(String(key).trim().toLowerCase()));
         });
+        const assignments = await hydratePortfolioLeadAccounts(Lead, portfolioClients, dashboardLeadExclusionFilter(excluded));
         res.set('Cache-Control', 'private, no-store');
         res.set('Server-Timing', `references;dur=${referencesAt - startedAt}, snapshot;dur=${snapshotAt - referencesAt}, assignments;dur=${Date.now() - startedAt}`);
-        return res.json({ ok: true, visibility: scope === null ? 'all' : scope.ids.length > 1 ? 'team' : 'own', users, assignments: portfolioClients });
+        return res.json({ ok: true, visibility: scope === null ? 'all' : scope.ids.length > 1 ? 'team' : 'own', users, assignments });
       }
       const realIds = visibleClients.filter(client => !client.assignmentOnly).map(client => client._id);
       const [reviews, approvals] = await cachedAssignmentReviews(JSON.stringify(realIds.map(String).sort()), () => Promise.all([

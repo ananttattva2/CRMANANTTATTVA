@@ -132,6 +132,12 @@ export function portfolioServiceType(record) {
 export function portfolioAccountIds(services) {
   return [...new Set(services.flatMap(service => service.accountIds || [service.accountId]).filter(Boolean))]
 }
+export function portfolioAccountDisplay(services) {
+  const serviceIds = portfolioAccountIds(services)
+  if (serviceIds.length) return { ids: serviceIds, source: 'Service' }
+  const ids = [...new Set(services.flatMap(service => service.leadAccountIds || []))]
+  return { ids, source: ids.length ? 'Linked lead' : '' }
+}
 export function annualActionReasons(record) {
   const services = (record.services || []).filter(service => service.offeredServices?.includes('Annual Return Filling'))
   const reasons = []
@@ -302,6 +308,9 @@ export function applicationRecord(client) {
     scopedAssignment?.accountsRecordId,
     matchedSnapshotService?.accountsRecordId, matchedSnapshotAssignment?.accountsRecordId, sameServiceSnapshot && snapshot.accountsRecordId,
     singleLeadService && lead.accountsRecordId)
+  const leadAccountIds = client.assignmentOnly ? [] : [...new Set([
+    ...services.map(item => item.accountsRecordId), lead.accountsRecordId, ...(client.portfolioLeadAccountIds || [])
+  ].map(value => value == null ? '' : String(value).trim()).filter(Boolean))]
   const serviceAnnualYears = annual ? [
     ...(Array.isArray(service.annualReturnYears) ? service.annualReturnYears : []),
     service.firstAnnualReturnYearApplicable,
@@ -327,7 +336,7 @@ export function applicationRecord(client) {
   const status = normalize(cpcb)
   const inactive = /suspend|discontinu|inactive/.test(normalize(`${clientStatus} ${visibility} ${cpcb}`))
   const bucket = cpcbStatusBucket(cpcb)
-  return { id: String(client._id), assignmentOnly: Boolean(client.assignmentOnly), statusSourceClientId: client.statusSourceClientId || '', leadId: String(lead._id || ''), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, lead.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, lead.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, lead.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), offeredServices: canonicalOfferedServices(offered), closed, bucket, live: !inactive, annual, annualEligiblePo, annualWorkflowReady, annualYears, poAnnualYears, accountId, recordedAnnualYears, sourceIds: [String(client._id)] }
+  return { id: String(client._id), assignmentOnly: Boolean(client.assignmentOnly), statusSourceClientId: client.statusSourceClientId || '', leadId: String(lead._id || ''), companyKey: assignedCompanyKey(client), name: text(lead.company, lead.companyName, basic.clientLegalName, meta.companyName) || 'Unnamed client', category, cpcb: cpcb || 'Not recorded', clientStatus: clientStatus || 'Not recorded', visibility: visibility || 'Not recorded', state: state || 'Not recorded', created: client.createdAt || null, code: text(meta.clientCode, meta.uniqueId, client.uniqueId, meta.leadNumber, lead.leadCode) || 'Not recorded', leadCode: text(lead.leadCode, meta.leadNumber), industry: text(service.industryType, lead.industryType, basic.companyIndustry, basic.industryType), eprCategory: text(service.eprCategory, lead.eprCategory, basic.eprCategory), offered: (Array.isArray(offered) ? offered : [offered]).filter(Boolean).join(' / '), unit: text(service.plantUnit, lead.plantUnit, basic.plantUnit, data.selectedLeadSnapshot?.plantUnit), offeredServices: canonicalOfferedServices(offered), closed, bucket, live: !inactive, annual, annualEligiblePo, annualWorkflowReady, annualYears, poAnnualYears, accountId, leadAccountIds, recordedAnnualYears, sourceIds: [String(client._id)] }
 }
 // Placeholders and blank drafts do not represent another application when
 // this lead already has a submitted master for the same applicant/unit/service.
@@ -424,7 +433,7 @@ export function buildApplicationPortfolio(assignments, users) {
 export function matchesPortfolioSearch(row, query) {
   const normalizeSearch = value => String(value || '').toLowerCase().normalize('NFKC').replace(/corpration/g, 'corporation').replace(/[^a-z0-9]/g, '')
   const needle = normalizeSearch(query)
-  return !needle || [row, ...(row.services || [])].some(service => [service.name, service.code, service.leadCode, service.category, service.cpcb, service.state, service.industry, service.eprCategory, service.offered, ...portfolioAccountIds([service])].some(value => normalizeSearch(value).includes(needle)))
+  return !needle || [row, ...(row.services || [])].some(service => [service.name, service.code, service.leadCode, service.category, service.cpcb, service.state, service.industry, service.eprCategory, service.offered, ...portfolioAccountDisplay([service]).ids].some(value => normalizeSearch(value).includes(needle)))
 }
 
 // Client Master and assignment snapshots can describe the same displayed
@@ -432,12 +441,13 @@ export function matchesPortfolioSearch(row, query) {
 export function uniquePortfolioServiceDetails(services = [], { includeExportFields = false } = {}) {
   const seen = new Set()
   return services.filter(service => {
+    const accounts = includeExportFields ? portfolioAccountDisplay([service]) : null
     const key = JSON.stringify([
       service.leadId || service.leadCode || service.code,
       service.leadCode || service.code, service.name, service.category,
       service.industry, service.eprCategory, service.offered,
       service.unit, service.cpcb, service.clientStatus, service.visibility,
-      ...(includeExportFields ? [portfolioAccountIds([service]).slice().sort().join(', '), (service.recordedAnnualYears || []).slice().sort().join(', ')] : [])
+      ...(accounts ? [[...accounts.ids].sort().join(', '), accounts.source, (service.recordedAnnualYears || []).slice().sort().join(', ')] : [])
     ].map(value => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase()))
     if (seen.has(key)) return false
     seen.add(key)

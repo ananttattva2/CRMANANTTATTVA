@@ -102,8 +102,49 @@ test('legacy accounts are recovered through lead codes and matched to the correc
   await exported.xlsx.load(await workbook.xlsx.writeBuffer());
   for (const sheetName of ['Clients', 'Service Statuses']) {
     const sheet = exported.getWorksheet(sheetName);
-    const rows = sheet.getRows(4, 3).map(row => [row.getCell('F').value, row.getCell('R').value]);
-    assert.deepEqual(Object.fromEntries(rows), ids(group.records));
+    const rows = sheet.getRows(4, 3).map(row => [row.getCell('F').value, [row.getCell('R').value, row.getCell('S').value]]);
+    assert.deepEqual(Object.fromEntries(rows), {
+      'Brand Owner': ['ATPL-LEAD-0142', 'Service'],
+      Importer: ['ATPL-LEAD-0143', 'Service'],
+      Producer: ['ATPL-LEAD-0142, ATPL-LEAD-0143', 'Linked lead']
+    });
+  }
+});
+
+test('portfolio displays both linked lead IDs when the saved Annual Return services have no account mapping', async () => {
+  const { hydratePortfolioLeadAccounts } = require('../src/services/dashboardReadModel');
+  const { applicationRecord, portfolioAccountDisplay, matchesPortfolioSearch } = await import('../../frontend/src/utils/applicationPortfolio.mjs');
+  const { createApplicationPortfolioWorkbook } = await import('../../frontend/src/utils/applicationPortfolioExport.mjs');
+  const ExcelJS = require('../../frontend/node_modules/exceljs');
+  const recordedIds = ['ATPL-LEAD-0142', 'ATPL-LEAD-0143'];
+  const liveLead = { leadCode: 'ATPL-0190', company: 'Legacy Plastics', serviceSelections: recordedIds.map(accountsRecordId => ({ accountsRecordId })) };
+  const clients = ['Brand Owner', 'Importer', 'Producer'].map((piboCategory, index) => ({
+    _id: `legacy-${index}`, workflowStatus: 'submitted', assignedServiceId: `annual-${index}`,
+    data: { importMeta: { uniqueId: 'ATPL-LEAD-0190' }, basic: {
+      clientLegalName: index === 2 ? 'Different Company' : liveLead.company,
+      piboCategory, servicesOffered: 'Annual Return Filling'
+    } },
+    selectedLead: { serviceSelections: [{ assignedServiceId: `annual-${index}`, piboCategory, servicesOffered: 'Annual Return Filling' }] }
+  }));
+  const scope = { deletedAt: null };
+  const Lead = { aggregate(pipeline) {
+    assert.deepEqual(pipeline[0].$match.$and, [scope, { leadCode: { $in: ['ATPL-LEAD-0190', 'ATPL-0190'] } }]);
+    return { option: async () => [liveLead] };
+  } };
+  const applications = (await hydratePortfolioLeadAccounts(Lead, clients, scope)).map(applicationRecord);
+  for (const row of applications.slice(0, 2)) {
+    assert.equal(row.accountId, '');
+    assert.deepEqual(portfolioAccountDisplay([row]), { ids: recordedIds, source: 'Linked lead' });
+    assert.equal(matchesPortfolioSearch(row, recordedIds[1]), true);
+  }
+  assert.equal(portfolioAccountDisplay([applications[2]]).source, '');
+  const workbook = await createApplicationPortfolioWorkbook(applications, 'All SPOCs', 'Total');
+  const exported = new ExcelJS.Workbook();
+  await exported.xlsx.load(await workbook.xlsx.writeBuffer());
+  for (const sheetName of ['Clients', 'Service Statuses']) {
+    const sheet = exported.getWorksheet(sheetName);
+    assert.deepEqual(sheet.getRows(4, 3).map(row => [row.getCell('R').value, row.getCell('S').value]),
+      [[recordedIds.join(', '), 'Linked lead'], [recordedIds.join(', '), 'Linked lead'], ['', '']]);
   }
 });
 

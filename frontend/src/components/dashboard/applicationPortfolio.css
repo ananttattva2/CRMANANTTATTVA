@@ -48,6 +48,7 @@
 .portfolio-waste-tabs button[aria-selected=true] .portfolio-waste-icon{background:#ffffff20;color:#fff}
 .portfolio-waste-tabs button:focus-visible{outline:3px solid #6dc7c0;outline-offset:3px}
 .portfolio-dialog-table>table>tbody>tr>td:nth-child(2){min-width:110px;max-width:160px;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.portfolio-account-source{display:block;margin-top:2px;color:#516b80;font-size:10px}
 .portfolio-dialog-table>table>tbody>tr>td:nth-child(3){min-width:220px;max-width:320px}
 .portfolio-dialog-table>table>tbody>tr>td:nth-child(5),.portfolio-dialog-table>table>tbody>tr>td:nth-child(6){min-width:110px}
 .portfolio-service-totals{display:flex;flex-wrap:wrap;gap:8px;padding:0 28px 14px;margin:0}
