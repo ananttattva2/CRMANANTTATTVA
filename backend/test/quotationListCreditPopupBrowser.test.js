@@ -26,9 +26,16 @@ test('Quotations supports credit requests, service status tabs, and an in-dashbo
    {id:'hot-1',kind:'hot',state:'closed',company:'TEST',code:'LEAD-1',owner:'Sales One',createdAt:'2026-11-20',revenuePaise:0},
    {id:'hot-2',kind:'hot',state:'open',company:'Other company',code:'LEAD-2',owner:'Sales Two',createdAt:'2026-11-20',revenuePaise:0}
  ];
- export default {get:async url=>{
+ export default {get:async (url, options)=>{
  if(url==='/auth/me')return {data:{user:{_id:'staff',role:'admin',email:'staff@example.test'}}};
  if(url==='/leads/summary-dashboard')return {data:{rows:leads}};
+ if(url==='/quotations' && options?.params?.leadId) return new Promise((resolve,reject)=>{
+   (window.pipelineQuoteRequests ||= []).push({
+     leadId: options.params.leadId, signal: options.signal,
+     resolve: () => resolve({data:{quotations:[quote]}}),
+     reject: () => reject(new Error('offline'))
+   });
+ });
  if(url==='/quotations')return {data:{quotations:window.dashboardMode?[quote,closedQuote,otherQuote,unlinkedQuote]:[quote]}};
  if(url==='/quotations/'+quote._id){window.detailsCalls=(window.detailsCalls||0)+1;return new Promise((resolve,reject)=>{window.resolveCreditDetails=()=>resolve({data:{quotation:{...quote,_listOnly:false}}});window.rejectCreditDetails=()=>reject(new Error('offline'));});}
  return {data:{}};
@@ -109,6 +116,40 @@ test('Quotations supports credit requests, service status tabs, and an in-dashbo
  await page.waitForFunction(selector => document.querySelector(selector)?.textContent.includes('No open quotations found.'), {}, popup);
  await page.locator('[aria-label="Clear quotation search"]').click();
  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Search open quotations');
+ await page.locator('[aria-label="Close open quotations"]').click();
+ await page.waitForSelector(popup, { hidden: true });
+ await page.locator('[aria-label="Hot closed leads and PO value"] button:first-child').click();
+ const leadPopup = 'dialog.pipeline-lead-details[open]';
+ const toggle = `${leadPopup} .pipeline-details-quote-toggle`;
+ const details = `${leadPopup} .pipeline-details-quotes`;
+ await page.waitForSelector(leadPopup);
+ const bounds = await page.$eval(leadPopup, el => ({ width: el.offsetWidth, height: el.offsetHeight }));
+ assert.ok(bounds.width <= 1160 && bounds.height < 690, JSON.stringify(bounds));
+ await page.locator(toggle).click();
+ await page.waitForFunction(() => window.pipelineQuoteRequests?.length === 1);
+ assert.match(await page.$eval(details, el => el.textContent), /Loading quotations/);
+ await page.locator(toggle).click();
+ await page.waitForSelector(details, { hidden: true });
+ await page.evaluate(() => window.pipelineQuoteRequests[0].resolve());
+ assert.deepEqual(await page.evaluate(() => window.pipelineQuoteRequests.map(request => [request.leadId, request.signal.aborted])), [['hot-1', true]]);
+ await page.locator(toggle).click();
+ await page.waitForFunction(() => window.pipelineQuoteRequests.length === 2);
+ assert.match(await page.$eval(details, el => el.textContent), /Loading quotations/);
+ await page.evaluate(() => window.pipelineQuoteRequests[1].reject());
+ await page.waitForSelector(`${details} [role="alert"]`);
+ await page.locator(`${details} [role="alert"] button`).click();
+ await page.waitForFunction(() => window.pipelineQuoteRequests.length === 3);
+ await page.evaluate(() => window.pipelineQuoteRequests[2].resolve());
+ await page.waitForFunction(selector => document.querySelector(selector)?.textContent.includes('AT/26-27/526'), {}, details);
+ await page.locator(toggle).click();
+ await page.waitForSelector(details, { hidden: true });
+ assert.equal(await page.evaluate(() => window.pipelineQuoteRequests.length), 3);
+ await page.setViewport({ width: 390, height: 844 });
+ const mobile = await page.$eval(leadPopup, el => {
+   const body = el.querySelector('.pipeline-dialog-body');
+   return { width: el.offsetWidth, scrollWidth: body.scrollWidth, bodyWidth: body.clientWidth };
+ });
+ assert.ok(mobile.width <= 374 && mobile.scrollWidth <= mobile.bodyWidth + 1, JSON.stringify(mobile));
  assert.deepEqual(errors, []);
  }finally{await browser.close();}
 });
