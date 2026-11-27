@@ -24,6 +24,7 @@ import {
   quotationSelectedTerms,
   quotationPaymentTerm,
   PAYMENT_TERM_OPTIONS,
+  quotationEprCreditFixedTerms,
   quotationOwnerName,
   formatDisplayDate,
   quotationPreparedByName,
@@ -40,7 +41,7 @@ import { canReviseQuotation } from '../utils/quotationRevision.mjs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, Check, ChevronDown, Download, Edit3, Eye, FileSpreadsheet, FileText, Filter, Mail, MessageCircle, MoreHorizontal, Phone, Plus, RefreshCw, Save, Search, Trash2, UploadCloud, Users, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, ChevronDown, Download, Edit3, Eye, FileSpreadsheet, FileText, Filter, Lock, Mail, MessageCircle, MoreHorizontal, Phone, Plus, RefreshCw, Save, Search, Trash2, UploadCloud, Users, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import DashboardShell from '../components/dashboard/DashboardShell';
 import ProfileModal from '../components/dashboard/ProfileModal';
@@ -2683,6 +2684,18 @@ export default function Quotations() {
         <section className="mt-6 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-black text-slate-950">Terms & Conditions</h2>
           <p className="mt-1 text-sm font-bold text-slate-500">Select exactly one payment term. Additional custom terms can be added below.</p>
+          {(() => { const fixedTerms = quotationEprCreditFixedTerms(quotation); if (!fixedTerms.length) return null; return (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+              <p className="flex items-center gap-2 text-xs font-black uppercase tracking-[.16em] text-amber-700"><Lock className="h-4 w-4" /> Mandatory EPR Credit Terms (locked)</p>
+              <div className="mt-3 space-y-2">{fixedTerms.map((term, index) => (
+                <div key={`epr-fixed-term-${index}`} className="flex items-start gap-3 rounded-xl border border-amber-200 bg-white/70 p-3">
+                  <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-amber-100 text-xs font-black text-amber-700">{index + 1}</span>
+                  <span className="flex-1 text-sm font-bold leading-relaxed text-slate-700">{term}</span>
+                  <Lock className="mt-1 h-4 w-4 shrink-0 text-amber-500" />
+                </div>
+              ))}</div>
+            </div>
+          ); })()}
           <div className="mt-4 grid gap-3">{PAYMENT_TERM_OPTIONS.map((term) => { const checked = quotation.paymentTerm === term; return <label key={term} className={`flex cursor-pointer items-center gap-4 rounded-xl border p-4 transition ${checked ? 'border-emerald-400 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-100' : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-200'}`}><input type="radio" name="quotation-payment-term" checked={checked} onChange={() => togglePaymentTerm(term)} className="h-5 w-5 border-slate-300 accent-emerald-700" /><span className="font-black">{term}</span></label>; })}</div>
           <div className="mt-4 space-y-3">{quotation.terms.map((term, index) => PAYMENT_TERM_OPTIONS.includes(term) ? null : <div key={`custom-term-${index}`} className={`flex items-center gap-3 rounded-xl border p-3 transition ${quotation.paymentTerm === term && String(term || '').trim() ? 'border-emerald-400 bg-emerald-50 ring-2 ring-emerald-100' : 'border-slate-200 bg-white'}`}><input type="radio" name="quotation-payment-term" checked={quotation.paymentTerm === term && Boolean(String(term || '').trim())} disabled={!String(term || '').trim()} onChange={() => setQuotation((current) => ({ ...current, paymentTerm: term }))} className="h-5 w-5 shrink-0 border-slate-300 accent-emerald-700 disabled:cursor-not-allowed" aria-label="Select this custom payment term" /><input value={String(term || '')} onChange={(event) => setCustomTerm(index, event.target.value)} className="form-input flex-1 font-black" placeholder="Enter additional term or condition" /><button type="button" onClick={() => removeCustomTerm(index)} className="inline-flex h-10 items-center gap-2 rounded-lg px-3 font-black text-red-500 hover:bg-red-50"><X className="h-4 w-4" />Remove</button></div>)}</div>
           <button type="button" onClick={addCustomTerm} className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 font-black text-slate-700 hover:bg-slate-50"><Plus className="h-4 w-4" />Add Term</button>

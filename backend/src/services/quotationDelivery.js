@@ -26,8 +26,15 @@ async function eprCreditCalculationTable(quotation) {
 }
 async function clientEmailContent(subject, body, quotation = {}) {
   const signature = buildCompanySignature();
-  const calculationTable = await eprCreditCalculationTable(quotation);
-  return { subject, html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:15px;line-height:1.7"><div>${escapeHtml(body).replace(/\r?\n/g, '<br/>')}</div>${calculationTable}${signature}</div>`, logo: getIntroductionLogoAttachment() };
+  const [calculationTable, template] = await Promise.all([
+    eprCreditCalculationTable(quotation),
+    documentTemplate()
+  ]);
+  const fixedTerms = template.quotationEprCreditFixedTerms(quotation);
+  const termsBlock = fixedTerms.length
+    ? `<section style="margin-top:24px"><h3 style="margin:0 0 8px;color:#0f766e;font-size:17px">Terms &amp; Conditions</h3><ol style="margin:0;padding-left:20px">${fixedTerms.map(term => `<li style="margin-bottom:8px">${escapeHtml(term)}</li>`).join('')}</ol></section>`
+    : '';
+  return { subject, html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:15px;line-height:1.7"><div>${escapeHtml(body).replace(/\r?\n/g, '<br/>')}</div>${calculationTable}${termsBlock}${signature}</div>`, logo: getIntroductionLogoAttachment() };
 }
 async function quotationFilename(quotation) {
   return (await documentTemplate()).quotationFilename(quotation);

@@ -200,6 +200,27 @@ const PAYMENT_TERM_OPTIONS = [
   '100% advance payment'
 ];
 
+// Mandatory, non-editable terms that apply whenever a quotation contains any
+// EPR Credit service. These are derived from the items' business category and
+// are never stored as user-selectable terms.
+export const EPR_CREDIT_FIXED_TERMS = [
+  'As per PWM 2016, EPR Credit Rates shall be governed by Government of India, rates may vary in case of revision of rates by recyclers due to Government Norms.',
+  'Collection of specified plastic waste from various sources, including waste pickers, scrap dealers, aggregators, ULBs, educational institutions, and households.',
+  'Environmentally responsible disposal of the identified plastic waste through recycling processes or through cement plants for co-processing and energy recovery in waste-to-energy facilities.',
+  'Compliance with the Central Pollution Control Board (CPCB) guidelines and Plastic Waste Management (Amendment) Rules, 2022, for the collection and disposal of plastic waste.',
+  'Ensuring transparent documentation of collection and disposal operations, including Loading Weigh Slip, Unloading Weigh Slip, E-way Bill, Bill of Supply, Bill T/LR, Co-processing Certificate, and Certificate for Extended Producer Responsibility (EPR) Allocation.',
+  'EOL credit will not be having traceability documents as the same is waste to energy.'
+];
+
+export function quotationHasEprCredit(quotation = {}) {
+  const items = Array.isArray(quotation.items) ? quotation.items : [];
+  return items.some(isEprCreditItem);
+}
+
+export function quotationEprCreditFixedTerms(quotation = {}) {
+  return quotationHasEprCredit(quotation) ? [...EPR_CREDIT_FIXED_TERMS] : [];
+}
+
 function quotationPaymentTerm(row = {}) {
   const terms = Array.isArray(row.terms) ? row.terms.map((term) => String(term ?? '').trim()).filter(Boolean) : [];
   const selected = String(row.paymentTerm || '').trim();
@@ -357,9 +378,11 @@ function buildQuotationPrintHtml(quotation, options = {}) {
       ${!combined || firstInGroup ? `<td class="amount${combined ? ' combined-amount' : ''}"${combined ? ` rowspan="${groupSize}"` : ''}>${escapeHtml(formatInr(combined ? group.basicAmount : item.basicAmount))}</td>` : ''}
     </tr>
   `).join('');
+  const fixedTerms = quotationEprCreditFixedTerms(quotation);
   const selectedTerms = quotationSelectedTerms(quotation);
-  const terms = selectedTerms.length
-    ? selectedTerms.map((term, index) => `<p>${index + 1}. ${escapeHtml(term)}</p>`).join('')
+  const allTerms = [...fixedTerms, ...selectedTerms];
+  const terms = allTerms.length
+    ? allTerms.map((term, index) => `<p>${index + 1}. ${escapeHtml(term)}</p>`).join('')
     : '<p>No terms added.</p>';
   const scopeOfWork = (quotation.scopeOfWork || []).length
     ? `<div class="scope-list">${quotation.scopeOfWork.map((item, index) => `<div class="scope-row"><span class="scope-number">${index + 1}.</span><span class="scope-text">${escapeHtml(item)}</span></div>`).join('')}</div>`

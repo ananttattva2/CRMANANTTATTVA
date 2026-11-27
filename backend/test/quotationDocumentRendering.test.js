@@ -75,3 +75,61 @@ test('the actual attached/downloaded PDF preserves one quote page and both scope
   assert.equal(pdf.getPageCount(), 3);
   pdf.getPages().forEach(page => { assert.ok(Math.abs(page.getWidth() - 595.28) < 1); assert.ok(Math.abs(page.getHeight() - 841.89) < 1); });
 });
+
+test('EPR Credit fixed terms are exposed only when the quotation contains an EPR Credit item', async () => {
+  const shared = await template();
+  const eprQuote = { items: [{ businessCategory: 'EPR Credit', serviceCategory: 'EPR - Plastic Waste', servicesOffered: 'Category 1 - EOL' }] };
+  const consultancyQuote = { items: [{ businessCategory: 'EPR Consultancy', serviceCategory: 'EPR - Plastic Waste', servicesOffered: 'Registration' }] };
+  const mixedQuote = { items: [
+    { businessCategory: 'EPR Consultancy', serviceCategory: 'EPR - Plastic Waste', servicesOffered: 'Registration' },
+    { businessCategory: 'EPR Credit', serviceCategory: 'EPR - Plastic Waste', servicesOffered: 'Category 1 - Recycling' }
+  ] };
+  assert.equal(shared.quotationHasEprCredit(eprQuote), true);
+  assert.equal(shared.quotationEprCreditFixedTerms(eprQuote).length, shared.EPR_CREDIT_FIXED_TERMS.length);
+  assert.equal(shared.quotationHasEprCredit(consultancyQuote), false);
+  assert.deepEqual(shared.quotationEprCreditFixedTerms(consultancyQuote), []);
+  assert.equal(shared.quotationHasEprCredit(mixedQuote), true);
+  assert.equal(shared.quotationEprCreditFixedTerms(mixedQuote).length, shared.EPR_CREDIT_FIXED_TERMS.length);
+});
+
+test('the canonical document prepends the frozen EPR Credit terms before user-selected terms', async () => {
+  const shared = await template();
+  const eprQuote = {
+    ...quote,
+    items: [{ businessCategory: 'EPR Credit', serviceCategory: 'EPR - Plastic Waste', servicesOffered: 'Category 1 - EOL', unit: 1, basicAmount: 1.3, serviceStartDate: '2026-11-20', serviceEndDate: '2026-11-20' }],
+    terms: ['100% after completion of work'],
+    paymentTerm: '100% after completion of work'
+  };
+  const html = shared.buildQuotationPrintHtml(eprQuote);
+  const fixedTerms = shared.EPR_CREDIT_FIXED_TERMS;
+  // Every fixed term text must be present in the rendered document.
+  fixedTerms.forEach((term) => assert.match(html, new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
+  // The first numbered term must be a fixed EPR Credit term, not the user-selected payment term.
+  assert.match(html, new RegExp(`1\\. ${fixedTerms[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  assert.match(html, /100% after completion of work/);
+});
+
+test('the canonical document omits EPR Credit fixed terms for non-EPR-Credit quotations', async () => {
+  const shared = await template();
+  const html = shared.buildQuotationPrintHtml(quote);
+  const fixedTerm = shared.EPR_CREDIT_FIXED_TERMS[0];
+  assert.doesNotMatch(html, new RegExp(fixedTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+test('the client email appends the EPR Credit terms block below the calculation table for EPR Credit quotations', async () => {
+  const eprQuote = {
+    ...quote,
+    items: [{ businessCategory: 'EPR Credit', serviceCategory: 'EPR - Plastic Waste', servicesOffered: 'Category 1 - EOL', unit: 1, basicAmount: 1.3, serviceStartDate: '2026-11-20', serviceEndDate: '2026-11-20' }],
+    terms: ['100% after completion of work'],
+    paymentTerm: '100% after completion of work'
+  };
+  const result = await delivery.clientEmailContent('Quotation', 'Please find the quotation attached.', eprQuote);
+  assert.match(result.html, /Terms &amp; Conditions/);
+  const shared = await template();
+  shared.EPR_CREDIT_FIXED_TERMS.forEach((term) => assert.match(result.html, new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
+});
+
+test('the client email omits the EPR Credit terms block for non-EPR-Credit quotations', async () => {
+  const result = await delivery.clientEmailContent('Quotation', 'Please find the quotation attached.', quote);
+  assert.doesNotMatch(result.html, /Terms &amp; Conditions/);
+});
