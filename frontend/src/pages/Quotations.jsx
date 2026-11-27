@@ -1,8 +1,9 @@
-import CompanyQuotationHistory, { CreditRequestButton } from '../features/eprCredit/CompanyQuotationHistory';
+import CompanyQuotationHistory, { CreditRequestButton, QuotationServiceCounts } from '../features/eprCredit/CompanyQuotationHistory';
+import CountUp from 'react-countup';
 import creditPricing, { CreditTargetSelect } from '../features/eprCredit/CreditTargetSelect';
 import { CreditRateRequestLoader } from '../features/eprCredit/CreditRateRequests';
 import { loadFullQuotation } from '../utils/quotationDetail.mjs';
-import { filterQuotationServices } from '../utils/quotationServiceView.mjs';
+import { countQuotationServices, filterQuotationServices } from '../utils/quotationServiceView.mjs';
 import {
   isMeaningfulQuotationItem,
   isCombinedQuotation,
@@ -1020,11 +1021,25 @@ export default function Quotations() {
     })
     : filteredQuotations, [filteredQuotations, listMode, serviceView]);
 
+  const tabCounts = useMemo(() => {
+    const companies = new Set();
+    let open = 0;
+    let closed = 0;
+    for (const row of filteredQuotations) {
+      const company = quotationCompany(row);
+      companies.add(quotationCompanyKey(row, company));
+      const counts = countQuotationServices(row);
+      if (counts.open) open += 1;
+      if (counts.closed) closed += 1;
+    }
+    return { company: companies.size, all: filteredQuotations.length, open, closed };
+  }, [filteredQuotations]);
+
   const companyGroups = useMemo(() => {
     const groups = new Map();
     groupedQuotations.forEach((row) => {
-      const company = String(row.companyName || row.leadDetails?.companyName || 'Unnamed company').trim();
-      const key = normalizeSearchValue(company) || `unknown-${row._id || row.id}`;
+      const company = quotationCompany(row);
+      const key = quotationCompanyKey(row, company);
       if (!groups.has(key)) groups.set(key, { key, company, quotations: [] });
       groups.get(key).quotations.push(row);
     });
@@ -2255,7 +2270,10 @@ export default function Quotations() {
                 ['company', 'Company Wise'], ['all', 'All Quotations'],
                 ['open', 'Open Quotations'], ['closed', 'Closed Quotations']
               ].map(([mode, label]) => (
-                <button key={mode} type="button" onClick={() => { setListMode(mode); setExpandedCompany(''); }} aria-pressed={listMode === mode} className={`rounded-lg px-5 py-2.5 text-sm font-black transition ${listMode === mode ? 'bg-emerald-700 text-white shadow' : 'text-slate-600 hover:bg-slate-50'}`}>{label}</button>
+                <button key={mode} type="button" onClick={() => { setListMode(mode); setExpandedCompany(''); }} aria-pressed={listMode === mode} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-black transition ${listMode === mode ? 'bg-emerald-700 text-white shadow' : 'text-slate-600 hover:bg-slate-50'}`}>
+                  {label}
+                  <QuotationTabCount count={tabCounts[mode]} unit={mode === 'company' ? 'companies' : 'quotations'} active={listMode === mode} />
+                </button>
               ))}
             </div>
             <p className="hidden text-xs font-bold text-slate-500 sm:block">{groupedView ? 'Grouped by company · latest company activity first' : 'Every quotation · latest quotation first'}</p>
@@ -2301,8 +2319,10 @@ export default function Quotations() {
                     const itemCount = group.quotations.reduce((sum, row) => sum + (row.serviceSummary?.items.length ?? row.items?.length ?? 0), 0);
                     const sharedPricing = group.quotations.some(row => row.serviceSummary?.total === null);
                     const grandTotal = group.quotations.reduce((sum, row) => sum + (row.serviceSummary ? row.serviceSummary.total || 0 : Number(row.grandTotal) || 0), 0);
-                    const openCount = group.quotations.filter((row) => (row.serviceSummary?.status || String(row.serviceState || 'open').toLowerCase()) !== 'closed').length;
-                    const leadStatus = openCount ? 'Open' : 'Closed';
+                    const serviceCounts = !serviceView && group.quotations.reduce((totals, row) => {
+                      const counts = countQuotationServices(row);
+                      return { closed: totals.closed + counts.closed, open: totals.open + counts.open };
+                    }, { closed: 0, open: 0 });
                     const first = group.latestQuotation || group.quotations[0] || {};
                     const isOpen = expandedCompany === group.key;
                     return <React.Fragment key={group.key}>
@@ -2313,7 +2333,10 @@ export default function Quotations() {
                         <td className="px-4 py-5"><span className="rounded-full bg-blue-50 px-3 py-2 font-black text-blue-700">{quotationCount}</span></td>
                         <td className="px-4 py-5 font-black text-slate-700">{itemCount}</td>
                         <td className="px-4 py-5 font-black text-orange-600">{sharedPricing ? 'Shared pricing' : formatInr(grandTotal)}</td>
-                        <td className="px-4 py-5"><span className={`rounded-full border px-3 py-2 text-xs font-black uppercase ${leadStatus === 'Open' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{leadStatus}{openCount && openCount !== quotationCount ? ` (${openCount})` : ''}</span></td>
+                        <td className="px-4 py-5">{serviceView
+                          ? <span className={`rounded-full border px-3 py-2 text-xs font-black uppercase ${listMode === 'open' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{listMode}</span>
+                          : <QuotationServiceCounts {...serviceCounts} />}
+                        </td>
                       </tr>
                       {isOpen && <tr><td colSpan={7} className="bg-slate-50 p-5"><div className="mb-3 flex items-center justify-between gap-3"><div><h3 className="font-black text-slate-900">{serviceView ? (listMode === 'open' ? 'Open Quotations' : 'Closed Quotations') : 'Company Wise Quotations'}</h3><p className="text-xs font-bold text-slate-500">Latest quotation is always listed first. Select View to open an individual quotation.</p></div><span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">{quotationCount} total</span></div><CompanyQuotationHistory quotations={group.quotations} serviceView={serviceView} onView={showQuotationDetail} onEdit={editQuotation} onRequestCredit={openCreditRequest} renderApproval={renderManagementApprovalAction} canRevise={canReviseQuotation} formatDate={formatDisplayDate} formatAmount={formatInr} /></td></tr>}
                     </React.Fragment>;
@@ -2870,6 +2893,24 @@ function QuotationItemsPanel({ quotation, items }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function quotationCompany(row) {
+  return String(row.companyName || row.leadDetails?.companyName || 'Unnamed company').trim();
+}
+
+function quotationCompanyKey(row, company) {
+  return normalizeSearchValue(company) || `unknown-${row._id || row.id}`;
+}
+
+function QuotationTabCount({ count, unit, active }) {
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+  return (
+    <span className={`inline-flex min-w-7 justify-center rounded-full px-1.5 py-0.5 text-xs font-bold tabular-nums ${active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'}`}>
+      <span className="sr-only">{count} {count === 1 ? (unit === 'companies' ? 'company' : 'quotation') : unit}</span>
+      <span aria-hidden="true">{reduceMotion ? count : <CountUp end={count} duration={0.45} preserveValue separator="," />}</span>
+    </span>
   );
 }
 

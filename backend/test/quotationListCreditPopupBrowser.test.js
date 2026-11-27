@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const esbuild = require('../../frontend/node_modules/esbuild');
-test('the actual Quotations list opens its credit popup immediately without navigation',async()=>{
+test('the Quotations list opens its credit popup without navigation and shows service counts by tab',async()=>{
  const bundle=await esbuild.build({stdin:{resolveDir:path.resolve(__dirname,'../../frontend'),loader:'jsx',contents:`
  import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter,useLocation} from 'react-router-dom';import Quotations from './src/pages/Quotations.jsx';
  localStorage.setItem('user',JSON.stringify({_id:'staff',name:'Test user',email:'staff@example.test',role:'admin'}));
@@ -15,6 +15,8 @@ test('the actual Quotations list opens its credit popup immediately without navi
  build.onLoad({filter:/.*/,namespace:'fixture'},args=>({contents:args.path==='shell'?'export default function Shell({children}){return children;}':args.path==='refresh'?'export default function useCrmRefresh(){};':`
  export const readApiError=async(error,fallback)=>fallback;export const getStoredToken=()=>'';export const clearStoredSession=()=>{};
  const quote={_id:'507f1f77bcf86cd799439011',_listOnly:true,quotationNumber:'AT/26-27/526',companyName:'TEST',leadDetails:{companyName:'TEST',contactPerson:'Test Contact'},status:'rejected',quotationDate:'2026-11-20',createdAt:'2026-11-20',items:[{businessCategory:'EPR Credit',servicesOffered:'Category 2 – Recycling',basicAmount:2.4}]};
+ quote.items.push(...['Open service', 'Closed service A', 'Closed service B', 'Closed service C'].map(servicesOffered=>({servicesOffered,basicAmount:100})));
+ quote.itemClosureStates=['open','open','closed','closed','closed'];
  export default {get:async url=>{
  if(url==='/auth/me')return {data:{user:{_id:'staff',role:'admin',email:'staff@example.test'}}};
  if(url==='/quotations')return {data:{quotations:[quote]}};
@@ -31,5 +33,24 @@ test('the actual Quotations list opens its credit popup immediately without navi
  await page.waitForSelector('input[aria-label="Requested amount for item 1"]');assert.equal(await page.$eval('#route',el=>el.textContent),'/sales/quotations');
  await page.$eval('input[aria-label="Requested amount for item 1"]',element=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(element,'1.80');element.dispatchEvent(new Event('input',{bubbles:true}));});
  await page.evaluate(()=>[...document.querySelectorAll('[role=dialog] button')].find(button=>button.textContent==='Submit Credit Request').click());await page.waitForFunction(()=>window.creditSubmission?.body.changes[0].requestedAmount==='1.80');assert.equal(await page.$eval('#route',el=>el.textContent),'/sales/quotations');await page.waitForFunction(()=>!document.querySelector('[role=dialog]'));assert.equal(await page.evaluate(()=>document.body.style.overflow),'');assert.deepEqual(errors,[]);
+ const tabs = '[aria-label="Quotation list view"] button';
+ await page.waitForFunction(selector => {
+   const buttons = [...document.querySelectorAll(selector)];
+   return buttons.length === 4 && buttons.every(button => button.querySelector('[aria-hidden="true"]')?.textContent === '1');
+ }, {}, tabs);
+ const ratio = await page.$eval('tbody [title="3 closed / 2 open services"]', el =>
+   [...el.querySelectorAll('[aria-hidden="true"]')].map(span => [span.textContent, span.className]));
+ assert.deepEqual(ratio, [['3', 'text-emerald-700'], ['/', 'text-slate-400'], ['2', 'text-red-600']]);
+ for (const [tab, expected, excluded, status] of [
+   ['Open Quotations', 'Open service', 'Closed service A', 'open'],
+   ['Closed Quotations', 'Closed service A', 'Open service', 'closed']
+ ]) {
+   await page.evaluate(label => [...document.querySelectorAll('button')].find(button => button.textContent.trim().startsWith(label)).click(), tab);
+   await page.evaluate(() => [...document.querySelectorAll('button')].find(button => button.textContent.includes('Click to view 1 quotation')).click());
+   await page.waitForFunction(text => document.querySelector('table table')?.textContent.includes(text), {}, expected);
+   const [text, serviceStatus] = await page.$eval('table table', table => [table.textContent, table.tBodies[0].rows[0].cells[5].textContent.trim()]);
+   assert.ok(!text.includes(excluded));
+   assert.equal(serviceStatus, status);
+ }
  }finally{await browser.close();}
 });

@@ -1,9 +1,18 @@
 import { normalizeCombinedPricingGroups, quotationItemKey, quotationItemsTotal } from './quotationDocument.mjs';
 
+function isClosedService(quotation, index) {
+  return (quotation.itemClosureStates?.[index] || quotation.serviceState) === 'closed';
+}
+
+export function countQuotationServices(quotation) {
+  const items = quotation.items || [];
+  const closed = items.reduce((count, _, index) => count + Number(isClosedService(quotation, index)), 0);
+  return { closed, open: items.length - closed };
+}
+
 export function filterQuotationServices(quotation, status) {
   const items = quotation.items || [];
-  const fallback = quotation.serviceState === 'closed' ? 'closed' : 'open';
-  const matches = index => (quotation.itemClosureStates?.[index] || fallback) === status;
+  const matches = index => isClosedService(quotation, index) === (status === 'closed');
   const visibleItems = items.filter((_, index) => matches(index));
   if (!visibleItems.length) return null;
 
@@ -22,12 +31,9 @@ export function filterQuotationServices(quotation, status) {
     }
   }
 
-  const openCount = status === 'open' ? visibleItems.length : items.length - visibleItems.length;
   return {
     items: visibleItems,
     total: total === null ? null : Math.round(total * 100) / 100,
-    status,
-    openCount,
-    closedCount: items.length - openCount
+    status
   };
 }

@@ -1,6 +1,18 @@
 import React from 'react';
 import { Eye } from 'lucide-react';
 import creditPricing from '../../../../shared/eprCreditPricing.cjs';
+import { countQuotationServices } from '../../utils/quotationServiceView.mjs';
+
+export function QuotationServiceCounts({ closed, open }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold tabular-nums" title={`${closed} closed / ${open} open services`}>
+      <span className="sr-only">{closed} closed, {open} open services</span>
+      <span aria-hidden="true" className="text-emerald-700">{closed}</span>
+      <span aria-hidden="true" className="text-slate-400">/</span>
+      <span aria-hidden="true" className="text-red-600">{open}</span>
+    </span>
+  );
+}
 
 export function CreditRequestButton({ quotation, onRequest }) {
   if (!quotation.items?.some(creditPricing.isCredit)) return null;
@@ -26,10 +38,9 @@ export default function CompanyQuotationHistory({ quotations, serviceView, onVie
     </td>
     <td className="p-3 font-black text-orange-600">{row.serviceSummary?.total === null ? 'Shared pricing' : formatAmount(row.serviceSummary?.total ?? (Number(row.grandTotal) || 0))}</td>
     <td className="p-3">
-      <span className={`font-black uppercase ${(row.serviceSummary?.status || String(row.serviceState || 'open').toLowerCase()) === 'closed' ? 'text-red-600' : 'text-emerald-700'}`}>{row.serviceSummary?.status || row.serviceState || 'open'}</span>
-      {row.serviceSummary?.openCount > 0 && row.serviceSummary.closedCount > 0 && (
-        <span className="mt-1 block whitespace-nowrap text-slate-600">{row.serviceSummary.openCount} Open · {row.serviceSummary.closedCount} Closed</span>
-      )}
+      {row.serviceSummary
+        ? <span className={`font-black uppercase ${row.serviceSummary.status === 'closed' ? 'text-red-600' : 'text-emerald-700'}`}>{row.serviceSummary.status}</span>
+        : <QuotationServiceCounts {...countQuotationServices(row)} />}
     </td><td className="p-3 font-black uppercase">{row.status || 'draft'}</td>
     <td className="p-3"><div className="flex min-w-[340px] flex-wrap items-center gap-2"><button type="button" onClick={() => onView(row)} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-white px-3 py-2 font-black text-emerald-700"><Eye className="h-3.5 w-3.5"/> View</button><CreditRequestButton quotation={row} onRequest={onRequestCredit}/>{renderApproval(row)}{canRevise(row) && <button type="button" onClick={() => onEdit(row)} className="rounded-lg border px-3 py-2 font-black text-orange-600">Edit</button>}</div></td>
   </tr>)}</tbody></table></div>;
