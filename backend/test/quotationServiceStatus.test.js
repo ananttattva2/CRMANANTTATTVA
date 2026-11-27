@@ -10,6 +10,7 @@ test('quotation directory reads current closures and splits counts and amounts f
   }));
   const quotation = { leadCode: 'ATPL-0646', items, serviceState: 'closed', grandTotal: 72000 };
   const lead = {
+    _id: '507f1f77bcf86cd799439011',
     leadCode: quotation.leadCode,
     status: 'closed',
     closedAt: '2026-11-25',
@@ -21,6 +22,7 @@ test('quotation directory reads current closures and splits counts and amounts f
   };
   const find = t.mock.method(Lead, 'find', () => ({ select: () => ({ lean: async () => [lead] }) }));
   const [row] = await attachQuotationServiceStatus([quotation]);
+  assert.equal(row.linkedLeadId, lead._id);
   const open = filterQuotationServices(row, 'open');
   const closed = filterQuotationServices(row, 'closed');
   assert.deepEqual(open.items, items.slice(0, 4));
@@ -46,6 +48,18 @@ test('legacy quotation items use compatible service labels and reject mismatched
     { piboCategory: 'Producer', servicesOffered: 'Annual Return' },
     { assignedServiceId: 'manual', sourceServiceIndex: 0 }
   ] }, lead), ['open', 'closed', 'open']);
+});
+
+test('Hot Leads quotation scope uses the lead creation period and resolved lead ID', async () => {
+  const { hotQuotationLeadIds, quotationMatchesLeadIds } = await import('../../frontend/src/utils/quotationServiceView.mjs');
+  const scope = hotQuotationLeadIds([
+    { id: 'hot-in-period', kind: 'hot', state: 'closed', createdAt: '2026-11-20' },
+    { id: 'hot-outside', kind: 'hot', createdAt: '2026-10-20' },
+    { id: 'cold', kind: 'cold', createdAt: '2026-11-20' }
+  ], { start: Date.parse('2026-11-01'), end: Date.parse('2026-12-01') });
+  assert.deepEqual([...scope], ['hot-in-period']);
+  assert.ok(quotationMatchesLeadIds({ linkedLeadId: 'hot-in-period', leadId: 'legacy-code' }, scope));
+  assert.equal(quotationMatchesLeadIds({ linkedLeadId: 'cold' }, scope), false);
 });
 
 test('combined prices remain whole when a group spans both quotation tabs', async () => {

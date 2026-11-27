@@ -2,11 +2,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const esbuild = require('../../frontend/node_modules/esbuild');
-test('the Quotations list opens its credit popup without navigation and shows service counts by tab',async()=>{
+test('Quotations supports credit requests, service status tabs, and the Hot Leads drill-down',async()=>{
  const bundle=await esbuild.build({stdin:{resolveDir:path.resolve(__dirname,'../../frontend'),loader:'jsx',contents:`
- import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter,useLocation} from 'react-router-dom';import Quotations from './src/pages/Quotations.jsx';
+ import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter,useLocation,useNavigate} from 'react-router-dom';import Quotations from './src/pages/Quotations.jsx';import LeadPipeline from './src/pages/LeadPipeline.jsx';
  localStorage.setItem('user',JSON.stringify({_id:'staff',name:'Test user',email:'staff@example.test',role:'admin'}));
- function App(){const location=useLocation();return <><output id="route">{location.pathname}</output><Quotations/></>}
+ function App(){const location=useLocation();const navigate=useNavigate();return <><output id="route">{location.pathname}</output><button id="fixture-dashboard" onClick={()=>{window.dashboardMode=true;navigate('/summary-dashboard')}}>Dashboard fixture</button>{location.pathname==='/summary-dashboard'?<LeadPipeline/>:<Quotations/>}</>}
  createRoot(document.getElementById('root')).render(<MemoryRouter initialEntries={['/sales/quotations']}><App/></MemoryRouter>);
  `},bundle:true,write:false,format:'iife',platform:'browser',define:{'import.meta.env':'{}'},loader:{'.css':'text'},plugins:[{name:'mocks',setup(build){
  build.onResolve({filter:/services\/api$/},()=>({path:'api',namespace:'fixture'}));
@@ -17,9 +17,17 @@ test('the Quotations list opens its credit popup without navigation and shows se
  const quote={_id:'507f1f77bcf86cd799439011',_listOnly:true,quotationNumber:'AT/26-27/526',companyName:'TEST',leadDetails:{companyName:'TEST',contactPerson:'Test Contact'},status:'rejected',quotationDate:'2026-11-20',createdAt:'2026-11-20',items:[{businessCategory:'EPR Credit',servicesOffered:'Category 2 – Recycling',basicAmount:2.4}]};
  quote.items.push(...['Open service', 'Closed service A', 'Closed service B', 'Closed service C'].map(servicesOffered=>({servicesOffered,basicAmount:100})));
  quote.itemClosureStates=['open','open','closed','closed','closed'];
+ quote.linkedLeadId='hot-1';
+ const closedQuote={...quote,_id:'closed',itemClosureStates:quote.items.map(()=> 'closed')};
+ const otherQuote={...quote,_id:'other',linkedLeadId:'hot-2',companyName:'Other company'};
+ const leads=[
+   {id:'hot-1',kind:'hot',state:'closed',company:'TEST',code:'LEAD-1',owner:'Sales One',createdAt:'2026-11-20',revenuePaise:0},
+   {id:'hot-2',kind:'hot',state:'open',company:'Other company',code:'LEAD-2',owner:'Sales Two',createdAt:'2026-11-20',revenuePaise:0}
+ ];
  export default {get:async url=>{
  if(url==='/auth/me')return {data:{user:{_id:'staff',role:'admin',email:'staff@example.test'}}};
- if(url==='/quotations')return {data:{quotations:[quote]}};
+ if(url==='/leads/summary-dashboard')return {data:{rows:leads}};
+ if(url==='/quotations')return {data:{quotations:window.dashboardMode?[quote,closedQuote,otherQuote]:[quote]}};
  if(url==='/quotations/'+quote._id){window.detailsCalls=(window.detailsCalls||0)+1;return new Promise((resolve,reject)=>{window.resolveCreditDetails=()=>resolve({data:{quotation:{...quote,_listOnly:false}}});window.rejectCreditDetails=()=>reject(new Error('offline'));});}
  return {data:{}};
  },post:async(url,body)=>{window.creditSubmission={url,body};return {data:{}}}};
@@ -52,5 +60,24 @@ test('the Quotations list opens its credit popup without navigation and shows se
    assert.ok(!text.includes(excluded));
    assert.equal(serviceStatus, status);
  }
+ await page.click('#fixture-dashboard');
+ await page.waitForFunction(() => document.querySelector('.sales-priority-open-row button:last-child strong')?.textContent === '2');
+ await page.type('input[aria-label="Search pipeline"]', 'LEAD-1');
+ await page.waitForFunction(() => document.querySelector('.sales-priority-open-row button:last-child strong')?.textContent === '1');
+ await page.locator('.sales-priority-open-row button:last-child').click();
+ await page.waitForFunction(() => document.querySelector('#route').textContent === '/sales/quotations'
+   && document.querySelector('[aria-label="Quotation list view"] [aria-pressed="true"]')?.textContent.includes('Open Quotations'));
+ await page.waitForFunction(() => document.body.innerText.includes('Click to view 1 quotation'));
+ assert.match(await page.$eval('body', el => el.innerText), /Hot Leads.*LEAD-1/);
+ assert.doesNotMatch(await page.$eval('tbody', el => el.textContent), /Other company/i);
+ await page.evaluate(() => [...document.querySelectorAll('button')].find(button => button.textContent.includes('Click to view 1 quotation')).click());
+ await page.waitForFunction(() => document.querySelector('table table')?.textContent.includes('Open service'));
+ assert.doesNotMatch(await page.$eval('table table', el => el.textContent), /Closed service A/);
+ await page.evaluate(() => [...document.querySelectorAll('table table button')].find(button => button.textContent.trim() === 'View').click());
+ await page.waitForFunction(() => window.detailsCalls === 3);
+ await page.evaluate(() => window.resolveCreditDetails());
+ await page.waitForFunction(() => Boolean(document.querySelector('[aria-label="Close quotation preview"]'))
+   && [...document.querySelectorAll('aside h2')].some(heading => heading.textContent === 'AT/26-27/526'));
+ assert.deepEqual(errors, []);
  }finally{await browser.close();}
 });

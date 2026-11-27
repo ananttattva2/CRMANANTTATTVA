@@ -1258,13 +1258,16 @@
 .sales-priority-pair>button:focus-visible{outline:2px solid var(--card-accent);outline-offset:-3px}
 .sales-priority-pair>button>svg{width:29px;height:29px;padding:5px;flex-shrink:0;border-radius:50%;color:var(--card-accent);background:color-mix(in srgb,var(--card-accent) 10%,white)}
 .sales-priority-pair>button>span{min-width:0}
-.sales-priority-money-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-top:1px solid #e7ece9}
-.sales-priority-money-row>button{display:flex;align-items:flex-start;gap:8px;min-width:0;min-height:70px;padding:12px 10px;text-align:left;transition:background .18s}
-.sales-priority-money-row>button+button{border-left:1px solid #e7ece9}
-.sales-priority-money-row>button:hover{background:#ffffffb5}
-.sales-priority-money-row>button:focus-visible{outline:2px solid var(--card-accent);outline-offset:-3px}
-.sales-priority-money-row>button>svg{width:27px;height:27px;padding:5px;flex:none;border-radius:50%;color:var(--card-accent);background:color-mix(in srgb,var(--card-accent) 10%,white)}
-.sales-priority-money-row>button>span{min-width:0}
+.sales-priority-money-row,.sales-priority-open-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.sales-priority-money-row{border-top:1px solid #e7ece9}
+.sales-priority-money-row>button,.sales-priority-open-row>button{display:flex;align-items:flex-start;gap:8px;min-width:0;min-height:70px;padding:12px 10px;text-align:left;transition:background .18s}
+.sales-priority-money-row>button+button,.sales-priority-open-row>button+button{border-left:1px solid #e7ece9}
+.sales-priority-money-row>button:hover,.sales-priority-open-row>button:not(:disabled):hover{background:#ffffffb5}
+.sales-priority-money-row>button:focus-visible,.sales-priority-open-row>button:focus-visible{outline:2px solid var(--card-accent);outline-offset:-3px}
+.sales-priority-money-row>button>svg,.sales-priority-open-row>button>svg{width:27px;height:27px;padding:5px;flex:none;border-radius:50%;color:var(--card-accent);background:color-mix(in srgb,var(--card-accent) 10%,white)}
+.sales-priority-money-row>button>span,.sales-priority-open-row>button>span{min-width:0}
+.sales-priority-open-row>button>.sales-priority-open-arrow{width:14px;height:14px;padding:0;margin-left:auto;background:none}
+@media(max-width:1350px){.sales-priority-open-row>button>.sales-priority-open-arrow{display:none}}
 .sales-priority-money-row strong{font-size:18px!important}
 .sales-priority-pair .pipeline-card-comparison{display:flex!important;align-items:flex-start;flex-direction:column;gap:4px;margin:8px 0 0!important;font-size:10px}
 .sales-priority-pair .pipeline-card-comparison>span{display:block!important}

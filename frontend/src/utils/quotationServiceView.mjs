@@ -1,4 +1,15 @@
 import { normalizeCombinedPricingGroups, quotationItemKey, quotationItemsTotal } from './quotationDocument.mjs';
+import { inPipelinePeriod } from './leadPipeline.mjs';
+
+export function hotQuotationLeadIds(rows, range) {
+  return new Set(rows
+    .filter(row => row.kind === 'hot' && row.id && inPipelinePeriod(row.createdAt, range))
+    .map(row => String(row.id)));
+}
+
+export function quotationMatchesLeadIds(quotation, leadIds) {
+  return leadIds.has(String(quotation.linkedLeadId || quotation.leadRef || quotation.leadId || ''));
+}
 
 function isClosedService(quotation, index) {
   return (quotation.itemClosureStates?.[index] || quotation.serviceState) === 'closed';

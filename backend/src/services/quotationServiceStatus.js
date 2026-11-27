@@ -84,7 +84,7 @@ async function attachQuotationServiceStatus(quotations) {
   return quotations.map(row => {
     const keys = references(row);
     const lead = [byId, byCode, byLegacyId].map(index => keys.map(key => index.get(key)).find(Boolean)).find(Boolean);
-    return { ...row, itemClosureStates: itemClosureStates(row, lead) };
+    return { ...row, linkedLeadId: lead ? String(lead._id) : null, itemClosureStates: itemClosureStates(row, lead) };
   });
 }
 
