@@ -21,6 +21,13 @@ test('legacy blank-service duplicate retains the actual decision and exports onc
   assert.equal(reconcileLegacyPendingClients([pending, { ...reviewed, piboCategory: 'Importer' }]).length, 2);
   assert.equal(reconcileLegacyPendingClients([pending, reviewed, { ...pending, id: 'registration', serviceOffered: 'Registration' }]).length, 3);
   assert.equal(reconcileLegacyPendingClients([pending, { ...reviewed, serviceOffered: 'Registration' }]).length, 2);
+  // Production legacy data has no plant/assignment, while its service draft
+  // has Unit 1. The chooser treats these as one application too.
+  const unit = { ...pending, selectedLeadId: 'same-lead', plantUnit: 'Unit 1', assignedServiceId: 'annual-return' };
+  const legacy = { ...reviewed, selectedLeadId: 'same-lead', plantUnit: '' };
+  assert.equal(reconcileLegacyPendingClients([unit, legacy]).length, 1);
+  assert.equal(reconcileLegacyPendingClients([unit, { ...unit, id: 'second-unit', plantUnit: 'Unit 2' }, legacy]).length, 3);
+  assert.equal(reconcileLegacyPendingClients([unit, { ...legacy, plantUnit: 'Unit 2' }]).length, 2);
 });
 
 test('Pending Clients Excel includes every approval status, assigned staff, and service offered', async () => {

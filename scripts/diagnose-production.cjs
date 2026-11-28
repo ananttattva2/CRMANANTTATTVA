@@ -180,6 +180,15 @@ async function measure(name, run) {
         missing: rows.filter(row => !normalize(read(row))).length
       }])) };
     });
+    await measure('capital-colours-approval-list-count', async () => {
+      let payload;
+      await appRequire('./src/controllers/clientController').listPendingApprovals(
+        { user: { role: 'compliance' }, query: { listOnly: 'true', compact: 'true' } },
+        { json: value => { payload = value; }, status() { return this; } }
+      );
+      return { count: (payload?.pendingClients || []).filter(row =>
+        /^CAPITAL COLOURS$/i.test(String(row.clientName || '').trim())).length };
+    });
     if (quick) return;
     if (inventoryCollection) await measure('inventory-current-collection', async () => ({ collection: inventoryCollection, estimatedDocuments: await mongoose.connection.db.collection(inventoryCollection).estimatedDocumentCount({ maxTimeMS: 10000 }) }));
     await measure('authentication-user-query', async () => ({ found: Boolean(await appRequire('./src/models/User').findOne({ isActive: { $ne: false } }).select('_id').maxTimeMS(10000).lean()) }));

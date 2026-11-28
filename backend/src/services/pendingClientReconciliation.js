@@ -7,11 +7,12 @@ const known = value => text(value) && text(value) !== '-';
 function reconcileLegacyPendingClients(rows = []) {
   const result = [...rows];
   const scope = row => [row.source || 'crm', row.clientName || row.companyName,
-    row.eprCategory, row.piboCategory, row.assignedStaff, row.plantUnit || row.unitName,
-    row.financialYear].map(key).join('|');
+    row.eprCategory, row.piboCategory, row.assignedStaff].map(key).join('|');
+  const plant = row => key(row.plantUnit || row.unitName);
   for (const legacy of rows.filter(row => !known(row.serviceOffered))) {
     const candidates = result.filter(row => row !== legacy && known(row.serviceOffered)
       && scope(row) === scope(legacy)
+      && (!plant(row) || !plant(legacy) || plant(row) === plant(legacy))
       && known(row.clientName || row.companyName) && known(row.eprCategory) && known(row.assignedStaff)
       && (!row.selectedLeadId || !legacy.selectedLeadId || String(row.selectedLeadId) === String(legacy.selectedLeadId)));
     if (candidates.length !== 1) continue;
