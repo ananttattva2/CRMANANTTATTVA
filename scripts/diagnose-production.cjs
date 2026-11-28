@@ -165,7 +165,20 @@ async function measure(name, run) {
         'adminControls.approvalStatus': 1, 'data.basic.piboCategory': 1,
         'data.basic.applicantType': 1, 'data.basic.plantUnit': 1, 'data.basic.eprCategory': 1,
         'data.basic.servicesOffered': 1, 'data.assignedServiceId': 1 } }).toArray();
-      return { records: rows };
+      const fields = {
+        lead: row => row.selectedLead,
+        serviceAssignment: row => row.assignedServiceId || row.data?.assignedServiceId,
+        applicant: row => row.data?.basic?.piboCategory,
+        applicantType: row => row.data?.basic?.applicantType,
+        plant: row => row.data?.basic?.plantUnit,
+        category: row => row.data?.basic?.eprCategory,
+        offering: row => row.data?.basic?.servicesOffered
+      };
+      const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return { count: rows.length, fields: Object.fromEntries(Object.entries(fields).map(([name, read]) => [name, {
+        distinct: new Set(rows.map(row => normalize(read(row)))).size,
+        missing: rows.filter(row => !normalize(read(row))).length
+      }])) };
     });
     if (quick) return;
     if (inventoryCollection) await measure('inventory-current-collection', async () => ({ collection: inventoryCollection, estimatedDocuments: await mongoose.connection.db.collection(inventoryCollection).estimatedDocumentCount({ maxTimeMS: 10000 }) }));
