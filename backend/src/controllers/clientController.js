@@ -882,7 +882,7 @@ function mergePendingClients(localRows, incomingRows) {
     merged.push(row);
   });
 
-  return merged;
+  return require('../services/pendingClientReconciliation').reconcileLegacyPendingClients(merged);
 }
 
 function pendingApprovalFilter(row, type = 'client') {
@@ -1031,6 +1031,9 @@ function mapClientPendingApprovalRow(client, createdByLabel = 'CRM User') {
     id: client._id,
     assignedServiceId,
     selectedLeadId: client.selectedLead?._id || client.selectedLead || data.selectedLead || '',
+    submittedAt: client.submittedAt || null,
+    plantUnit: data.basic?.plantUnit || data.basic?.unitName || '',
+    financialYear: data.basic?.financialYear || '',
     source: 'crm',
     uniqueId: data.importMeta?.uniqueId || '',
     clientName: data.basic?.clientLegalName || data.basic?.tradeName || 'Untitled client',
@@ -1209,7 +1212,7 @@ async function loadStoredPendingApprovals(listOnly = false) {
     });
 
   return {
-    pendingClients: clientRows,
+    pendingClients: require('../services/pendingClientReconciliation').reconcileLegacyPendingClients(clientRows),
     pendingQuotations: records
       .filter((record) => record.type === 'quotation' && (
         ['APPROVED', 'REJECTED'].includes(record.approvalStatus)
@@ -2166,7 +2169,7 @@ exports.listPendingApprovals = async (req, res) => {
         accessFilter,
         closedPoFilter
       ))
-        .select('_id selectedLead assignedServiceId workflowStatus adminControls.approvalStatus data.assignedServiceId data.basic.clientLegalName data.basic.tradeName data.basic.piboCategory data.basic.eprCategory data.basic.servicesOffered data.selectedLeadSnapshot.assignedServiceId data.selectedLeadSnapshot.servicesOffered data.importMeta.uniqueId data.importMeta.createdBy data.importMeta.createdByEmail data.approvalMeta createdBy createdAt')
+        .select('_id selectedLead assignedServiceId submittedAt data.basic.plantUnit data.basic.unitName data.basic.financialYear workflowStatus adminControls.approvalStatus data.assignedServiceId data.basic.clientLegalName data.basic.tradeName data.basic.piboCategory data.basic.eprCategory data.basic.servicesOffered data.selectedLeadSnapshot.assignedServiceId data.selectedLeadSnapshot.servicesOffered data.importMeta.uniqueId data.importMeta.createdBy data.importMeta.createdByEmail data.approvalMeta createdBy createdAt')
         .populate('createdBy', 'name email')
         .populate('selectedLead', 'assignments.assignedServiceId assignments.serviceAssignmentId assignments.assignmentId assignments.assignedStaff assignments.assignedStaffText assignments.assignedStaffName assignments.assignedStaffEmail assignments.servicesOffered assignments.applicableService assignments.serviceName serviceSelections.assignedServiceId serviceSelections.serviceAssignmentId serviceSelections.assignmentId serviceSelections.servicesOffered serviceSelections.applicableService serviceSelections.serviceName')
         .sort({ createdAt: -1 })
