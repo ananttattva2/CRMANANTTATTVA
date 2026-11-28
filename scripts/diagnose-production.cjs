@@ -210,5 +210,10 @@ async function measure(name, run) {
       return { closedRecords: records.length, clients: result.portfolioSummary.clients, users: buildUserSections(records, requests, users, teams).length };
     });
   } catch (error) { report({ check: 'connection', error: error.name, code: error.code }); process.exitCode = 1; }
-  finally { await mongoose.disconnect(); }
+  finally {
+    await mongoose.disconnect();
+    // Controller reads open a Redis connection in this standalone process.
+    // Close only this diagnostic's client so SSH can finish normally.
+    await appRequire('./src/services/redisStore').redisStore.disable();
+  }
 })();
