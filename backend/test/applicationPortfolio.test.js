@@ -276,16 +276,16 @@ test('service breakdown counts each application once and agrees with the Clients
   const buffer = await workbook.xlsx.writeBuffer();
   const ExcelJS = require('../../frontend/node_modules/exceljs');
   const loaded = new ExcelJS.Workbook(); await loaded.xlsx.load(buffer);
-  assert.equal(loaded.getWorksheet('Clients').getCell('L4').value, 'Annual Return Filling');
-  assert.equal(loaded.getWorksheet('Clients').getCell('L5').value, 'Annual Return Filling');
-  assert.equal(loaded.getWorksheet('Clients').getCell('N4').value, 'Sonal');
-  assert.equal(loaded.getWorksheet('Service Statuses').getCell('N4').value, 'Sonal');
-  assert.equal(loaded.getWorksheet('Clients').getCell('O3').value, 'Annual Return Year');
-  assert.equal(loaded.getWorksheet('Clients').getCell('P3').value, 'AR Action Required');
-  const actionRowNumber = [4, 5].find(rowNumber => loaded.getWorksheet('Clients').getCell(`P${rowNumber}`).value === 'Yes');
+  assert.equal(loaded.getWorksheet('Clients').getCell('M4').value, 'Annual Return Filling');
+  assert.equal(loaded.getWorksheet('Clients').getCell('M5').value, 'Annual Return Filling');
+  assert.equal(loaded.getWorksheet('Clients').getCell('O4').value, 'Sonal');
+  assert.equal(loaded.getWorksheet('Service Statuses').getCell('O4').value, 'Sonal');
+  assert.equal(loaded.getWorksheet('Clients').getCell('P3').value, 'Annual Return Year');
+  assert.equal(loaded.getWorksheet('Clients').getCell('Q3').value, 'AR Action Required');
+  const actionRowNumber = [4, 5].find(rowNumber => loaded.getWorksheet('Clients').getCell(`Q${rowNumber}`).value === 'Yes');
   assert.ok(actionRowNumber);
-  assert.match(loaded.getWorksheet('Clients').getCell(`Q${actionRowNumber}`).value, /Action|PO|status|assignment|closure|year/i);
-  assert.equal(loaded.getWorksheet('AR Action Required').getCell('N4').value, 'Sonal');
+  assert.match(loaded.getWorksheet('Clients').getCell(`R${actionRowNumber}`).value, /Action|PO|status|assignment|closure|year/i);
+  assert.equal(loaded.getWorksheet('AR Action Required').getCell('O4').value, 'Sonal');
   assert.equal(loaded.getWorksheet('Service Statuses').rowCount, 6);
   assert.equal(rows[0].services.length, 2);
 });
@@ -322,18 +322,18 @@ test('Assigned Applications Excel preserves account IDs and all saved years for 
   const loaded = new ExcelJS.Workbook();
   await loaded.xlsx.load(await workbook.xlsx.writeBuffer());
   for (const worksheet of loaded.worksheets) {
-    assert.equal(worksheet.getCell('O3').value, 'Annual Return Year');
-    assert.equal(worksheet.getCell('R3').value, 'Account ID');
+    assert.deepEqual(worksheet.getRow(3).values.slice(1, 4), ['Unique ID', 'Account ID', 'Legal Name']);
+    assert.equal(worksheet.getCell('P3').value, 'Annual Return Year');
   }
   const clients = loaded.getWorksheet('Clients');
-  assert.equal(clients.getCell('O4').value, '2024-25, 2025-26, 2027-28');
-  assert.equal(clients.getCell('R4').value, '00123, 00456');
+  assert.equal(clients.getCell('P4').value, '2024-25, 2025-26, 2027-28');
+  assert.equal(clients.getCell('B4').value, '00123, 00456');
   const services = loaded.getWorksheet('Service Statuses');
-  assert.equal(services.getCell('O4').value, '2025-26, 2027-28');
-  assert.equal(services.getCell('R4').value, '00123');
-  assert.equal(services.getCell('R4').type, ExcelJS.ValueType.String);
-  assert.equal(services.getCell('O5').value, '2024-25');
-  assert.equal(services.getCell('R5').value, '00456');
+  assert.equal(services.getCell('P4').value, '2025-26, 2027-28');
+  assert.equal(services.getCell('B4').value, '00123');
+  assert.equal(services.getCell('B4').type, ExcelJS.ValueType.String);
+  assert.equal(services.getCell('P5').value, '2024-25');
+  assert.equal(services.getCell('B5').value, '00456');
 });
 
 test('account fallback uses a legacy service alias and leaves ambiguous or conflicting services blank', async () => {

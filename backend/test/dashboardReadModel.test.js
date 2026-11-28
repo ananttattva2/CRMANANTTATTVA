@@ -102,7 +102,7 @@ test('legacy accounts are recovered through lead codes and matched to the correc
   await exported.xlsx.load(await workbook.xlsx.writeBuffer());
   for (const sheetName of ['Clients', 'Service Statuses']) {
     const sheet = exported.getWorksheet(sheetName);
-    const rows = sheet.getRows(4, 3).map(row => [row.getCell('F').value, [row.getCell('R').value, row.getCell('S').value]]);
+    const rows = sheet.getRows(4, 3).map(row => [row.getCell('G').value, [row.getCell('B').value, row.getCell('S').value]]);
     assert.deepEqual(Object.fromEntries(rows), {
       'Brand Owner': ['ATPL-LEAD-0142', 'Service'],
       Importer: ['ATPL-LEAD-0143', 'Service'],
@@ -143,7 +143,7 @@ test('portfolio displays both linked lead IDs when the saved Annual Return servi
   await exported.xlsx.load(await workbook.xlsx.writeBuffer());
   for (const sheetName of ['Clients', 'Service Statuses']) {
     const sheet = exported.getWorksheet(sheetName);
-    assert.deepEqual(sheet.getRows(4, 3).map(row => [row.getCell('R').value, row.getCell('S').value]),
+    assert.deepEqual(sheet.getRows(4, 3).map(row => [row.getCell('B').value, row.getCell('S').value]),
       [[recordedIds.join(', '), 'Linked lead'], [recordedIds.join(', '), 'Linked lead'], ['', '']]);
   }
 });

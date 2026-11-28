@@ -1,7 +1,7 @@
 import { exportWithReason } from './dataExport.mjs'
 import { annualActionReasons, isAnnualReturnService, matchesServiceSummary, portfolioAccountDisplay } from './applicationPortfolio.mjs'
 
-const headers = ['Unique ID', 'Legal Name', 'Client Status', 'Visibility', 'CPCB Status', 'PIBo Category', 'State', 'Created', 'Lead ID', 'Industry', 'Service Category', 'Services Offered', 'Unit', 'SPOC / User Name', 'Annual Return Year', 'AR Action Required', 'AR Action Required Details', 'Account ID', 'Account ID Source']
+const headers = ['Unique ID', 'Account ID', 'Legal Name', 'Client Status', 'Visibility', 'CPCB Status', 'PIBo Category', 'State', 'Created', 'Lead ID', 'Industry', 'Service Category', 'Services Offered', 'Unit', 'SPOC / User Name', 'Annual Return Year', 'AR Action Required', 'AR Action Required Details', 'Account ID Source']
 
 function exportYears(service) {
   if (service.offered && !isAnnualReturnService(service.offered)) return []
@@ -24,12 +24,12 @@ export async function createApplicationPortfolioWorkbook(records, name, label) {
     const accounts = portfolioAccountDisplay(services)
     const needsAction = actionRequired(row)
     return [
-      row.code, row.name, row.clientStatus, row.visibility, row.cpcb, row.category, row.state,
+      row.code, accounts.ids.join(', '), row.name, row.clientStatus, row.visibility, row.cpcb, row.category, row.state,
       row.created ? new Date(row.created).toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata' }) : 'Not recorded',
       row.leadCode, row.industry, row.eprCategory, row.offered, row.unit, row.spocName || name,
       years.join(', ') || 'Not recorded',
       needsAction ? 'Yes' : 'No', needsAction ? annualActionReasons(summaryRow(row)).join('; ') : '-',
-      accounts.ids.join(', '), accounts.source
+      accounts.source
     ].map(safe)
   }
   const sheets = [
@@ -43,7 +43,7 @@ export async function createApplicationPortfolioWorkbook(records, name, label) {
     sheet.addRow([`${records.length} clients exported`, `${rows.length} records`])
     sheet.addRow(headers)
     rows.forEach(row => sheet.addRow(values(row)))
-    sheet.columns.forEach((column, index) => { column.width = [23, 48, 20, 18, 30, 36, 25, 18, 25, 25, 30, 35, 20, 26, 30, 20, 58, 34, 20][index] })
+    sheet.columns.forEach((column, index) => { column.width = [23, 34, 48, 20, 18, 30, 36, 25, 18, 25, 25, 30, 35, 20, 26, 30, 20, 58, 20][index] })
     sheet.autoFilter = { from: { row: 3, column: 1 }, to: { row: sheet.rowCount, column: headers.length } }
     sheet.getRow(3).eachCell(cell => { cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF187F80' } } })
     sheet.eachRow(row => { row.alignment = { vertical: 'top', wrapText: true } })
