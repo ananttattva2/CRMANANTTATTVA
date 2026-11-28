@@ -2220,10 +2220,10 @@ export default function Quotations() {
             <div className="flex flex-wrap gap-2">
               <input value={String(query ?? '')} onChange={(event) => setQuery(event.target.value)} placeholder="Quotation, company, lead or contact..." className="h-11 w-64 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold outline-none placeholder:text-slate-400 focus:border-blue-300 focus:ring-4 focus:ring-blue-100" />
               <select value={validityFilter} onChange={(event) => setValidityFilter(event.target.value)} className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-600"><option value="">Any validity</option><option value="valid">Valid</option><option value="expired">Expired</option></select>
-              <select value={userFilter} onChange={(event) => setUserFilter(event.target.value)} className="h-11 w-60 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-600 outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-100">
+              {canApproveQuotation && <select value={userFilter} onChange={(event) => setUserFilter(event.target.value)} className="h-11 w-60 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-600 outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-100">
                 <option value="">Filter by User</option>
                 {userOptions.map((user) => <option key={user} value={user}>{user}</option>)}
-              </select>
+              </select>}
               <div className="relative">
                 <button type="button" onClick={() => setFilterOpen((value) => !value)} className="btn-lift inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-black text-slate-700">
                   <Filter className="h-4 w-4" /> Quotation filter

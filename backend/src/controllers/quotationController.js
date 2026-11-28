@@ -932,7 +932,16 @@ exports.listQuotations = async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const snapshot = req.query.dashboard === 'true' && req.query.snapshot === 'true';
   const limit = !snapshot && req.query.limit ? Math.min(100, Math.max(1, Number(req.query.limit) || 20)) : 0;
-  const accessFilter = await quotationAccessFilter(req.user, { allowFinanceRead: true });
+  // The directory is personal for regular users. Lead visibility and Finance
+  // access are needed by separate workflows, but do not establish authorship.
+  let accessFilter;
+  if (req.query.view === 'directory') {
+    const isAdmin = userHasAnyRole(req.user ?? {}, ['admin', 'superadmin']);
+    const owners = isAdmin ? null : [req.user?._id].filter(Boolean);
+    accessFilter = ownerFilter(owners, 'createdBy', null);
+  } else {
+    accessFilter = await quotationAccessFilter(req.user, { allowFinanceRead: true });
+  }
   const testLeadReferences = req.query.dashboard === 'true'
     ? await getAdminCreatedLeadReferences()
     : null;

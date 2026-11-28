@@ -30,7 +30,13 @@ function parseQuotationEmailAttachments(req, res, next) {
   });
 }
 
-router.get('/', requireAuth, cacheRead, quotationCtrl.listQuotations);
+router.get('/', requireAuth, (req, res, next) => {
+  if (req.query.view !== 'directory') return cacheRead(req, res, next);
+  // Previously cached directory responses may include other users' records.
+  // The controller still uses the scope-checked document snapshot.
+  res.set('Cache-Control', 'private, no-store');
+  return next();
+}, quotationCtrl.listQuotations);
 router.get('/service-categories', requireAuth, cacheRead, quotationCtrl.listServiceCategories);
 router.post('/service-categories', requireAuth, requireRoles(ADMIN_ROLES), quotationCtrl.createServiceCategory);
 router.get('/pibo-categories', requireAuth, cacheRead, quotationCtrl.listPiboCategories);
