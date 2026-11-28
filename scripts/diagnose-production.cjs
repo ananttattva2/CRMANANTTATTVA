@@ -158,6 +158,15 @@ async function measure(name, run) {
       }
       return { documents, verified, changedOrMissing };
     });
+    await measure('capital-colours-approval-identity', async () => {
+      const rows = await mongoose.connection.db.collection('clients').find({
+        'data.basic.clientLegalName': /^CAPITAL COLOURS$/i
+      }, { projection: { selectedLead: 1, assignedServiceId: 1, workflowStatus: 1, submittedAt: 1,
+        'adminControls.approvalStatus': 1, 'data.basic.piboCategory': 1,
+        'data.basic.applicantType': 1, 'data.basic.plantUnit': 1, 'data.basic.eprCategory': 1,
+        'data.basic.servicesOffered': 1, 'data.assignedServiceId': 1 } }).toArray();
+      return { records: rows };
+    });
     if (quick) return;
     if (inventoryCollection) await measure('inventory-current-collection', async () => ({ collection: inventoryCollection, estimatedDocuments: await mongoose.connection.db.collection(inventoryCollection).estimatedDocumentCount({ maxTimeMS: 10000 }) }));
     await measure('authentication-user-query', async () => ({ found: Boolean(await appRequire('./src/models/User').findOne({ isActive: { $ne: false } }).select('_id').maxTimeMS(10000).lean()) }));
