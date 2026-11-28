@@ -310,8 +310,13 @@ test('Operations workbook keeps each service’s latest compliance decision when
  });
  const brand = makeRow('brand', 'PARTIALLY_APPROVED', 'Verify the licence');
  const importer = makeRow('importer', 'REJECTED', 'Resubmit documents');
+ brand.client.data.basic = { servicesOffered: ['Registration'], eprCategory: 'Plastic Waste' };
+ importer.client.data.basic = { servicesOffered: ['Annual Return Filing'], eprCategory: 'Plastic Waste' };
  const workbookData = buildOperationsWorkbookData(buildOperationsProgressGroups([brand, importer], [owner]));
  assert.equal(workbookData.clients[0]['Compliance Status'], 'MIXED');
+ assert.deepEqual(workbookData.tabRemarks.map(row => [row['Application ID'], row['Service Offered']]), [
+  ['brand', 'Registration'], ['importer', 'Annual Return Filing']
+ ]);
  assert.equal(workbookData.clients[0]['Compliance Status Date'], latest);
  assert.deepEqual(workbookData.tabRemarks.map(row => [row.Status, row['Compliance Status'], row['Tab remarks']]), [
   ['CHANGES REQUIRED', 'PARTIALLY APPROVED', 'Verify the licence'],

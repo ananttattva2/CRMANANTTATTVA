@@ -39,7 +39,7 @@ export function buildPendingClientApprovalExportRows(clients = []) {
       'Client Name': text(client.clientName || client.companyName),
       'Approval Status': STATUS_LABELS[statusOf(client)] || statusOf(client),
       'Assigned Staff': text(client.assignedStaff || client.assignedStaffName),
-      'Decision By': text(client.decisionBy || client.actionBy),
+      'Decision By': text(client.decisionBy || client.actionBy) === '-' ? (statusOf(client) === 'PENDING' ? 'Awaiting decision' : 'Not recorded') : text(client.decisionBy || client.actionBy),
       'Service Offered': text(client.serviceOffered || client.servicesOffered),
       'Service Category': text(client.eprCategory || client.serviceCategory),
       'Request Date': [text(client.requestDate, ''), text(client.requestTime, '')].filter(Boolean).join(' ') || '-',

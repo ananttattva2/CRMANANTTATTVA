@@ -14,7 +14,7 @@ test('Pending Clients Excel includes every approval status, assigned staff, and 
   assert.deepEqual(rows.map((row) => row['Approval Status']), ['Pending', 'Partially Approved', 'Approved', 'Rejected']);
   assert.deepEqual(rows.map((row) => row['Assigned Staff']), ['Prachi', 'Sonal', 'Tushar', 'Shubham']);
   assert.deepEqual(rows.map((row) => row['Service Offered']), ['Registration', 'Annual Return', 'EPR Audit', 'Consulting']);
-  assert.equal(rows[0]['Decision By'], '-');
+  assert.equal(rows[0]['Decision By'], 'Awaiting decision');
   assert.equal(rows[1]['Decision By'], 'Compliance A');
   assert.deepEqual(buildPendingClientApprovalSummary(clients).map((row) => row.Count), [1, 1, 1, 1]);
 });
