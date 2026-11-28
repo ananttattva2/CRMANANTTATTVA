@@ -1,6 +1,7 @@
 const { mergeManagerStaffAllocations } = require('./managerStaffAllocations');
 const { normalizeYear } = require('./overallDashboard');
 const { STAGES, stageState } = require('./clientUploadTracker');
+const { normalizeLegacyPiboCategory } = require('../utils/piboCategories');
 
 const CATEGORY_ORDER = ['Plastic Waste', 'E-Waste', 'Tyre Waste', 'Used Oil', 'Battery Waste'];
 const text = value => String(value?._id || value?.id || value || '').trim();
@@ -123,11 +124,48 @@ function filingIndex(documents = [], clients = []) {
   return index;
 }
 
-function buildRecords({ clients = [], users = [], filings = new Map(), teams = [] }) {
+const accountIds = values => [...new Set(values.map(text).filter(Boolean))];
+const serviceIds = service => [service.assignedServiceId, service.serviceAssignmentId].map(text).filter(Boolean);
+const accountPriority = { Service: 3, 'Applicant and unit': 2, 'Linked lead': 1 };
+
+function annualReturnAccount(client, lead, fullLead, service, assignment, profile) {
+  const accountServices = [...array(fullLead.serviceSelections), ...array(client.portfolioLeadAccountServices)]
+    .filter(candidate => candidate && text(candidate.accountsRecordId));
+  const ids = serviceIds(service);
+  const exact = accountIds(accountServices.filter(candidate => serviceIds(candidate).some(id => ids.includes(id)))
+    .map(candidate => candidate.accountsRecordId));
+  const sameAssignment = client.assignmentOnly || serviceIds(assignment).some(id => ids.includes(id));
+  const direct = text(service.accountsRecordId) || (sameAssignment ? text(assignment.accountsRecordId) : '');
+  if (direct || exact.length === 1) return { accountId: direct || exact[0], accountIdSource: 'Service' };
+
+  // Registration and Annual Return may have separate service rows for the same
+  // applicant. Use an account only if the applicant, waste and unit identify it.
+  const applicant = key(normalizeLegacyPiboCategory(profile.subType).child);
+  const sameApplicant = accountServices.filter(candidate => {
+    const subType = key(normalizeLegacyPiboCategory(candidate.subApplicantType || candidate.piboCategory || candidate.applicantType).child);
+    const category = categoryName(candidate.eprCategory || candidate.serviceCategory || fullLead.eprCategory);
+    const unit = key(candidate.plantUnit);
+    return applicant !== 'notspecified' && subType === applicant
+      && category === profile.category
+      && (profile.unit === 'Not specified' ? !unit : unit === key(profile.unit));
+  });
+  const matching = accountIds(sameApplicant.map(candidate => candidate.accountsRecordId));
+  if (matching.length === 1) return { accountId: matching[0], accountIdSource: 'Applicant and unit' };
+
+  const linked = accountIds([
+    ...accountServices.map(candidate => candidate.accountsRecordId),
+    fullLead.accountsRecordId || lead.accountsRecordId,
+    ...array(client.portfolioLeadAccountIds)
+  ]);
+  return { accountId: linked.join(', '), accountIdSource: linked.length ? 'Linked lead' : '' };
+}
+
+function buildRecords({ clients = [], leads = [], users = [], filings = new Map(), teams = [] }) {
   const operationsUsers = array(users).filter(isOperationsStaff);
   const usersByIdentity = ownerIndex(operationsUsers);
   const usersById = new Map(operationsUsers.map(user => [text(user), user]));
   const teamsById = new Map(array(teams).map(team => [text(team), team?.name || 'Team']));
+  const leadsById = new Map(array(leads).filter(lead => lead?._id).map(lead => [text(lead._id), lead]));
   const records = new Map();
   for (const client of mergeManagerStaffAllocations(array(clients), [])) {
     try {
@@ -170,14 +208,14 @@ function buildRecords({ clients = [], users = [], filings = new Map(), teams = [
     const uniqueId = clientMasterUniqueId(client.data?.importMeta?.uniqueId || client.uniqueId || client.data?.importMeta?.leadNumber);
     const dueDate = isoDate(service.dueDate || service.serviceEndDate || poRows.map(row => row.poEndDate).filter(Boolean).sort().at(0));
     const unit = text(service.plantUnit || lead.plantUnit || client.data?.basic?.plantUnit || 'Not specified');
-    const accountId = text(service.accountsRecordId || lead.accountsRecordId) || '';
+    const account = annualReturnAccount(client, lead, leadsById.get(text(lead._id)) || lead, service, assignment, { category, subType, unit });
     const recordKey = [owner ? text(owner) : key(assignment.assignedStaffText || assignment.assignedStaffEmail), normalizedCompanyKey(lead, company), key(subType), key(unit), 'annualreturn'].join(':');
     const yearStates = Object.fromEntries(years.map(year => {
       const filing = clientId && typeof filings?.get === 'function' ? filings.get(`${clientId}:${year}`) : null;
       return [year, workflowState(filing)];
     }));
     const nextRecord = {
-      id: recordKey, clientId, sourceClientIds: clientId ? [clientId] : [], company, uniqueId, leadId, accountId, category, applicantType, subType, plantUnit: unit, serviceName, years,
+      id: recordKey, clientId, sourceClientIds: clientId ? [clientId] : [], company, uniqueId, leadId, ...account, category, applicantType, subType, plantUnit: unit, serviceName, years,
       slaReceived: client?.sla?.status === 'Yes',
       assignedUserId: owner ? text(owner) : '', assignedUser: owner?.name || owner?.email || assignment.assignedStaffText || 'Unassigned',
       staffAssignmentPending: !workflowReady,
@@ -190,7 +228,11 @@ function buildRecords({ clients = [], users = [], filings = new Map(), teams = [
     else {
       existing.sourceClientIds = [...new Set([...array(existing.sourceClientIds), ...array(nextRecord.sourceClientIds)])];
       existing.slaReceived = existing.slaReceived || nextRecord.slaReceived;
-      existing.accountId = existing.accountId || nextRecord.accountId;
+      if (nextRecord.leadId === existing.leadId
+        && (accountPriority[nextRecord.accountIdSource] || 0) > (accountPriority[existing.accountIdSource] || 0)) {
+        existing.accountId = nextRecord.accountId;
+        existing.accountIdSource = nextRecord.accountIdSource;
+      }
       existing.years = [...new Set([...existing.years, ...nextRecord.years])].sort();
       existing.yearStates = { ...existing.yearStates, ...nextRecord.yearStates };
       if (existing.serviceName !== 'Annual Return Filling' && nextRecord.serviceName === 'Annual Return Filling') existing.serviceName = nextRecord.serviceName;
@@ -251,7 +293,7 @@ function purchaseSalesSummary(records, year, query = {}, purchases = [], sales =
     const purchaseComplete = purchase.every((state, index) => STAGES[index] === 'Nil Upload' || state === 'complete');
     const salesComplete = sales.every((state, index) => STAGES[index] === 'Nil Upload' || state === 'complete');
     return {
-      id: record.id, clientId: record.clientId, company: record.company, uniqueId: record.uniqueId, leadId: record.leadId, accountId: record.accountId, plantUnit: record.plantUnit,
+      id: record.id, clientId: record.clientId, company: record.company, uniqueId: record.uniqueId, leadId: record.leadId, accountId: record.accountId, accountIdSource: record.accountIdSource, plantUnit: record.plantUnit,
       assignedUserId: record.assignedUserId, assignedUser: record.assignedUser, slaReceived: Boolean(record.slaReceived),
       purchase, sales,
       purchaseComplete, salesComplete, fullyComplete: purchaseComplete && salesComplete

@@ -106,16 +106,16 @@ const referenceKey = value => {
   return number ? `atpl-lead-${number.padStart(4, '0')}` : value.toLowerCase();
 };
 const accountIdsOnLead = lead => [...new Set([
-  ...(lead?.serviceSelections || []).map(service => service.accountsRecordId), lead?.accountsRecordId
+  ...(Array.isArray(lead?.serviceSelections) ? lead.serviceSelections : []).map(service => service?.accountsRecordId), lead?.accountsRecordId
 ].map(identity).filter(Boolean))];
 const compactCompany = value => identity(value).toLowerCase().replace(/[^a-z0-9]/g, '');
 
-async function hydratePortfolioLeadAccounts(Lead, clients, leadFilter) {
+async function hydratePortfolioLeadAccounts(Lead, clients, leadFilter, { includeServiceProfiles = false } = {}) {
   // Use only already-visible Client Masters. Look up the actual business code
   // when the saved Mongo reference points at an older copy with no accounts.
   const codesByClient = new Map();
   for (const client of clients) {
-    if (client.assignmentOnly || accountIdsOnLead(client.selectedLead).length) continue;
+    if ((!includeServiceProfiles && client.assignmentOnly) || accountIdsOnLead(client.selectedLead).length) continue;
     const meta = client.data?.importMeta || {};
     const snapshot = client.data?.selectedLeadSnapshot || {};
     const code = [meta.leadNumber, snapshot.leadCode, meta.clientCode, meta.uniqueId, client.selectedLead?.leadCode]
@@ -129,7 +129,10 @@ async function hydratePortfolioLeadAccounts(Lead, clients, leadFilter) {
   }))];
   const leads = await Lead.aggregate([
     { $match: { $and: [leadFilter, { leadCode: { $in: codes } }] } },
-    { $project: { leadCode: 1, company: 1, companyName: 1, clientName: 1, accountsRecordId: 1, 'serviceSelections.accountsRecordId': 1 } }
+    { $project: {
+      leadCode: 1, company: 1, companyName: 1, clientName: 1, accountsRecordId: 1, 'serviceSelections.accountsRecordId': 1,
+      ...(includeServiceProfiles ? { eprCategory: 1, ...Object.fromEntries('assignedServiceId serviceAssignmentId subApplicantType piboCategory applicantType eprCategory serviceCategory plantUnit'.split(' ').map(field => [`serviceSelections.${field}`, 1])) } : {})
+    } }
   ]).option({ maxTimeMS: 12000 });
   const byCode = new Map();
   for (const lead of leads) {
@@ -143,8 +146,17 @@ async function hydratePortfolioLeadAccounts(Lead, clients, leadFilter) {
       client.data?.importMeta?.companyName, client.selectedLead?.company].map(compactCompany).filter(Boolean);
     const matches = (byCode.get(referenceKey(code)) || []).filter(lead =>
       names.includes(compactCompany(lead.company || lead.companyName || lead.clientName)));
-    const ids = matches.length === 1 ? accountIdsOnLead(matches[0]) : [];
-    return ids.length ? { ...client, portfolioLeadAccountIds: ids } : client;
+    const lead = matches.length === 1 ? matches[0] : null;
+    const ids = accountIdsOnLead(lead);
+    if (!ids.length) return client;
+    return {
+      ...client,
+      portfolioLeadAccountIds: ids,
+      ...(includeServiceProfiles ? {
+        portfolioLeadAccountServices: (Array.isArray(lead.serviceSelections) ? lead.serviceSelections : []).filter(service => service?.accountsRecordId)
+          .map(service => ({ ...service, eprCategory: service.eprCategory || service.serviceCategory || lead.eprCategory }))
+      } : {})
+    };
   });
 }
 const leadReferences = lead => [lead._id, lead.leadCode, lead.leadNumber, lead.sourceLeadId, lead.externalLeadId].map(identity).filter(Boolean);

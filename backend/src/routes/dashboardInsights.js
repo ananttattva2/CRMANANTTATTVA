@@ -20,7 +20,10 @@ router.get('/legal', requireAuth, async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Unable to load Legal SLA records. Please retry.' }); }
 });
 router.get('/overall', requireAuth, cacheRead, controller.overall);
-router.get('/annual-return-operations', requireAuth, requireRoles(ADMIN_ROLES), cacheRead, controller.annualReturnOperations);
+router.get('/annual-return-operations', requireAuth, requireRoles(ADMIN_ROLES), (req, res, next) => {
+  if (req.query.export === 'true') return next();
+  return cacheRead(req, res, next);
+}, controller.annualReturnOperations);
 router.get('/purchase-orders', requireAuth, cacheRead, controller.purchaseOrders);
 router.get('/upload-tracker', requireAuth, cacheRead, controller.uploadTracker);
 router.get('/purchase-sales', requireAuth, cacheRead, controller.purchaseSales);

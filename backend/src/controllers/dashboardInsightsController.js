@@ -248,6 +248,10 @@ exports.annualReturnOperations = async (req, res) => {
     }
     stage = 'assignment merge';
     const assignedClients = mergeManagerStaffAllocations(snapshot.clients, snapshot.leads);
+    stage = 'lead account IDs';
+    const accountClients = req.query?.export === 'true'
+      ? await hydratePortfolioLeadAccounts(Lead, assignedClients, leadFilter, { includeServiceProfiles: true })
+      : assignedClients;
     const mongoose = require('mongoose');
     const validObjectIds = values => [...new Map(values
       .filter(value => value && mongoose.isValidObjectId(value))
@@ -279,7 +283,8 @@ exports.annualReturnOperations = async (req, res) => {
     stage = 'dashboard aggregation';
     const dashboard = require('../services/annualReturnOperationsDashboard');
     const records = dashboard.buildRecords({
-      clients: assignedClients,
+      clients: accountClients,
+      leads: snapshot.leads,
       users,
       teams,
       filings: dashboard.filingIndex(annualReturns, clientFilings)

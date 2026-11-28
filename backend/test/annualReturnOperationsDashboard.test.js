@@ -24,6 +24,45 @@ test('Annual Return dashboard recognises saved service aliases and five supporte
   assert.equal(categoryName('Battery Waste'), 'Battery Waste');
 });
 
+test('Operations export resolves each Annual Return account ID from the linked lead applicant and unit', async () => {
+  const { hydratePortfolioLeadAccounts } = require('../src/services/dashboardReadModel');
+  const users = [{ _id: 'u1', name: 'Operations User', role: 'operation' }];
+  const lead = { _id: 'lead-190', leadCode: 'ATPL-LEAD-0190', company: 'Account Fixture', status: 'Closed' };
+  const profile = (id, subApplicantType, plantUnit = 'Unit 1') => ({
+    assignedServiceId: id, subApplicantType, applicantType: 'PIBO', plantUnit, eprCategory: 'EPR - Plastic Waste'
+  });
+  const accounts = [
+    { ...profile('registration-brand', 'Brand Owner'), servicesOffered: 'New Registration', accountsRecordId: 'ATPL-LEAD-0142' },
+    { ...profile('registration-importer', 'Importer'), servicesOffered: 'New Registration', accountsRecordId: 'ATPL-LEAD-0143' },
+    { ...profile('registration-other-unit', 'Importer', 'Unit 2'), accountsRecordId: 'OTHER-UNIT' }
+  ];
+  const clients = ['Brand Owner', 'Importer'].map((subType, index) => {
+    const id = `annual-${index}`;
+    return {
+      _id: `operations-client-${index}`, assignedServiceId: id, workflowStatus: 'submitted',
+      data: { basic: { clientLegalName: lead.company }, importMeta: { uniqueId: lead.leadCode }, cpcb: { status: 'Approved' } },
+      selectedLead: {
+        ...lead,
+        serviceSelections: [{ ...profile(id, subType), servicesOffered: 'Annual Return Filling' }],
+        assignments: [{ assignedServiceId: id, assignedTo: 'manager', assignedStaff: 'u1', poStatus: 'received', poYearRows: [{ annualReturnYear: '2025-26' }] }]
+      }
+    };
+  });
+  const model = { aggregate: () => ({ option: async () => [{ ...lead, serviceSelections: accounts }] }) };
+  const hydrated = await hydratePortfolioLeadAccounts(model, clients, {}, { includeServiceProfiles: true });
+  const merged = buildRecords({ clients: hydrated, users });
+  const filters = { export: 'true', search: lead.leadCode, category: 'Plastic Waste', year: '2025-26', limit: 1 };
+  const idByApplicant = rows => Object.fromEntries(rows.map(row => [row.subType, [row.accountId, row.accountIdSource]]));
+  const expected = { 'Brand Owner': ['ATPL-LEAD-0142', 'Applicant and unit'], Importer: ['ATPL-LEAD-0143', 'Applicant and unit'] };
+  assert.deepEqual(idByApplicant(buildDashboard(merged, filters).records), expected);
+  assert.deepEqual(idByApplicant(buildRecords({ clients, users, leads: [{ ...lead, serviceSelections: accounts }] })), expected);
+  const tracker = purchaseSalesSummary(merged, '2025-26', filters);
+  assert.deepEqual(tracker.users[0].clients.map(row => row.accountId).sort(), ['ATPL-LEAD-0142', 'ATPL-LEAD-0143']);
+
+  const unscoped = buildRecords({ clients, users, leads: [{ ...lead, serviceSelections: accounts.slice(0, 2).map(row => ({ accountsRecordId: row.accountsRecordId })) }] });
+  assert.ok(unscoped.every(row => row.accountId === 'ATPL-LEAD-0142, ATPL-LEAD-0143' && row.accountIdSource === 'Linked lead'));
+});
+
 test('active Annual Return year follows the previous financial year automatically', () => {
   assert.equal(activeAnnualReturnYear(new Date(2026, 10, 2, 12)), '2025-26');
   assert.equal(activeAnnualReturnYear(new Date(2027, 3, 1, 12)), '2026-27');

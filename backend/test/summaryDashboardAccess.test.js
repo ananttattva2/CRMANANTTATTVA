@@ -9,7 +9,7 @@ test('Summary Dashboard APIs require Admin or Super Admin roles', () => {
   const leads = fs.readFileSync(path.resolve(__dirname, '../src/routes/leads.js'), 'utf8');
   const insights = fs.readFileSync(path.resolve(__dirname, '../src/routes/dashboardInsights.js'), 'utf8');
   assert.match(leads, /router\.get\('\/summary-dashboard', requireAuth, requireRoles\(ADMIN_ROLES\), cacheRead, revenueCtrl\.pipeline\)/);
-  assert.match(insights, /router\.get\('\/annual-return-operations', requireAuth, requireRoles\(ADMIN_ROLES\), cacheRead, controller\.annualReturnOperations\)/);
+  assert.match(insights, /router\.get\('\/annual-return-operations', requireAuth, requireRoles\(ADMIN_ROLES\), [\s\S]*?controller\.annualReturnOperations\)/);
 });
 
 test('Summary Dashboard role guard accepts either admin role, including a secondary role', () => {
