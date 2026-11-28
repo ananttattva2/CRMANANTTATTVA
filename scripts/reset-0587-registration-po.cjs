@@ -4,7 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs/promises');
 const root = path.resolve(process.argv[2] || '.');
 const operation = process.argv[3] || 'preview';
-if (!['preview', 'apply'].includes(operation)) throw new Error('Invalid operation');
+if (!['preview', 'apply', 'restore'].includes(operation)) throw new Error('Invalid operation');
 const appRequire = createRequire(path.join(root, 'backend/package.json'));
 appRequire('dotenv').config({ path: path.join(root, 'backend/.env'), quiet: true });
 const mongoose = appRequire('mongoose');
@@ -17,6 +17,48 @@ const poKeys = assignment => Object.keys(assignment).filter(key => /^po[A-Z]|^or
     await mongoose.connect(config.uri, { dbName: config.dbName, autoIndex: false, autoCreate: false, serverSelectionTimeoutMS: 15000 });
     const leads = mongoose.connection.db.collection('leads');
     const approvals = mongoose.connection.db.collection('pendingapprovals');
+    if (operation === 'restore') {
+      const dir = path.join(root, '.po-reset-backups');
+      const files = (await fs.readdir(dir)).filter(name => /^0587-registration-\d+\.json$/.test(name)).sort().reverse();
+      if (!files.length) throw new Error('Reset backup not found');
+      const backup = EJSON.parse(await fs.readFile(path.join(dir, files[0]), 'utf8'));
+      const before = backup.lead, saved = before.assignments?.[0];
+      if (before.leadCode !== 'ATPL-LEAD-0587' || !saved?.poYearRows?.length) throw new Error('Backup identity mismatch');
+      const current = await leads.findOne({ _id: before._id, deletedAt: null });
+      const assignment = current?.assignments?.[0];
+      if (!assignment || String(assignment.assignedServiceId) !== String(saved.assignedServiceId)) throw new Error('Service changed since reset');
+      if ((assignment.poYearRows || []).length || assignment.originalPoDetails || assignment.poStatus) throw new Error('New PO data exists; restore stopped');
+      const keys = [...poKeys(saved), ...['closedAt', 'closedBy', 'closedByText', 'closureRequestedBy', 'closureRequestedByText', 'closureFinalizedByManager', 'permanentClosedAt', 'permanentClosedBy', 'permanentClosedByText', 'provisionalCloseExpiresAt', 'provisionalCloseDeadlineBusinessDays'].filter(key => Object.hasOwn(saved, key))];
+      const set = { updatedAt: new Date() };
+      for (const key of keys) {
+        if (key !== 'poYearRows' && Object.hasOwn(assignment, key) && EJSON.stringify(assignment[key]) !== EJSON.stringify(saved[key])) throw new Error('Service details changed since reset');
+        set[`assignments.0.${key}`] = saved[key];
+      }
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          const changed = await leads.updateOne({ _id: current._id, updatedAt: current.updatedAt }, { $set: set }, { session });
+          if (changed.modifiedCount !== 1) throw new Error('Concurrent lead update');
+          for (const original of backup.approvals) {
+            const update = { $set: { updatedAt: set.updatedAt, deletedAt: original.deletedAt || null }, $unset: { 'payload.resetReason': '' } };
+            if (Object.hasOwn(original.payload || {}, 'resetReason')) {
+              update.$set['payload.resetReason'] = original.payload.resetReason;
+              delete update.$unset;
+            }
+            const restored = await approvals.updateOne({ _id: original._id, deletedAt: { $ne: null }, 'payload.resetReason': 'User requested clearing Service 1 PO details; backup retained.' }, update, { session });
+            if (restored.modifiedCount !== 1) throw new Error('Approval changed since reset');
+          }
+        });
+      } finally { await session.endSession(); }
+      const verified = await leads.findOne({ _id: current._id });
+      if (keys.some(key => EJSON.stringify(verified.assignments[0][key]) !== EJSON.stringify(saved[key]))) throw new Error('Restore verification failed');
+      if (EJSON.stringify(verified.assignments.slice(1)) !== EJSON.stringify(current.assignments.slice(1))) throw new Error('Other services changed');
+      const active = await approvals.countDocuments({ _id: { $in: backup.approvals.map(row => row._id) }, deletedAt: null });
+      if (active !== backup.approvals.length) throw new Error('Approval restore verification failed');
+      await appRequire('./src/services/crmCache').invalidateCrmCache();
+      console.log(JSON.stringify({ check: 'scoped-po-restore-complete', verified: true, restoredPoRows: verified.assignments[0].poYearRows.length, approvalsRestored: active, otherServicesUnchanged: true }));
+      return;
+    }
     const matches = await leads.find({ leadCode: 'ATPL-LEAD-0587', deletedAt: null }).toArray();
     if (matches.length !== 1) throw new Error('Lead identity is ambiguous');
     const lead = matches[0], service = lead.serviceSelections?.[0], assignment = lead.assignments?.[0];
