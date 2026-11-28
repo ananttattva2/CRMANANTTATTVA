@@ -15,6 +15,10 @@ function config() {
     cachedClient = new S3Client({
     endpoint: process.env.SPACES_ENDPOINT || 'https://sgp1.digitaloceanspaces.com', region: process.env.SPACES_REGION || 'sgp1',
     requestChecksumCalculation: 'WHEN_REQUIRED', responseChecksumValidation: 'WHEN_REQUIRED',
+    // Bound stalled connections before the reverse proxy gives up. This also
+    // releases sockets so a stalled read cannot block subsequent uploads.
+    requestHandler: { connectionTimeout: 5000, requestTimeout: 20000, throwOnRequestTimeout: true },
+    maxAttempts: 2,
     credentials: { accessKeyId: process.env.SPACES_ACCESS_KEY_ID, secretAccessKey: process.env.SPACES_SECRET_ACCESS_KEY }
     }); cachedCredentials = identity;
   }
@@ -40,7 +44,7 @@ async function putFile(key, body, size, type, metadata = {}) {
   return c.client.send(new PutObjectCommand({ Bucket: c.bucket, Key: key, Body: body, ContentLength: size, ContentType: type || 'application/octet-stream', ContentDisposition: disposition(type), ACL: 'private', Metadata: metadata }));
 }
 async function head(key) { const c = config(); return c.client.send(new HeadObjectCommand({ Bucket: c.bucket, Key: key })); }
-async function get(key) { const c = config(); return c.client.send(new GetObjectCommand({ Bucket: c.bucket, Key: key })); }
+async function get(key, options = {}) { const c = config(); return c.client.send(new GetObjectCommand({ Bucket: c.bucket, Key: key }), options); }
 async function downloadUrl(key) { const c = config(); return getSignedUrl(c.client, new GetObjectCommand({ Bucket: c.bucket, Key: rawKey(key) }), { expiresIn: 60 }); }
 async function uploadBuffer(buffer, name, type, folder) { const key = uploadKey(folder, name); await putFile(key, buffer, buffer.length, type); return objectResult(key, buffer.length); }
 async function deleteObject(value) { if (!value.startsWith('spaces:') && !value.startsWith('spaces/crm/')) throw new Error('Not a Spaces identifier.'); const key = rawKey(value); if (!validKey(key)) throw new Error('Invalid object key.'); const c = config(); await c.client.send(new DeleteObjectCommand({ Bucket: c.bucket, Key: key })); }
