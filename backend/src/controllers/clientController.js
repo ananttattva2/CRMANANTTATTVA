@@ -1212,7 +1212,7 @@ async function loadStoredPendingApprovals(listOnly = false) {
     });
 
   return {
-    pendingClients: require('../services/pendingClientReconciliation').reconcileLegacyPendingClients(clientRows),
+    pendingClients: clientRows,
     pendingQuotations: records
       .filter((record) => record.type === 'quotation' && (
         ['APPROVED', 'REJECTED'].includes(record.approvalStatus)
@@ -2269,7 +2269,7 @@ exports.listPendingApprovals = async (req, res) => {
     const indexedLiveRows = storedFallback.pendingClients.filter((row) => liveClientIds.has(String(row.id || row.sourceClientId || '')));
     responseClients = mergePendingClients(indexedLiveRows, liveClientRows);
   } else {
-    responseClients = storedFallback.pendingClients;
+    responseClients = require('../services/pendingClientReconciliation').reconcileLegacyPendingClients(storedFallback.pendingClients);
   }
   if (!isClientReviewer && responseClients.length) {
     const sourceClientIds = responseClients
