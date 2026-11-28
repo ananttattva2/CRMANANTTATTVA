@@ -290,6 +290,44 @@ test('correction hours skip first and third Saturdays in IST and respect saved f
   assert.equal(getOperationsSla({ correctionStartedAt: start, greenFlagDeadline: final })[96].due, Date.parse(final));
 });
 
+test('Operations workbook keeps each service’s latest compliance decision when grouped by company', async () => {
+ const { buildOperationsProgressGroups, buildOperationsWorkbookData, getOperationsComplianceDecision } = await helpers;
+ const owner = { _id: 'prachi', name: 'Prachi Chavan', role: 'operation' };
+ const prior = '2026-09-08T10:00:00Z';
+ const latest = '2026-10-26T06:13:11Z';
+ const makeRow = (id, decision, remarks) => ({
+  id, companyName: 'Narang Plastics fixture', atplCode: 'ATPL-0017', hasPo: false,
+  client: {
+   _id: id, assignedStaff: owner._id,
+   operationsSla: { approvalStatus: 'PENDING', createdAt: '2026-08-19' },
+   adminControls: { approvalStatus: 'PENDING' },
+   data: { approvalMeta: { status: decision, actionAt: latest } },
+   complianceReview: {
+    status: 'PARTIALLY_APPROVED', updatedAt: prior,
+    sections: [{ label: 'Documents', status: 'CHANGES_REQUIRED', remarks }]
+   }
+  }
+ });
+ const brand = makeRow('brand', 'PARTIALLY_APPROVED', 'Verify the licence');
+ const importer = makeRow('importer', 'REJECTED', 'Resubmit documents');
+ const workbookData = buildOperationsWorkbookData(buildOperationsProgressGroups([brand, importer], [owner]));
+ assert.equal(workbookData.clients[0]['Compliance Status'], 'MIXED');
+ assert.equal(workbookData.clients[0]['Compliance Status Date'], latest);
+ assert.deepEqual(workbookData.tabRemarks.map(row => [row.Status, row['Compliance Status'], row['Tab remarks']]), [
+  ['CHANGES REQUIRED', 'PARTIALLY APPROVED', 'Verify the licence'],
+  ['CHANGES REQUIRED', 'REJECTED', 'Resubmit documents']
+ ]);
+ const XLSX = require('../../frontend/node_modules/xlsx');
+ const workbook = XLSX.utils.book_new();
+ XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(workbookData.tabRemarks), 'Compliance Tab Remarks');
+ const saved = XLSX.read(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }), { type: 'buffer' });
+ assert.deepEqual(XLSX.utils.sheet_to_json(saved.Sheets['Compliance Tab Remarks']).map(row => row['Compliance Status']), ['PARTIALLY APPROVED', 'REJECTED']);
+ const bothPartial = buildOperationsWorkbookData(buildOperationsProgressGroups([brand, makeRow('importer', 'PARTIALLY_APPROVED', 'Follow the remarks')], [owner]));
+ assert.equal(bothPartial.clients[0]['Compliance Status'], 'PARTIALLY APPROVED');
+ assert.deepEqual(bothPartial.tabRemarks.map(row => row['Compliance Status']), ['PARTIALLY APPROVED', 'PARTIALLY APPROVED']);
+ assert.equal(getOperationsComplianceDecision({ client: { complianceReview: { status: 'PENDING', updatedAt: latest }, adminControls: { approvalStatus: 'APPROVED' } } }).status, 'APPROVED');
+});
+
 test('all compliance tab remarks survive workbook export with client and reviewer identity', async () => {
  const { buildOperationsWorkbookData } = await helpers;
  const longRemark = 'Check factory documents.\n' + 'Detailed note '.repeat(70);

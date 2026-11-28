@@ -15,7 +15,11 @@ export function assignedCompanyKey(client = {}, fallbackName = '') {
 function mergeCompanyRows(rows) {
   if (rows.length === 1) return rows[0]
   const representative = rows.find(row => !row.client?.assignmentOnly) || rows[0]
-  const approved = rows.every(row => key(row.client?.operationsSla?.approvalStatus || row.client?.adminControls?.approvalStatus) === 'approved')
+  const decisions = rows.map(getOperationsComplianceDecision)
+  const statuses = new Set(decisions.map(decision => decision.status))
+  const status = statuses.size === 1 ? decisions[0].status : 'MIXED'
+  const actionAt = decisions.filter(decision => date(decision.actionAt) !== null)
+    .sort((left, right) => date(right.actionAt) - date(left.actionAt))[0]?.actionAt
   const records = rows.filter(row => row.hasPo).flatMap(poRecords)
   const sla = Object.fromEntries([48, 72, 96].map(hours => {
     const flags = rows.map(row => row.sla[hours])
@@ -23,21 +27,42 @@ function mergeCompanyRows(rows) {
     return [hours, { breached: flags.some(flag => flag.breached), known: flags.some(flag => flag.known), due: dates.length ? Math.min(...dates) : null }]
   }))
   return { ...representative, serviceRows: rows, hasPo: rows.some(row => row.hasPo), sla,
-    client: { ...representative.client, operationsSla: { ...representative.client?.operationsSla, approvalStatus: approved ? 'APPROVED' : 'PENDING' } },
+    complianceDecision: { status, actionAt },
     poDetails: { ...representative.poDetails, ...records[0], records } }
 }
 const identity = (value) => value && typeof value === 'object'
   ? [value._id, value.id, value.userId, value.email, value.name].map(key).filter(Boolean)
   : [key(value)].filter(Boolean)
 
+const complianceStatus = value => String(value || '').trim().toUpperCase().replace(/\s+/g, '_')
+const approvalStatuses = new Set(['PENDING', 'PARTIALLY_APPROVED', 'APPROVED', 'REJECTED'])
+
+export function getOperationsComplianceDecision(row = {}) {
+  if (row.complianceDecision) return row.complianceDecision
+  const client = row.client || {}
+  const meta = client.data?.approvalMeta || {}
+  const sla = client.operationsSla || {}
+  const review = client.complianceReview || row.complianceReview || {}
+  const slaStatus = complianceStatus(sla.approvalStatus)
+  const reviewStatus = complianceStatus(review.status)
+  const decisions = [
+    { status: complianceStatus(meta.status), actionAt: meta.actionAt },
+    { status: slaStatus, actionAt: sla.actionAt || sla.decisionAt || sla.correctionStartedAt || (slaStatus === 'PENDING' ? sla.createdAt : null) },
+    ...(reviewStatus === 'PENDING' ? [] : [{ status: reviewStatus, actionAt: review.updatedAt }]),
+    { status: complianceStatus(client.adminControls?.approvalStatus) }
+  ].filter(item => approvalStatuses.has(item.status))
+  const dated = decisions.filter(item => date(item.actionAt) !== null)
+    .sort((left, right) => date(right.actionAt) - date(left.actionAt))
+  return dated[0] || decisions.find(item => item.status !== 'PENDING') || decisions[0] || { status: 'PENDING' }
+}
+
 export function getOperationsStatusDates(row = {}) {
   const client = row.client || {}
   const approval = client.operationsSla || row.approval || {}
-  const status = key(approval.approvalStatus || client.adminControls?.approvalStatus)
-  const decisionAt = approval.actionAt || approval.decisionAt || approval.correctionStartedAt
+  const { status, actionAt: decisionAt } = getOperationsComplianceDecision(row)
   const submittedAt = client.submittedAt || approval.createdAt
   return {
-    compliance: decisionAt && status !== 'pending'
+    compliance: decisionAt && status !== 'PENDING'
       ? { label: 'Reviewed', value: decisionAt }
       : submittedAt ? { label: 'Submitted', value: submittedAt }
         : { label: 'Created', value: client.createdAt || null },
@@ -208,7 +233,7 @@ export function buildOperationsProgressGroups(rows, users, getLegacyKeys, now = 
     group.rows = [...companies.values()].map(mergeCompanyRows)
   }
   return allGroups.map((group) => ({ ...group, total: group.rows.length,
-    complianceDone: group.rows.filter((row) => key(row.client?.operationsSla?.approvalStatus || row.client?.adminControls?.approvalStatus) === 'approved').length,
+    complianceDone: group.rows.filter(row => getOperationsComplianceDecision(row).status === 'APPROVED').length,
     poDone: group.rows.filter((row) => row.hasPo).length,
     milestones: Object.fromEntries([48, 72, 96].map((hours) => [hours, group.rows.filter((row) => row.sla[hours].breached).length]))
   })).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
@@ -247,10 +272,12 @@ function poRecords(row = {}) {
 export function getOperationsTabRemarks(row = {}) {
   if (row.serviceRows) return row.serviceRows.flatMap(getOperationsTabRemarks)
   const review = row.client?.complianceReview || row.complianceReview || {}
+  const decision = getOperationsComplianceDecision(row)
   return (Array.isArray(review.sections) ? review.sections : []).map((section) => ({
     key: section.key || section.label,
     label: section.label || section.key || 'Compliance tab',
     status: section.status || 'NOT_REVIEWED',
+    complianceStatus: decision.status,
     remarks: String(section.remarks || '').trim(),
     reviewedBy: section.reviewedBy?.name || section.reviewedBy?.email || '',
     reviewedAt: section.reviewedAt || ''
@@ -276,7 +303,7 @@ export function buildOperationsWorkbookData(groups = [], financialYear = 'all') 
   })
   const clientBase = (group, row) => {
     const contact = clientContactDetails(row)
-    const approval = row.client?.operationsSla?.approvalStatus || row.client?.adminControls?.approvalStatus || 'PENDING'
+    const { status: approval } = getOperationsComplianceDecision(row)
     const statusDates = getOperationsStatusDates(row)
     return {
       'Operations User': excelText(group.name, 'Unassigned'),
@@ -346,7 +373,7 @@ export function buildOperationsWorkbookData(groups = [], financialYear = 'all') 
     'Tab': excelText(tab.label),
     'Status': excelText(tab.status.replace(/_/g, ' ')),
     'Tab remarks': excelText(tab.remarks, 'No remarks added'),
-    'Compliance Status': excelText(String(row.client?.operationsSla?.approvalStatus || row.client?.adminControls?.approvalStatus || row.client?.complianceReview?.status || 'PENDING').replace(/_/g, ' ')),
+    'Compliance Status': excelText(tab.complianceStatus.replace(/_/g, ' ')),
     'Reviewed By': excelText(tab.reviewedBy, 'Not recorded'),
     'Reviewed At': excelText(tab.reviewedAt, 'Not recorded')
   }))))

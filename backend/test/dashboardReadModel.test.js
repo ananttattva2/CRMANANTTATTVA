@@ -185,12 +185,17 @@ test('assignment endpoint hydrates compact leads, isolates staff visibility and 
   const leads = [user, foreign].map(owner => ({ _id: `lead-${owner._id}`, company: `Company ${owner._id}`, serviceSelections: [{ assignedServiceId: 'service', servicesOffered: 'Registration' }], assignments: [{ assignedServiceId: 'service', assignedStaff: owner._id, closedAt: new Date() }] }));
   const clients = leads.map(lead => ({ _id: `client-${lead._id}`, assignedServiceId: 'service', selectedLead: lead._id, workflowStatus: 'submitted', data: { basic: { clientLegalName: lead.company } } }));
   const query = value => ({ select() { return this; }, sort() { return this; }, maxTimeMS() { return this; }, populate() { return this; }, lean: async () => value });
+  const pending = { sourceClientId: 'client-lead-staff', approvalStatus: 'PENDING', createdAt: '2026-08-19' };
+  let approvalRows = [pending];
   const mocks = {
     '../models/Lead': { aggregate: () => ({ option: async () => leads }) },
     '../models/Client': { aggregate: () => ({ option: async () => clients }) },
     '../models/User': { find: () => query([user]) },
     '../models/ClientComplianceReview': { find: () => query([]) },
-    '../models/PendingApproval': { find: () => query([]) },
+    '../models/PendingApproval': { find: filter => {
+      assert.deepEqual(Array.from(filter.sourceClientId.$in), ['client-lead-staff']);
+      return query(approvalRows);
+    } },
     '../utils/visibilityScope': { getVisibleUserScope: async () => ({ ids: [user._id], identities: [user.name] }), ownerFilter: () => ({}) },
     '../services/dashboardTestLeadExclusion': { getAssignmentDashboardLeadReferences: async () => ({}), dashboardClientExclusionFilter: () => ({}), dashboardLeadExclusionFilter: () => ({}) }
   };
@@ -206,6 +211,11 @@ test('assignment endpoint hydrates compact leads, isolates staff visibility and 
   assert.equal(payload.assignments[0].selectedLead.company, 'Company staff');
   assert.match(headers['Server-Timing'], /assignments;dur=\d+$/);
   assert.equal(headers['Cache-Control'], 'private, no-store');
+  approvalRows = [{ ...pending, approvalStatus: 'PARTIALLY_APPROVED', actionAt: '2026-10-26' }, pending];
+  await exported.uploadTracker({ user, query: { assignmentsOnly: 'true', freshReviews: 'true' } }, {
+    set() {}, status(code) { assert.fail(`Unexpected HTTP ${code}`); }, json(value) { payload = value; }
+  });
+  assert.equal(payload.assignments[0].operationsSla.approvalStatus, 'PARTIALLY_APPROVED');
 
   let portfolioPayload;
   await exported.uploadTracker({ user, query: { assignmentsOnly: 'true', portfolioOnly: 'true' } }, {

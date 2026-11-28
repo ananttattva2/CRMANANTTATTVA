@@ -72,7 +72,7 @@ import api, { storeSessionUser } from '../services/api'
 import { API_ENDPOINTS } from '../services/apiEndpoints'
 import { downloadOperationMisPdf } from '../utils/productivityReportExports'
 import { formatDisplayDate, formatDisplayDateTime } from '../utils/dateFormat'
-import { allocationOwnerKeys, buildOperationsProgressGroups, buildOperationsWorkbookData, getOperationsStatusDates, getOperationsFinalFlag, getPoFinancialYear, permanentStaffOwnerKeys, selectRowsForPoFinancialYear } from '../utils/operationsUserProgress.mjs'
+import { allocationOwnerKeys, buildOperationsProgressGroups, buildOperationsWorkbookData, getOperationsComplianceDecision, getOperationsStatusDates, getOperationsFinalFlag, getPoFinancialYear, permanentStaffOwnerKeys, selectRowsForPoFinancialYear } from '../utils/operationsUserProgress.mjs'
 import { applicationReportGroups, buildApplicationPortfolio } from '../utils/applicationPortfolio.mjs'
 import { downloadOperationsReportPdf } from '../utils/operationsReportPdf.mjs'
 
@@ -3989,7 +3989,7 @@ const OperationsClientDetails = React.memo(function OperationsClientDetails({ gr
                     const services = row.client?.selectedLead?.serviceSelections || []
                     const service = services.find(item => String(item.assignedServiceId || item.serviceAssignmentId || '') === String(row.client?.assignedServiceId || '')) || (services.length === 1 ? services[0] : {})
                     const applicant = basic.piboCategory || basic.subApplicantType || service.subApplicantType || service.piboCategory || basic.applicantType || service.applicantType || 'Applicant not recorded'
-                    const approval = row.client?.operationsSla?.approvalStatus || row.client?.adminControls?.approvalStatus || 'PENDING'
+                    const { status: approval } = getOperationsComplianceDecision(row)
                     const statusDates = getOperationsStatusDates(row)
                     return <tr key={row.id} ><td><div className="operations-client-name"><FileText aria-hidden="true" /><span><strong title={row.companyName}>{row.companyName}</strong><small>{applicant} · {row.atplCode}</small></span></div></td>
                       <td><em className={approval === 'APPROVED' ? 'status-applicable' : 'status-partial'}>{String(approval).replace(/_/g, ' ')}</em><small className="operations-status-date"><CalendarDays aria-hidden="true" />{statusDates.compliance.value ? `${statusDates.compliance.label} ${formatDisplayDateTime(statusDates.compliance.value)}` : 'Status date not recorded'}</small></td>
@@ -4003,6 +4003,27 @@ const OperationsClientDetails = React.memo(function OperationsClientDetails({ gr
               </div>
 })
 
+function operationsAssignmentRows(rows, assignedClients) {
+  const existing = new Map(rows.map(row => [String(row.client?._id || row.id), row]))
+  return assignedClients.map(client => {
+    const row = existing.get(String(client._id))
+    if (row) return { ...row, companyName: client.selectedLead?.company || client.selectedLead?.companyName || row.companyName, client: { ...row.client, ...client } }
+    const assignment = client.selectedLead?.assignments?.find(item => item.assignedServiceId === client.assignedServiceId) || client.selectedLead?.assignments?.[0] || {}
+    const poRecords = [...(assignment.poYearRows || []), ...(assignment.originalPoDetails ? [assignment.originalPoDetails] : [])]
+    const financials = client.data?.financials || {}
+    // Lead assignments contribute to the total; confirmed PO progress comes from Client Master records.
+    const hasPo = !client.assignmentOnly && (poRecords.some(po => po.poNumber || po.poNo || po.poDate || po.poReceivedDate || po.poFileName) || Boolean(financials.compliancePoNo || financials.poNo || financials.poNumber || financials.compliancePoDate || financials.poDate || financials.compliancePoFileName || financials.poFileName))
+    return { id: String(client._id), client, companyName: client.selectedLead?.company || client.selectedLead?.companyName || client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || client.data?.importMeta?.companyName || 'Untitled client', atplCode: client.data?.importMeta?.leadNumber || '', hasPo, poDetails: { ...poRecords[0], records: poRecords } }
+  })
+}
+
+function operationsAssignmentGroups(reportRows, assignedClients, users, now) {
+  const portfolioClients = assignedClients || reportRows.map(row => row.client).filter(Boolean)
+  const applicationTotals = new Map(applicationReportGroups(buildApplicationPortfolio(portfolioClients, users)).map(group => [group.id, group.records.length]))
+  return buildOperationsProgressGroups(reportRows, users, getAssignedUserKeysFromClient, now)
+    .map(group => ({ ...group, applicationTotal: applicationTotals.get(group.id) || 0 }))
+}
+
 const OperationsUserProgressTable = React.memo(function OperationsUserProgressTable({ rows = [], users = [], pdfMode = false, reportTime, financialYear = currentFinancialYear() }) {
   const [assignedClients, setAssignedClients] = useState(null)
   const [assignmentError, setAssignmentError] = useState('')
@@ -4015,25 +4036,13 @@ const OperationsUserProgressTable = React.memo(function OperationsUserProgressTa
       .catch(error => { if (error.code !== 'ERR_CANCELED') setAssignmentError('Could not refresh manager-to-staff assignments. Please retry.') })
     return () => controller.abort()
   }, [pdfMode, assignmentRefresh])
-  const reportRows = useMemo(() => {
-    if (!assignedClients) return pdfMode ? rows : []
-    const existing = new Map(rows.map(row => [String(row.client?._id || row.id), row]))
-    return assignedClients.map(client => {
-      const row = existing.get(String(client._id))
-      if (row) return { ...row, companyName: client.selectedLead?.company || client.selectedLead?.companyName || row.companyName, client: { ...row.client, ...client } }
-      const assignment = client.selectedLead?.assignments?.find(item => item.assignedServiceId === client.assignedServiceId) || client.selectedLead?.assignments?.[0] || {}
-      const poRecords = [...(assignment.poYearRows || []), ...(assignment.originalPoDetails ? [assignment.originalPoDetails] : [])]
-      const financials = client.data?.financials || {}
-      // Lead assignments contribute to the total; confirmed PO progress comes from Client Master records.
-      const hasPo = !client.assignmentOnly && (poRecords.some(po => po.poNumber || po.poNo || po.poDate || po.poReceivedDate || po.poFileName) || Boolean(financials.compliancePoNo || financials.poNo || financials.poNumber || financials.compliancePoDate || financials.poDate || financials.compliancePoFileName || financials.poFileName))
-      return { id: String(client._id), client, companyName: client.selectedLead?.company || client.selectedLead?.companyName || client.data?.basic?.clientLegalName || client.data?.basic?.tradeName || client.data?.importMeta?.companyName || 'Untitled client', atplCode: client.data?.importMeta?.leadNumber || '', hasPo, poDetails: { ...poRecords[0], records: poRecords } }
-    })
-  }, [rows, assignedClients, pdfMode])
+  const reportRows = useMemo(() => assignedClients ? operationsAssignmentRows(rows, assignedClients) : pdfMode ? rows : [], [rows, assignedClients, pdfMode])
   const [activeTab, setActiveTab] = useState('ownership')
   const [expandedUser, setExpandedUser] = useState('')
   const [search, setSearch] = useState('')
   const [now, setNow] = useState(() => reportTime || Date.now())
   const [exporting, setExporting] = useState(false)
+  const [exportingExcel, setExportingExcel] = useState(false)
   const [exportError, setExportError] = useState('')
   const [pdfProgress, setPdfProgress] = useState('Preparing PDF…')
   const pdfRef = useRef(null)
@@ -4048,12 +4057,28 @@ const OperationsUserProgressTable = React.memo(function OperationsUserProgressTa
       .catch((error) => setExportError(error.message || 'PDF download failed. Please try again.'))
       .finally(() => setExporting(false))
   }, [exporting])
-  const groups = useMemo(() => {
-    const portfolioClients = assignedClients || reportRows.map(row => row.client).filter(Boolean)
-    const applicationTotals = new Map(applicationReportGroups(buildApplicationPortfolio(portfolioClients, users)).map(group => [group.id, group.records.length]))
-    return buildOperationsProgressGroups(reportRows, users, getAssignedUserKeysFromClient, now)
-      .map(group => ({ ...group, applicationTotal: applicationTotals.get(group.id) || 0 }))
-  }, [reportRows, assignedClients, users, now])
+  const groups = useMemo(() => operationsAssignmentGroups(reportRows, assignedClients, users, now), [reportRows, assignedClients, users, now])
+  async function exportExcel() {
+    setExportingExcel(true)
+    setExportError('')
+    try {
+      const { data } = await api.get('/dashboard-insights/upload-tracker', {
+        params: { assignmentsOnly: 'true', freshReviews: 'true' },
+        headers: { 'Cache-Control': 'no-cache' },
+        timeout: 45000
+      })
+      const clients = data.assignments || []
+      const refreshedAt = Date.now()
+      const freshGroups = operationsAssignmentGroups(operationsAssignmentRows(rows, clients), clients, users, refreshedAt)
+      setAssignedClients(clients)
+      setNow(refreshedAt)
+      await downloadOperationsExcel(freshGroups, financialYear)
+    } catch (error) {
+      setExportError(error.response?.data?.error || 'Could not export the latest compliance statuses. Please retry.')
+    } finally {
+      setExportingExcel(false)
+    }
+  }
   const visibleGroups = groups.filter((group) => [group.name, ...group.rows.flatMap((row) => [row.companyName, row.atplCode])].some((value) => normalizeKey(value).includes(normalizeKey(search))))
   const totals = useMemo(() => groups.reduce((result, group) => ({
     clients: result.clients + group.total,
@@ -4069,7 +4094,7 @@ const OperationsUserProgressTable = React.memo(function OperationsUserProgressTa
   return <section className="operations-user-status-card" aria-label="User-wise operations status">
     <header className="operations-user-status-heading">
       <div><span>Operations performance</span><h2>Client Ownership &amp; Red Flags</h2><p>Clients are unique companies; applications use the Application Dashboard's company + PIBO category + unit rule. Red flags are cumulative: 96h also counts in 72h and 48h.</p></div>
-      <div className="operations-report-actions">{pdfMode ? <b><Users aria-hidden="true" />{groups.length} Operations users</b> : <div role="tablist" aria-label="Operations reports" className="flex flex-wrap gap-2"><button type="button" role="tab" aria-selected={activeTab === 'ownership'} className="operations-report-download" onClick={() => setActiveTab('ownership')}><Users aria-hidden="true" />{groups.length} Operations users</button><button type="button" role="tab" aria-selected={activeTab === 'data'} className="operations-report-download" onClick={() => setActiveTab('data')}>Purchase &amp; Sales</button></div>}{!pdfMode && activeTab === 'ownership' && <><button type="button" className="operations-report-download" disabled={!groups.length} onClick={() => downloadOperationsExcel(groups, financialYear)}><Download aria-hidden="true" />Export Excel</button><button type="button" className="operations-report-download" disabled={exporting || !groups.length} onClick={() => { setExportError(''); setPdfProgress('Preparing PDF…'); setExporting(true) }}><Download aria-hidden="true" />{exporting ? pdfProgress : 'Download full PDF'}</button></>}</div>
+      <div className="operations-report-actions">{pdfMode ? <b><Users aria-hidden="true" />{groups.length} Operations users</b> : <div role="tablist" aria-label="Operations reports" className="flex flex-wrap gap-2"><button type="button" role="tab" aria-selected={activeTab === 'ownership'} className="operations-report-download" onClick={() => setActiveTab('ownership')}><Users aria-hidden="true" />{groups.length} Operations users</button><button type="button" role="tab" aria-selected={activeTab === 'data'} className="operations-report-download" onClick={() => setActiveTab('data')}>Purchase &amp; Sales</button></div>}{!pdfMode && activeTab === 'ownership' && <><button type="button" className="operations-report-download" disabled={exportingExcel || !groups.length} onClick={exportExcel}><Download aria-hidden="true" />{exportingExcel ? 'Preparing Excel…' : 'Export Excel'}</button><button type="button" className="operations-report-download" disabled={exporting || !groups.length} onClick={() => { setExportError(''); setPdfProgress('Preparing PDF…'); setExporting(true) }}><Download aria-hidden="true" />{exporting ? pdfProgress : 'Download full PDF'}</button></>}</div>
     </header>
     <div className="operations-report-meta"><span><CalendarDays aria-hidden="true" />Updated {formatDisplayDateTime(now)} IST</span><span>{pdfMode ? 'PDF contains aggregate user metrics only; client names are excluded.' : 'PDF includes every Operations user as an aggregate table without client names.'}</span></div>
     {assignmentError && <p role="alert" className="operations-export-error">{assignmentError} <button type="button" onClick={() => { setAssignmentError(''); setAssignmentRefresh(value => value + 1) }} className="ml-2 font-bold underline">Retry</button></p>}

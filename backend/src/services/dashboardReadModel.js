@@ -41,7 +41,7 @@ const clientProjection = Object.fromEntries([
   ...'clientLegalName tradeName piboCategory subApplicantType applicantType servicesOffered applicableService cpcbStatus plantUnit companyIndustry industryType eprCategory serviceCategory state firstAnnualReturnYear servicesForYear'.split(' ').map(field => `data.basic.${field}`),
   ...'companyName assignedTo user userName leadNumber clientCode uniqueId clientStatus visibilityStatus cpcbStatus state approvalOverride'.split(' ').map(field => `data.importMeta.${field}`),
   'data.cpcb.status', 'data.cpcb.approvalStatus', 'data.cpcb.applicationStatus', 'data.assignedServiceId',
-  'data.selectedLead',
+  'data.selectedLead', 'data.approvalMeta.status', 'data.approvalMeta.actionAt',
   ...'id sourceLeadId externalLeadId leadCode assignedServiceId serviceAssignmentId company plantUnit servicesOffered applicableService piboCategory subApplicantType applicantType industryType eprCategory serviceCategory assignedStaff assignedStaffText assignedStaffEmail closedAt closedBy closedByText closedByEmail permanentClosedAt accountsRecordId'.split(' ').map(field => `data.selectedLeadSnapshot.${field}`),
   'data.address.state', 'data.addresses.state', 'data.registeredAddress.state', 'data.serviceAllocations', 'data.firstAnnualReturnYearApplicable',
   ...'compliancePoNo poNo poNumber compliancePoDate poDate compliancePoFileName poFileName poFinancialYear'.split(' ').map(field => `data.financials.${field}`),
@@ -73,7 +73,7 @@ function invalidateDashboardReads() { for (const invalidate of caches) invalidat
 // v4 discards snapshots captured before permanent service-staff ownership was
 // made authoritative (for example ATUL LTD retaining Nitin import metadata
 // after its live service was assigned to Tushar).
-const cachedAssignments = createDashboardCache({ name: 'dashboard-assignments-v9', maxEntries: 2 });
+const cachedAssignments = createDashboardCache({ name: 'dashboard-assignments-v10', maxEntries: 2 });
 const staffFields = ['assignedStaff', 'assignedStaffText', 'assignedStaffEmail'];
 const legacyClosedOwnerFields = ['closedBy', 'closedByText', 'closedByEmail'];
 const present = field => ({ [field]: { $exists: true, $nin: [null, ''] } });

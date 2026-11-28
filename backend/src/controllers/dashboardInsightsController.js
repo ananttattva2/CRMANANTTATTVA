@@ -359,12 +359,21 @@ exports.uploadTracker = async (req, res) => {
         return res.json({ ok: true, visibility: scope === null ? 'all' : scope.ids.length > 1 ? 'team' : 'own', users, assignments });
       }
       const realIds = visibleClients.filter(client => !client.assignmentOnly).map(client => client._id);
-      const [reviews, approvals] = await cachedAssignmentReviews(JSON.stringify(realIds.map(String).sort()), () => Promise.all([
+      const loadReviews = () => Promise.all([
         require('../models/ClientComplianceReview').find({ client: { $in: realIds } }).select('client status sections finalRemarks updatedAt').populate('sections.reviewedBy', 'name email').maxTimeMS(15000).lean(),
         require('../models/PendingApproval').find({ type: 'client', source: 'crm', sourceClientId: { $in: realIds.map(String) } }).select('sourceClientId approvalStatus actionAt createdAt reminderFlag redFlagAt greenFlagDeadline correctionStatus correctionStartedAt correctionDueAt correctionBreachedAt correctionDeadlinePolicy').maxTimeMS(15000).lean()
-      ]));
+      ]);
+      const [reviews, approvals] = req.query.freshReviews === 'true' ? await loadReviews()
+        : await cachedAssignmentReviews(JSON.stringify(realIds.map(String).sort()), loadReviews);
       const reviewByClient = new Map(reviews.map(review => [String(review.client), review]));
-      const approvalByClient = new Map(approvals.map(approval => [String(approval.sourceClientId), approval]));
+      const approvalByClient = new Map();
+      const decisionTime = approval => new Date(approval?.actionAt || approval?.createdAt || 0).getTime() || 0;
+      for (const approval of approvals) {
+        const id = String(approval.sourceClientId);
+        if (!approvalByClient.has(id) || decisionTime(approval) > decisionTime(approvalByClient.get(id))) {
+          approvalByClient.set(id, approval);
+        }
+      }
       res.set('Cache-Control', 'private, no-store');
       res.set('Server-Timing', `references;dur=${referencesAt - startedAt}, snapshot;dur=${snapshotAt - referencesAt}, reviews;dur=${Date.now() - snapshotAt}, assignments;dur=${Date.now() - startedAt}`);
       return res.json({ ok: true, users, assignments: visibleClients.map(client => ({ ...client, complianceReview: reviewByClient.get(String(client._id)) || null, operationsSla: approvalByClient.get(String(client._id)) || null })) });
